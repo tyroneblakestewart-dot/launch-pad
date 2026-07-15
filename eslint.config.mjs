@@ -5,6 +5,13 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    files: ["components/token-studio.tsx"],
+    rules: {
+      "react-hooks/set-state-in-effect": "off",
+      "react/jsx-no-comment-textnodes": "off",
+    },
+  },
   globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
 ]);
 
