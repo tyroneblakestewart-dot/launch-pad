@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Connection,
   Keypair,
@@ -33,21 +33,18 @@ import {
 import styles from "./testnet-launcher.module.css";
 
 type Network = "robinhood-testnet" | "solana-devnet";
-
 type EthereumProvider = {
   request: (args: {
     method: string;
     params?: unknown[] | Record<string, unknown>;
   }) => Promise<unknown>;
 };
-
 type PhantomProvider = {
-  connect: () => Promise<{ publicKey: PublicKey }>;
+  connect: () => Promise<{ publicKey: { toString: () => string } }>;
   signAndSendTransaction: (
     transaction: Transaction,
   ) => Promise<{ signature: string }>;
 };
-
 type LaunchResult = {
   address: string;
   transaction: string;
@@ -85,6 +82,18 @@ function shortAddress(value: string): string {
   return value.length > 18 ? `${value.slice(0, 9)}…${value.slice(-7)}` : value;
 }
 
+function getEthereumProvider(): EthereumProvider | undefined {
+  return (window as unknown as { ethereum?: EthereumProvider }).ethereum;
+}
+
+function getPhantomProvider(): PhantomProvider | undefined {
+  const browserWindow = window as unknown as {
+    solana?: PhantomProvider;
+    phantom?: { solana?: PhantomProvider };
+  };
+  return browserWindow.phantom?.solana || browserWindow.solana;
+}
+
 export function TestnetLauncher() {
   const [network, setNetwork] = useState<Network>("robinhood-testnet");
   const [name, setName] = useState("Hoodlums Test");
@@ -99,19 +108,16 @@ export function TestnetLauncher() {
   const [confirmed, setConfirmed] = useState(false);
   const [result, setResult] = useState<LaunchResult | null>(null);
 
-  const valid = useMemo(() => {
-    const maxDecimals = network === "solana-devnet" ? 9 : 18;
-    return (
-      name.trim().length >= 2 &&
-      name.trim().length <= 32 &&
-      /^[A-Za-z0-9]{2,12}$/.test(symbol.trim()) &&
-      /^\d+$/.test(supply) &&
-      BigInt(supply || "0") > 0n &&
-      decimals >= 0 &&
-      decimals <= maxDecimals &&
-      confirmed
-    );
-  }, [confirmed, decimals, name, network, supply, symbol]);
+  const maxDecimals = network === "solana-devnet" ? 9 : 18;
+  const valid =
+    name.trim().length >= 2 &&
+    name.trim().length <= 32 &&
+    /^[A-Za-z0-9]{2,12}$/.test(symbol.trim()) &&
+    /^\d+$/.test(supply) &&
+    BigInt(supply || "0") > 0n &&
+    decimals >= 0 &&
+    decimals <= maxDecimals &&
+    confirmed;
 
   function selectNetwork(next: Network) {
     setNetwork(next);
@@ -127,8 +133,7 @@ export function TestnetLauncher() {
     setResult(null);
     try {
       if (network === "robinhood-testnet") {
-        const browserWindow = window as Window & { ethereum?: EthereumProvider };
-        const provider = browserWindow.ethereum;
+        const provider = getEthereumProvider();
         if (!provider) throw new Error("Install MetaMask or Robinhood Wallet first.");
 
         try {
@@ -159,14 +164,10 @@ export function TestnetLauncher() {
         setWallet(accounts[0]);
         setStatus("Robinhood Chain testnet wallet connected.");
       } else {
-        const browserWindow = window as Window & {
-          solana?: PhantomProvider;
-          phantom?: { solana?: PhantomProvider };
-        };
-        const provider = browserWindow.phantom?.solana || browserWindow.solana;
+        const provider = getPhantomProvider();
         if (!provider) throw new Error("Install Phantom first.");
         const response = await provider.connect();
-        setWallet(response.publicKey.toBase58());
+        setWallet(response.publicKey.toString());
         setStatus("Phantom connected for Solana devnet.");
       }
     } catch (error) {
@@ -177,10 +178,10 @@ export function TestnetLauncher() {
   }
 
   async function deployRobinhoodToken(): Promise<LaunchResult> {
-    const browserWindow = window as Window & { ethereum?: EthereumProvider };
-    if (!browserWindow.ethereum) throw new Error("EVM wallet disconnected.");
+    const provider = getEthereumProvider();
+    if (!provider) throw new Error("EVM wallet disconnected.");
 
-    const transport = custom(browserWindow.ethereum);
+    const transport = custom(provider);
     const walletClient = createWalletClient({ chain: robinhoodTestnet, transport });
     const publicClient = createPublicClient({ chain: robinhoodTestnet, transport });
     const [account] = await walletClient.getAddresses();
@@ -201,7 +202,9 @@ export function TestnetLauncher() {
 
     setStatus(`Deployment submitted: ${shortAddress(transaction)}`);
     const receipt = await publicClient.waitForTransactionReceipt({ hash: transaction });
-    if (!receipt.contractAddress) throw new Error("Receipt did not contain a contract address.");
+    if (!receipt.contractAddress) {
+      throw new Error("Receipt did not contain a contract address.");
+    }
 
     return {
       address: receipt.contractAddress,
@@ -211,17 +214,12 @@ export function TestnetLauncher() {
   }
 
   async function deploySolanaToken(): Promise<LaunchResult> {
-    const browserWindow = window as Window & {
-      solana?: PhantomProvider;
-      phantom?: { solana?: PhantomProvider };
-    };
-    const provider = browserWindow.phantom?.solana || browserWindow.solana;
+    const provider = getPhantomProvider();
     if (!provider) throw new Error("Phantom disconnected.");
 
     const payer = new PublicKey(wallet);
     const amount = BigInt(supply) * 10n ** BigInt(decimals);
-    const maxU64 = 2n ** 64n - 1n;
-    if (amount > maxU64) {
+    if (amount > 2n ** 64n - 1n) {
       throw new Error("Supply multiplied by decimals exceeds Solana's u64 token limit.");
     }
 
@@ -380,7 +378,7 @@ export function TestnetLauncher() {
               <input
                 type="number"
                 min={0}
-                max={network === "solana-devnet" ? 9 : 18}
+                max={maxDecimals}
                 value={decimals}
                 onChange={(event) => setDecimals(Number(event.target.value))}
               />
