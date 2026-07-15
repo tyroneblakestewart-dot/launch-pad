@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
       "react/jsx-no-comment-textnodes": "off",
     },
   },
+  {
+    files: ["components/testnet-launcher.tsx"],
+    rules: {
+      "@next/next/no-html-link-for-pages": "off",
+    },
+  },
   globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
 ]);
 
