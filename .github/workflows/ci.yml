@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main, agent/private-meme-token-studio-mvp]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --silent
+
+      - name: Lint
+        run: npm run lint > lint-output.txt 2>&1
+
+      - name: Upload lint report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: lint-output.txt
+
+      - name: Production build
+        run: npm run build > build-output.txt 2>&1
+
+      - name: Upload build report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-report
+          path: build-output.txt
