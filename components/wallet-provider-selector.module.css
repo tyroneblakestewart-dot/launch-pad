@@ -1,0 +1,244 @@
+.trigger,
+.triggerSelected {
+  position: fixed;
+  left: 18px;
+  bottom: 18px;
+  z-index: 90;
+  min-width: 170px;
+  padding: 10px 13px;
+  border: 1px solid rgba(85, 255, 120, 0.42);
+  border-radius: 9px;
+  color: #edf8ef;
+  background: rgba(7, 12, 8, 0.94);
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.4);
+  text-align: left;
+  backdrop-filter: blur(16px);
+}
+
+.trigger {
+  border-color: rgba(241, 207, 85, 0.7);
+}
+
+.triggerSelected {
+  border-color: rgba(85, 255, 120, 0.65);
+}
+
+.trigger span,
+.triggerSelected span {
+  display: block;
+  color: #8f9c92;
+  font: 600 9px/1.2 "IBM Plex Mono", monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.trigger b,
+.triggerSelected b {
+  display: block;
+  margin-top: 4px;
+  color: #55ff78;
+  font-size: 12px;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 5, 3, 0.82);
+  backdrop-filter: blur(10px);
+}
+
+.modal {
+  width: min(560px, 100%);
+  max-height: min(720px, 92vh);
+  overflow: auto;
+  border: 1px solid rgba(85, 255, 120, 0.26);
+  border-radius: 14px;
+  color: #f4f7ef;
+  background: #0a100c;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.62);
+}
+
+.modal header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 22px 17px;
+  border-bottom: 1px solid rgba(131, 183, 139, 0.16);
+}
+
+.modal header p {
+  margin: 0 0 6px;
+  color: #55ff78;
+  font: 700 9px "IBM Plex Mono", monospace;
+  letter-spacing: 0.14em;
+}
+
+.modal header h2 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.04em;
+}
+
+.modal header > button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(131, 183, 139, 0.22);
+  border-radius: 8px;
+  color: #d8e2da;
+  background: #111813;
+  font-size: 20px;
+}
+
+.message {
+  margin: 16px 20px 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(241, 207, 85, 0.2);
+  border-radius: 8px;
+  color: #c5cec7;
+  background: rgba(241, 207, 85, 0.05);
+  font: 500 11px/1.55 "IBM Plex Mono", monospace;
+}
+
+.walletList {
+  display: grid;
+  gap: 10px;
+  padding: 18px 20px;
+}
+
+.wallet,
+.walletActive {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 66px;
+  padding: 10px 12px;
+  border: 1px solid rgba(131, 183, 139, 0.18);
+  border-radius: 10px;
+  color: #eef5ef;
+  background: #0d140f;
+  text-align: left;
+}
+
+.wallet:hover,
+.walletActive:hover {
+  border-color: rgba(85, 255, 120, 0.55);
+}
+
+.walletActive {
+  border-color: rgba(85, 255, 120, 0.72);
+  background: rgba(85, 255, 120, 0.07);
+}
+
+.wallet img,
+.fallbackIcon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+}
+
+.wallet img {
+  object-fit: cover;
+}
+
+.fallbackIcon {
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(85, 255, 120, 0.32);
+  color: #55ff78;
+  background: #132018;
+  font-weight: 800;
+}
+
+.wallet > span:nth-child(2),
+.walletActive > span:nth-child(2) {
+  min-width: 0;
+}
+
+.wallet b,
+.walletActive b {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.wallet small,
+.walletActive small {
+  display: block;
+  overflow: hidden;
+  color: #7f8d82;
+  font: 500 9px "IBM Plex Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallet em,
+.walletActive em {
+  color: #55ff78;
+  font: normal 700 9px "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+}
+
+.empty {
+  padding: 22px;
+  border: 1px dashed rgba(131, 183, 139, 0.24);
+  border-radius: 10px;
+  color: #9aa79d;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  padding: 0 20px 18px;
+}
+
+.actions button {
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid rgba(131, 183, 139, 0.24);
+  border-radius: 8px;
+  color: #dce7de;
+  background: #111813;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.modal footer {
+  padding: 15px 20px 19px;
+  border-top: 1px solid rgba(131, 183, 139, 0.15);
+  color: #8d998f;
+  font: 500 10px/1.55 "IBM Plex Mono", monospace;
+}
+
+.modal footer b {
+  color: #f1cf55;
+}
+
+@media (max-width: 640px) {
+  .trigger,
+  .triggerSelected {
+    left: 10px;
+    bottom: 10px;
+    min-width: 145px;
+  }
+
+  .backdrop {
+    padding: 10px;
+  }
+
+  .modal header,
+  .walletList,
+  .actions {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+}
