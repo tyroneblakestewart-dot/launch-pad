@@ -48,9 +48,7 @@ const robinhoodTestnet = defineChain({
   id: ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL,
   name: ROBINHOOD_TESTNET.chainName,
   nativeCurrency: ROBINHOOD_TESTNET.nativeCurrency,
-  rpcUrls: {
-    default: { http: [...ROBINHOOD_TESTNET.rpcUrls] },
-  },
+  rpcUrls: { default: { http: [...ROBINHOOD_TESTNET.rpcUrls] } },
   blockExplorers: {
     default: {
       name: "Robinhood Chain Testnet Explorer",
@@ -104,7 +102,7 @@ function updateStoredProject(project: TokenProject, contractAddress: string) {
       ]),
     );
   } catch {
-    // The on-chain deployment remains valid even if local saving is unavailable.
+    // The on-chain deployment remains valid when local saving is unavailable.
   }
 }
 
@@ -277,16 +275,17 @@ export function RobinhoodTestnetDeploymentController() {
         throw new Error("The confirmed receipt did not contain a contract address.");
       }
 
-      const deploymentResult = {
-        contractAddress: receipt.contractAddress,
+      const contractAddress: Address = receipt.contractAddress;
+      const deploymentResult: DeploymentResult = {
+        contractAddress,
         transactionHash,
       };
       setResult(deploymentResult);
-      updateStoredProject(project, receipt.contractAddress);
-      updateStudioContractAddress(receipt.contractAddress);
+      updateStoredProject(project, contractAddress);
+      updateStudioContractAddress(contractAddress);
       setProject((current) =>
         current
-          ? { ...current, contractAddress: receipt.contractAddress, status: "launched" }
+          ? { ...current, contractAddress, status: "launched" }
           : current,
       );
       setStatus("Testnet token deployed successfully. Mainnet is still blocked.");
