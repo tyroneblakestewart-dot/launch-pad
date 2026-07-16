@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { HOODLUMS_HERO_IMAGE } from "@/lib/hoodlums-hero-image";
 import styles from "./hoodlums-launch-hero.module.css";
 
 const launchTools = [
@@ -33,10 +34,11 @@ export function HoodlumsLaunchHero() {
   return (
     <section className={styles.hero} aria-labelledby="hoodlums-hero-title">
       <Image
-        src="/hoodlums-robbin-hero.webp"
+        src={HOODLUMS_HERO_IMAGE}
         alt=""
         fill
         priority
+        unoptimized
         sizes="100vw"
         className={styles.backdrop}
         aria-hidden="true"
@@ -105,11 +107,12 @@ export function HoodlumsLaunchHero() {
             </div>
             <div className={styles.artFrame}>
               <Image
-                src="/hoodlums-robbin-hero.webp"
+                src={HOODLUMS_HERO_IMAGE}
                 alt="Robbin the Leader in a green hood with the Hoodlums code-rain artwork"
                 width={900}
                 height={900}
                 priority
+                unoptimized
                 sizes="(max-width: 900px) 92vw, 46vw"
                 className={styles.artwork}
               />
