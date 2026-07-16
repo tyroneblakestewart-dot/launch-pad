@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArtworkSiteGenerator } from "@/components/artwork-site-generator";
 import { ArtworkUploadController } from "@/components/artwork-upload-controller";
 import { BuildSiteGate } from "@/components/build-site-gate";
+import { DexscreenerSiteSection } from "@/components/dexscreener-site-section";
 import { GeneratedSiteProjectGuard } from "@/components/generated-site-project-guard";
 import { LivingLaunchpadMotion } from "@/components/living-launchpad-motion";
 import { NewTokenController } from "@/components/new-token-controller";
@@ -27,6 +28,7 @@ export default function Home() {
       <LivingLaunchpadMotion />
       <ArtworkUploadController />
       <ArtworkSiteGenerator />
+      <DexscreenerSiteSection />
       <GeneratedSiteProjectGuard />
       <BuildSiteGate />
       <NewTokenController />
