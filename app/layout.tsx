@@ -20,21 +20,12 @@ export const metadata: Metadata = {
     title: "HOODLUMS Launchpad — This Is Just the Beginning",
     description:
       "Build the token, test the contract and prepare the allocation from one private launch command centre.",
-    images: [
-      {
-        url: "/hoodlums-robbin-hero.webp",
-        width: 900,
-        height: 900,
-        alt: "Robbin the Leader — HOODLUMS",
-      },
-    ],
   },
   twitter: {
-    card: "summary_large_image",
+    card: "summary",
     title: "HOODLUMS Launchpad — This Is Just the Beginning",
     description:
       "Build the token, test the contract and prepare the allocation from one private launch command centre.",
-    images: ["/hoodlums-robbin-hero.webp"],
   },
 };
 
