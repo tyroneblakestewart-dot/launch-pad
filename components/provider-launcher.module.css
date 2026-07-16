@@ -1,0 +1,176 @@
+.shell {
+  min-height: 100vh;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 85% 5%, rgba(85, 255, 120, .11), transparent 30rem),
+    linear-gradient(180deg, #070a08, #040605);
+  color: #f3f6ef;
+}
+.header {
+  max-width: 1400px;
+  margin: 0 auto 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 24px;
+  border: 1px solid rgba(131, 183, 139, .2);
+  border-radius: 14px;
+  background: rgba(10, 15, 11, .93);
+}
+.header p, .sectionHeading p, .resultCard p {
+  margin: 0 0 7px;
+  color: #55ff78;
+  font: 700 10px "IBM Plex Mono", monospace;
+  letter-spacing: .16em;
+}
+.header h1 { margin: 0 0 8px; font-size: clamp(26px, 4vw, 44px); letter-spacing: -.04em; }
+.header span { color: #9aa69c; font-size: 14px; }
+.headerActions { display: flex; gap: 10px; align-items: center; }
+.headerActions a, .headerActions button, .actionGrid button, .verifyButton {
+  min-height: 43px;
+  padding: 0 15px;
+  border: 1px solid rgba(131, 183, 139, .24);
+  border-radius: 8px;
+  background: #111713;
+  color: #f3f6ef;
+  font-weight: 800;
+}
+.headerActions button, .launchButton, .verifyButton { background: #55ff78 !important; color: #071008 !important; }
+.notice {
+  max-width: 1400px;
+  margin: 0 auto 18px;
+  padding: 12px 16px;
+  border-left: 3px solid #55ff78;
+  background: rgba(85, 255, 120, .07);
+  color: #bcc6be;
+  font: 500 12px/1.5 "IBM Plex Mono", monospace;
+}
+.providerGrid {
+  max-width: 1400px;
+  margin: 0 auto 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.providerCard, .providerActive {
+  text-align: left;
+  padding: 19px;
+  border: 1px solid rgba(131, 183, 139, .2);
+  border-radius: 12px;
+  background: #0b100c;
+  color: #f3f6ef;
+}
+.providerActive { border-color: rgba(85, 255, 120, .75); box-shadow: inset 0 0 0 1px rgba(85,255,120,.15); }
+.providerCard span, .providerActive span { display: block; margin-bottom: 5px; font-size: 20px; font-weight: 900; }
+.providerCard b, .providerActive b { display: block; margin-bottom: 9px; color: #55ff78; font: 700 10px "IBM Plex Mono", monospace; text-transform: uppercase; }
+.providerCard small, .providerActive small { display: block; color: #8d998f; line-height: 1.55; }
+.workspace {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(330px, .65fr);
+  gap: 18px;
+}
+.formPanel, .verifyPanel {
+  padding: 24px;
+  border: 1px solid rgba(131, 183, 139, .2);
+  border-radius: 14px;
+  background: rgba(10, 15, 11, .94);
+}
+.sectionHeading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 22px; }
+.sectionHeading h2 { margin: 0; font-size: 23px; letter-spacing: -.03em; }
+.sectionHeading > span { padding: 7px 10px; border-radius: 999px; background: rgba(85,255,120,.08); color: #55ff78; font: 700 10px "IBM Plex Mono", monospace; }
+.formPanel label, .verifyPanel label { display: block; margin-bottom: 15px; }
+.formPanel label > span, .verifyPanel label > span {
+  display: block;
+  margin-bottom: 7px;
+  color: #aab4ac;
+  font: 700 10px "IBM Plex Mono", monospace;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.formPanel input, .formPanel textarea, .formPanel select, .verifyPanel input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid rgba(131, 183, 139, .2);
+  border-radius: 7px;
+  outline: none;
+  background: #070b08;
+  color: #f3f6ef;
+}
+.formPanel textarea { resize: vertical; line-height: 1.5; }
+.formPanel input:focus, .formPanel textarea:focus, .formPanel select:focus, .verifyPanel input:focus { border-color: rgba(85,255,120,.65); }
+.twoColumns { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+.artworkBox {
+  min-height: 145px;
+  display: grid !important;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  border: 1px dashed rgba(85,255,120,.35);
+  border-radius: 10px;
+  background: rgba(85,255,120,.03);
+  cursor: pointer;
+  overflow: hidden;
+}
+.artworkBox input { display: none; }
+.artworkBox img { width: 96px; height: 96px; border-radius: 12px; object-fit: cover; }
+.artworkBox span { margin: 0 !important; color: #7f8b81 !important; text-transform: none !important; letter-spacing: 0 !important; }
+.actionGrid { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 10px; margin: 20px 0; }
+.actionGrid button:disabled, .verifyButton:disabled, .headerActions button:disabled { opacity: .55; cursor: wait; }
+.copyRows { display: grid; gap: 7px; }
+.copyRows button {
+  display: grid;
+  grid-template-columns: 105px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid rgba(131,183,139,.14);
+  border-radius: 7px;
+  background: #080c09;
+  color: #f3f6ef;
+  text-align: left;
+}
+.copyRows span { color: #8e998f; font-size: 11px; }
+.copyRows code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cbd3cc; }
+.copyRows b { color: #55ff78; font: 700 9px "IBM Plex Mono", monospace; }
+.explainer { margin: -5px 0 20px; color: #929e94; font-size: 13px; line-height: 1.6; }
+.verifyButton { width: 100%; margin: 4px 0 16px; }
+.verificationMode {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+  border: 1px solid rgba(131,183,139,.18);
+  border-radius: 8px;
+  background: #080c09;
+}
+.verificationMode span { color: #8e998f; font-size: 11px; }
+.verificationMode b { color: #55ff78; }
+.verificationMode code { color: #b7c1b9; font-size: 11px; }
+.resultCard { margin-top: 16px; padding: 17px; border: 1px solid rgba(85,255,120,.4); border-radius: 10px; background: rgba(85,255,120,.045); }
+.resultCard h3 { margin: 0 0 13px; font-size: 24px; }
+.resultCard dl { margin: 0; }
+.resultCard dl div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(131,183,139,.12); }
+.resultCard dt { color: #8e998f; }
+.resultCard dd { margin: 0; text-align: right; }
+.resultCard a { display: inline-block; margin-top: 14px; color: #55ff78; font-weight: 800; }
+.warning { display: grid; gap: 7px; margin-top: 18px; padding: 14px; border-left: 3px solid #f1cf55; background: rgba(241,207,85,.06); }
+.warning b { color: #f1cf55; }
+.warning span { color: #aab2ab; font-size: 12px; line-height: 1.55; }
+.selectedNote { display: block; margin-top: 12px; color: #7f8a81; }
+@media (max-width: 900px) {
+  .shell { padding: 14px; }
+  .header, .workspace { grid-template-columns: 1fr; }
+  .header { flex-direction: column; }
+  .workspace { display: grid; }
+  .providerGrid, .twoColumns { grid-template-columns: 1fr; }
+  .actionGrid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .headerActions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .copyRows button { grid-template-columns: 80px minmax(0, 1fr) 40px; }
+  .formPanel, .verifyPanel, .header { padding: 17px; }
+}
