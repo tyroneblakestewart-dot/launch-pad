@@ -25,37 +25,73 @@ type Eip6963ProviderDetail = {
 type BrowserWindow = Window & {
   ethereum?: Eip1193Provider;
   __launchpadEthereum?: Eip1193Provider;
+  __launchpadEthereumInfo?: Eip6963ProviderInfo;
 };
 
 const PREFERENCE_KEY = "launchpad-preferred-evm-wallet";
 const PREFERENCE_NAME_KEY = "launchpad-preferred-evm-wallet-name";
 const BYPASS_ATTRIBUTE = "data-wallet-selector-bypass";
+let exactRouterInstalled = false;
 
-function installSelectedProvider(provider: Eip1193Provider) {
+function clearInstalledProvider() {
   const browserWindow = window as BrowserWindow;
-  browserWindow.__launchpadEthereum = provider;
+  browserWindow.__launchpadEthereum = undefined;
+  browserWindow.__launchpadEthereumInfo = undefined;
+}
 
+function installSelectedProvider(detail: Eip6963ProviderDetail) {
+  const browserWindow = window as BrowserWindow;
+  browserWindow.__launchpadEthereum = detail.provider;
+  browserWindow.__launchpadEthereumInfo = detail.info;
+
+  if (!exactRouterInstalled) {
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(browserWindow, "ethereum");
+      if (!descriptor || descriptor.configurable) {
+        Object.defineProperty(browserWindow, "ethereum", {
+          configurable: false,
+          enumerable: true,
+          get() {
+            return browserWindow.__launchpadEthereum;
+          },
+          set(value: Eip1193Provider | undefined) {
+            // Ignore extension attempts to replace the confirmed provider. Before a
+            // wallet is selected, retain a valid injected provider only as discovery
+            // data; connection requests still require an EIP-6963 confirmation.
+            if (!browserWindow.__launchpadEthereum && value?.request) {
+              browserWindow.__launchpadEthereum = value;
+            }
+          },
+        });
+        exactRouterInstalled = true;
+        return;
+      }
+    } catch {
+      // Fall through to patching the protected injected provider below.
+    }
+  }
+
+  if (exactRouterInstalled) return;
+
+  // Some extensions expose a non-configurable window.ethereum property. In that
+  // case route its request method through the exact EIP-6963 provider selected by
+  // the user. This is reapplied immediately before the React click handler runs.
+  const injected = browserWindow.ethereum;
+  if (!injected || injected === detail.provider) return;
+
+  const routedRequest = detail.provider.request.bind(detail.provider);
   try {
-    Object.defineProperty(browserWindow, "ethereum", {
+    Object.defineProperty(injected, "request", {
       configurable: true,
       enumerable: true,
       writable: true,
-      value: provider,
+      value: routedRequest,
     });
   } catch {
     try {
-      browserWindow.ethereum = provider;
+      injected.request = routedRequest;
     } catch {
-      // Some extensions protect window.ethereum. In that case, forward request()
-      // through the confirmed EIP-6963 provider so the wrong extension cannot open.
-      const injected = browserWindow.ethereum;
-      if (injected && injected !== provider) {
-        try {
-          injected.request = provider.request.bind(provider);
-        } catch {
-          // The provider is fully protected. __launchpadEthereum remains available.
-        }
-      }
+      // __launchpadEthereum remains the source of truth for launchpad code.
     }
   }
 }
@@ -84,6 +120,7 @@ export function WalletProviderSelector() {
     "Choose the wallet you want to use for this connection.",
   );
   const pendingConnectButton = useRef<HTMLButtonElement | null>(null);
+  const confirmedWallet = useRef<Eip6963ProviderDetail | null>(null);
 
   useEffect(() => {
     const storedRdns = localStorage.getItem(PREFERENCE_KEY) || "";
@@ -103,34 +140,15 @@ export function WalletProviderSelector() {
       });
 
       if (storedRdns && detail.info.rdns === storedRdns) {
-        installSelectedProvider(detail.provider);
+        confirmedWallet.current = detail;
+        installSelectedProvider(detail);
       }
     }
 
     window.addEventListener("eip6963:announceProvider", announce);
     window.dispatchEvent(new Event("eip6963:requestProvider"));
 
-    const fallbackTimer = window.setTimeout(() => {
-      setProviders((current) => {
-        if (current.length > 0) return current;
-        const legacy = (window as BrowserWindow).ethereum;
-        if (!legacy) return current;
-        return [
-          {
-            info: {
-              uuid: "legacy-window-ethereum",
-              name: "Browser default wallet",
-              icon: "",
-              rdns: "legacy.window.ethereum",
-            },
-            provider: legacy,
-          },
-        ];
-      });
-    }, 700);
-
     return () => {
-      window.clearTimeout(fallbackTimer);
       window.removeEventListener("eip6963:announceProvider", announce);
     };
   }, []);
@@ -141,16 +159,18 @@ export function WalletProviderSelector() {
   );
 
   useEffect(() => {
-    if (selectedProvider) installSelectedProvider(selectedProvider.provider);
+    if (!selectedProvider) return;
+    confirmedWallet.current = selectedProvider;
+    installSelectedProvider(selectedProvider);
   }, [selectedProvider]);
 
   useEffect(() => {
     function reapplyOnFocus() {
-      if (selectedProvider) installSelectedProvider(selectedProvider.provider);
+      if (confirmedWallet.current) installSelectedProvider(confirmedWallet.current);
     }
     window.addEventListener("focus", reapplyOnFocus);
     return () => window.removeEventListener("focus", reapplyOnFocus);
-  }, [selectedProvider]);
+  }, []);
 
   useEffect(() => {
     function interceptConnect(event: MouseEvent) {
@@ -160,11 +180,14 @@ export function WalletProviderSelector() {
       if (!button || button.disabled) return;
 
       if (button.hasAttribute(BYPASS_ATTRIBUTE)) {
+        // Reapply at the final capture phase, immediately before TokenStudio reads
+        // window.ethereum. This prevents another extension winning a timing race.
+        if (confirmedWallet.current) installSelectedProvider(confirmedWallet.current);
         button.removeAttribute(BYPASS_ATTRIBUTE);
         return;
       }
 
-      // Solana currently has one supported connection route and can continue directly.
+      // Solana uses Phantom's dedicated Solana provider, not window.ethereum.
       if (button.textContent?.toLowerCase().includes("phantom")) return;
 
       event.preventDefault();
@@ -187,6 +210,7 @@ export function WalletProviderSelector() {
     if (!button?.isConnected) return;
 
     window.setTimeout(() => {
+      if (confirmedWallet.current) installSelectedProvider(confirmedWallet.current);
       button.setAttribute(BYPASS_ATTRIBUTE, "true");
       button.click();
     }, 0);
@@ -206,8 +230,11 @@ export function WalletProviderSelector() {
       localStorage.setItem(PREFERENCE_NAME_KEY, pendingWallet.info.name);
       setSelectedRdns(pendingWallet.info.rdns);
       setSelectedName(pendingWallet.info.name);
-      installSelectedProvider(pendingWallet.provider);
-      setMessage(`Opening ${pendingWallet.info.name}…`);
+      confirmedWallet.current = pendingWallet;
+      installSelectedProvider(pendingWallet);
+      setMessage(
+        `Confirmed route: ${pendingWallet.info.name} · ${pendingWallet.info.rdns} · ${pendingWallet.info.uuid}`,
+      );
       setOpen(false);
       continueConnection();
     } finally {
@@ -218,6 +245,8 @@ export function WalletProviderSelector() {
   function clearSelection() {
     localStorage.removeItem(PREFERENCE_KEY);
     localStorage.removeItem(PREFERENCE_NAME_KEY);
+    confirmedWallet.current = null;
+    clearInstalledProvider();
     setSelectedRdns("");
     setSelectedName("");
     setPendingWallet(null);
@@ -259,14 +288,14 @@ export function WalletProviderSelector() {
         <div className={styles.walletList}>
           {providers.length === 0 ? (
             <div className={styles.empty}>
-              No EVM wallet has announced itself yet. Unlock your wallet extension, then refresh detection.
+              No EIP-6963 wallet has announced itself. Unlock the wallet extension, then refresh detection.
             </div>
           ) : (
             providers.map((detail) => {
               const icon = detail.info.icon.startsWith("data:image/")
                 ? detail.info.icon
                 : "";
-              const active = detail.info.rdns === pendingWallet?.info.rdns;
+              const active = detail.info.uuid === pendingWallet?.info.uuid;
               return (
                 <button
                   key={detail.info.uuid}
@@ -308,6 +337,7 @@ export function WalletProviderSelector() {
                 <small>SELECTED WALLET</small>
                 <b>{pendingWallet.info.name}</b>
                 <code>{pendingWallet.info.rdns}</code>
+                <code>{pendingWallet.info.uuid}</code>
               </span>
             </div>
             <button onClick={confirmWallet} disabled={isConfirming} type="button">
@@ -324,7 +354,7 @@ export function WalletProviderSelector() {
         </div>
 
         <footer>
-          <b>Safe connection:</b> selecting a card does nothing until you press the confirmation button. The launchpad never asks for or stores a seed phrase.
+          <b>Exact provider routing:</b> only the EIP-6963 provider shown above is permitted to receive the connection request. Selecting a card does nothing until you confirm. The launchpad never asks for or stores a seed phrase.
           {selectedName ? ` Current preference: ${selectedName}.` : ""}
         </footer>
       </section>
