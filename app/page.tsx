@@ -3,6 +3,7 @@ import { ArtworkSiteGenerator } from "@/components/artwork-site-generator";
 import { ArtworkUploadController } from "@/components/artwork-upload-controller";
 import { BuildSiteGate } from "@/components/build-site-gate";
 import { GeneratedSiteProjectGuard } from "@/components/generated-site-project-guard";
+import { LivingLaunchpadMotion } from "@/components/living-launchpad-motion";
 import { NewTokenController } from "@/components/new-token-controller";
 import { StudioProviderTransfer } from "@/components/studio-provider-transfer";
 import { TokenStudio } from "@/components/token-studio";
@@ -23,6 +24,7 @@ const floatingLink = {
 export default function Home() {
   return (
     <>
+      <LivingLaunchpadMotion />
       <ArtworkUploadController />
       <ArtworkSiteGenerator />
       <GeneratedSiteProjectGuard />
