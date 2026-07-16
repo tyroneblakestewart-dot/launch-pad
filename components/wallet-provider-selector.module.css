@@ -15,13 +15,8 @@
   backdrop-filter: blur(16px);
 }
 
-.trigger {
-  border-color: rgba(241, 207, 85, 0.7);
-}
-
-.triggerSelected {
-  border-color: rgba(85, 255, 120, 0.65);
-}
+.trigger { border-color: rgba(241, 207, 85, 0.7); }
+.triggerSelected { border-color: rgba(85, 255, 120, 0.65); }
 
 .trigger span,
 .triggerSelected span {
@@ -53,7 +48,7 @@
 
 .modal {
   width: min(560px, 100%);
-  max-height: min(720px, 92vh);
+  max-height: min(760px, 92vh);
   overflow: auto;
   border: 1px solid rgba(85, 255, 120, 0.26);
   border-radius: 14px;
@@ -117,8 +112,11 @@
   align-items: center;
   gap: 12px;
   width: 100%;
+  height: 66px;
   min-height: 66px;
+  max-height: 66px;
   padding: 10px 12px;
+  overflow: hidden;
   border: 1px solid rgba(131, 183, 139, 0.18);
   border-radius: 10px;
   color: #eef5ef;
@@ -127,9 +125,7 @@
 }
 
 .wallet:hover,
-.walletActive:hover {
-  border-color: rgba(85, 255, 120, 0.55);
-}
+.walletActive:hover { border-color: rgba(85, 255, 120, 0.55); }
 
 .walletActive {
   border-color: rgba(85, 255, 120, 0.72);
@@ -137,14 +133,18 @@
 }
 
 .wallet img,
-.fallbackIcon {
+.walletActive img,
+.fallbackIcon,
+.confirmWallet img {
+  display: block;
   width: 42px;
+  min-width: 42px;
+  max-width: 42px;
   height: 42px;
+  min-height: 42px;
+  max-height: 42px;
   border-radius: 10px;
-}
-
-.wallet img {
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .fallbackIcon {
@@ -157,9 +157,7 @@
 }
 
 .wallet > span:nth-child(2),
-.walletActive > span:nth-child(2) {
-  min-width: 0;
-}
+.walletActive > span:nth-child(2) { min-width: 0; }
 
 .wallet b,
 .walletActive b {
@@ -183,6 +181,62 @@
   color: #55ff78;
   font: normal 700 9px "IBM Plex Mono", monospace;
   letter-spacing: 0.08em;
+}
+
+.confirmPanel {
+  display: grid;
+  gap: 12px;
+  margin: 0 20px 18px;
+  padding: 14px;
+  border: 1px solid rgba(85, 255, 120, 0.42);
+  border-radius: 11px;
+  background: linear-gradient(145deg, rgba(85, 255, 120, 0.08), rgba(241, 207, 85, 0.035));
+  box-shadow: inset 0 0 28px rgba(85, 255, 120, 0.025);
+}
+
+.confirmWallet {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.confirmWallet > span:last-child { min-width: 0; }
+.confirmWallet small {
+  display: block;
+  margin-bottom: 3px;
+  color: #f1cf55;
+  font: 700 8px "IBM Plex Mono", monospace;
+  letter-spacing: 0.12em;
+}
+.confirmWallet b {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 15px;
+}
+.confirmWallet code {
+  display: block;
+  overflow: hidden;
+  color: #869389;
+  font: 500 9px "IBM Plex Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirmPanel > button {
+  min-height: 45px;
+  border: 0;
+  border-radius: 8px;
+  color: #061008;
+  background: #55ff78;
+  box-shadow: 0 10px 26px rgba(85, 255, 120, 0.14);
+  font: 800 10px "IBM Plex Mono", monospace;
+  letter-spacing: 0.07em;
+}
+
+.confirmPanel > button:disabled {
+  opacity: 0.58;
+  cursor: wait;
 }
 
 .empty {
@@ -219,9 +273,7 @@
   font: 500 10px/1.55 "IBM Plex Mono", monospace;
 }
 
-.modal footer b {
-  color: #f1cf55;
-}
+.modal footer b { color: #f1cf55; }
 
 @media (max-width: 640px) {
   .trigger,
@@ -231,14 +283,18 @@
     min-width: 145px;
   }
 
-  .backdrop {
-    padding: 10px;
-  }
+  .backdrop { padding: 10px; }
 
   .modal header,
   .walletList,
   .actions {
     padding-left: 14px;
     padding-right: 14px;
+  }
+
+  .message,
+  .confirmPanel {
+    margin-left: 14px;
+    margin-right: 14px;
   }
 }
