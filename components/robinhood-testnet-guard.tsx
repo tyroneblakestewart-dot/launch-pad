@@ -139,7 +139,9 @@ export function RobinhoodTestnetGuard() {
     }
 
     attachProviderListener();
-    void refreshChain();
+    const initialRefreshTimer = window.setTimeout(() => {
+      void refreshChain();
+    }, 0);
 
     const timer = window.setInterval(() => {
       attachProviderListener();
@@ -150,6 +152,7 @@ export function RobinhoodTestnetGuard() {
     document.addEventListener("click", guardPrepareLaunch, true);
 
     return () => {
+      window.clearTimeout(initialRefreshTimer);
       window.clearInterval(timer);
       window.removeEventListener("focus", refreshChain);
       document.removeEventListener("click", guardPrepareLaunch, true);
