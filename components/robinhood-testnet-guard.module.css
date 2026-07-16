@@ -1,0 +1,96 @@
+.guard,
+.guardReady {
+  position: fixed;
+  top: 92px;
+  right: 18px;
+  z-index: 78;
+  width: min(310px, calc(100vw - 36px));
+  padding: 13px 14px;
+  border: 1px solid rgba(241, 207, 85, 0.58);
+  border-radius: 10px;
+  color: #edf5ee;
+  background: rgba(10, 16, 12, 0.96);
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(16px);
+}
+
+.guardReady {
+  border-color: rgba(85, 255, 120, 0.62);
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.heading small {
+  display: block;
+  margin-bottom: 3px;
+  color: #7f8c82;
+  font: 600 8px "IBM Plex Mono", monospace;
+  letter-spacing: 0.12em;
+}
+
+.heading b {
+  display: block;
+  font-size: 12px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: #f1cf55;
+  box-shadow: 0 0 10px rgba(241, 207, 85, 0.7);
+}
+
+.guardReady .dot {
+  background: #55ff78;
+  box-shadow: 0 0 10px #55ff78;
+}
+
+.guard code,
+.guardReady code {
+  display: block;
+  margin-top: 10px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  color: #f1cf55;
+  background: rgba(241, 207, 85, 0.06);
+  font: 700 9px "IBM Plex Mono", monospace;
+}
+
+.guardReady code {
+  color: #55ff78;
+  background: rgba(85, 255, 120, 0.06);
+}
+
+.guard p,
+.guardReady p {
+  margin: 9px 0 0;
+  color: #9eaaa0;
+  font: 500 9px/1.5 "IBM Plex Mono", monospace;
+}
+
+.guard button {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 10px;
+  border: 0;
+  border-radius: 6px;
+  color: #071008;
+  background: #f1cf55;
+  font: 800 9px "IBM Plex Mono", monospace;
+}
+
+@media (max-width: 760px) {
+  .guard,
+  .guardReady {
+    top: auto;
+    right: 10px;
+    bottom: 10px;
+    width: min(290px, calc(100vw - 20px));
+  }
+}
