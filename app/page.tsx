@@ -6,6 +6,7 @@ import { DexscreenerSiteSection } from "@/components/dexscreener-site-section";
 import { GeneratedSiteProjectGuard } from "@/components/generated-site-project-guard";
 import { LivingLaunchpadMotion } from "@/components/living-launchpad-motion";
 import { NewTokenController } from "@/components/new-token-controller";
+import { RobinhoodTestnetDeploymentController } from "@/components/robinhood-testnet-deployment-controller";
 import { RobinhoodTestnetGuard } from "@/components/robinhood-testnet-guard";
 import { StudioProviderTransfer } from "@/components/studio-provider-transfer";
 import { TokenStudio } from "@/components/token-studio";
@@ -35,6 +36,7 @@ export default function Home() {
       <NewTokenController />
       <StudioProviderTransfer />
       <RobinhoodTestnetGuard />
+      <RobinhoodTestnetDeploymentController />
       <Link
         href="/social"
         style={{
