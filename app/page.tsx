@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArtworkSiteGenerator } from "@/components/artwork-site-generator";
 import { ArtworkUploadController } from "@/components/artwork-upload-controller";
 import { BuildSiteGate } from "@/components/build-site-gate";
 import { NewTokenController } from "@/components/new-token-controller";
@@ -22,6 +23,7 @@ export default function Home() {
   return (
     <>
       <ArtworkUploadController />
+      <ArtworkSiteGenerator />
       <BuildSiteGate />
       <NewTokenController />
       <StudioProviderTransfer />
