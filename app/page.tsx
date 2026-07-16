@@ -39,13 +39,25 @@ export default function Home() {
         href="/social"
         style={{
           ...floatingLink,
-          bottom: 174,
+          bottom: 226,
           color: "#fff7ca",
           background: "#172014",
           borderColor: "rgba(232,196,53,.65)",
         }}
       >
         SOCIAL PUBLISHING HUB ↗
+      </Link>
+      <Link
+        href="/monad"
+        style={{
+          ...floatingLink,
+          bottom: 122,
+          color: "#ffffff",
+          background: "#6e54ff",
+          borderColor: "rgba(166,145,255,.8)",
+        }}
+      >
+        MONAD TESTNET LAUNCH ↗
       </Link>
       <Link href="/providers" style={{ ...floatingLink, bottom: 70 }}>
         NOXA + PONS LAUNCH ↗
