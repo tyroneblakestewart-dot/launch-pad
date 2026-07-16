@@ -1,16 +1,32 @@
 # Private Meme Token Studio
 
-A private, non-custodial workspace for preparing meme-token launches on Solana and Robinhood Chain, generating a matching landing page and testing wallet-signed token creation.
+A private, non-custodial workspace for preparing meme-token launches on Solana and Robinhood Chain, generating an artwork-matched landing page and testing wallet-signed token creation.
 
 ## Working MVP
 
 - Create, save, load, delete and export token projects in the browser
 - Choose Solana or Robinhood Chain
-- Upload token artwork and preview a reusable HOODLUMS-style landing page
-- Configure token name, ticker, supply, decimals, website path and socials
+- Upload token artwork up to 20 MB with automatic browser optimisation
+- Generate a landing-page palette, layout, mood and copy from the uploaded artwork
+- Use OpenAI vision for deeper artwork analysis when `OPENAI_API_KEY` is configured
+- Fall back to private browser-side colour and composition analysis when no AI key is present
+- Configure token name, ticker, supply, decimals, website path and optional socials
 - Detect Phantom and EVM browser wallets
 - Prepare a launch summary while keeping mainnet deployment blocked in the studio
 - Open `/testnet` to create wallet-signed test tokens
+
+## Artwork-driven website generator
+
+The **Generate site from artwork** step is enabled after the token name, ticker and description are complete. It uses the uploaded image as the primary design reference and chooses between split, poster, gallery and minimal layouts. Generated sites replace the fixed Hoodlums copy and styling with project-neutral content.
+
+The generator works without an external API by analysing the image in the browser. For deeper vision analysis, add these server-side Vercel environment variables:
+
+```bash
+OPENAI_API_KEY=your_server_side_key
+OPENAI_VISION_MODEL=gpt-5-mini
+```
+
+Never expose `OPENAI_API_KEY` through a `NEXT_PUBLIC_` variable.
 
 ## Testnet launcher
 
@@ -33,6 +49,7 @@ A private, non-custodial workspace for preparing meme-token launches on Solana a
 
 - Never request or store a seed phrase or private key
 - All blockchain actions are signed in the user's wallet
+- The OpenAI key, when used, remains server-side
 - The testnet page explicitly requires test funds
 - Mainnet token deployment, liquidity and bonding curves remain disabled
 - Always complete both testnet flows before enabling a reviewed mainnet switch
