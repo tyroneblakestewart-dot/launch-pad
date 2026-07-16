@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   createPublicClient,
   http,
@@ -23,6 +23,7 @@ const ERC20_ABI = parseAbi([
   "function symbol() view returns (string)",
   "function decimals() view returns (uint8)",
   "function totalSupply() view returns (uint256)",
+  "function balanceOf(address account) view returns (uint256)",
 ]);
 
 type ProviderId = "noxa" | "pons";
@@ -58,18 +59,18 @@ const PROVIDERS = {
     id: "noxa" as const,
     name: "NOXA Fun",
     launchUrl: "https://fun.noxa.fi/rh/launch",
-    label: "Documented factory verification",
+    label: "Launch + immediate buy handoff",
     description:
-      "Prepare the launch pack here, complete the wallet-signed launch on NOXA, then verify that the transaction touched NOXA's published Robinhood launch factory.",
+      "Prepare the launch pack here, complete the wallet-signed launch on NOXA, verify the token, then continue straight to the official provider for the creator buy.",
     factory: NOXA_FACTORY,
   },
   pons: {
     id: "pons" as const,
     name: "Pons Family",
     launchUrl: "https://pons.family/launchpad/create",
-    label: "Token and transaction verification",
+    label: "Launch + immediate buy handoff",
     description:
-      "Prepare the launch pack here, complete the launch through Pons, then verify the resulting ERC-20 and save it back into your private studio.",
+      "Prepare the launch pack here, complete the launch through Pons, verify the resulting ERC-20, then continue straight to the official provider for the creator buy.",
     factory: null,
   },
 };
@@ -86,13 +87,18 @@ function shortAddress(value: string): string {
   return value.length > 13 ? `${value.slice(0, 7)}…${value.slice(-5)}` : value;
 }
 
-function formatSupply(value: bigint, decimals: number): string {
+function formatTokenAmount(value: bigint, decimals: number): string {
   const divisor = 10n ** BigInt(decimals);
   const whole = value / divisor;
   const remainder = value % divisor;
   if (remainder === 0n) return whole.toLocaleString("en-GB");
   const fractional = remainder.toString().padStart(decimals, "0").slice(0, 6);
   return `${whole.toLocaleString("en-GB")}.${fractional.replace(/0+$/, "")}`;
+}
+
+function isPositiveAmount(value: string): boolean {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0;
 }
 
 export function ProviderLauncher() {
@@ -107,6 +113,7 @@ export function ProviderLauncher() {
   const [telegram, setTelegram] = useState("");
   const [creatorWallet, setCreatorWallet] = useState("");
   const [developerBuy, setDeveloperBuy] = useState("0");
+  const [immediateBuyEnabled, setImmediateBuyEnabled] = useState(true);
   const [artwork, setArtwork] = useState("");
   const [contractAddress, setContractAddress] = useState("");
   const [transactionHash, setTransactionHash] = useState("");
@@ -115,7 +122,11 @@ export function ProviderLauncher() {
     "Choose a saved Robinhood Chain project or enter the launch details manually.",
   );
   const [busy, setBusy] = useState(false);
+  const [balanceBusy, setBalanceBusy] = useState(false);
   const [verification, setVerification] = useState<LaunchVerification | null>(null);
+  const [tokenBalanceRaw, setTokenBalanceRaw] = useState<bigint | null>(null);
+  const [balanceBeforeBuyRaw, setBalanceBeforeBuyRaw] = useState<bigint | null>(null);
+  const [buyOpened, setBuyOpened] = useState(false);
 
   useEffect(() => {
     try {
@@ -142,6 +153,59 @@ export function ProviderLauncher() {
     [projects, selectedProjectId],
   );
 
+  const refreshBalanceFor = useCallback(
+    async (result: LaunchVerification, account: string, announce: boolean) => {
+      if (!isAddress(account)) {
+        if (announce) setStatus("Connect the wallet that will make the creator buy first.");
+        return null;
+      }
+
+      setBalanceBusy(true);
+      try {
+        const client = createPublicClient({
+          transport: http(ROBINHOOD_MAINNET.rpcUrls[0]),
+        });
+        const rawBalance = await client.readContract({
+          address: result.contractAddress as Address,
+          abi: ERC20_ABI,
+          functionName: "balanceOf",
+          args: [account as Address],
+        });
+        setTokenBalanceRaw(rawBalance);
+        if (announce) {
+          setStatus(
+            `Wallet balance refreshed: ${formatTokenAmount(rawBalance, result.decimals)} ${result.symbol}.`,
+          );
+        }
+        return rawBalance;
+      } catch (error) {
+        if (announce) setStatus(readError(error));
+        return null;
+      } finally {
+        setBalanceBusy(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!buyOpened || !verification || !walletAddress) return;
+
+    const refreshOnReturn = () => {
+      void refreshBalanceFor(verification, walletAddress, false);
+    };
+
+    window.addEventListener("focus", refreshOnReturn);
+    return () => window.removeEventListener("focus", refreshOnReturn);
+  }, [buyOpened, refreshBalanceFor, verification, walletAddress]);
+
+  function resetBuyState() {
+    setVerification(null);
+    setTokenBalanceRaw(null);
+    setBalanceBeforeBuyRaw(null);
+    setBuyOpened(false);
+  }
+
   function loadProject(project: TokenProject, source = projects) {
     setSelectedProjectId(project.id);
     setName(project.name);
@@ -152,13 +216,17 @@ export function ProviderLauncher() {
     setTelegram(project.telegram);
     setArtwork(project.heroImage);
     setContractAddress(project.contractAddress);
-    setVerification(null);
+    resetBuyState();
     if (source.length > 0) {
       setStatus(`${project.name || "Project"} loaded into the provider launch pack.`);
     }
   }
 
   function chooseProject(id: string) {
+    if (!id) {
+      setSelectedProjectId("");
+      return;
+    }
     const project = projects.find((item) => item.id === id);
     if (project) loadProject(project);
   }
@@ -190,7 +258,12 @@ export function ProviderLauncher() {
 
       setWalletAddress(accounts[0]);
       if (!creatorWallet) setCreatorWallet(accounts[0]);
-      setStatus("Wallet connected to Robinhood Chain. Provider launches still open on the official external site.");
+      if (verification) {
+        await refreshBalanceFor(verification, accounts[0], false);
+      }
+      setStatus(
+        "Wallet connected to Robinhood Chain Testnet. Launch and purchase approvals remain inside your wallet.",
+      );
     } catch (error) {
       setStatus(readError(error));
     } finally {
@@ -210,7 +283,7 @@ export function ProviderLauncher() {
   async function copyLaunchPack() {
     const launchPack = [
       `Provider: ${provider.name}`,
-      `Network: Robinhood Chain (4663)`,
+      "Network: Robinhood Chain Testnet (46630)",
       `Name: ${name}`,
       `Ticker: ${ticker.toUpperCase()}`,
       `Description: ${description}`,
@@ -218,7 +291,7 @@ export function ProviderLauncher() {
       `X: ${xHandle}`,
       `Telegram: ${telegram}`,
       `Creator wallet: ${creatorWallet || walletAddress}`,
-      `Developer buy: ${developerBuy || "0"} ETH`,
+      `Immediate creator buy: ${immediateBuyEnabled ? `${developerBuy || "0"} ETH` : "Disabled"}`,
     ].join("\n");
     await navigator.clipboard.writeText(launchPack);
     setStatus(`${provider.name} launch pack copied. Review every field again on the provider site.`);
@@ -241,9 +314,13 @@ export function ProviderLauncher() {
       setStatus("Add the token name, ticker and description before opening the provider.");
       return;
     }
+    if (immediateBuyEnabled && !isPositiveAmount(developerBuy)) {
+      setStatus("Enter an initial buy amount greater than zero, or turn immediate buy off.");
+      return;
+    }
     window.open(provider.launchUrl, "_blank", "noopener,noreferrer");
     setStatus(
-      `${provider.name} opened in a new tab. Copy the prepared fields and inspect the wallet transaction before signing.`,
+      `${provider.name} opened in a new tab. Complete the launch, then return with the contract address so BUY TOKEN can activate.`,
     );
   }
 
@@ -258,7 +335,7 @@ export function ProviderLauncher() {
     }
 
     setBusy(true);
-    setVerification(null);
+    resetBuyState();
     try {
       const client = createPublicClient({
         transport: http(ROBINHOOD_MAINNET.rpcUrls[0]),
@@ -266,7 +343,7 @@ export function ProviderLauncher() {
       const address = contractAddress as Address;
       const bytecode = await client.getBytecode({ address });
       if (!bytecode || bytecode === "0x") {
-        throw new Error("No deployed contract was found at that address on Robinhood Chain.");
+        throw new Error("No deployed contract was found at that address on Robinhood Chain Testnet.");
       }
 
       const [tokenName, symbol, decimals, rawSupply] = await Promise.all([
@@ -299,19 +376,31 @@ export function ProviderLauncher() {
         tokenName,
         symbol,
         decimals,
-        totalSupply: formatSupply(rawSupply, decimals),
+        totalSupply: formatTokenAmount(rawSupply, decimals),
         factoryConfirmed,
         verifiedAt: new Date().toISOString(),
       };
       setVerification(result);
       saveVerification(result);
 
+      if (walletAddress) {
+        await refreshBalanceFor(result, walletAddress, false);
+      }
+
       if (provider.id === "noxa" && transactionHash && !factoryConfirmed) {
-        setStatus("The ERC-20 is valid, but the supplied transaction did not prove interaction with NOXA's published factory.");
+        setStatus(
+          "The ERC-20 is valid, but the transaction did not prove interaction with NOXA's factory. Immediate buy is blocked for safety.",
+        );
+      } else if (immediateBuyEnabled) {
+        setStatus(
+          `Token verified and saved. BUY TOKEN is now active with ${developerBuy || "0"} ETH prefilled.`,
+        );
       } else if (provider.id === "noxa" && !transactionHash) {
         setStatus("The ERC-20 is valid. Add the launch transaction hash to verify the NOXA factory as well.");
       } else if (provider.id === "pons") {
-        setStatus("The ERC-20 is valid and saved. Pons has not published a factory address here, so provider-origin verification remains unavailable.");
+        setStatus(
+          "The ERC-20 is valid and saved. Pons has not published a factory address here, so provider-origin verification remains unavailable.",
+        );
       } else {
         setStatus("Token and provider launch transaction verified and saved.");
       }
@@ -320,6 +409,58 @@ export function ProviderLauncher() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function openProviderForBuy() {
+    if (!verification) {
+      setStatus("Verify the newly launched token before buying.");
+      return;
+    }
+    if (verification.transactionHash && verification.factoryConfirmed === false) {
+      setStatus("Provider proof failed. The creator buy remains blocked for safety.");
+      return;
+    }
+    if (!walletAddress) {
+      setStatus("Connect the wallet that will make the creator buy.");
+      return;
+    }
+    if (!isPositiveAmount(developerBuy)) {
+      setStatus("Enter an initial buy amount greater than zero.");
+      return;
+    }
+
+    setBalanceBeforeBuyRaw(tokenBalanceRaw);
+    const buyPacket = [
+      `Provider: ${provider.name}`,
+      `Token contract: ${verification.contractAddress}`,
+      `Creator buy: ${developerBuy} ETH`,
+      `Buyer wallet: ${walletAddress}`,
+      "Network: Robinhood Chain Testnet (46630)",
+    ].join("\n");
+
+    try {
+      await navigator.clipboard.writeText(buyPacket);
+    } catch {
+      // The provider can still be opened when clipboard permission is unavailable.
+    }
+
+    setBuyOpened(true);
+    window.open(provider.launchUrl, "_blank", "noopener,noreferrer");
+    setStatus(
+      `${provider.name} opened with the contract and buy amount copied. Approve the purchase on the official provider, then return here to see the balance.`,
+    );
+  }
+
+  async function refreshPurchasedBalance() {
+    if (!verification) {
+      setStatus("Verify a token first.");
+      return;
+    }
+    if (!walletAddress) {
+      setStatus("Connect the buyer wallet first.");
+      return;
+    }
+    await refreshBalanceFor(verification, walletAddress, true);
   }
 
   function saveVerification(result: LaunchVerification) {
@@ -366,13 +507,30 @@ export function ProviderLauncher() {
     reader.readAsDataURL(file);
   }
 
+  const tokenBalance =
+    verification && tokenBalanceRaw !== null
+      ? formatTokenAmount(tokenBalanceRaw, verification.decimals)
+      : "Not checked";
+
+  const purchasedAmount =
+    verification &&
+    tokenBalanceRaw !== null &&
+    balanceBeforeBuyRaw !== null &&
+    tokenBalanceRaw > balanceBeforeBuyRaw
+      ? formatTokenAmount(tokenBalanceRaw - balanceBeforeBuyRaw, verification.decimals)
+      : null;
+
+  const providerProofFailed = Boolean(
+    verification?.transactionHash && verification.factoryConfirmed === false,
+  );
+
   return (
     <main className={styles.shell}>
       <header className={styles.header}>
         <div>
           <p>PRIVATE LAUNCH ADAPTERS</p>
           <h1>Robinhood provider launch desk</h1>
-          <span>Prepare once. Launch through the official provider. Verify before publishing.</span>
+          <span>Launch through the provider, verify the token, then continue straight into the creator buy.</span>
         </div>
         <div className={styles.headerActions}>
           <Link href="/">Back to studio</Link>
@@ -384,6 +542,14 @@ export function ProviderLauncher() {
 
       <div className={styles.notice}>{status}</div>
 
+      <ol className={styles.flowSteps}>
+        <li className={styles.flowActive}><b>1</b><span>Launch through provider</span></li>
+        <li className={verification ? styles.flowActive : ""}><b>2</b><span>Receive and verify token address</span></li>
+        <li className={verification && immediateBuyEnabled && !providerProofFailed ? styles.flowActive : ""}><b>3</b><span>Activate BUY TOKEN</span></li>
+        <li className={buyOpened ? styles.flowActive : ""}><b>4</b><span>Wallet confirmation</span></li>
+        <li className={purchasedAmount ? styles.flowActive : ""}><b>5</b><span>Show purchased balance</span></li>
+      </ol>
+
       <section className={styles.providerGrid}>
         {(Object.values(PROVIDERS) as (typeof PROVIDERS)[ProviderId][]).map((item) => (
           <button
@@ -391,8 +557,8 @@ export function ProviderLauncher() {
             className={providerId === item.id ? styles.providerActive : styles.providerCard}
             onClick={() => {
               setProviderId(item.id);
-              setVerification(null);
-              setStatus(`${item.name} selected. Its official website will handle the launch transaction.`);
+              resetBuyState();
+              setStatus(`${item.name} selected. Its official website will handle launch and purchase approvals.`);
             }}
           >
             <span>{item.name}</span>
@@ -436,8 +602,20 @@ export function ProviderLauncher() {
 
           <div className={styles.twoColumns}>
             <label><span>Creator wallet</span><input value={creatorWallet} onChange={(event) => setCreatorWallet(event.target.value)} placeholder="0x..." /></label>
-            <label><span>Developer buy (ETH)</span><input value={developerBuy} onChange={(event) => setDeveloperBuy(event.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" /></label>
+            <label><span>Initial buy amount (ETH)</span><input value={developerBuy} onChange={(event) => setDeveloperBuy(event.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" /></label>
           </div>
+
+          <label className={styles.toggleRow}>
+            <input
+              type="checkbox"
+              checked={immediateBuyEnabled}
+              onChange={(event) => setImmediateBuyEnabled(event.target.checked)}
+            />
+            <span>
+              <b>Continue straight to BUY TOKEN</b>
+              <small>After the contract is verified, activate the prefilled creator-buy handoff immediately.</small>
+            </span>
+          </label>
 
           <label className={styles.artworkBox}>
             <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleArtwork} />
@@ -451,7 +629,7 @@ export function ProviderLauncher() {
           <div className={styles.actionGrid}>
             <button onClick={copyLaunchPack}>Copy launch pack</button>
             <button onClick={downloadArtwork} disabled={!artwork}>Download artwork</button>
-            <button className={styles.launchButton} onClick={openProvider}>Open {provider.name} ↗</button>
+            <button className={styles.launchButton} onClick={openProvider}>Launch on {provider.name} ↗</button>
           </div>
 
           <div className={styles.copyRows}>
@@ -459,6 +637,7 @@ export function ProviderLauncher() {
               ["Name", name], ["Ticker", ticker.toUpperCase()], ["Description", description],
               ["Website", website], ["X profile", xHandle], ["Telegram", telegram],
               ["Creator wallet", creatorWallet || walletAddress],
+              ["Initial buy", immediateBuyEnabled ? `${developerBuy || "0"} ETH` : "Disabled"],
             ].map(([label, value]) => (
               <button key={label} onClick={() => copyValue(label, value)}>
                 <span>{label}</span><code>{value || "Not set"}</code><b>COPY</b>
@@ -469,17 +648,17 @@ export function ProviderLauncher() {
 
         <aside className={styles.verifyPanel}>
           <div className={styles.sectionHeading}>
-            <div><p>STEP 2</p><h2>Verify after launch</h2></div>
+            <div><p>STEP 2</p><h2>Verify and buy</h2></div>
           </div>
           <p className={styles.explainer}>
-            Return here after the provider confirms the launch. This checks the contract directly on Robinhood Chain before saving it into your project.
+            Return after the provider confirms the launch. Verification receives the contract address, saves it, and activates the creator-buy step.
           </p>
 
           <label><span>Token contract address</span><input value={contractAddress} onChange={(event) => setContractAddress(event.target.value.trim())} placeholder="0x..." /></label>
           <label><span>Launch transaction hash</span><input value={transactionHash} onChange={(event) => setTransactionHash(event.target.value.trim())} placeholder="0x..." /></label>
 
           <button className={styles.verifyButton} onClick={verifyLaunch} disabled={busy}>
-            {busy ? "Checking chain…" : "Verify and save launch"}
+            {busy ? "Checking chain…" : "Verify, save and activate buy"}
           </button>
 
           <div className={styles.verificationMode}>
@@ -489,23 +668,51 @@ export function ProviderLauncher() {
           </div>
 
           {verification && (
-            <div className={styles.resultCard}>
-              <p>VERIFIED TOKEN</p>
-              <h3>{verification.tokenName}</h3>
-              <dl>
-                <div><dt>Symbol</dt><dd>${verification.symbol}</dd></div>
-                <div><dt>Supply</dt><dd>{verification.totalSupply}</dd></div>
-                <div><dt>Decimals</dt><dd>{verification.decimals}</dd></div>
-                <div><dt>Contract</dt><dd>{shortAddress(verification.contractAddress)}</dd></div>
-                <div><dt>Provider proof</dt><dd>{verification.factoryConfirmed === null ? "Not published" : verification.factoryConfirmed ? "Confirmed" : "Not confirmed"}</dd></div>
-              </dl>
-              <a href={`https://robinhoodchain.blockscout.com/address/${verification.contractAddress}`} target="_blank" rel="noreferrer">Open contract in Blockscout ↗</a>
-            </div>
+            <>
+              <div className={styles.resultCard}>
+                <p>VERIFIED TOKEN</p>
+                <h3>{verification.tokenName}</h3>
+                <dl>
+                  <div><dt>Symbol</dt><dd>${verification.symbol}</dd></div>
+                  <div><dt>Supply</dt><dd>{verification.totalSupply}</dd></div>
+                  <div><dt>Decimals</dt><dd>{verification.decimals}</dd></div>
+                  <div><dt>Contract</dt><dd>{shortAddress(verification.contractAddress)}</dd></div>
+                  <div><dt>Provider proof</dt><dd>{verification.factoryConfirmed === null ? "Not published" : verification.factoryConfirmed ? "Confirmed" : "Not confirmed"}</dd></div>
+                </dl>
+                <a href={`${ROBINHOOD_MAINNET.blockExplorerUrls[0]}/address/${verification.contractAddress}`} target="_blank" rel="noreferrer">Open contract in explorer ↗</a>
+              </div>
+
+              <div className={styles.buyCard}>
+                <div className={styles.buyCardHeading}>
+                  <div><p>STEP 3</p><h3>Buy token immediately</h3></div>
+                  <span>{providerProofFailed ? "BLOCKED" : immediateBuyEnabled ? "READY" : "OFF"}</span>
+                </div>
+                <dl>
+                  <div><dt>Prefilled buy</dt><dd>{developerBuy || "0"} ETH</dd></div>
+                  <div><dt>Buyer wallet</dt><dd>{walletAddress ? shortAddress(walletAddress) : "Connect wallet"}</dd></div>
+                  <div><dt>Current balance</dt><dd>{tokenBalance} {verification.symbol}</dd></div>
+                  {purchasedAmount && <div><dt>Newly detected</dt><dd>+{purchasedAmount} {verification.symbol}</dd></div>}
+                </dl>
+                <button
+                  className={styles.buyButton}
+                  onClick={openProviderForBuy}
+                  disabled={!immediateBuyEnabled || !walletAddress || !isPositiveAmount(developerBuy) || providerProofFailed}
+                >
+                  OPEN {provider.name.toUpperCase()} & BUY {developerBuy || "0"} ETH ↗
+                </button>
+                <button className={styles.refreshButton} onClick={refreshPurchasedBalance} disabled={balanceBusy || !walletAddress}>
+                  {balanceBusy ? "Checking balance…" : "Refresh purchased balance"}
+                </button>
+                <small>
+                  Wallet approval happens on the official provider. The address and amount are copied for the handoff; no undocumented router call is invented.
+                </small>
+              </div>
+            </>
           )}
 
           <div className={styles.warning}>
             <b>Before signing</b>
-            <span>Confirm chain ID 4663, launch fee, developer buy, slippage, creator wallet and every approval in your wallet. This app never signs for you.</span>
+            <span>Confirm chain ID 46630, launch fee, creator buy, slippage, wallet and every approval. A separate post-launch purchase is fast but is not atomic.</span>
           </div>
           {selectedProject && <small className={styles.selectedNote}>Saving into: {selectedProject.name} · ${selectedProject.ticker}</small>}
         </aside>
