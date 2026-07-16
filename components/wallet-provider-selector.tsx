@@ -46,7 +46,16 @@ function installSelectedProvider(provider: Eip1193Provider) {
     try {
       browserWindow.ethereum = provider;
     } catch {
-      // Some extensions protect window.ethereum.
+      // Some extensions protect window.ethereum. In that case, forward request()
+      // through the confirmed EIP-6963 provider so the wrong extension cannot open.
+      const injected = browserWindow.ethereum;
+      if (injected && injected !== provider) {
+        try {
+          injected.request = provider.request.bind(provider);
+        } catch {
+          // The provider is fully protected. __launchpadEthereum remains available.
+        }
+      }
     }
   }
 }
@@ -68,7 +77,9 @@ export function WalletProviderSelector() {
   const [providers, setProviders] = useState<Eip6963ProviderDetail[]>([]);
   const [selectedRdns, setSelectedRdns] = useState("");
   const [selectedName, setSelectedName] = useState("");
+  const [pendingWallet, setPendingWallet] = useState<Eip6963ProviderDetail | null>(null);
   const [open, setOpen] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
   const [message, setMessage] = useState(
     "Choose the wallet you want to use for this connection.",
   );
@@ -160,7 +171,8 @@ export function WalletProviderSelector() {
       event.stopPropagation();
       event.stopImmediatePropagation();
       pendingConnectButton.current = button;
-      setMessage("Choose a wallet below. The connection will continue automatically.");
+      setPendingWallet(null);
+      setMessage("Choose a wallet below. Nothing will open until you confirm.");
       setOpen(true);
       window.dispatchEvent(new Event("eip6963:requestProvider"));
     }
@@ -181,14 +193,26 @@ export function WalletProviderSelector() {
   }
 
   function chooseWallet(detail: Eip6963ProviderDetail) {
-    localStorage.setItem(PREFERENCE_KEY, detail.info.rdns);
-    localStorage.setItem(PREFERENCE_NAME_KEY, detail.info.name);
-    setSelectedRdns(detail.info.rdns);
-    setSelectedName(detail.info.name);
-    installSelectedProvider(detail.provider);
-    setMessage(`${detail.info.name} selected. Opening its connection request…`);
-    setOpen(false);
-    continueConnection();
+    setPendingWallet(detail);
+    setMessage(`${detail.info.name} selected. Confirm below before its extension opens.`);
+  }
+
+  async function confirmWallet() {
+    if (!pendingWallet || isConfirming) return;
+    setIsConfirming(true);
+
+    try {
+      localStorage.setItem(PREFERENCE_KEY, pendingWallet.info.rdns);
+      localStorage.setItem(PREFERENCE_NAME_KEY, pendingWallet.info.name);
+      setSelectedRdns(pendingWallet.info.rdns);
+      setSelectedName(pendingWallet.info.name);
+      installSelectedProvider(pendingWallet.provider);
+      setMessage(`Opening ${pendingWallet.info.name}…`);
+      setOpen(false);
+      continueConnection();
+    } finally {
+      setIsConfirming(false);
+    }
   }
 
   function clearSelection() {
@@ -196,6 +220,7 @@ export function WalletProviderSelector() {
     localStorage.removeItem(PREFERENCE_NAME_KEY);
     setSelectedRdns("");
     setSelectedName("");
+    setPendingWallet(null);
     setMessage("Wallet preference cleared. Choose a wallet below.");
   }
 
@@ -206,10 +231,15 @@ export function WalletProviderSelector() {
 
   function closeSelector() {
     pendingConnectButton.current = null;
+    setPendingWallet(null);
     setOpen(false);
   }
 
   if (!open) return null;
+
+  const pendingIcon = pendingWallet?.info.icon.startsWith("data:image/")
+    ? pendingWallet.info.icon
+    : "";
 
   return (
     <div className={styles.backdrop} role="dialog" aria-modal="true">
@@ -236,7 +266,7 @@ export function WalletProviderSelector() {
               const icon = detail.info.icon.startsWith("data:image/")
                 ? detail.info.icon
                 : "";
-              const active = detail.info.rdns === selectedRdns;
+              const active = detail.info.rdns === pendingWallet?.info.rdns;
               return (
                 <button
                   key={detail.info.uuid}
@@ -256,12 +286,35 @@ export function WalletProviderSelector() {
                     <b>{detail.info.name}</b>
                     <small>{detail.info.rdns}</small>
                   </span>
-                  <em>{active ? "SELECTED" : "CONNECT"}</em>
+                  <em>{active ? "SELECTED" : "CHOOSE"}</em>
                 </button>
               );
             })
           )}
         </div>
+
+        {pendingWallet && (
+          <section className={styles.confirmPanel} aria-live="polite">
+            <div className={styles.confirmWallet}>
+              {pendingIcon ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={pendingIcon} alt="" />
+              ) : (
+                <span className={styles.fallbackIcon}>
+                  {pendingWallet.info.name.slice(0, 1).toUpperCase()}
+                </span>
+              )}
+              <span>
+                <small>SELECTED WALLET</small>
+                <b>{pendingWallet.info.name}</b>
+                <code>{pendingWallet.info.rdns}</code>
+              </span>
+            </div>
+            <button onClick={confirmWallet} disabled={isConfirming} type="button">
+              {isConfirming ? "CONNECTING…" : `CONNECT ${pendingWallet.info.name.toUpperCase()}`}
+            </button>
+          </section>
+        )}
 
         <div className={styles.actions}>
           <button onClick={refreshWallets} type="button">Refresh wallets</button>
@@ -271,7 +324,7 @@ export function WalletProviderSelector() {
         </div>
 
         <footer>
-          <b>Safe connection:</b> the selected wallet opens its own approval window. The launchpad never asks for or stores a seed phrase.
+          <b>Safe connection:</b> selecting a card does nothing until you press the confirmation button. The launchpad never asks for or stores a seed phrase.
           {selectedName ? ` Current preference: ${selectedName}.` : ""}
         </footer>
       </section>
