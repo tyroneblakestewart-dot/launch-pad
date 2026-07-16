@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { StudioProviderTransfer } from "@/components/studio-provider-transfer";
 import { TokenStudio } from "@/components/token-studio";
 
 const floatingLink = {
@@ -17,6 +18,7 @@ const floatingLink = {
 export default function Home() {
   return (
     <>
+      <StudioProviderTransfer />
       <Link href="/providers" style={{ ...floatingLink, bottom: 70 }}>
         NOXA + PONS LAUNCH ↗
       </Link>
