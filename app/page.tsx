@@ -50,6 +50,18 @@ export default function Home() {
         SOCIAL PUBLISHING HUB ↗
       </Link>
       <Link
+        href="/allocations"
+        style={{
+          ...floatingLink,
+          bottom: 174,
+          color: "#fff7ca",
+          background: "#172014",
+          borderColor: "rgba(232,196,53,.65)",
+        }}
+      >
+        TOKEN ALLOCATION DESK ↗
+      </Link>
+      <Link
         href="/monad"
         style={{
           ...floatingLink,
