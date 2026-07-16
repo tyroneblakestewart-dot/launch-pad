@@ -1,0 +1,594 @@
+.shell {
+  min-height: 100vh;
+  padding: 28px;
+  color: #ecfff0;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(46, 125, 63, 0.2), transparent 34%),
+    radial-gradient(circle at 85% 0%, rgba(232, 196, 53, 0.11), transparent 30%),
+    #030705;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.topbar {
+  max-width: 1480px;
+  margin: 0 auto 18px;
+  padding: 22px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border: 1px solid rgba(85, 255, 120, 0.18);
+  border-radius: 16px;
+  background: rgba(7, 15, 9, 0.88);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.35);
+}
+
+.topbar p,
+.cardHeading p {
+  margin: 0 0 5px;
+  color: #55ff78;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: clamp(28px, 4vw, 46px);
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+
+.topbar > div > span {
+  display: block;
+  margin-top: 9px;
+  color: #91a797;
+  font-size: 13px;
+}
+
+.topbar nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.topbar nav a {
+  padding: 11px 13px;
+  border: 1px solid rgba(85, 255, 120, 0.22);
+  border-radius: 8px;
+  color: #dfffe5;
+  text-decoration: none;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.topbar nav a:hover {
+  color: #051008;
+  background: #55ff78;
+}
+
+.status {
+  max-width: 1480px;
+  margin: 0 auto 18px;
+  padding: 12px 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(85, 255, 120, 0.22);
+  border-radius: 10px;
+  background: rgba(8, 20, 10, 0.9);
+  color: #c9fbd3;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+}
+
+.status span {
+  color: #55ff78;
+}
+
+.status p {
+  margin: 0;
+}
+
+.grid {
+  max-width: 1480px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.sidebar,
+.composerColumn {
+  display: grid;
+  gap: 18px;
+}
+
+.card,
+.composerCard,
+.destinationCard,
+.publishBar,
+.securityNote {
+  border: 1px solid rgba(85, 255, 120, 0.16);
+  border-radius: 16px;
+  background: rgba(8, 14, 9, 0.94);
+  box-shadow: 0 22px 65px rgba(0, 0, 0, 0.24);
+}
+
+.card,
+.composerCard,
+.destinationCard,
+.securityNote {
+  padding: 18px;
+}
+
+.cardHeading {
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cardHeading h2 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: -0.025em;
+}
+
+.cardHeading > b {
+  min-width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #071008;
+  background: #55ff78;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+}
+
+.empty {
+  padding: 16px;
+  border: 1px dashed rgba(85, 255, 120, 0.22);
+  border-radius: 10px;
+  color: #93a997;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.projectList,
+.templateList {
+  display: grid;
+  gap: 8px;
+}
+
+.project,
+.projectActive,
+.template,
+.templateActive {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  color: #eaffee;
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+  text-align: left;
+}
+
+.project,
+.projectActive {
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.projectActive,
+.templateActive {
+  border-color: rgba(85, 255, 120, 0.55);
+  background: rgba(46, 125, 63, 0.17);
+}
+
+.project:hover,
+.template:hover {
+  border-color: rgba(85, 255, 120, 0.32);
+}
+
+.projectImage,
+.summaryArtwork {
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(85, 255, 120, 0.22);
+  border-radius: 10px;
+  color: #55ff78;
+  background: #0f1a11;
+  font-weight: 900;
+}
+
+.projectImage {
+  width: 42px;
+  height: 42px;
+}
+
+.projectImage img,
+.summaryArtwork img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.project > span:nth-child(2),
+.projectActive > span:nth-child(2),
+.projectSummary > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.project b,
+.projectActive b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.project small,
+.projectActive small,
+.projectSummary small {
+  color: #84988a;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.project em,
+.projectActive em {
+  color: #e8c435;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 8px;
+  font-style: normal;
+  text-transform: uppercase;
+}
+
+.template,
+.templateActive {
+  padding: 12px;
+  display: grid;
+  gap: 5px;
+}
+
+.template:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.template b,
+.templateActive b {
+  font-size: 12px;
+}
+
+.template span,
+.templateActive span {
+  color: #84988a;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.countReady,
+.countWarning {
+  padding: 7px 9px;
+  border-radius: 7px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.countReady {
+  color: #55ff78;
+  background: rgba(85, 255, 120, 0.1);
+}
+
+.countWarning {
+  color: #ffcb73;
+  background: rgba(255, 174, 54, 0.1);
+}
+
+.projectSummary {
+  margin-bottom: 12px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.summaryArtwork {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+}
+
+.projectSummary b {
+  font-size: 14px;
+}
+
+.composerCard textarea {
+  width: 100%;
+  min-height: 240px;
+  resize: vertical;
+  padding: 16px;
+  border: 1px solid rgba(85, 255, 120, 0.18);
+  border-radius: 12px;
+  outline: none;
+  color: #effff2;
+  background: #030805;
+  font: 500 15px/1.6 Arial, Helvetica, sans-serif;
+}
+
+.composerCard textarea:focus,
+.destinationCard input:focus {
+  border-color: rgba(85, 255, 120, 0.6);
+  box-shadow: 0 0 0 3px rgba(85, 255, 120, 0.07);
+}
+
+.composerActions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.composerActions button,
+.destinationCard button,
+.publishBar button {
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.composerActions button {
+  padding: 10px 12px;
+  border: 1px solid rgba(85, 255, 120, 0.18);
+  color: #dfffe5;
+  background: rgba(85, 255, 120, 0.05);
+}
+
+.composerActions button:hover:not(:disabled) {
+  color: #071008;
+  background: #55ff78;
+}
+
+.composerActions button:disabled,
+.destinationCard button:disabled,
+.publishBar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.destinationGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.destinationCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.destinationTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.destinationTitle h3 {
+  margin: 0 0 3px;
+  font-size: 18px;
+}
+
+.destinationTitle p {
+  margin: 0;
+  color: #879b8b;
+  font-size: 10px;
+}
+
+.xBadge,
+.telegramBadge {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.xBadge {
+  color: #ffffff;
+  background: #000000;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.telegramBadge {
+  color: #ffffff;
+  background: #209bd7;
+}
+
+.destinationCard ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #94a899;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.destinationCard label {
+  display: grid;
+  gap: 6px;
+}
+
+.destinationCard label > span {
+  color: #ddf4e2;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.destinationCard input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(85, 255, 120, 0.16);
+  border-radius: 9px;
+  outline: none;
+  color: #effff2;
+  background: #030805;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+}
+
+.destinationCard small {
+  color: #758579;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.checkbox {
+  display: flex !important;
+  align-items: center;
+  gap: 9px !important;
+}
+
+.checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: #55ff78;
+}
+
+.checkbox span {
+  font-size: 10px !important;
+}
+
+.xButton,
+.telegramButton {
+  margin-top: auto;
+  padding: 13px;
+}
+
+.xButton {
+  color: #ffffff;
+  background: #000000;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+}
+
+.telegramButton {
+  color: #ffffff;
+  background: #209bd7;
+}
+
+.publishBar {
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-color: rgba(232, 196, 53, 0.32);
+  background: linear-gradient(100deg, rgba(232, 196, 53, 0.12), rgba(46, 125, 63, 0.12));
+}
+
+.publishBar div {
+  display: grid;
+  gap: 5px;
+}
+
+.publishBar b {
+  font-size: 14px;
+}
+
+.publishBar span {
+  color: #9aae9e;
+  font-size: 10px;
+}
+
+.publishBar button {
+  padding: 13px 16px;
+  color: #071008;
+  background: #e8c435;
+}
+
+.securityNote {
+  border-color: rgba(255, 255, 255, 0.09);
+}
+
+.securityNote b {
+  color: #e8c435;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.securityNote p {
+  margin: 8px 0 0;
+  color: #87998b;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+@media (max-width: 980px) {
+  .grid,
+  .destinationGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar,
+  .publishBar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 620px) {
+  .shell {
+    padding: 12px;
+  }
+
+  .topbar,
+  .card,
+  .composerCard,
+  .destinationCard,
+  .securityNote {
+    padding: 14px;
+  }
+
+  .topbar nav {
+    width: 100%;
+  }
+
+  .topbar nav a {
+    flex: 1;
+    text-align: center;
+  }
+
+  .project {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .project em,
+  .projectActive em {
+    display: none;
+  }
+}

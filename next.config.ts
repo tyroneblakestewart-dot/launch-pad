@@ -1,17 +1,17 @@
 import type { NextConfig } from "next";
 
-const isGitHubPages = process.env.GITHUB_ACTIONS === "true";
+const isStaticExport = process.env.STATIC_EXPORT === "true";
 const repositoryBasePath = "/launch-pad";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  output: "export",
-  trailingSlash: true,
+  ...(isStaticExport ? { output: "export" as const } : {}),
+  trailingSlash: isStaticExport,
   images: {
-    unoptimized: true,
+    unoptimized: isStaticExport,
   },
-  basePath: isGitHubPages ? repositoryBasePath : "",
-  assetPrefix: isGitHubPages ? repositoryBasePath : "",
+  basePath: isStaticExport ? repositoryBasePath : "",
+  assetPrefix: isStaticExport ? repositoryBasePath : "",
 };
 
 export default nextConfig;
