@@ -1,0 +1,40 @@
+.mount {
+  display: none;
+}
+
+:global(.upload-box) {
+  position: relative;
+  flex-wrap: wrap;
+}
+
+:global(.upload-box > .artwork-upload-status) {
+  flex-basis: 100%;
+  width: 100%;
+  margin-top: 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(85, 255, 120, 0.14);
+  border-radius: 6px;
+  color: #879389;
+  background: rgba(5, 8, 6, 0.68);
+  font: 600 9px/1.45 "IBM Plex Mono", monospace;
+}
+
+:global(.upload-box > .artwork-upload-status:empty) {
+  display: none;
+}
+
+:global(.upload-box > .artwork-upload-status[data-state="working"]) {
+  color: #f1cf55;
+  border-color: rgba(241, 207, 85, 0.35);
+}
+
+:global(.upload-box > .artwork-upload-status[data-state="success"]) {
+  color: #8cff9f;
+  border-color: rgba(85, 255, 120, 0.4);
+}
+
+:global(.upload-box > .artwork-upload-status[data-state="error"]) {
+  color: #ff9d8f;
+  border-color: rgba(255, 123, 104, 0.5);
+  background: rgba(255, 123, 104, 0.06);
+}
