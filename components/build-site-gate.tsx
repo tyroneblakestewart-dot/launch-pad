@@ -60,8 +60,8 @@ export function BuildSiteGate() {
           <p class="build-site-hint">Social accounts are optional and can be added later.</p>
         `;
         uploadBox.insertAdjacentElement("afterend", gate);
-        button = gate.querySelector(".build-site-button");
-        checklist = gate.querySelector(".build-site-checklist");
+        button = gate.querySelector<HTMLButtonElement>(".build-site-button");
+        checklist = gate.querySelector<HTMLDivElement>(".build-site-checklist");
 
         button?.addEventListener("click", () => {
           if (button?.disabled) return;
