@@ -7,6 +7,8 @@ const EXISTING_UPLOAD_LIMIT = 1_500_000;
 const MAX_SOURCE_BYTES = 20_000_000;
 const TARGET_BYTES = 1_350_000;
 const INITIAL_MAX_DIMENSION = 1800;
+const UPLOAD_HELP =
+  "PNG, JPG, WEBP, GIF or AVIF · up to 20 MB · large files auto-optimised";
 
 function isArtworkInput(target: EventTarget | null): target is HTMLInputElement {
   return (
@@ -61,9 +63,8 @@ function refreshUploadCopy() {
   if (!box) return;
 
   const help = box.querySelector<HTMLElement>("small");
-  if (help) {
-    help.textContent =
-      "PNG, JPG, WEBP, GIF or AVIF · up to 20 MB · large files auto-optimised";
+  if (help && help.textContent !== UPLOAD_HELP) {
+    help.textContent = UPLOAD_HELP;
   }
   ensureStatus(box);
 }
