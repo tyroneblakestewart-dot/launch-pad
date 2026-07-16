@@ -21,6 +21,7 @@ const eslintConfig = defineConfig([
   {
     files: [
       "components/provider-launcher.tsx",
+      "components/token-allocation-desk.tsx",
       "components/wallet-provider-selector.tsx",
       "components/social-hub.tsx",
     ],
