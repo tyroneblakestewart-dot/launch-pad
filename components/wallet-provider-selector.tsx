@@ -29,6 +29,7 @@ type BrowserWindow = Window & {
 
 const PREFERENCE_KEY = "launchpad-preferred-evm-wallet";
 const PREFERENCE_NAME_KEY = "launchpad-preferred-evm-wallet-name";
+const BYPASS_ATTRIBUTE = "data-wallet-selector-bypass";
 
 function installSelectedProvider(provider: Eip1193Provider) {
   const browserWindow = window as BrowserWindow;
@@ -45,8 +46,7 @@ function installSelectedProvider(provider: Eip1193Provider) {
     try {
       browserWindow.ethereum = provider;
     } catch {
-      // Some extensions protect window.ethereum. The selector will explain
-      // that a refresh or disabling legacy injection may still be required.
+      // Some extensions protect window.ethereum.
     }
   }
 }
@@ -70,9 +70,9 @@ export function WalletProviderSelector() {
   const [selectedName, setSelectedName] = useState("");
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState(
-    "Choose the EVM wallet used for Robinhood Chain connections.",
+    "Choose the wallet you want to use for this connection.",
   );
-  const autoOpened = useRef(false);
+  const pendingConnectButton = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const storedRdns = localStorage.getItem(PREFERENCE_KEY) || "";
@@ -85,9 +85,7 @@ export function WalletProviderSelector() {
       if (!isProviderDetail(detail)) return;
 
       setProviders((current) => {
-        if (current.some((item) => item.info.uuid === detail.info.uuid)) {
-          return current;
-        }
+        if (current.some((item) => item.info.uuid === detail.info.uuid)) return current;
         return [...current, detail].sort((a, b) =>
           a.info.name.localeCompare(b.info.name),
         );
@@ -136,17 +134,6 @@ export function WalletProviderSelector() {
   }, [selectedProvider]);
 
   useEffect(() => {
-    if (
-      providers.length > 1 &&
-      !selectedRdns &&
-      !autoOpened.current
-    ) {
-      autoOpened.current = true;
-      setOpen(true);
-    }
-  }, [providers.length, selectedRdns]);
-
-  useEffect(() => {
     function reapplyOnFocus() {
       if (selectedProvider) installSelectedProvider(selectedProvider.provider);
     }
@@ -154,14 +141,54 @@ export function WalletProviderSelector() {
     return () => window.removeEventListener("focus", reapplyOnFocus);
   }, [selectedProvider]);
 
+  useEffect(() => {
+    function interceptConnect(event: MouseEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest("button.wallet-button") as HTMLButtonElement | null;
+      if (!button || button.disabled) return;
+
+      if (button.hasAttribute(BYPASS_ATTRIBUTE)) {
+        button.removeAttribute(BYPASS_ATTRIBUTE);
+        return;
+      }
+
+      // Solana currently has one supported connection route and can continue directly.
+      if (button.textContent?.toLowerCase().includes("phantom")) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      pendingConnectButton.current = button;
+      setMessage("Choose a wallet below. The connection will continue automatically.");
+      setOpen(true);
+      window.dispatchEvent(new Event("eip6963:requestProvider"));
+    }
+
+    document.addEventListener("click", interceptConnect, true);
+    return () => document.removeEventListener("click", interceptConnect, true);
+  }, []);
+
+  function continueConnection() {
+    const button = pendingConnectButton.current;
+    pendingConnectButton.current = null;
+    if (!button?.isConnected) return;
+
+    window.setTimeout(() => {
+      button.setAttribute(BYPASS_ATTRIBUTE, "true");
+      button.click();
+    }, 0);
+  }
+
   function chooseWallet(detail: Eip6963ProviderDetail) {
     localStorage.setItem(PREFERENCE_KEY, detail.info.rdns);
     localStorage.setItem(PREFERENCE_NAME_KEY, detail.info.name);
     setSelectedRdns(detail.info.rdns);
     setSelectedName(detail.info.name);
     installSelectedProvider(detail.provider);
-    setMessage(`${detail.info.name} selected. Now press the page's Connect wallet button.`);
+    setMessage(`${detail.info.name} selected. Opening its connection request…`);
     setOpen(false);
+    continueConnection();
   }
 
   function clearSelection() {
@@ -169,92 +196,85 @@ export function WalletProviderSelector() {
     localStorage.removeItem(PREFERENCE_NAME_KEY);
     setSelectedRdns("");
     setSelectedName("");
-    setMessage("Wallet preference cleared. Choose a wallet before connecting again.");
-    setOpen(true);
+    setMessage("Wallet preference cleared. Choose a wallet below.");
   }
 
   function refreshWallets() {
     window.dispatchEvent(new Event("eip6963:requestProvider"));
-    setMessage("Wallet discovery requested again.");
+    setMessage("Wallet detection refreshed.");
   }
 
+  function closeSelector() {
+    pendingConnectButton.current = null;
+    setOpen(false);
+  }
+
+  if (!open) return null;
+
   return (
-    <>
-      <button
-        className={selectedRdns ? styles.triggerSelected : styles.trigger}
-        onClick={() => setOpen(true)}
-        type="button"
-      >
-        <span>{selectedRdns ? "EVM wallet" : "Choose wallet"}</span>
-        <b>{selectedName || `${providers.length || "No"} detected`}</b>
-      </button>
+    <div className={styles.backdrop} role="dialog" aria-modal="true">
+      <section className={styles.modal}>
+        <header>
+          <div>
+            <p>CONNECT WALLET</p>
+            <h2>Choose which wallet connects</h2>
+          </div>
+          <button onClick={closeSelector} aria-label="Close wallet selector">
+            ×
+          </button>
+        </header>
 
-      {open && (
-        <div className={styles.backdrop} role="dialog" aria-modal="true">
-          <section className={styles.modal}>
-            <header>
-              <div>
-                <p>ROBINHOOD / EVM</p>
-                <h2>Choose which wallet connects</h2>
-              </div>
-              <button onClick={() => setOpen(false)} aria-label="Close wallet selector">
-                ×
-              </button>
-            </header>
+        <div className={styles.message}>{message}</div>
 
-            <div className={styles.message}>{message}</div>
-
-            <div className={styles.walletList}>
-              {providers.length === 0 ? (
-                <div className={styles.empty}>
-                  No EVM wallet has announced itself yet. Unlock your extension, then refresh detection.
-                </div>
-              ) : (
-                providers.map((detail) => {
-                  const icon = detail.info.icon.startsWith("data:image/")
-                    ? detail.info.icon
-                    : "";
-                  const active = detail.info.rdns === selectedRdns;
-                  return (
-                    <button
-                      key={detail.info.uuid}
-                      className={active ? styles.walletActive : styles.wallet}
-                      onClick={() => chooseWallet(detail)}
-                      type="button"
-                    >
-                      {icon ? (
-                        // EIP-6963 requires wallet icons to be rendered through img.
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={icon} alt="" />
-                      ) : (
-                        <span className={styles.fallbackIcon}>
-                          {detail.info.name.slice(0, 1).toUpperCase()}
-                        </span>
-                      )}
-                      <span>
-                        <b>{detail.info.name}</b>
-                        <small>{detail.info.rdns}</small>
-                      </span>
-                      <em>{active ? "SELECTED" : "USE"}</em>
-                    </button>
-                  );
-                })
-              )}
+        <div className={styles.walletList}>
+          {providers.length === 0 ? (
+            <div className={styles.empty}>
+              No EVM wallet has announced itself yet. Unlock your wallet extension, then refresh detection.
             </div>
-
-            <div className={styles.actions}>
-              <button onClick={refreshWallets} type="button">Refresh wallets</button>
-              {selectedRdns && (
-                <button onClick={clearSelection} type="button">Forget selection</button>
-              )}
-            </div>
-
-            <footer>
-              <b>Solana:</b> Phantom remains the wallet used on Solana pages. Always verify the wallet popup, account and chain before approving.
-            </footer>
-          </section>
+          ) : (
+            providers.map((detail) => {
+              const icon = detail.info.icon.startsWith("data:image/")
+                ? detail.info.icon
+                : "";
+              const active = detail.info.rdns === selectedRdns;
+              return (
+                <button
+                  key={detail.info.uuid}
+                  className={active ? styles.walletActive : styles.wallet}
+                  onClick={() => chooseWallet(detail)}
+                  type="button"
+                >
+                  {icon ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={icon} alt="" />
+                  ) : (
+                    <span className={styles.fallbackIcon}>
+                      {detail.info.name.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <span>
+                    <b>{detail.info.name}</b>
+                    <small>{detail.info.rdns}</small>
+                  </span>
+                  <em>{active ? "SELECTED" : "CONNECT"}</em>
+                </button>
+              );
+            })
+          )}
         </div>
-      )}
-    </>
+
+        <div className={styles.actions}>
+          <button onClick={refreshWallets} type="button">Refresh wallets</button>
+          {selectedRdns && (
+            <button onClick={clearSelection} type="button">Forget selection</button>
+          )}
+        </div>
+
+        <footer>
+          <b>Safe connection:</b> the selected wallet opens its own approval window. The launchpad never asks for or stores a seed phrase.
+          {selectedName ? ` Current preference: ${selectedName}.` : ""}
+        </footer>
+      </section>
+    </div>
   );
 }
