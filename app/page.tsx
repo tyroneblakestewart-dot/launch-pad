@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BuildSiteGate } from "@/components/build-site-gate";
 import { NewTokenController } from "@/components/new-token-controller";
 import { StudioProviderTransfer } from "@/components/studio-provider-transfer";
 import { TokenStudio } from "@/components/token-studio";
@@ -19,6 +20,7 @@ const floatingLink = {
 export default function Home() {
   return (
     <>
+      <BuildSiteGate />
       <NewTokenController />
       <StudioProviderTransfer />
       <Link
