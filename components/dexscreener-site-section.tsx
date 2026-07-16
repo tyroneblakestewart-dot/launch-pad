@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 type PairResult = {
+  address?: string;
   found?: boolean;
   pairUrl?: string;
   embedUrl?: string;
@@ -67,11 +68,7 @@ export function DexscreenerSiteSection() {
   }, []);
 
   useEffect(() => {
-    if (!address) {
-      setResult({ found: false });
-      setLoading(false);
-      return;
-    }
+    if (!address) return;
 
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
@@ -81,10 +78,14 @@ export function DexscreenerSiteSection() {
           signal: controller.signal,
         });
         const payload = (await response.json()) as PairResult;
-        setResult(response.ok ? payload : { found: false, error: payload.error || "Pair lookup failed." });
+        setResult(
+          response.ok
+            ? { ...payload, address }
+            : { address, found: false, error: payload.error || "Pair lookup failed." },
+        );
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") return;
-        setResult({ found: false, error: "Dexscreener pair lookup failed." });
+        setResult({ address, found: false, error: "Dexscreener pair lookup failed." });
       } finally {
         setLoading(false);
       }
@@ -98,6 +99,8 @@ export function DexscreenerSiteSection() {
 
   if (!mount) return null;
 
+  const visibleResult = address && result.address === address ? result : { found: false };
+  const visibleLoading = Boolean(address && loading);
   const searchUrl = address
     ? `https://dexscreener.com/search?q=${encodeURIComponent(address)}`
     : "https://dexscreener.com";
@@ -106,23 +109,23 @@ export function DexscreenerSiteSection() {
     <section className="preview-content dexscreener-section" id="chart">
       <div className="dexscreener-heading">
         <div>
-          <div className="section-tag">// LIVE MARKET</div>
+          <div className="section-tag">{"// LIVE MARKET"}</div>
           <h3>DEXSCREENER</h3>
         </div>
-        <a href={result.pairUrl || searchUrl} target="_blank" rel="noreferrer">
+        <a href={visibleResult.pairUrl || searchUrl} target="_blank" rel="noreferrer">
           OPEN DEXSCREENER ↗
         </a>
       </div>
 
-      {result.found && result.embedUrl ? (
+      {visibleResult.found && visibleResult.embedUrl ? (
         <div className="dexscreener-frame-shell">
           <div className="dexscreener-status">
             <span><i /> LIVE PAIR</span>
-            <b>{result.dexId?.toUpperCase()} · {formatLiquidity(result.liquidityUsd)}</b>
+            <b>{visibleResult.dexId?.toUpperCase()} · {formatLiquidity(visibleResult.liquidityUsd)}</b>
           </div>
           <iframe
             title="Live Dexscreener chart"
-            src={result.embedUrl}
+            src={visibleResult.embedUrl}
             loading="lazy"
             allow="clipboard-write"
             referrerPolicy="strict-origin-when-cross-origin"
@@ -130,11 +133,11 @@ export function DexscreenerSiteSection() {
         </div>
       ) : (
         <div className="dexscreener-empty">
-          <span className={loading ? "dexscreener-loader active" : "dexscreener-loader"} />
+          <span className={visibleLoading ? "dexscreener-loader active" : "dexscreener-loader"} />
           <div>
-            <strong>{loading ? "Searching Dexscreener…" : address ? "Trading pair not detected yet" : "Chart activates after launch"}</strong>
+            <strong>{visibleLoading ? "Searching Dexscreener…" : address ? "Trading pair not detected yet" : "Chart activates after launch"}</strong>
             <p>
-              {result.error || (address
+              {visibleResult.error || (address
                 ? "Once liquidity creates a Dexscreener pair, the live chart will appear here automatically."
                 : "Add the contract or mint address after launch. The page will then find and display the most liquid pair.")}
             </p>
