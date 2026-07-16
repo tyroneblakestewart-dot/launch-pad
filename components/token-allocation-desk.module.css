@@ -1,0 +1,553 @@
+.shell {
+  min-height: 100vh;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 90% 2%, rgba(85, 255, 120, 0.11), transparent 32rem),
+    radial-gradient(circle at 5% 70%, rgba(232, 196, 53, 0.06), transparent 28rem),
+    linear-gradient(180deg, #070a08, #040605);
+  color: #f3f6ef;
+}
+
+.header,
+.tokenLoader,
+.planPanel,
+.distributionPanel,
+.liquidityPanel,
+.recordPanel {
+  border: 1px solid rgba(131, 183, 139, 0.2);
+  border-radius: 14px;
+  background: rgba(10, 15, 11, 0.94);
+}
+
+.header {
+  max-width: 1440px;
+  margin: 0 auto 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 24px;
+}
+
+.header p,
+.sectionHeading p {
+  margin: 0 0 7px;
+  color: #55ff78;
+  font: 700 10px "IBM Plex Mono", monospace;
+  letter-spacing: 0.16em;
+}
+
+.header h1 {
+  margin: 0 0 8px;
+  font-size: clamp(28px, 4vw, 46px);
+  letter-spacing: -0.045em;
+}
+
+.header span {
+  color: #9aa69c;
+  font-size: 14px;
+}
+
+.headerActions {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.headerActions a,
+.headerActions button,
+.loaderGrid button,
+.transferRow button,
+.liquidityPanel > button,
+.recordActions button {
+  min-height: 43px;
+  padding: 0 15px;
+  border: 1px solid rgba(131, 183, 139, 0.24);
+  border-radius: 8px;
+  background: #111713;
+  color: #f3f6ef;
+  font-weight: 800;
+}
+
+.headerActions button,
+.loaderGrid button,
+.transferRow button,
+.recordActions button:first-child {
+  background: #55ff78;
+  color: #071008;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.notice {
+  max-width: 1440px;
+  margin: 0 auto 18px;
+  padding: 12px 16px;
+  border-left: 3px solid #55ff78;
+  background: rgba(85, 255, 120, 0.07);
+  color: #c1cac3;
+  font: 500 12px/1.55 "IBM Plex Mono", monospace;
+}
+
+.networkBar {
+  max-width: 1440px;
+  margin: 0 auto 18px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid rgba(131, 183, 139, 0.18);
+  border-radius: 10px;
+  background: rgba(131, 183, 139, 0.18);
+}
+
+.networkBar div {
+  display: grid;
+  gap: 5px;
+  padding: 13px 15px;
+  background: #0a0f0b;
+}
+
+.networkBar span,
+.tokenStats span,
+.amountRow span,
+.liquiditySummary span {
+  color: #849087;
+  font: 700 9px "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.networkBar b {
+  color: #dfe7e0;
+  font-size: 12px;
+}
+
+.tokenLoader {
+  max-width: 1440px;
+  margin: 0 auto 18px;
+  padding: 24px;
+}
+
+.sectionHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.sectionHeading h2 {
+  margin: 0;
+  font-size: 23px;
+  letter-spacing: -0.03em;
+}
+
+.sectionHeading > span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(85, 255, 120, 0.08);
+  color: #55ff78;
+  font: 700 10px "IBM Plex Mono", monospace;
+}
+
+.loaderGrid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(300px, 1.4fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.loaderGrid label,
+.planPanel label,
+.liquidityPanel label {
+  display: block;
+}
+
+.loaderGrid label > span,
+.planPanel label > span,
+.liquidityPanel label > span {
+  display: block;
+  margin-bottom: 7px;
+  color: #aab4ac;
+  font: 700 10px "IBM Plex Mono", monospace;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.loaderGrid input,
+.loaderGrid select,
+.planPanel input,
+.liquidityPanel input,
+.liquidityPanel select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid rgba(131, 183, 139, 0.2);
+  border-radius: 7px;
+  outline: none;
+  background: #070b08;
+  color: #f3f6ef;
+}
+
+.loaderGrid input:focus,
+.loaderGrid select:focus,
+.planPanel input:focus,
+.liquidityPanel input:focus,
+.liquidityPanel select:focus {
+  border-color: rgba(85, 255, 120, 0.68);
+}
+
+.tokenStats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.tokenStats div {
+  display: grid;
+  gap: 7px;
+  padding: 14px;
+  border: 1px solid rgba(131, 183, 139, 0.14);
+  border-radius: 8px;
+  background: #080c09;
+}
+
+.tokenStats b {
+  overflow: hidden;
+  color: #e7ede8;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace,
+.bottomGrid {
+  max-width: 1440px;
+  margin: 0 auto 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.65fr);
+  gap: 18px;
+}
+
+.planPanel,
+.distributionPanel,
+.liquidityPanel,
+.recordPanel {
+  padding: 24px;
+}
+
+.totalGood {
+  background: rgba(85, 255, 120, 0.11) !important;
+  color: #55ff78 !important;
+}
+
+.totalBad {
+  background: rgba(255, 107, 107, 0.09) !important;
+  color: #ff8d8d !important;
+}
+
+.allocationList {
+  display: grid;
+  gap: 12px;
+}
+
+.allocationCard {
+  padding: 17px;
+  border: 1px solid rgba(131, 183, 139, 0.17);
+  border-radius: 10px;
+  background: #080c09;
+}
+
+.allocationTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 20px;
+  align-items: start;
+}
+
+.allocationTop h3 {
+  margin: 0 0 6px;
+  font-size: 17px;
+}
+
+.allocationTop p,
+.explainer,
+.liquidityPanel > p,
+.recordPanel > p {
+  margin: 0;
+  color: #929e94;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.percentInput {
+  display: grid;
+  grid-template-columns: 1fr 28px;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(131, 183, 139, 0.2);
+  border-radius: 7px;
+  background: #070b08;
+}
+
+.percentInput input {
+  min-height: 40px;
+  border: 0;
+  text-align: right;
+}
+
+.percentInput b {
+  color: #55ff78;
+  font: 700 11px "IBM Plex Mono", monospace;
+}
+
+.amountRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(131, 183, 139, 0.12);
+}
+
+.amountRow b {
+  color: #55ff78;
+}
+
+.destinationField {
+  margin-top: 13px;
+}
+
+.holdNotice {
+  margin-top: 13px;
+  padding: 10px 12px;
+  border-left: 3px solid #e8c435;
+  background: rgba(232, 196, 53, 0.055);
+  color: #d6c978;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.errorBox {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 107, 107, 0.32);
+  border-radius: 8px;
+  background: rgba(255, 107, 107, 0.06);
+  color: #ff9b9b;
+  font-size: 12px;
+}
+
+.explainer {
+  margin: -5px 0 16px;
+}
+
+.transferRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(131, 183, 139, 0.13);
+}
+
+.transferRow > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.transferRow span {
+  color: #55ff78;
+  font: 700 9px "IBM Plex Mono", monospace;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.transferRow b,
+.transferRow small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transferRow small {
+  color: #7f8a81;
+}
+
+.transferRow a {
+  color: #55ff78;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.transferRow button {
+  min-height: 38px;
+  padding: 0 11px;
+  font-size: 11px;
+}
+
+.confirmation {
+  display: grid !important;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  align-items: start;
+  margin-top: 18px;
+  padding: 13px;
+  border: 1px solid rgba(131, 183, 139, 0.16);
+  border-radius: 8px;
+  background: #080c09;
+}
+
+.confirmation input {
+  width: 16px;
+  min-height: 16px;
+  margin-top: 2px;
+}
+
+.confirmation span {
+  margin: 0 !important;
+  color: #b8c1ba !important;
+  font: 500 11px/1.55 "IBM Plex Mono", monospace !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.warning {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 14px;
+  border-left: 3px solid #e8c435;
+  background: rgba(232, 196, 53, 0.06);
+}
+
+.warning b {
+  color: #e8c435;
+}
+
+.warning span {
+  color: #aeb5af;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.bottomGrid {
+  grid-template-columns: 1fr 0.72fr;
+}
+
+.twoColumns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.liquiditySummary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.liquiditySummary div {
+  display: grid;
+  gap: 6px;
+  padding: 13px;
+  border: 1px solid rgba(131, 183, 139, 0.14);
+  border-radius: 8px;
+  background: #080c09;
+}
+
+.liquidityPanel > button {
+  width: 100%;
+  margin-bottom: 12px;
+  color: #8c968e;
+}
+
+.recordPanel {
+  display: flex;
+  flex-direction: column;
+}
+
+.recordActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 20px 0 16px;
+}
+
+.recordPanel > a {
+  margin-top: auto;
+  color: #55ff78;
+  font-weight: 800;
+}
+
+@media (max-width: 980px) {
+  .shell {
+    padding: 14px;
+  }
+
+  .header {
+    flex-direction: column;
+  }
+
+  .headerActions {
+    justify-content: flex-start;
+  }
+
+  .networkBar,
+  .tokenStats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .loaderGrid,
+  .workspace,
+  .bottomGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 580px) {
+  .header,
+  .tokenLoader,
+  .planPanel,
+  .distributionPanel,
+  .liquidityPanel,
+  .recordPanel {
+    padding: 17px;
+  }
+
+  .headerActions,
+  .recordActions,
+  .twoColumns,
+  .liquiditySummary,
+  .networkBar,
+  .tokenStats {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .headerActions {
+    display: grid;
+  }
+
+  .allocationTop {
+    grid-template-columns: 1fr;
+  }
+
+  .transferRow {
+    grid-template-columns: 1fr;
+  }
+
+  .transferRow button,
+  .transferRow a {
+    width: 100%;
+    text-align: center;
+  }
+}
