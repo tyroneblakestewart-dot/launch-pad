@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { createPublicClient, createWalletClient, custom, defineChain, type Address } from "viem";
 import { FIXED_SUPPLY_TOKEN_ABI, FIXED_SUPPLY_TOKEN_BYTECODE } from "@/lib/evm-token-artifact";
@@ -158,7 +159,7 @@ export function MonadTestnetLauncher() {
   return (
     <main className={styles.shell}>
       <header className={styles.header}>
-        <a href="/">← Back to studio</a>
+        <Link href="/">← Back to studio</Link>
         <span>MONAD TESTNET ONLY</span>
       </header>
 
