@@ -19,6 +19,18 @@ export default function Home() {
   return (
     <>
       <StudioProviderTransfer />
+      <Link
+        href="/social"
+        style={{
+          ...floatingLink,
+          bottom: 174,
+          color: "#fff7ca",
+          background: "#172014",
+          borderColor: "rgba(232,196,53,.65)",
+        }}
+      >
+        SOCIAL PUBLISHING HUB ↗
+      </Link>
       <Link href="/providers" style={{ ...floatingLink, bottom: 70 }}>
         NOXA + PONS LAUNCH ↗
       </Link>
