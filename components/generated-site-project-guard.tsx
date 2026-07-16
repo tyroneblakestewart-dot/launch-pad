@@ -14,7 +14,8 @@ function fieldValue(labelText: string) {
 
 function clearGeneratedPreview() {
   const site = document.querySelector<HTMLElement>(".site-preview");
-  if (!site) return;
+  if (!site) return false;
+  const hadGeneratedStyle = site.classList.contains("artwork-generated-site");
   site.classList.remove("artwork-generated-site");
   delete site.dataset.generatedLayout;
   delete site.dataset.generatedMood;
@@ -30,6 +31,16 @@ function clearGeneratedPreview() {
     "--generated-accent",
   ].forEach((property) => site.style.removeProperty(property));
   document.querySelector(".generated-style-badge")?.remove();
+  return hadGeneratedStyle;
+}
+
+function relockAfterProjectChange() {
+  if (!clearGeneratedPreview()) return;
+  window.dispatchEvent(
+    new CustomEvent("launchpad:site-generation-failed", {
+      detail: { message: "This is a different token project. Generate a new site from its artwork." },
+    }),
+  );
 }
 
 export function GeneratedSiteProjectGuard() {
@@ -40,19 +51,19 @@ export function GeneratedSiteProjectGuard() {
       const name = fieldValue("Token name");
       const ticker = fieldValue("Ticker");
       const currentKey = `${name.toLowerCase()}::${ticker.toUpperCase()}`;
-      if (!currentKey || currentKey === lastKey) return;
+      if (currentKey === lastKey) return;
       lastKey = currentKey;
 
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) {
-          clearGeneratedPreview();
+          relockAfterProjectChange();
           return;
         }
         const stored = JSON.parse(raw) as { key?: string };
-        if (stored.key !== currentKey) clearGeneratedPreview();
+        if (stored.key !== currentKey) relockAfterProjectChange();
       } catch {
-        clearGeneratedPreview();
+        relockAfterProjectChange();
       }
     }
 
