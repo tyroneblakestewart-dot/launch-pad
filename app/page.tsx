@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArtworkUploadController } from "@/components/artwork-upload-controller";
 import { BuildSiteGate } from "@/components/build-site-gate";
 import { NewTokenController } from "@/components/new-token-controller";
 import { StudioProviderTransfer } from "@/components/studio-provider-transfer";
@@ -20,6 +21,7 @@ const floatingLink = {
 export default function Home() {
   return (
     <>
+      <ArtworkUploadController />
       <BuildSiteGate />
       <NewTokenController />
       <StudioProviderTransfer />
