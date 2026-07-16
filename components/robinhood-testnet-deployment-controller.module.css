@@ -1,0 +1,165 @@
+.panel {
+  display: grid;
+  gap: 13px;
+  margin: 16px 0;
+  padding: 17px;
+  border: 1px solid rgba(85, 255, 120, 0.4);
+  border-radius: 9px;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(85, 255, 120, 0.09), transparent 13rem),
+    #071009;
+  box-shadow: inset 0 0 30px rgba(85, 255, 120, 0.025);
+}
+
+.panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.panel header small {
+  display: block;
+  margin-bottom: 4px;
+  color: #55ff78;
+  font: 700 9px "IBM Plex Mono", monospace;
+  letter-spacing: 0.16em;
+}
+
+.panel h3 {
+  margin: 0;
+  color: #f0f6ed;
+  font-size: 17px;
+}
+
+.panel header > span {
+  padding: 6px 8px;
+  color: #071008;
+  border-radius: 999px;
+  background: #55ff78;
+  font: 800 8px "IBM Plex Mono", monospace;
+  letter-spacing: 0.1em;
+}
+
+.panel dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin: 0;
+}
+
+.panel dl > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(85, 255, 120, 0.14);
+  border-radius: 6px;
+  background: rgba(85, 255, 120, 0.025);
+}
+
+.panel dt {
+  margin-bottom: 5px;
+  color: #748078;
+  font: 700 8px "IBM Plex Mono", monospace;
+  text-transform: uppercase;
+}
+
+.panel dd {
+  margin: 0;
+  overflow: hidden;
+  color: #d9e2d8;
+  font: 600 10px "IBM Plex Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid rgba(241, 207, 85, 0.2);
+  border-radius: 6px;
+  color: #a8aa93;
+  background: rgba(241, 207, 85, 0.035);
+  font: 9px/1.55 "IBM Plex Mono", monospace;
+}
+
+.confirmation input {
+  width: 14px;
+  height: 14px;
+  margin: 1px 0 0;
+  padding: 0;
+  accent-color: #55ff78;
+  flex: none;
+}
+
+.status {
+  min-height: 37px;
+  display: flex;
+  align-items: center;
+  padding: 9px 10px;
+  border-left: 2px solid #55ff78;
+  color: #a7b2a9;
+  background: rgba(85, 255, 120, 0.04);
+  font: 9px/1.5 "IBM Plex Mono", monospace;
+  overflow-wrap: anywhere;
+}
+
+.deployButton {
+  width: 100%;
+  min-height: 46px;
+  color: #061008;
+  border: 0;
+  border-radius: 7px;
+  background: #55ff78;
+  box-shadow: 0 9px 28px rgba(85, 255, 120, 0.13);
+  font: 800 11px "IBM Plex Mono", monospace;
+}
+
+.deployButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.result {
+  display: grid;
+  gap: 8px;
+  padding: 13px;
+  border: 1px solid rgba(85, 255, 120, 0.3);
+  border-radius: 7px;
+  background: rgba(85, 255, 120, 0.05);
+}
+
+.result b {
+  color: #55ff78;
+  font: 800 9px "IBM Plex Mono", monospace;
+  letter-spacing: 0.13em;
+}
+
+.result code {
+  color: #dce6da;
+  font: 9px/1.5 "IBM Plex Mono", monospace;
+  overflow-wrap: anywhere;
+}
+
+.result > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 13px;
+}
+
+.result a {
+  color: #55ff78;
+  font: 700 9px "IBM Plex Mono", monospace;
+}
+
+.panel footer {
+  color: #68736a;
+  font: 8px/1.5 "IBM Plex Mono", monospace;
+}
+
+@media (max-width: 560px) {
+  .panel dl {
+    grid-template-columns: 1fr;
+  }
+}
