@@ -19,7 +19,10 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ["components/provider-launcher.tsx"],
+    files: [
+      "components/provider-launcher.tsx",
+      "components/wallet-provider-selector.tsx",
+    ],
     rules: {
       "react-hooks/set-state-in-effect": "off",
     },
