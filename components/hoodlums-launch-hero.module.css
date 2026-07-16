@@ -1,0 +1,650 @@
+.hero {
+  position: relative;
+  isolation: isolate;
+  min-height: 100svh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 78% 35%, rgba(117, 255, 0, 0.18), transparent 30rem),
+    radial-gradient(circle at 12% 22%, rgba(85, 255, 120, 0.1), transparent 25rem),
+    linear-gradient(180deg, #020703 0%, #061109 62%, #030805 100%);
+  border-bottom: 1px solid rgba(85, 255, 120, 0.24);
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background:
+    linear-gradient(90deg, rgba(3, 12, 5, 0.92) 0%, rgba(3, 12, 5, 0.72) 48%, rgba(3, 12, 5, 0.48) 100%),
+    linear-gradient(180deg, transparent 72%, rgba(2, 7, 3, 0.96));
+}
+
+.backdrop {
+  z-index: -4;
+  object-fit: cover;
+  object-position: 72% 38%;
+  opacity: 0.16;
+  filter: saturate(1.25) contrast(1.12) blur(1px);
+  transform: scale(1.08);
+}
+
+.matrixGrid {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.24;
+  background-image:
+    linear-gradient(rgba(85, 255, 120, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(85, 255, 120, 0.06) 1px, transparent 1px),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 44px,
+      rgba(74, 255, 88, 0.05) 44px 46px,
+      transparent 46px 91px
+    );
+  background-size: 38px 38px, 38px 38px, auto;
+  mask-image: linear-gradient(to bottom, black 0%, transparent 86%);
+}
+
+.scanline {
+  position: absolute;
+  inset: -40% 0 auto;
+  z-index: 0;
+  height: 40%;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, rgba(85, 255, 120, 0.07), transparent);
+  animation: scan 9s linear infinite;
+}
+
+.shell {
+  position: relative;
+  z-index: 2;
+  width: min(1480px, calc(100% - 48px));
+  margin: 0 auto;
+  padding-bottom: 72px;
+}
+
+.nav {
+  min-height: 82px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 24px;
+  border-bottom: 1px solid rgba(85, 255, 120, 0.19);
+}
+
+.brand {
+  width: fit-content;
+  color: #68ff16;
+  font: 400 clamp(1.35rem, 2.6vw, 2rem)/1 "Black Ops One", sans-serif;
+  letter-spacing: 0.035em;
+  transform: rotate(-2deg);
+  text-shadow:
+    0 0 6px rgba(104, 255, 22, 0.98),
+    0 0 20px rgba(104, 255, 22, 0.72),
+    0 0 46px rgba(104, 255, 22, 0.42);
+}
+
+.navLinks {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(18px, 3vw, 42px);
+  color: #d7dfd2;
+  font: 700 0.68rem/1 "IBM Plex Mono", monospace;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.navLinks a,
+.navCta {
+  transition: color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.navLinks a:hover {
+  color: #68ff16;
+}
+
+.navCta {
+  justify-self: end;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 17px;
+  border: 1px solid rgba(241, 207, 85, 0.75);
+  border-radius: 4px;
+  color: #0b1008;
+  background: #f1cf55;
+  box-shadow: 0 0 24px rgba(241, 207, 85, 0.16);
+  font: 800 0.7rem/1 "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.navCta:hover {
+  transform: translateY(-2px);
+}
+
+.heroGrid {
+  min-height: min(790px, calc(100svh - 82px));
+  display: grid;
+  grid-template-columns: minmax(0, 1.02fr) minmax(430px, 0.98fr);
+  align-items: center;
+  gap: clamp(34px, 5vw, 86px);
+  padding: 58px 0 50px;
+}
+
+.copy {
+  min-width: 0;
+}
+
+.protocol {
+  margin: 0 0 24px;
+  color: #f1cf55;
+  font: 700 clamp(0.64rem, 1vw, 0.79rem)/1.5 "IBM Plex Mono", monospace;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.protocol span {
+  color: #68ff16;
+}
+
+.title {
+  margin: 0;
+  color: #68ff16;
+  font: 400 clamp(4.65rem, 10.2vw, 9.2rem)/0.76 "Black Ops One", sans-serif;
+  letter-spacing: -0.055em;
+  transform: skew(-2deg) rotate(-1deg);
+  text-shadow:
+    0 0 7px rgba(104, 255, 22, 1),
+    0 0 22px rgba(104, 255, 22, 0.75),
+    0 0 55px rgba(104, 255, 22, 0.38),
+    8px 9px 0 rgba(22, 67, 9, 0.7);
+}
+
+.slogan {
+  width: fit-content;
+  margin: 32px 0 17px;
+  color: #f7d54e;
+  font: 900 clamp(1.08rem, 2.1vw, 1.78rem)/1.2 "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: 0 0 20px rgba(241, 207, 85, 0.35);
+}
+
+.intro {
+  max-width: 640px;
+  margin: 0;
+  color: #ced7ca;
+  font-size: clamp(0.98rem, 1.4vw, 1.13rem);
+  line-height: 1.78;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 13px;
+  margin-top: 32px;
+}
+
+.primaryAction,
+.secondaryAction {
+  min-height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  padding: 0 24px;
+  border-radius: 5px;
+  font: 900 0.76rem/1 "IBM Plex Mono", monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.primaryAction {
+  color: #081006;
+  background: #68ff16;
+  box-shadow:
+    0 0 18px rgba(104, 255, 22, 0.45),
+    0 0 50px rgba(104, 255, 22, 0.2);
+}
+
+.secondaryAction {
+  border: 1px solid rgba(104, 255, 22, 0.65);
+  color: #cfffaf;
+  background: rgba(3, 12, 5, 0.54);
+}
+
+.primaryAction:hover,
+.secondaryAction:hover {
+  transform: translateY(-2px);
+}
+
+.statusStrip {
+  max-width: 720px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 34px;
+  border: 1px solid rgba(85, 255, 120, 0.22);
+  background: rgba(3, 13, 6, 0.72);
+  box-shadow: inset 0 0 40px rgba(85, 255, 120, 0.025);
+  backdrop-filter: blur(10px);
+}
+
+.statusStrip div {
+  min-width: 0;
+  padding: 15px 17px;
+}
+
+.statusStrip div + div {
+  border-left: 1px solid rgba(85, 255, 120, 0.16);
+}
+
+.statusStrip span,
+.statusStrip strong {
+  display: block;
+}
+
+.statusStrip span {
+  margin-bottom: 7px;
+  color: #66816a;
+  font: 700 0.55rem/1 "IBM Plex Mono", monospace;
+  letter-spacing: 0.14em;
+}
+
+.statusStrip strong {
+  overflow: hidden;
+  color: #e7eee3;
+  font-size: 0.73rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visual {
+  position: relative;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid rgba(104, 255, 22, 0.62);
+  border-radius: 9px;
+  background: rgba(3, 12, 5, 0.7);
+  box-shadow:
+    0 0 0 5px rgba(104, 255, 22, 0.035),
+    0 0 52px rgba(104, 255, 22, 0.14),
+    0 28px 80px rgba(0, 0, 0, 0.44);
+}
+
+.targetBar {
+  min-height: 41px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(104, 255, 22, 0.3);
+  color: #68ff16;
+  font: 700 0.58rem/1 "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+}
+
+.targetBar span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.targetBar i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #68ff16;
+  box-shadow: 0 0 12px #68ff16;
+}
+
+.targetBar b {
+  color: #f1cf55;
+  font-weight: 700;
+}
+
+.artFrame {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(104, 255, 22, 0.13), transparent 45%),
+    #030704;
+}
+
+.artwork {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(1.06) contrast(1.06);
+}
+
+.artGlow {
+  position: absolute;
+  inset: 17% 10% 5%;
+  z-index: 1;
+  border-radius: 50%;
+  background: rgba(104, 255, 22, 0.22);
+  filter: blur(48px);
+}
+
+.visualCaption {
+  margin: 0;
+  padding: 11px 12px 4px;
+  color: #749079;
+  font: 600 0.54rem/1.5 "IBM Plex Mono", monospace;
+  letter-spacing: 0.05em;
+}
+
+.toolsSection {
+  scroll-margin-top: 24px;
+  padding-top: 26px;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 30px;
+  padding: 28px 0 22px;
+  border-top: 1px solid rgba(85, 255, 120, 0.18);
+}
+
+.sectionHeading p {
+  margin: 0 0 9px;
+  color: #68ff16;
+  font: 700 0.6rem/1 "IBM Plex Mono", monospace;
+  letter-spacing: 0.18em;
+}
+
+.sectionHeading h2 {
+  max-width: 760px;
+  margin: 0;
+  color: #f2f5ef;
+  font-size: clamp(1.45rem, 3vw, 2.35rem);
+  letter-spacing: -0.045em;
+}
+
+.sectionHeading > span {
+  color: #758078;
+  font: 600 0.58rem/1.5 "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+  text-align: right;
+}
+
+.toolsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.toolCard {
+  position: relative;
+  min-height: 205px;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(85, 255, 120, 0.18);
+  border-radius: 7px;
+  background:
+    linear-gradient(145deg, rgba(21, 61, 32, 0.22), rgba(4, 10, 6, 0.86)),
+    rgba(4, 10, 6, 0.82);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.toolCard::after {
+  content: "";
+  position: absolute;
+  width: 140px;
+  height: 140px;
+  right: -70px;
+  bottom: -80px;
+  border: 1px solid rgba(104, 255, 22, 0.14);
+  border-radius: 50%;
+  box-shadow: 0 0 60px rgba(104, 255, 22, 0.08);
+}
+
+.toolCard:hover {
+  transform: translateY(-5px);
+  border-color: rgba(104, 255, 22, 0.5);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
+}
+
+.toolCard p {
+  margin: 0 0 21px;
+  color: #f1cf55;
+  font: 700 0.57rem/1 "IBM Plex Mono", monospace;
+  letter-spacing: 0.11em;
+}
+
+.toolCard h3 {
+  margin: 0 0 10px;
+  color: #eef4ea;
+  font-size: 1rem;
+}
+
+.toolCard > span {
+  color: #89978b;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.toolCard b {
+  margin-top: auto;
+  padding-top: 22px;
+  color: #68ff16;
+  font: 700 0.6rem/1 "IBM Plex Mono", monospace;
+  letter-spacing: 0.1em;
+}
+
+@keyframes scan {
+  from { transform: translateY(-20%); }
+  to { transform: translateY(360%); }
+}
+
+@media (max-width: 1120px) {
+  .heroGrid {
+    grid-template-columns: minmax(0, 0.92fr) minmax(390px, 1.08fr);
+  }
+
+  .navLinks {
+    gap: 18px;
+  }
+
+  .toolsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .shell {
+    width: min(100% - 30px, 720px);
+    padding-bottom: 52px;
+  }
+
+  .nav {
+    grid-template-columns: 1fr auto;
+    min-height: 72px;
+  }
+
+  .navLinks {
+    display: none;
+  }
+
+  .heroGrid {
+    min-height: auto;
+    grid-template-columns: 1fr;
+    gap: 36px;
+    padding: 48px 0 44px;
+  }
+
+  .copy {
+    text-align: center;
+  }
+
+  .protocol,
+  .slogan,
+  .intro,
+  .statusStrip {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .actions {
+    justify-content: center;
+  }
+
+  .visual {
+    width: min(100%, 650px);
+    margin: 0 auto;
+  }
+
+  .sectionHeading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sectionHeading > span {
+    text-align: left;
+  }
+}
+
+@media (max-width: 620px) {
+  .hero::before {
+    background: linear-gradient(180deg, rgba(3, 12, 5, 0.82), rgba(2, 8, 4, 0.96));
+  }
+
+  .backdrop {
+    object-position: center top;
+    opacity: 0.12;
+  }
+
+  .shell {
+    width: min(100% - 22px, 520px);
+  }
+
+  .nav {
+    min-height: 66px;
+    gap: 12px;
+  }
+
+  .brand {
+    font-size: 1.15rem;
+  }
+
+  .navCta {
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 0.58rem;
+  }
+
+  .heroGrid {
+    padding: 38px 0 38px;
+  }
+
+  .protocol {
+    margin-bottom: 18px;
+    font-size: 0.56rem;
+    letter-spacing: 0.12em;
+  }
+
+  .title {
+    font-size: clamp(4.05rem, 22vw, 6.15rem);
+    text-shadow:
+      0 0 6px rgba(104, 255, 22, 0.95),
+      0 0 24px rgba(104, 255, 22, 0.58),
+      5px 6px 0 rgba(22, 67, 9, 0.62);
+  }
+
+  .slogan {
+    margin-top: 28px;
+    font-size: 1rem;
+    letter-spacing: 0.045em;
+  }
+
+  .intro {
+    font-size: 0.93rem;
+    line-height: 1.65;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 27px;
+  }
+
+  .primaryAction,
+  .secondaryAction {
+    width: 100%;
+    min-height: 54px;
+  }
+
+  .statusStrip {
+    grid-template-columns: 1fr;
+    margin-top: 27px;
+    text-align: left;
+  }
+
+  .statusStrip div {
+    padding: 13px 15px;
+  }
+
+  .statusStrip div + div {
+    border-top: 1px solid rgba(85, 255, 120, 0.16);
+    border-left: 0;
+  }
+
+  .targetBar {
+    min-height: 38px;
+    font-size: 0.5rem;
+  }
+
+  .targetBar b {
+    display: none;
+  }
+
+  .visualCaption {
+    font-size: 0.48rem;
+  }
+
+  .toolsSection {
+    padding-top: 6px;
+  }
+
+  .sectionHeading {
+    padding-top: 22px;
+  }
+
+  .toolsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .toolCard {
+    min-height: 180px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scanline {
+    animation: none;
+    display: none;
+  }
+
+  .navCta,
+  .primaryAction,
+  .secondaryAction,
+  .toolCard {
+    transition: none;
+  }
+}
