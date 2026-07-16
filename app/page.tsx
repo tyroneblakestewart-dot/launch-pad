@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { NewTokenController } from "@/components/new-token-controller";
 import { StudioProviderTransfer } from "@/components/studio-provider-transfer";
 import { TokenStudio } from "@/components/token-studio";
 
@@ -18,6 +19,7 @@ const floatingLink = {
 export default function Home() {
   return (
     <>
+      <NewTokenController />
       <StudioProviderTransfer />
       <Link
         href="/social"
