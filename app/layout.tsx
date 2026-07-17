@@ -3,6 +3,7 @@ import { WalletProviderSelector } from "@/components/wallet-provider-selector";
 import "./globals.css";
 import "./hoodlums-brand-theme.css";
 import "./hoodlums-dashboard-consistency.css";
+import "./hoodlums-studio-consistency.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://hoodlums.dev"),
