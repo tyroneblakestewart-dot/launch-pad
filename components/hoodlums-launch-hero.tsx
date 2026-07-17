@@ -1,4 +1,6 @@
+/* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
+import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./hoodlums-launch-hero.module.css";
 
 const navigation = [
@@ -52,9 +54,14 @@ export function HoodlumsLaunchHero() {
   return (
     <section className={styles.page} aria-labelledby="hoodlums-dashboard-title">
       <header className={styles.mobileHeader}>
-        <Link href="/" className={styles.mobileBrand}>
-          <span>H</span>
-          HOODLUMS
+        <Link href="/" className={styles.mobileBrand} aria-label="HOODLUMS home">
+          <img
+            src={HOODLUMS_WORDMARK_IMAGE}
+            alt="HOODLUMS"
+            width={1200}
+            height={438}
+            style={{ width: "145px", height: "auto", display: "block" }}
+          />
         </Link>
         <a href="#launch-studio" className={styles.mobileCreate}>
           Create
@@ -62,9 +69,14 @@ export function HoodlumsLaunchHero() {
       </header>
 
       <aside className={styles.sidebar}>
-        <Link href="/" className={styles.brand}>
-          <span className={styles.brandMark}>H</span>
-          <span>HOODLUMS</span>
+        <Link href="/" className={styles.brand} aria-label="HOODLUMS home">
+          <img
+            src={HOODLUMS_WORDMARK_IMAGE}
+            alt="HOODLUMS"
+            width={1200}
+            height={438}
+            style={{ width: "100%", maxWidth: "190px", height: "auto", display: "block" }}
+          />
         </Link>
 
         <nav className={styles.sideNav} aria-label="Launchpad navigation">
