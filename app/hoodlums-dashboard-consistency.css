@@ -1,0 +1,120 @@
+/*
+ * Keep the lightweight launch dashboard on the same Robinhood-inspired
+ * brand green used by the rest of hoodlums.dev.
+ */
+[class*="hoodlums-launch-hero-module"][class*="page"] {
+  --green: var(--hoodlums-green);
+  --green-strong: var(--hoodlums-green-hover);
+  --green-soft: rgba(var(--hoodlums-green-rgb), 0.1);
+}
+
+[class*="hoodlums-launch-hero-module"][class*="brandMark"],
+[class*="hoodlums-launch-hero-module"][class*="mobileBrand"] span,
+[class*="hoodlums-launch-hero-module"][class*="networkIcon"],
+[class*="hoodlums-launch-hero-module"][class*="tokenAvatar"] {
+  background: var(--hoodlums-green) !important;
+  box-shadow: 0 0 14px rgba(var(--hoodlums-green-rgb), 0.22) !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="createButton"],
+[class*="hoodlums-launch-hero-module"][class*="primaryButton"],
+[class*="hoodlums-launch-hero-module"][class*="primaryButtonLarge"],
+[class*="hoodlums-launch-hero-module"][class*="mobileCreate"] {
+  background: var(--hoodlums-green) !important;
+  color: #07100a !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="createButton"]:hover,
+[class*="hoodlums-launch-hero-module"][class*="primaryButton"]:hover,
+[class*="hoodlums-launch-hero-module"][class*="primaryButtonLarge"]:hover,
+[class*="hoodlums-launch-hero-module"][class*="mobileCreate"]:hover {
+  background: var(--hoodlums-green-hover) !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="liveDot"] {
+  background: var(--hoodlums-green) !important;
+  box-shadow: 0 0 8px rgba(var(--hoodlums-green-rgb), 0.65) !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="welcome"] > div {
+  background:
+    linear-gradient(120deg, rgba(var(--hoodlums-green-rgb), 0.065), transparent 48%),
+    var(--panel) !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="welcome"] h1 span {
+  color: var(--hoodlums-green) !important;
+  text-shadow: 0 0 18px rgba(var(--hoodlums-green-rgb), 0.2) !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="safeBadge"],
+[class*="hoodlums-launch-hero-module"][class*="panelHeading"] > span,
+[class*="hoodlums-launch-hero-module"][class*="workflowPanel"] li > span {
+  color: var(--hoodlums-green) !important;
+  background: rgba(var(--hoodlums-green-rgb), 0.1) !important;
+  border-color: rgba(var(--hoodlums-green-rgb), 0.22) !important;
+}
+
+/*
+ * The earlier global brand rule painted every /testnet and /providers link
+ * lime. Restore the dashboard navigation/card hierarchy while keeping one
+ * consistent green for genuine primary actions.
+ */
+[class*="hoodlums-launch-hero-module"][class*="sideLink"][href="/testnet"],
+[class*="hoodlums-launch-hero-module"][class*="sideLink"][href="/providers"] {
+  color: #b8bebe !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="sideLink"][href="/testnet"]:hover,
+[class*="hoodlums-launch-hero-module"][class*="sideLink"][href="/providers"]:hover {
+  color: var(--text) !important;
+  background: #151819 !important;
+  border-color: var(--line) !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="secondaryButtonLarge"][href="/testnet"] {
+  color: #e0e5e3 !important;
+  background: #181b1c !important;
+  border-color: #303536 !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="secondaryButtonLarge"][href="/testnet"]:hover {
+  color: var(--text) !important;
+  background: #1d2122 !important;
+  border-color: #454b4c !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="networkCard"] > a[href="/testnet"] {
+  color: #dfe5e2 !important;
+  background: #181c1c !important;
+  border-color: #2c3132 !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="networkCard"] > a[href="/testnet"]:hover {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.42) !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="toolCard"][href="/testnet"],
+[class*="hoodlums-launch-hero-module"][class*="toolCard"][href="/providers"] {
+  color: inherit !important;
+  background: var(--panel) !important;
+  border-color: var(--line) !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="toolCard"][href="/testnet"]:hover,
+[class*="hoodlums-launch-hero-module"][class*="toolCard"][href="/providers"]:hover {
+  background: var(--panel-2) !important;
+  border-color: #414748 !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="tokenLinks"] a[href="/providers"] {
+  color: #d5dbd8 !important;
+  background: #181c1c !important;
+  border-color: #2b3031 !important;
+}
+
+[class*="hoodlums-launch-hero-module"][class*="tokenLinks"] a[href="/providers"]:hover {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.36) !important;
+}

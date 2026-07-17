@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { WalletProviderSelector } from "@/components/wallet-provider-selector";
 import "./globals.css";
 import "./hoodlums-brand-theme.css";
+import "./hoodlums-dashboard-consistency.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://hoodlums.dev"),
