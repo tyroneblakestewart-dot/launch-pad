@@ -1,0 +1,232 @@
+:root {
+  --hoodlums-green: #bce759;
+  --hoodlums-green-hover: #add845;
+  --hoodlums-green-rgb: 188, 231, 89;
+  --green: var(--hoodlums-green);
+  --green-2: #91c738;
+  --dark-green: #304913;
+  --line: rgba(var(--hoodlums-green-rgb), 0.2);
+}
+
+::selection {
+  color: #071008;
+  background: var(--hoodlums-green);
+}
+
+/* Main studio accents. Keep the locked dark Hoodlums background and wordmark unchanged. */
+.app-shell {
+  background:
+    radial-gradient(circle at 80% 10%, rgba(var(--hoodlums-green-rgb), 0.105), transparent 24rem),
+    linear-gradient(180deg, #070a08, #050706);
+}
+
+.brand-mark {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.55);
+  box-shadow:
+    0 0 20px rgba(var(--hoodlums-green-rgb), 0.12),
+    inset 0 0 14px rgba(var(--hoodlums-green-rgb), 0.07);
+}
+
+.primary-button {
+  background: var(--hoodlums-green);
+  box-shadow: 0 7px 24px rgba(var(--hoodlums-green-rgb), 0.13);
+}
+
+.secondary-button:hover,
+.ghost-button:hover,
+.wallet-button:hover {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.58);
+}
+
+.ghost-button b {
+  background: rgba(var(--hoodlums-green-rgb), 0.1);
+}
+
+.notice-bar {
+  border-bottom-color: rgba(var(--hoodlums-green-rgb), 0.13);
+  background: rgba(var(--hoodlums-green-rgb), 0.055);
+}
+
+input:focus,
+textarea:focus {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.64);
+  box-shadow: 0 0 0 3px rgba(var(--hoodlums-green-rgb), 0.06);
+}
+
+.chain-option.active {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.66);
+  background: rgba(var(--hoodlums-green-rgb), 0.075);
+  box-shadow: inset 0 0 22px rgba(var(--hoodlums-green-rgb), 0.035);
+}
+
+.chain-dot.robinhood {
+  background: var(--hoodlums-green);
+  box-shadow: 0 0 8px var(--hoodlums-green);
+}
+
+.ticker-input:focus-within,
+.url-input:focus-within {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.64);
+}
+
+.upload-box {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.3);
+  background: rgba(var(--hoodlums-green-rgb), 0.028);
+}
+
+.upload-icon {
+  background: rgba(var(--hoodlums-green-rgb), 0.1);
+}
+
+/* Fixed studio navigation buttons use inline styles, so the brand override is intentional. */
+a[href="/providers"],
+a[href="/testnet"] {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.56) !important;
+  background: var(--hoodlums-green) !important;
+  color: #071008 !important;
+}
+
+/* Wallet picker. */
+[class*="wallet-provider-selector-module"][class*="triggerSelected"] {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.68) !important;
+}
+
+[class*="wallet-provider-selector-module"][class*="trigger"] b,
+[class*="wallet-provider-selector-module"][class*="triggerSelected"] b,
+[class*="wallet-provider-selector-module"][class*="modal"] header p,
+[class*="wallet-provider-selector-module"][class*="fallbackIcon"],
+[class*="wallet-provider-selector-module"][class*="wallet"] em,
+[class*="wallet-provider-selector-module"][class*="walletActive"] em {
+  color: var(--hoodlums-green) !important;
+}
+
+[class*="wallet-provider-selector-module"][class*="modal"] {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.3) !important;
+}
+
+[class*="wallet-provider-selector-module"][class*="wallet"]:hover,
+[class*="wallet-provider-selector-module"][class*="walletActive"]:hover {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.58) !important;
+}
+
+[class*="wallet-provider-selector-module"][class*="walletActive"] {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.74) !important;
+  background: rgba(var(--hoodlums-green-rgb), 0.075) !important;
+}
+
+[class*="wallet-provider-selector-module"][class*="fallbackIcon"] {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.35) !important;
+}
+
+[class*="wallet-provider-selector-module"][class*="confirmPanel"] {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.45) !important;
+  background: linear-gradient(
+    145deg,
+    rgba(var(--hoodlums-green-rgb), 0.085),
+    rgba(241, 207, 85, 0.035)
+  ) !important;
+  box-shadow: inset 0 0 28px rgba(var(--hoodlums-green-rgb), 0.03) !important;
+}
+
+[class*="wallet-provider-selector-module"][class*="confirmPanel"] > button {
+  background: var(--hoodlums-green) !important;
+  box-shadow: 0 10px 26px rgba(var(--hoodlums-green-rgb), 0.15) !important;
+}
+
+/* Provider launch flow. */
+[class*="provider-launcher-module"][class*="shell"] {
+  background:
+    radial-gradient(circle at 85% 5%, rgba(var(--hoodlums-green-rgb), 0.11), transparent 30rem),
+    linear-gradient(180deg, #070a08, #040605) !important;
+}
+
+[class*="provider-launcher-module"][class*="header"] p,
+[class*="provider-launcher-module"][class*="sectionHeading"] p,
+[class*="provider-launcher-module"][class*="resultCard"] p,
+[class*="provider-launcher-module"][class*="buyCard"] p,
+[class*="provider-launcher-module"][class*="providerCard"] b,
+[class*="provider-launcher-module"][class*="providerActive"] b,
+[class*="provider-launcher-module"][class*="copyRows"] b,
+[class*="provider-launcher-module"][class*="verificationMode"] b,
+[class*="provider-launcher-module"][class*="resultCard"] a {
+  color: var(--hoodlums-green) !important;
+}
+
+[class*="provider-launcher-module"][class*="headerActions"] button,
+[class*="provider-launcher-module"][class*="launchButton"],
+[class*="provider-launcher-module"][class*="verifyButton"],
+[class*="provider-launcher-module"][class*="flowActive"] b {
+  background: var(--hoodlums-green) !important;
+  color: #071008 !important;
+}
+
+[class*="provider-launcher-module"][class*="notice"] {
+  border-left-color: var(--hoodlums-green) !important;
+  background: rgba(var(--hoodlums-green-rgb), 0.07) !important;
+}
+
+[class*="provider-launcher-module"][class*="flowActive"],
+[class*="provider-launcher-module"][class*="providerActive"],
+[class*="provider-launcher-module"][class*="toggleRow"],
+[class*="provider-launcher-module"][class*="resultCard"] {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.5) !important;
+  background-color: rgba(var(--hoodlums-green-rgb), 0.05) !important;
+}
+
+[class*="provider-launcher-module"][class*="sectionHeading"] > span,
+[class*="provider-launcher-module"][class*="buyCardHeading"] > span {
+  color: var(--hoodlums-green) !important;
+  background: rgba(var(--hoodlums-green-rgb), 0.1) !important;
+}
+
+[class*="provider-launcher-module"] input:focus,
+[class*="provider-launcher-module"] textarea:focus,
+[class*="provider-launcher-module"] select:focus {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.68) !important;
+}
+
+[class*="provider-launcher-module"][class*="toggleRow"] input {
+  accent-color: var(--hoodlums-green) !important;
+}
+
+/* Allocation and distribution desk. */
+[class*="token-allocation-desk-module"][class*="shell"] {
+  background:
+    radial-gradient(circle at 90% 2%, rgba(var(--hoodlums-green-rgb), 0.11), transparent 32rem),
+    radial-gradient(circle at 5% 70%, rgba(232, 196, 53, 0.06), transparent 28rem),
+    linear-gradient(180deg, #070a08, #040605) !important;
+}
+
+[class*="token-allocation-desk-module"][class*="header"] p,
+[class*="token-allocation-desk-module"][class*="sectionHeading"] p,
+[class*="token-allocation-desk-module"][class*="percentInput"] b,
+[class*="token-allocation-desk-module"][class*="amountRow"] b,
+[class*="token-allocation-desk-module"][class*="transferRow"] span,
+[class*="token-allocation-desk-module"][class*="transferRow"] a,
+[class*="token-allocation-desk-module"][class*="recordPanel"] > a {
+  color: var(--hoodlums-green) !important;
+}
+
+[class*="token-allocation-desk-module"][class*="headerActions"] button,
+[class*="token-allocation-desk-module"][class*="loaderGrid"] button,
+[class*="token-allocation-desk-module"][class*="transferRow"] button,
+[class*="token-allocation-desk-module"][class*="recordActions"] button:first-child {
+  background: var(--hoodlums-green) !important;
+  color: #071008 !important;
+}
+
+[class*="token-allocation-desk-module"][class*="notice"] {
+  border-left-color: var(--hoodlums-green) !important;
+  background: rgba(var(--hoodlums-green-rgb), 0.07) !important;
+}
+
+[class*="token-allocation-desk-module"][class*="sectionHeading"] > span,
+[class*="token-allocation-desk-module"][class*="totalGood"] {
+  color: var(--hoodlums-green) !important;
+  background: rgba(var(--hoodlums-green-rgb), 0.1) !important;
+}
+
+[class*="token-allocation-desk-module"] input:focus,
+[class*="token-allocation-desk-module"] select:focus {
+  border-color: rgba(var(--hoodlums-green-rgb), 0.7) !important;
+}
