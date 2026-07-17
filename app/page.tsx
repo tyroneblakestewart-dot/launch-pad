@@ -6,7 +6,7 @@ import { GeneratedSiteProjectGuard } from "@/components/generated-site-project-g
 import { HoodlumsLaunchHero } from "@/components/hoodlums-launch-hero";
 import { NewTokenController } from "@/components/new-token-controller";
 import { RobinhoodTestnetDeploymentController } from "@/components/robinhood-testnet-deployment-controller";
-import { TokenStudio } from "@/components/token-studio";
+import { TokenStudioWorkspace } from "@/components/token-studio-workspace";
 
 export default function Home() {
   return (
@@ -20,7 +20,7 @@ export default function Home() {
       <RobinhoodTestnetDeploymentController />
       <HoodlumsLaunchHero />
       <div id="launch-studio" style={{ scrollMarginTop: 16, background: "#050706" }}>
-        <TokenStudio />
+        <TokenStudioWorkspace />
       </div>
     </>
   );
