@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import styles from "./app-navigation.module.css";
 
 const NAV_ITEMS = [
@@ -20,55 +20,6 @@ function isActive(pathname: string, href: string) {
 export function AppNavigation() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const dockRef = useRef<HTMLDivElement>(null);
-
-  useLayoutEffect(() => {
-    const viewport = window.visualViewport;
-    const dock = dockRef.current;
-    if (!dock) return;
-
-    let frame = 0;
-    const timers: number[] = [];
-
-    const measure = () => {
-      const visibleHeight = viewport?.height ?? window.innerHeight;
-      const visibleTop = viewport?.offsetTop ?? 0;
-      const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
-      const browserBottom = Math.max(0, layoutHeight - visibleHeight - visibleTop);
-
-      dock.style.setProperty("--browser-bottom", `${Math.round(browserBottom)}px`);
-      dock.dataset.ready = "true";
-    };
-
-    const scheduleMeasure = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(measure);
-    };
-
-    // Measure synchronously before React yields, then repeat while Safari settles
-    // its restored toolbar state after a refresh or back/forward navigation.
-    measure();
-    frame = requestAnimationFrame(measure);
-    timers.push(window.setTimeout(measure, 60));
-    timers.push(window.setTimeout(measure, 180));
-    timers.push(window.setTimeout(measure, 400));
-
-    viewport?.addEventListener("resize", scheduleMeasure);
-    viewport?.addEventListener("scroll", scheduleMeasure);
-    window.addEventListener("resize", scheduleMeasure);
-    window.addEventListener("pageshow", scheduleMeasure);
-    window.addEventListener("orientationchange", scheduleMeasure);
-
-    return () => {
-      cancelAnimationFrame(frame);
-      timers.forEach((timer) => window.clearTimeout(timer));
-      viewport?.removeEventListener("resize", scheduleMeasure);
-      viewport?.removeEventListener("scroll", scheduleMeasure);
-      window.removeEventListener("resize", scheduleMeasure);
-      window.removeEventListener("pageshow", scheduleMeasure);
-      window.removeEventListener("orientationchange", scheduleMeasure);
-    };
-  }, []);
 
   return (
     <>
@@ -108,15 +59,13 @@ export function AppNavigation() {
         </div>
       )}
 
-      <div ref={dockRef} className={styles.bottomDock}>
-        <nav className={styles.bottomNav} aria-label="Mobile launch workflow">
-          {NAV_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? styles.active : ""}>
-              <span>{item.step}</span><b>{item.short}</b>
-            </Link>
-          ))}
-        </nav>
-      </div>
+      <nav className={styles.bottomNav} aria-label="Mobile launch workflow">
+        {NAV_ITEMS.map((item) => (
+          <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? styles.active : ""}>
+            <span>{item.step}</span><b>{item.short}</b>
+          </Link>
+        ))}
+      </nav>
     </>
   );
 }
