@@ -71,14 +71,20 @@ export function AppNavigation() {
           ))}
         </div>
       )}
-
-      <nav className={styles.bottomNav} aria-label="Mobile launch workflow">
-        {NAV_ITEMS.map((item) => (
-          <Link key={item.href} href={item.href} aria-label={item.label} title={item.label} className={isActive(pathname, item.href) ? styles.active : ""}>
-            <NavIcon name={item.icon} />
-          </Link>
-        ))}
-      </nav>
     </>
+  );
+}
+
+export function MobileBottomNavigation() {
+  const pathname = usePathname();
+
+  return (
+    <nav className={styles.bottomNav} aria-label="Mobile launch workflow">
+      {NAV_ITEMS.map((item) => (
+        <Link key={item.href} href={item.href} aria-label={item.label} title={item.label} className={isActive(pathname, item.href) ? styles.active : ""}>
+          <NavIcon name={item.icon} />
+        </Link>
+      ))}
+    </nav>
   );
 }
