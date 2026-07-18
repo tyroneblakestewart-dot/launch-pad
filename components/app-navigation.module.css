@@ -31,8 +31,8 @@
   .bottomNav a:hover,
   .bottomNav a:focus,
   .bottomNav a:active,
-  .bottomNav a.active { display:grid; place-items:center; justify-self:center; width:46px; height:46px; margin:0; padding:0; border:1px solid transparent; border-radius:999px; background:transparent; color:rgba(239,244,236,.72); text-decoration:none; -webkit-tap-highlight-color:transparent; }
+  .bottomNav a.active { display:grid; place-items:center; justify-self:center; width:46px; height:46px; margin:0; padding:0; border:1px solid transparent; border-radius:999px; background:transparent !important; color:rgba(239,244,236,.72) !important; box-shadow:none !important; text-decoration:none; -webkit-tap-highlight-color:transparent; }
   .bottomNav a:focus-visible { outline:2px solid #c6f53e; outline-offset:2px; }
-  .bottomNav a.active { border-color:rgba(198,245,62,.34); background:rgba(198,245,62,.14); color:#c6f53e; box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 0 18px rgba(198,245,62,.08); }
+  .bottomNav a.active { border-color:rgba(198,245,62,.34) !important; background:rgba(198,245,62,.14) !important; color:#c6f53e !important; box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 0 18px rgba(198,245,62,.08) !important; }
   .bottomNav svg { width:23px; height:23px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 }
