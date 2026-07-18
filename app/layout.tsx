@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { AppNavigation } from "@/components/app-navigation";
+import { AppNavigation, MobileBottomNavigation } from "@/components/app-navigation";
 import { WalletProviderSelector } from "@/components/wallet-provider-selector";
 import "./globals.css";
 import "./hoodlums-brand-theme.css";
@@ -44,6 +44,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <AppNavigation />
         {children}
+        <MobileBottomNavigation />
         <WalletProviderSelector />
       </body>
     </html>
