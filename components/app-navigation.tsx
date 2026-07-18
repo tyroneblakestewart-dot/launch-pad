@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./app-navigation.module.css";
 
 const NAV_ITEMS = [
@@ -20,6 +20,34 @@ function isActive(pathname: string, href: string) {
 export function AppNavigation() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const dockRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    let frame = 0;
+    const updateDockOffset = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
+        const browserBottom = Math.max(0, layoutHeight - viewport.height - viewport.offsetTop);
+        dockRef.current?.style.setProperty("--browser-bottom", `${Math.round(browserBottom)}px`);
+      });
+    };
+
+    updateDockOffset();
+    viewport.addEventListener("resize", updateDockOffset);
+    viewport.addEventListener("scroll", updateDockOffset);
+    window.addEventListener("orientationchange", updateDockOffset);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener("resize", updateDockOffset);
+      viewport.removeEventListener("scroll", updateDockOffset);
+      window.removeEventListener("orientationchange", updateDockOffset);
+    };
+  }, []);
 
   return (
     <>
@@ -59,13 +87,15 @@ export function AppNavigation() {
         </div>
       )}
 
-      <nav className={styles.bottomNav} aria-label="Mobile launch workflow">
-        {NAV_ITEMS.map((item) => (
-          <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? styles.active : ""}>
-            <span>{item.step}</span><b>{item.short}</b>
-          </Link>
-        ))}
-      </nav>
+      <div ref={dockRef} className={styles.bottomDock}>
+        <nav className={styles.bottomNav} aria-label="Mobile launch workflow">
+          {NAV_ITEMS.map((item) => (
+            <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? styles.active : ""}>
+              <span>{item.step}</span><b>{item.short}</b>
+            </Link>
+          ))}
+        </nav>
+      </div>
     </>
   );
 }
