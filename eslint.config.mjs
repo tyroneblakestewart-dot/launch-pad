@@ -24,6 +24,7 @@ const eslintConfig = defineConfig([
       "components/token-allocation-desk.tsx",
       "components/wallet-provider-selector.tsx",
       "components/social-hub.tsx",
+      "components/liquidity-lab.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",
