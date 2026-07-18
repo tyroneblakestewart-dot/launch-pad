@@ -13,7 +13,8 @@ export default function Home() {
     <>
       <style>{`
         @media (max-width: 900px) {
-          section[aria-labelledby="hoodlums-dashboard-title"] > header:first-child {
+          section[aria-labelledby="hoodlums-dashboard-title"] > header:first-child,
+          section[aria-labelledby="hoodlums-dashboard-title"] > div > header:first-child {
             display: none !important;
           }
         }
