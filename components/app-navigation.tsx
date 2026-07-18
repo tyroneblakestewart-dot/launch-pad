@@ -22,7 +22,7 @@ function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
     return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 14.5zM8 20h8M12 16v4" /></svg>;
   }
   if (name === "wallet") {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5zM16 10h4v4h-4a2 2 0 1 1 0-4Z" /></svg>;
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Zm0 0 2-2h10M16 11h4v4h-4a2 2 0 1 1 0-4Z" /></svg>;
   }
   if (name === "allocate") {
     return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14M17 5v14M4 9h6M14 15h6M7 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" /></svg>;
