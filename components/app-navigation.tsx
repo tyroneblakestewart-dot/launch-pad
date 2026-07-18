@@ -1,8 +1,10 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./app-navigation.module.css";
 
 const NAV_ITEMS = [
@@ -57,7 +59,9 @@ export function AppNavigation() {
       </aside>
 
       <header className={styles.mobileHeader}>
-        <Link href="/" className={styles.mobileBrand}>HOODLUMS</Link>
+        <Link href="/" className={styles.mobileBrand} aria-label="HOODLUMS home">
+          <img src={HOODLUMS_WORDMARK_IMAGE} alt="HOODLUMS" width={1200} height={438} />
+        </Link>
         <button onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label="Open navigation menu">{open ? "Close" : "Menu"}</button>
       </header>
 
