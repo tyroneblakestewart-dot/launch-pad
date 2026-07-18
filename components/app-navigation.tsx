@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import styles from "./app-navigation.module.css";
 
 const NAV_ITEMS = [
@@ -22,30 +22,51 @@ export function AppNavigation() {
   const [open, setOpen] = useState(false);
   const dockRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const viewport = window.visualViewport;
-    if (!viewport) return;
+    const dock = dockRef.current;
+    if (!dock) return;
 
     let frame = 0;
-    const updateDockOffset = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
-        const browserBottom = Math.max(0, layoutHeight - viewport.height - viewport.offsetTop);
-        dockRef.current?.style.setProperty("--browser-bottom", `${Math.round(browserBottom)}px`);
-      });
+    const timers: number[] = [];
+
+    const measure = () => {
+      const visibleHeight = viewport?.height ?? window.innerHeight;
+      const visibleTop = viewport?.offsetTop ?? 0;
+      const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
+      const browserBottom = Math.max(0, layoutHeight - visibleHeight - visibleTop);
+
+      dock.style.setProperty("--browser-bottom", `${Math.round(browserBottom)}px`);
+      dock.dataset.ready = "true";
     };
 
-    updateDockOffset();
-    viewport.addEventListener("resize", updateDockOffset);
-    viewport.addEventListener("scroll", updateDockOffset);
-    window.addEventListener("orientationchange", updateDockOffset);
+    const scheduleMeasure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+
+    // Measure synchronously before React yields, then repeat while Safari settles
+    // its restored toolbar state after a refresh or back/forward navigation.
+    measure();
+    frame = requestAnimationFrame(measure);
+    timers.push(window.setTimeout(measure, 60));
+    timers.push(window.setTimeout(measure, 180));
+    timers.push(window.setTimeout(measure, 400));
+
+    viewport?.addEventListener("resize", scheduleMeasure);
+    viewport?.addEventListener("scroll", scheduleMeasure);
+    window.addEventListener("resize", scheduleMeasure);
+    window.addEventListener("pageshow", scheduleMeasure);
+    window.addEventListener("orientationchange", scheduleMeasure);
 
     return () => {
       cancelAnimationFrame(frame);
-      viewport.removeEventListener("resize", updateDockOffset);
-      viewport.removeEventListener("scroll", updateDockOffset);
-      window.removeEventListener("orientationchange", updateDockOffset);
+      timers.forEach((timer) => window.clearTimeout(timer));
+      viewport?.removeEventListener("resize", scheduleMeasure);
+      viewport?.removeEventListener("scroll", scheduleMeasure);
+      window.removeEventListener("resize", scheduleMeasure);
+      window.removeEventListener("pageshow", scheduleMeasure);
+      window.removeEventListener("orientationchange", scheduleMeasure);
     };
   }, []);
 
