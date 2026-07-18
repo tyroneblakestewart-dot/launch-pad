@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { AppNavigation } from "@/components/app-navigation";
 import { WalletProviderSelector } from "@/components/wallet-provider-selector";
 import "./globals.css";
 import "./hoodlums-brand-theme.css";
@@ -14,9 +15,7 @@ export const metadata: Metadata = {
   },
   description:
     "Build, test and prepare meme-token launches through the private HOODLUMS command centre.",
-  alternates: {
-    canonical: "/",
-  },
+  alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     url: "/",
@@ -39,14 +38,11 @@ export const viewport: Viewport = {
   themeColor: "#030805",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <body>
+        <AppNavigation />
         {children}
         <WalletProviderSelector />
       </body>
