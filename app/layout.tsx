@@ -4,6 +4,7 @@ import "./globals.css";
 import "./hoodlums-brand-theme.css";
 import "./hoodlums-dashboard-consistency.css";
 import "./hoodlums-studio-consistency.css";
+import "./allocation-mobile-tabs.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://hoodlums.dev"),
