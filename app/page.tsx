@@ -11,6 +11,13 @@ import { TokenStudioWorkspace } from "@/components/token-studio-workspace";
 export default function Home() {
   return (
     <>
+      <style>{`
+        @media (max-width: 900px) {
+          section[aria-labelledby="hoodlums-dashboard-title"] > header:first-child {
+            display: none !important;
+          }
+        }
+      `}</style>
       <ArtworkUploadController />
       <ArtworkSiteGenerator />
       <DexscreenerSiteSection />
