@@ -17,38 +17,23 @@
 .mobileHeader, .bottomNav, .mobileMenu { display:none; }
 @media (min-width:1100px) { :global(body) { padding-left:238px; } }
 @media (max-width:1099px) {
+  :global(html) { scroll-behavior:smooth; overscroll-behavior-y:none; }
+  :global(body) { overflow-x:hidden; padding-bottom:calc(64px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling:touch; }
   .sidebar { display:none; }
   .mobileHeader { position:sticky; top:0; z-index:95; display:flex; align-items:center; justify-content:space-between; min-height:56px; padding:10px 16px; border-bottom:1px solid rgba(131,183,139,.2); background:rgba(4,8,5,.96); backdrop-filter:blur(14px); }
   .mobileBrand { color:#b9ef4d; text-decoration:none; font-weight:950; letter-spacing:.1em; }
   .mobileHeader button { min-height:36px; padding:0 12px; border:1px solid rgba(185,239,77,.35); border-radius:8px; background:#0b110c; color:#f3f6ef; font-weight:800; }
   .mobileMenu { position:fixed; inset:56px 0 auto 0; z-index:94; display:grid; gap:7px; padding:12px; border-bottom:1px solid rgba(131,183,139,.2); background:rgba(4,8,5,.99); box-shadow:0 20px 45px rgba(0,0,0,.45); }
-  .bottomNav { position:fixed; inset:auto 0 0 0; z-index:96; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); padding:7px max(8px, env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); border-top:1px solid rgba(7,16,8,.28); background:#b9ef4d; box-shadow:0 -10px 28px rgba(0,0,0,.28); }
+  .bottomNav { position:fixed; left:0; right:0; bottom:0; top:auto; z-index:999; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); width:100%; min-height:54px; padding:3px max(8px, env(safe-area-inset-right)) calc(3px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); border-top:1px solid rgba(7,16,8,.3); background:#b9ef4d; box-shadow:0 -6px 16px rgba(0,0,0,.2); transform:translate3d(0,0,0); backface-visibility:hidden; contain:layout paint; will-change:transform; }
   .bottomNav a,
   .bottomNav a:link,
   .bottomNav a:visited,
   .bottomNav a:hover,
   .bottomNav a:focus,
   .bottomNav a:active,
-  .bottomNav a.active {
-    min-width:0;
-    min-height:58px;
-    display:grid;
-    align-content:center;
-    justify-items:center;
-    gap:4px;
-    margin:0;
-    padding:5px 2px;
-    border:0;
-    border-radius:0;
-    background:transparent !important;
-    box-shadow:none !important;
-    color:#071008;
-    text-decoration:none;
-    transform:none;
-  }
-  .bottomNav span { display:grid; place-items:center; width:28px; height:28px; border-radius:8px; background:#071008; color:#b9ef4d; font:800 10px "IBM Plex Mono", monospace; }
-  .bottomNav b { max-width:100%; overflow:hidden; color:#071008; font-size:10px; line-height:1.1; text-overflow:ellipsis; white-space:nowrap; }
-  .bottomNav a.active span { outline:2px solid #071008; outline-offset:2px; }
+  .bottomNav a.active { min-width:0; min-height:48px; display:grid; align-content:center; justify-items:center; gap:2px; margin:0; padding:3px 2px; border:0; border-radius:0; background:transparent !important; box-shadow:none !important; color:#071008; text-decoration:none; transform:none; -webkit-tap-highlight-color:transparent; }
+  .bottomNav span { display:grid; place-items:center; width:24px; height:24px; border-radius:7px; background:#071008; color:#b9ef4d; font:800 9px "IBM Plex Mono", monospace; }
+  .bottomNav b { max-width:100%; overflow:hidden; color:#071008; font-size:9px; line-height:1; text-overflow:ellipsis; white-space:nowrap; }
+  .bottomNav a.active span { outline:2px solid #071008; outline-offset:1px; }
   .bottomNav a.active b { font-weight:950; }
-  :global(body) { padding-bottom:82px; }
 }
