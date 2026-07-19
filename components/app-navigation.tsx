@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./app-navigation.module.css";
 
@@ -13,6 +13,15 @@ const NAV_ITEMS = [
   { href: "/allocations", label: "Allocations", icon: "allocate", step: "3", description: "Plan token distribution" },
   { href: "/liquidity-lab", label: "Liquidity Lab", icon: "liquidity", step: "4", description: "Test the token pool" },
 ] as const;
+
+type Eip1193Provider = {
+  request: (args: { method: string; params?: unknown[] | Record<string, unknown> }) => Promise<unknown>;
+};
+
+type BrowserWindow = Window & {
+  ethereum?: Eip1193Provider;
+  __launchpadEthereum?: Eip1193Provider;
+};
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -39,19 +48,20 @@ function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
 export function AppNavigation() {
   const pathname = usePathname();
   const [walletAddress, setWalletAddress] = useState("");
+  const [connecting, setConnecting] = useState(false);
 
-  useEffect(() => {
-    function handleConnected(event: Event) {
-      const address = (event as CustomEvent<{ address?: string }>).detail?.address;
-      if (address) setWalletAddress(address);
+  async function connectWallet() {
+    const browserWindow = window as BrowserWindow;
+    const provider = browserWindow.__launchpadEthereum || browserWindow.ethereum;
+    if (!provider || connecting) return;
+
+    setConnecting(true);
+    try {
+      const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
+      if (accounts[0]) setWalletAddress(accounts[0]);
+    } finally {
+      setConnecting(false);
     }
-
-    window.addEventListener("hoodlums:wallet-connected", handleConnected);
-    return () => window.removeEventListener("hoodlums:wallet-connected", handleConnected);
-  }, []);
-
-  function openWalletSelector() {
-    window.dispatchEvent(new Event("hoodlums:open-wallet-selector"));
   }
 
   return (
@@ -80,8 +90,8 @@ export function AppNavigation() {
         <Link href="/" className={styles.mobileBrand} aria-label="HOODLUMS home">
           <img src={HOODLUMS_WORDMARK_IMAGE} alt="HOODLUMS" width={1200} height={438} />
         </Link>
-        <button onClick={openWalletSelector} aria-label="Connect wallet">
-          {walletAddress ? shortAddress(walletAddress) : "Connect wallet"}
+        <button className="wallet-button" onClick={connectWallet} disabled={connecting} aria-label="Connect wallet">
+          {walletAddress ? shortAddress(walletAddress) : connecting ? "Connecting…" : "Connect wallet"}
         </button>
       </header>
     </>
