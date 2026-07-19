@@ -14,9 +14,22 @@ const NAV_ITEMS = [
   { href: "/liquidity-lab", label: "Liquidity Lab", icon: "liquidity", step: "4", description: "Test the token pool" },
 ] as const;
 
+type Eip1193Provider = {
+  request: (args: { method: string; params?: unknown[] | Record<string, unknown> }) => Promise<unknown>;
+};
+
+type BrowserWindow = Window & {
+  ethereum?: Eip1193Provider;
+  __launchpadEthereum?: Eip1193Provider;
+};
+
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   return pathname.startsWith(href);
+}
+
+function shortAddress(value: string) {
+  return value.length > 12 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
 }
 
 function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
@@ -34,7 +47,22 @@ function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
 
 export function AppNavigation() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const [walletAddress, setWalletAddress] = useState("");
+  const [connecting, setConnecting] = useState(false);
+
+  async function connectWallet() {
+    const browserWindow = window as BrowserWindow;
+    const provider = browserWindow.__launchpadEthereum || browserWindow.ethereum;
+    if (!provider || connecting) return;
+
+    setConnecting(true);
+    try {
+      const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
+      if (accounts[0]) setWalletAddress(accounts[0]);
+    } finally {
+      setConnecting(false);
+    }
+  }
 
   return (
     <>
@@ -62,19 +90,10 @@ export function AppNavigation() {
         <Link href="/" className={styles.mobileBrand} aria-label="HOODLUMS home">
           <img src={HOODLUMS_WORDMARK_IMAGE} alt="HOODLUMS" width={1200} height={438} />
         </Link>
-        <button onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label="Open navigation menu">{open ? "Close" : "Menu"}</button>
+        <button className="wallet-button" onClick={connectWallet} disabled={connecting} aria-label="Connect wallet">
+          {walletAddress ? shortAddress(walletAddress) : connecting ? "Connecting…" : "Connect wallet"}
+        </button>
       </header>
-
-      {open && (
-        <div className={styles.mobileMenu}>
-          {NAV_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? styles.active : ""} onClick={() => setOpen(false)}>
-              <span className={styles.step}>{item.step}</span>
-              <span><b>{item.label}</b><small>{item.description}</small></span>
-            </Link>
-          ))}
-        </div>
-      )}
     </>
   );
 }
