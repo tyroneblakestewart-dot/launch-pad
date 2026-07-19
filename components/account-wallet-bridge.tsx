@@ -2,8 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 
+type AccountsChangedHandler = (accounts: string[]) => void;
+
 type Eip1193Provider = {
   request: (args: { method: string; params?: unknown[] | Record<string, unknown> }) => Promise<unknown>;
+  on?: (event: "accountsChanged", handler: AccountsChangedHandler) => void;
+  removeListener?: (event: "accountsChanged", handler: AccountsChangedHandler) => void;
   isMetaMask?: boolean;
   isRabby?: boolean;
   isPhantom?: boolean;
@@ -73,16 +77,18 @@ async function discoverProvider(walletName: string) {
   return exact?.provider || injectedFallback(walletName, window as BrowserWindow);
 }
 
-async function requestAccountChoice(provider: Eip1193Provider) {
-  try {
-    await provider.request({
-      method: "wallet_requestPermissions",
-      params: [{ eth_accounts: {} }],
-    });
-  } catch (error) {
-    const providerError = error as ProviderError;
-    const unsupported = providerError.code === -32601 || providerError.code === 4200;
-    if (!unsupported) throw error;
+async function requestAccountChoice(walletName: string, provider: Eip1193Provider) {
+  if (walletName === "MetaMask") {
+    try {
+      await provider.request({
+        method: "wallet_requestPermissions",
+        params: [{ eth_accounts: {} }],
+      });
+    } catch (error) {
+      const providerError = error as ProviderError;
+      const unsupported = providerError.code === -32601 || providerError.code === 4200;
+      if (!unsupported) throw error;
+    }
   }
 
   return (await provider.request({ method: "eth_requestAccounts" })) as string[];
@@ -93,6 +99,45 @@ export function AccountWalletBridge() {
   const [confirmedWallet, setConfirmedWallet] = useState("");
   const [pendingWallet, setPendingWallet] = useState<PendingWallet | null>(null);
   const pendingRef = useRef<PendingWallet | null>(null);
+  const activeListenerRef = useRef<{ provider: Eip1193Provider; handler: AccountsChangedHandler } | null>(null);
+
+  function clearAccountListener() {
+    const active = activeListenerRef.current;
+    if (active) active.provider.removeListener?.("accountsChanged", active.handler);
+    activeListenerRef.current = null;
+  }
+
+  function updatePendingAccount(walletName: string, provider: Eip1193Provider, account: string) {
+    const selection = { walletName, account, provider };
+    pendingRef.current = selection;
+    setPendingWallet(selection);
+    setConfirmedWallet("");
+    setStatus(`Check that ${shortAddress(account)} is the address you want, then confirm it.`);
+
+    const button = document.querySelector<HTMLButtonElement>(`button[data-wallet-option="${walletName.toLowerCase()}"]`);
+    const badge = button?.querySelector("em");
+    if (badge) badge.textContent = shortAddress(account);
+  }
+
+  function watchAccountChanges(walletName: string, provider: Eip1193Provider) {
+    clearAccountListener();
+    const handler: AccountsChangedHandler = (accounts) => {
+      const account = accounts?.[0];
+      if (!account) {
+        pendingRef.current = null;
+        setPendingWallet(null);
+        setConfirmedWallet("");
+        setStatus(`${walletName} disconnected this site. Choose an account in the wallet, then connect again.`);
+        return;
+      }
+
+      updatePendingAccount(walletName, provider, account);
+      setStatus(`${walletName} changed to ${shortAddress(account)}. Confirm this address before it is used.`);
+    };
+
+    provider.on?.("accountsChanged", handler);
+    activeListenerRef.current = { provider, handler };
+  }
 
   function resetWalletCards() {
     document.querySelectorAll<HTMLButtonElement>("button[data-wallet-option]").forEach((button) => {
@@ -110,7 +155,7 @@ export function AccountWalletBridge() {
     delete browserWindow.__launchpadEthereum;
     localStorage.removeItem("hoodlums.account.wallet");
     resetWalletCards();
-    setStatus("Choose a wallet again. Your wallet will reopen its account selector so you can pick another address.");
+    setStatus("Choose a wallet again. For Rabby or Phantom, switch the active account inside the wallet if you want a different address.");
   }
 
   function confirmWallet() {
@@ -146,7 +191,7 @@ export function AccountWalletBridge() {
       const connect = async () => {
         if (button.dataset.connecting === "true") return;
         button.dataset.connecting = "true";
-        setStatus(`Opening ${walletName} account selector…`);
+        setStatus(walletName === "MetaMask" ? "Opening MetaMask account selector…" : `Connecting to ${walletName}…`);
 
         try {
           const provider = await discoverProvider(walletName);
@@ -155,23 +200,18 @@ export function AccountWalletBridge() {
             return;
           }
 
-          const accounts = await requestAccountChoice(provider);
+          const accounts = await requestAccountChoice(walletName, provider);
           const account = accounts?.[0];
           if (!account) {
             setStatus(`${walletName} did not return an account.`);
             return;
           }
 
-          const selection = { walletName, account, provider };
-          pendingRef.current = selection;
-          setPendingWallet(selection);
-          setConfirmedWallet("");
-          setStatus(`Check that ${shortAddress(account)} is the address you want, then confirm it.`);
+          watchAccountChanges(walletName, provider);
+          updatePendingAccount(walletName, provider, account);
 
           walletButtons.forEach((candidate) => candidate.removeAttribute("aria-current"));
           button.setAttribute("aria-current", "true");
-          const badge = button.querySelector("em");
-          if (badge) badge.textContent = shortAddress(account);
         } catch (error) {
           const message = error instanceof Error ? error.message : "Wallet account selection was cancelled.";
           setStatus(message);
@@ -184,7 +224,10 @@ export function AccountWalletBridge() {
       cleanups.push(() => button.removeEventListener("click", connect));
     });
 
-    return () => cleanups.forEach((cleanup) => cleanup());
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+      clearAccountListener();
+    };
   }, []);
 
   return (
