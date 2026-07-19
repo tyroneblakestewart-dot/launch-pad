@@ -23,7 +23,7 @@
   .mobileHeader { position:sticky; top:0; z-index:95; display:flex; align-items:center; justify-content:space-between; min-height:72px; padding:8px 16px; border-bottom:1px solid rgba(131,183,139,.2); background:rgba(4,8,5,.96); backdrop-filter:blur(14px); }
   .mobileBrand { display:flex; align-items:center; width:156px; min-width:0; color:#b9ef4d; text-decoration:none; }
   .mobileBrand img { display:block; width:100%; height:auto; max-height:54px; object-fit:contain; object-position:left center; }
-  .mobileHeader button { min-height:36px; padding:0 12px; border:1px solid rgba(185,239,77,.35); border-radius:8px; background:#0b110c; color:#f3f6ef; font-weight:800; }
+  .mobileHeader button { min-height:30px; padding:0 10px; border:1px solid #b9ef4d; border-radius:7px; background:#b9ef4d; color:#071008; font-size:12px; line-height:1; font-weight:900; white-space:nowrap; }
   .mobileMenu { position:fixed; inset:72px 0 auto 0; z-index:994; display:grid; gap:7px; padding:12px; border-bottom:1px solid rgba(131,183,139,.2); background:rgba(4,8,5,.99); box-shadow:0 20px 45px rgba(0,0,0,.45); }
   :global(section[aria-labelledby="hoodlums-dashboard-title"] > header a[aria-label="HOODLUMS home"]) { display:none !important; }
   :global(section[aria-labelledby="hoodlums-dashboard-title"] > header) { justify-content:flex-end !important; }
