@@ -26,6 +26,8 @@ type PendingWallet = {
   provider: Eip1193Provider;
 };
 
+type ProviderError = Error & { code?: number };
+
 const WALLET_NAMES = ["MetaMask", "Rabby", "Phantom"] as const;
 
 const WALLET_MATCHERS: Record<string, string[]> = {
@@ -71,6 +73,21 @@ async function discoverProvider(walletName: string) {
   return exact?.provider || injectedFallback(walletName, window as BrowserWindow);
 }
 
+async function requestAccountChoice(provider: Eip1193Provider) {
+  try {
+    await provider.request({
+      method: "wallet_requestPermissions",
+      params: [{ eth_accounts: {} }],
+    });
+  } catch (error) {
+    const providerError = error as ProviderError;
+    const unsupported = providerError.code === -32601 || providerError.code === 4200;
+    if (!unsupported) throw error;
+  }
+
+  return (await provider.request({ method: "eth_requestAccounts" })) as string[];
+}
+
 export function AccountWalletBridge() {
   const [status, setStatus] = useState("Choose a wallet below. You will confirm the wallet and address before it is used.");
   const [confirmedWallet, setConfirmedWallet] = useState("");
@@ -93,7 +110,7 @@ export function AccountWalletBridge() {
     delete browserWindow.__launchpadEthereum;
     localStorage.removeItem("hoodlums.account.wallet");
     resetWalletCards();
-    setStatus("Choose a wallet type or a different wallet address.");
+    setStatus("Choose a wallet again. Your wallet will reopen its account selector so you can pick another address.");
   }
 
   function confirmWallet() {
@@ -129,7 +146,7 @@ export function AccountWalletBridge() {
       const connect = async () => {
         if (button.dataset.connecting === "true") return;
         button.dataset.connecting = "true";
-        setStatus(`Looking for ${walletName}…`);
+        setStatus(`Opening ${walletName} account selector…`);
 
         try {
           const provider = await discoverProvider(walletName);
@@ -138,7 +155,7 @@ export function AccountWalletBridge() {
             return;
           }
 
-          const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
+          const accounts = await requestAccountChoice(provider);
           const account = accounts?.[0];
           if (!account) {
             setStatus(`${walletName} did not return an account.`);
@@ -156,7 +173,7 @@ export function AccountWalletBridge() {
           const badge = button.querySelector("em");
           if (badge) badge.textContent = shortAddress(account);
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Wallet connection was cancelled.";
+          const message = error instanceof Error ? error.message : "Wallet account selection was cancelled.";
           setStatus(message);
         } finally {
           delete button.dataset.connecting;
