@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Eip1193Provider = {
   request: (args: { method: string; params?: unknown[] | Record<string, unknown> }) => Promise<unknown>;
@@ -19,6 +19,14 @@ type BrowserWindow = Window & {
   phantom?: { ethereum?: Eip1193Provider };
   __launchpadEthereum?: Eip1193Provider;
 };
+
+type PendingWallet = {
+  walletName: string;
+  account: string;
+  provider: Eip1193Provider;
+};
+
+const WALLET_NAMES = ["MetaMask", "Rabby", "Phantom"] as const;
 
 const WALLET_MATCHERS: Record<string, string[]> = {
   MetaMask: ["metamask", "io.metamask"],
@@ -64,20 +72,59 @@ async function discoverProvider(walletName: string) {
 }
 
 export function AccountWalletBridge() {
-  const [status, setStatus] = useState("Choose a wallet below to connect it to your Hoodlums account.");
-  const [connectedWallet, setConnectedWallet] = useState("");
+  const [status, setStatus] = useState("Choose a wallet below. You will confirm the wallet and address before it is used.");
+  const [confirmedWallet, setConfirmedWallet] = useState("");
+  const [pendingWallet, setPendingWallet] = useState<PendingWallet | null>(null);
+  const pendingRef = useRef<PendingWallet | null>(null);
+
+  function resetWalletCards() {
+    document.querySelectorAll<HTMLButtonElement>("button[data-wallet-option]").forEach((button) => {
+      button.removeAttribute("aria-current");
+      const badge = button.querySelector("em");
+      if (badge) badge.textContent = "Connect";
+    });
+  }
+
+  function changeWallet() {
+    pendingRef.current = null;
+    setPendingWallet(null);
+    setConfirmedWallet("");
+    const browserWindow = window as BrowserWindow;
+    delete browserWindow.__launchpadEthereum;
+    localStorage.removeItem("hoodlums.account.wallet");
+    resetWalletCards();
+    setStatus("Choose a wallet type or a different wallet address.");
+  }
+
+  function confirmWallet() {
+    const selected = pendingRef.current;
+    if (!selected) return;
+
+    const browserWindow = window as BrowserWindow;
+    browserWindow.__launchpadEthereum = selected.provider;
+    localStorage.setItem(
+      "hoodlums.account.wallet",
+      JSON.stringify({ walletName: selected.walletName, account: selected.account }),
+    );
+    setConfirmedWallet(`${selected.walletName} · ${shortAddress(selected.account)}`);
+    setStatus("Confirmed. This exact wallet and address will be used for launch actions.");
+    setPendingWallet(null);
+    pendingRef.current = null;
+  }
 
   useEffect(() => {
     const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("button"));
-    const walletButtons = buttons.filter((button) => ["MetaMask", "Rabby", "Phantom"].some((name) => button.textContent?.includes(name)));
+    const walletButtons = buttons.filter((button) => WALLET_NAMES.some((name) => button.textContent?.includes(name)));
     const cleanups: Array<() => void> = [];
 
     walletButtons.forEach((button) => {
-      const walletName = ["MetaMask", "Rabby", "Phantom"].find((name) => button.textContent?.includes(name));
+      const walletName = WALLET_NAMES.find((name) => button.textContent?.includes(name));
       if (!walletName) return;
 
       button.disabled = false;
       button.dataset.walletOption = walletName.toLowerCase();
+      const originalBadge = button.querySelector("em");
+      if (originalBadge) originalBadge.textContent = "Connect";
 
       const connect = async () => {
         if (button.dataset.connecting === "true") return;
@@ -98,16 +145,16 @@ export function AccountWalletBridge() {
             return;
           }
 
-          const browserWindow = window as BrowserWindow;
-          browserWindow.__launchpadEthereum = provider;
-          localStorage.setItem("hoodlums.account.wallet", JSON.stringify({ walletName, account }));
-          setConnectedWallet(`${walletName} · ${shortAddress(account)}`);
-          setStatus(`${walletName} is connected and selected for launch actions.`);
+          const selection = { walletName, account, provider };
+          pendingRef.current = selection;
+          setPendingWallet(selection);
+          setConfirmedWallet("");
+          setStatus(`Check that ${shortAddress(account)} is the address you want, then confirm it.`);
 
-          const badge = button.querySelector("em");
-          if (badge) badge.textContent = shortAddress(account);
           walletButtons.forEach((candidate) => candidate.removeAttribute("aria-current"));
           button.setAttribute("aria-current", "true");
+          const badge = button.querySelector("em");
+          if (badge) badge.textContent = shortAddress(account);
         } catch (error) {
           const message = error instanceof Error ? error.message : "Wallet connection was cancelled.";
           setStatus(message);
@@ -126,17 +173,30 @@ export function AccountWalletBridge() {
   return (
     <>
       <aside className="account-wallet-status" aria-live="polite">
-        <b>{connectedWallet || "Wallet connection"}</b>
+        <b>{pendingWallet ? `${pendingWallet.walletName} · ${shortAddress(pendingWallet.account)}` : confirmedWallet || "Wallet connection"}</b>
         <span>{status}</span>
+        {pendingWallet ? (
+          <div className="account-wallet-actions">
+            <button type="button" onClick={confirmWallet}>Confirm wallet</button>
+            <button type="button" onClick={changeWallet}>Change wallet</button>
+          </div>
+        ) : confirmedWallet ? (
+          <div className="account-wallet-actions">
+            <button type="button" onClick={changeWallet}>Change wallet or address</button>
+          </div>
+        ) : null}
       </aside>
       <style jsx global>{`
         button[data-wallet-option] { cursor: pointer !important; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
         button[data-wallet-option]:hover { border-color: rgba(185,239,77,.48) !important; background: #0c140d !important; }
         button[data-wallet-option]:active { transform: scale(.995); }
         button[data-wallet-option][aria-current="true"] { border-color: #b9ef4d !important; box-shadow: inset 0 0 0 1px rgba(185,239,77,.18); }
-        .account-wallet-status { position: fixed; right: 18px; bottom: calc(94px + env(safe-area-inset-bottom)); z-index: 80; display: grid; gap: 3px; width: min(340px, calc(100% - 36px)); padding: 12px 14px; border: 1px solid rgba(185,239,77,.28); border-radius: 12px; background: rgba(5,10,6,.94); box-shadow: 0 18px 50px rgba(0,0,0,.35); color: #eef4ea; backdrop-filter: blur(14px); }
+        .account-wallet-status { position: fixed; right: 18px; bottom: calc(94px + env(safe-area-inset-bottom)); z-index: 80; display: grid; gap: 7px; width: min(360px, calc(100% - 36px)); padding: 12px 14px; border: 1px solid rgba(185,239,77,.28); border-radius: 12px; background: rgba(5,10,6,.96); box-shadow: 0 18px 50px rgba(0,0,0,.35); color: #eef4ea; backdrop-filter: blur(14px); }
         .account-wallet-status b { color: #b9ef4d; font-size: 11px; }
         .account-wallet-status span { color: #8d9990; font-size: 10px; line-height: 1.45; }
+        .account-wallet-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 2px; }
+        .account-wallet-actions button { min-height: 30px; padding: 6px 10px; border: 1px solid rgba(185,239,77,.35); border-radius: 8px; background: #b9ef4d; color: #071006; font: 800 10px "IBM Plex Mono", monospace; cursor: pointer; }
+        .account-wallet-actions button + button { background: transparent; color: #c8d1c9; }
         @media (min-width: 1100px) { .account-wallet-status { bottom: 24px; } }
       `}</style>
     </>
