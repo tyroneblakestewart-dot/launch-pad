@@ -3,7 +3,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./app-navigation.module.css";
 
@@ -14,22 +13,9 @@ const NAV_ITEMS = [
   { href: "/liquidity-lab", label: "Liquidity Lab", icon: "liquidity", step: "4", description: "Test the token pool" },
 ] as const;
 
-type Eip1193Provider = {
-  request: (args: { method: string; params?: unknown[] | Record<string, unknown> }) => Promise<unknown>;
-};
-
-type BrowserWindow = Window & {
-  ethereum?: Eip1193Provider;
-  __launchpadEthereum?: Eip1193Provider;
-};
-
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   return pathname.startsWith(href);
-}
-
-function shortAddress(value: string) {
-  return value.length > 12 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
 }
 
 function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
@@ -47,22 +33,6 @@ function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
 
 export function AppNavigation() {
   const pathname = usePathname();
-  const [walletAddress, setWalletAddress] = useState("");
-  const [connecting, setConnecting] = useState(false);
-
-  async function connectWallet() {
-    const browserWindow = window as BrowserWindow;
-    const provider = browserWindow.__launchpadEthereum || browserWindow.ethereum;
-    if (!provider || connecting) return;
-
-    setConnecting(true);
-    try {
-      const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
-      if (accounts[0]) setWalletAddress(accounts[0]);
-    } finally {
-      setConnecting(false);
-    }
-  }
 
   return (
     <>
@@ -83,6 +53,10 @@ export function AppNavigation() {
             );
           })}
         </nav>
+        <Link href="/account" className={`${styles.accountLink} ${isActive(pathname, "/account") ? styles.accountLinkActive : ""}`}>
+          <span>◉</span>
+          <span><b>Account</b><small>Sign in and connect accounts</small></span>
+        </Link>
         <div className={styles.sidebarNote}><b>Testnet mode</b><span>Robinhood Chain · 46630</span></div>
       </aside>
 
@@ -90,9 +64,9 @@ export function AppNavigation() {
         <Link href="/" className={styles.mobileBrand} aria-label="HOODLUMS home">
           <img src={HOODLUMS_WORDMARK_IMAGE} alt="HOODLUMS" width={1200} height={438} />
         </Link>
-        <button className="wallet-button" onClick={connectWallet} disabled={connecting} aria-label="Connect wallet">
-          {walletAddress ? shortAddress(walletAddress) : connecting ? "Connecting…" : "Connect wallet"}
-        </button>
+        <Link href="/account" className={styles.accountButton} aria-label="Open account">
+          Account
+        </Link>
       </header>
     </>
   );

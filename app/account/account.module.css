@@ -1,0 +1,29 @@
+.page { min-height:100vh; padding:48px 22px 120px; background:radial-gradient(circle at top, rgba(185,239,77,.07), transparent 34%), #030805; color:#f2f5ef; }
+.panel { width:min(760px, 100%); margin:0 auto; padding:28px; border:1px solid rgba(131,183,139,.2); border-radius:18px; background:rgba(7,12,8,.96); box-shadow:0 24px 80px rgba(0,0,0,.32); }
+.header { display:grid; gap:10px; margin-bottom:28px; }
+.header p { margin:0; color:#b9ef4d; font:800 10px "IBM Plex Mono", monospace; letter-spacing:.16em; }
+.header h1 { margin:0; font-size:clamp(28px, 5vw, 44px); line-height:1.02; letter-spacing:-.04em; }
+.header span { max-width:620px; color:#96a098; font-size:14px; line-height:1.65; }
+.group { display:grid; gap:13px; }
+.groupHeading { display:flex; align-items:end; justify-content:space-between; gap:16px; }
+.groupHeading h2 { margin:0; font-size:16px; }
+.groupHeading small { color:#748078; font:700 9px "IBM Plex Mono", monospace; letter-spacing:.12em; text-transform:uppercase; }
+.options { display:grid; gap:9px; }
+.options button { width:100%; display:grid; grid-template-columns:40px 1fr auto; align-items:center; gap:12px; min-height:62px; padding:10px 13px; border:1px solid rgba(131,183,139,.16); border-radius:12px; background:#090e0a; color:#eef3eb; text-align:left; }
+.options button:disabled { opacity:1; cursor:default; }
+.options button > span:nth-child(2) { display:grid; gap:3px; }
+.options b { font-size:13px; }
+.options small { color:#7e8981; font-size:11px; }
+.options em { color:#68736b; font:700 9px "IBM Plex Mono", monospace; font-style:normal; letter-spacing:.08em; text-transform:uppercase; }
+.mark { display:grid; place-items:center; width:40px; height:40px; border-radius:10px; background:rgba(185,239,77,.11); color:#b9ef4d; font:900 11px "IBM Plex Mono", monospace; }
+.divider { display:flex; align-items:center; gap:12px; margin:24px 0; color:#59635c; font:700 9px "IBM Plex Mono", monospace; letter-spacing:.14em; }
+.divider::before, .divider::after { content:""; flex:1; height:1px; background:rgba(131,183,139,.14); }
+.footer { margin-top:24px; padding-top:18px; border-top:1px solid rgba(131,183,139,.14); color:#748078; font-size:11px; line-height:1.6; }
+@media (max-width:700px) {
+  .page { padding:22px 14px 110px; }
+  .panel { padding:20px 14px; border-radius:14px; }
+  .header { margin-bottom:23px; }
+  .options button { grid-template-columns:36px 1fr; min-height:58px; }
+  .mark { width:36px; height:36px; }
+  .options em { display:none; }
+}
