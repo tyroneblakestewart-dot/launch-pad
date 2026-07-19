@@ -17,9 +17,9 @@
 .options em { color:#68736b; font:700 9px "IBM Plex Mono", monospace; font-style:normal; letter-spacing:.08em; text-transform:uppercase; }
 .mark { display:grid; place-items:center; width:40px; height:40px; overflow:hidden; border:1px solid rgba(255,255,255,.1); border-radius:10px; background:#fff; color:#0b0f0c; }
 .mark svg { width:25px; height:25px; display:block; }
+.mark img { width:100%; height:100%; display:block; object-fit:contain; }
 .github, .x { background:#fff; color:#090b0a; }
-.metamask { background:#fff4e9; }
-.rabby { background:#eef0ff; }
+.metamask, .rabby { background:#fff; }
 .phantom { background:#f1edff; }
 .divider { display:flex; align-items:center; gap:12px; margin:24px 0; color:#59635c; font:700 9px "IBM Plex Mono", monospace; letter-spacing:.14em; }
 .divider::before, .divider::after { content:""; flex:1; height:1px; background:rgba(131,183,139,.14); }
