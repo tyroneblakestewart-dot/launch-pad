@@ -7,7 +7,6 @@ import styles from "./token-studio-workspace.module.css";
 
 const STORAGE_KEY = "private-meme-token-studio-projects-v1";
 const HOODLUMS_CONTRACT = "0x3bf7447cd055f1475a8b09090c7b062abc9d3798";
-const EXPLORER_URL = "https://explorer.testnet.chain.robinhood.com";
 
 const HOODLUMS_LAUNCH: TokenProject = {
   id: "hoodlums-robinhood-testnet-46630",
@@ -134,44 +133,23 @@ export function TokenStudioWorkspace() {
 
   if (!isOpen) {
     return (
-      <section className={styles.closedWorkspace} aria-labelledby="saved-launches-title">
-        <div className={styles.statusRow}>
-          <span className={styles.liveDot} />
-          <span>LAUNCH RECORD PROTECTED</span>
-        </div>
+      <section className={styles.closedWorkspace} aria-labelledby="start-launch-title">
         <div className={styles.copy}>
-          <p className={styles.eyebrow}>SAVED LAUNCHES</p>
-          <h2 id="saved-launches-title">Your Hoodlums token is safe, without keeping the form open.</h2>
+          <p className={styles.eyebrow}>BUILD. TEST. LAUNCH.</p>
+          <h2 id="start-launch-title">Launch a meme token without the clutter.</h2>
           <p>
-            The 1,000,000,000 HOODLUMS supply and contract address remain available in
-            the saved-launch vault. The token itself lives on Robinhood Chain Testnet and
-            cannot be removed by closing this workspace or clearing the form.
+            Start a new token or continue a project you already saved. Everything else stays
+            out of the way until you need it.
           </p>
-        </div>
-
-        <div className={styles.tokenRecord}>
-          <div className={styles.tokenMark}>H</div>
-          <div>
-            <strong>Hoodlums</strong>
-            <span>$HOODLUMS · 1,000,000,000 · LAUNCHED</span>
-            <code>{HOODLUMS_CONTRACT}</code>
-          </div>
         </div>
 
         <div className={styles.actions}>
           <button className={styles.primaryAction} onClick={() => openWorkspace("new")}>
-            + Create new token
+            Create new token
           </button>
           <button className={styles.secondaryAction} onClick={openSavedLaunches}>
             Open saved launches
           </button>
-          <a
-            href={`${EXPLORER_URL}/address/${HOODLUMS_CONTRACT}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            View Hoodlums contract ↗
-          </a>
         </div>
       </section>
     );
