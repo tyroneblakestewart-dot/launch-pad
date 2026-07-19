@@ -15,7 +15,12 @@
 .options b { font-size:13px; }
 .options small { color:#7e8981; font-size:11px; }
 .options em { color:#68736b; font:700 9px "IBM Plex Mono", monospace; font-style:normal; letter-spacing:.08em; text-transform:uppercase; }
-.mark { display:grid; place-items:center; width:40px; height:40px; border-radius:10px; background:rgba(185,239,77,.11); color:#b9ef4d; font:900 11px "IBM Plex Mono", monospace; }
+.mark { display:grid; place-items:center; width:40px; height:40px; overflow:hidden; border:1px solid rgba(255,255,255,.1); border-radius:10px; background:#fff; color:#0b0f0c; }
+.mark svg { width:25px; height:25px; display:block; }
+.github, .x { background:#fff; color:#090b0a; }
+.metamask { background:#fff4e9; }
+.rabby { background:#eef0ff; }
+.phantom { background:#f1edff; }
 .divider { display:flex; align-items:center; gap:12px; margin:24px 0; color:#59635c; font:700 9px "IBM Plex Mono", monospace; letter-spacing:.14em; }
 .divider::before, .divider::after { content:""; flex:1; height:1px; background:rgba(131,183,139,.14); }
 .footer { margin-top:24px; padding-top:18px; border-top:1px solid rgba(131,183,139,.14); color:#748078; font-size:11px; line-height:1.6; }
@@ -25,5 +30,6 @@
   .header { margin-bottom:23px; }
   .options button { grid-template-columns:36px 1fr; min-height:58px; }
   .mark { width:36px; height:36px; }
+  .mark svg { width:23px; height:23px; }
   .options em { display:none; }
 }
