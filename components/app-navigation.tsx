@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./app-navigation.module.css";
 
@@ -17,6 +17,10 @@ const NAV_ITEMS = [
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   return pathname.startsWith(href);
+}
+
+function shortAddress(value: string) {
+  return value.length > 12 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
 }
 
 function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
@@ -34,7 +38,21 @@ function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
 
 export function AppNavigation() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const [walletAddress, setWalletAddress] = useState("");
+
+  useEffect(() => {
+    function handleConnected(event: Event) {
+      const address = (event as CustomEvent<{ address?: string }>).detail?.address;
+      if (address) setWalletAddress(address);
+    }
+
+    window.addEventListener("hoodlums:wallet-connected", handleConnected);
+    return () => window.removeEventListener("hoodlums:wallet-connected", handleConnected);
+  }, []);
+
+  function openWalletSelector() {
+    window.dispatchEvent(new Event("hoodlums:open-wallet-selector"));
+  }
 
   return (
     <>
@@ -62,19 +80,10 @@ export function AppNavigation() {
         <Link href="/" className={styles.mobileBrand} aria-label="HOODLUMS home">
           <img src={HOODLUMS_WORDMARK_IMAGE} alt="HOODLUMS" width={1200} height={438} />
         </Link>
-        <button onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label="Open navigation menu">{open ? "Close" : "Menu"}</button>
+        <button onClick={openWalletSelector} aria-label="Connect wallet">
+          {walletAddress ? shortAddress(walletAddress) : "Connect wallet"}
+        </button>
       </header>
-
-      {open && (
-        <div className={styles.mobileMenu}>
-          {NAV_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? styles.active : ""} onClick={() => setOpen(false)}>
-              <span className={styles.step}>{item.step}</span>
-              <span><b>{item.label}</b><small>{item.description}</small></span>
-            </Link>
-          ))}
-        </div>
-      )}
     </>
   );
 }
