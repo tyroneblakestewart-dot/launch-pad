@@ -10,7 +10,11 @@ export function HoodlumsWelcomeModal() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (localStorage.getItem(STORAGE_KEY) !== "true") setOpen(true);
+    const frame = window.requestAnimationFrame(() => {
+      if (localStorage.getItem(STORAGE_KEY) !== "true") setOpen(true);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
