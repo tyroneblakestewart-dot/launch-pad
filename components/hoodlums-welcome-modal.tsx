@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { HOODLUMS_WELCOME_SHARP_IMAGE } from "@/lib/hoodlums-welcome-sharp-image";
+import { createHoodlumsWelcomeSharpImageUrl } from "@/lib/hoodlums-welcome-sharp-image";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./hoodlums-welcome-modal.module.css";
 
@@ -9,6 +9,7 @@ const STORAGE_KEY = "hoodlums.welcome.accepted.v3";
 
 export function HoodlumsWelcomeModal() {
   const [open, setOpen] = useState(false);
+  const [crewImageUrl, setCrewImageUrl] = useState("");
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -17,6 +18,17 @@ export function HoodlumsWelcomeModal() {
 
     return () => window.cancelAnimationFrame(frame);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const imageUrl = createHoodlumsWelcomeSharpImageUrl();
+    setCrewImageUrl(imageUrl);
+    return () => {
+      URL.revokeObjectURL(imageUrl);
+      setCrewImageUrl("");
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -39,16 +51,18 @@ export function HoodlumsWelcomeModal() {
   return (
     <div className={styles.backdrop} role="presentation">
       <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="hoodlums-welcome-title">
-        <div className={styles.hero}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={HOODLUMS_WELCOME_SHARP_IMAGE}
-            alt="The Hoodlums collection"
-            width={1024}
-            height={768}
-            decoding="sync"
-            fetchPriority="high"
-          />
+        <div className={styles.hero} aria-busy={!crewImageUrl}>
+          {crewImageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={crewImageUrl}
+              alt="The Hoodlums collection"
+              width={1024}
+              height={768}
+              decoding="sync"
+              fetchPriority="high"
+            />
+          )}
         </div>
 
         <div className={styles.copy}>
