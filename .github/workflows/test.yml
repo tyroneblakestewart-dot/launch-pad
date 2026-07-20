@@ -24,8 +24,17 @@ jobs:
         run: npm install --silent
 
       - name: Run full test suite
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.txt
         env:
           CI: true
           NEXT_TELEMETRY_DISABLED: 1
           VITEST_SKIP_INSTALL_CHECKS: 1
+
+      - name: Upload failed test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: test-output.txt
