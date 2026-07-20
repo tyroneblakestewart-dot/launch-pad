@@ -57,6 +57,7 @@ describe("backend test inventory", () => {
       .sort();
 
     expect(serverFiles).toEqual([
+      "lib/server/api-protection.ts",
       "lib/server/dexscreener.ts",
       "lib/server/generate-site-style.ts",
       "lib/server/telegram.ts",
