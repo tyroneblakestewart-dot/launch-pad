@@ -57,7 +57,12 @@ export async function POST(request: Request) {
   }
 
   if (!response.ok) {
-    const message = await response.text().catch(() => "");
+    let message = "";
+    try {
+      message = await response.text();
+    } catch {
+      // The upstream status is sufficient when its error body cannot be read.
+    }
     console.error("OpenAI site-style request failed", response.status, message.slice(0, 500));
     return NextResponse.json({ error: AI_UNAVAILABLE }, { status: 502 });
   }
