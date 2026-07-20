@@ -1,21 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { HOODLUMS_WELCOME_CREW_IMAGE } from "@/lib/hoodlums-welcome-crew-image";
+import { createHoodlumsWelcomeCompleteImageUrl } from "@/lib/hoodlums-welcome-sharp-complete-image";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./hoodlums-welcome-modal.module.css";
 
 const STORAGE_KEY = "hoodlums.welcome.accepted.v3";
-
-function createCrewImageUrl(): string {
-  const separator = HOODLUMS_WELCOME_CREW_IMAGE.indexOf(",");
-  const metadata = HOODLUMS_WELCOME_CREW_IMAGE.slice(0, separator);
-  const encoded = HOODLUMS_WELCOME_CREW_IMAGE.slice(separator + 1);
-  const mimeType = metadata.match(/^data:([^;]+);base64$/)?.[1] || "image/webp";
-  const binary = window.atob(encoded);
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
-}
 
 export function HoodlumsWelcomeModal() {
   const [open, setOpen] = useState(false);
@@ -32,7 +22,7 @@ export function HoodlumsWelcomeModal() {
   useEffect(() => {
     if (!open) return;
 
-    const imageUrl = createCrewImageUrl();
+    const imageUrl = createHoodlumsWelcomeCompleteImageUrl();
     setCrewImageUrl(imageUrl);
     return () => URL.revokeObjectURL(imageUrl);
   }, [open]);
@@ -64,8 +54,8 @@ export function HoodlumsWelcomeModal() {
             <img
               src={crewImageUrl}
               alt="The Hoodlums collection"
-              width={1024}
-              height={768}
+              width={800}
+              height={600}
               decoding="sync"
               fetchPriority="high"
             />
