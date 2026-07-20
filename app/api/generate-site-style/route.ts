@@ -7,19 +7,62 @@ import {
   type GenerateSiteStyleRequest,
   type OpenAIResponse,
 } from "@/lib/server/generate-site-style";
+import {
+  GENERATE_SITE_STYLE_LIMIT,
+  consumeGenerateSiteStyleRateLimit,
+  getClientIp,
+  isGenerateSiteStyleRequestAuthorised,
+} from "@/lib/server/api-protection";
 
 export const runtime = "nodejs";
 
-function noStoreHeaders() {
-  return { "Cache-Control": "no-store" };
+function noStoreHeaders(extra: Record<string, string> = {}) {
+  return { "Cache-Control": "no-store", ...extra };
 }
 
 export async function POST(request: Request) {
+  const sharedSecret = process.env.GENERATE_SITE_STYLE_SHARED_SECRET || "";
+  const allowedOrigin = process.env.GENERATE_SITE_STYLE_ALLOWED_ORIGIN || "https://hoodlums.dev";
+  const protectionEnabled = Boolean(sharedSecret);
+
+  if (!protectionEnabled && process.env.NODE_ENV !== "test") {
+    return NextResponse.json(
+      { error: "Artwork generation access protection is not configured." },
+      { status: 503, headers: noStoreHeaders() },
+    );
+  }
+
+  let rateHeaders: Record<string, string> = {};
+  if (protectionEnabled) {
+    if (!isGenerateSiteStyleRequestAuthorised(request, sharedSecret, allowedOrigin)) {
+      return NextResponse.json(
+        { error: "Unauthorised artwork-generation request." },
+        { status: 401, headers: noStoreHeaders() },
+      );
+    }
+
+    const rate = consumeGenerateSiteStyleRateLimit(getClientIp(request));
+    rateHeaders = {
+      "RateLimit-Limit": String(GENERATE_SITE_STYLE_LIMIT),
+      "RateLimit-Remaining": String(rate.remaining),
+      "RateLimit-Reset": String(Math.ceil(rate.resetAt / 1000)),
+    };
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "Artwork generation rate limit exceeded. Try again later." },
+        {
+          status: 429,
+          headers: noStoreHeaders({ ...rateHeaders, "Retry-After": String(rate.retryAfterSeconds) }),
+        },
+      );
+    }
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
       { error: "AI style generation is not configured. The browser artwork matcher will be used." },
-      { status: 503, headers: noStoreHeaders() },
+      { status: 503, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
@@ -29,7 +72,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json(
       { error: "Invalid request body." },
-      { status: 400, headers: noStoreHeaders() },
+      { status: 400, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
@@ -37,7 +80,7 @@ export async function POST(request: Request) {
   if (!isValidImageDataUrl(input.imageDataUrl)) {
     return NextResponse.json(
       { error: "A valid optimised artwork image is required." },
-      { status: 400, headers: noStoreHeaders() },
+      { status: 400, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
@@ -50,10 +93,7 @@ export async function POST(request: Request) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(
-        buildOpenAIRequestBody(
-          input,
-          process.env.OPENAI_VISION_MODEL || "gpt-5-mini",
-        ),
+        buildOpenAIRequestBody(input, process.env.OPENAI_VISION_MODEL || "gpt-5-mini"),
       ),
       signal: AbortSignal.timeout(20_000),
     });
@@ -64,7 +104,7 @@ export async function POST(request: Request) {
     );
     return NextResponse.json(
       { error: "AI analysis was unavailable. The browser artwork matcher will be used." },
-      { status: 502, headers: noStoreHeaders() },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
@@ -73,7 +113,7 @@ export async function POST(request: Request) {
     console.error("OpenAI site-style request failed", response.status, message.slice(0, 500));
     return NextResponse.json(
       { error: "AI analysis was unavailable. The browser artwork matcher will be used." },
-      { status: 502, headers: noStoreHeaders() },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
@@ -83,7 +123,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json(
       { error: "AI returned an invalid design. The browser artwork matcher will be used." },
-      { status: 502, headers: noStoreHeaders() },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
@@ -91,12 +131,12 @@ export async function POST(request: Request) {
   if (!style) {
     return NextResponse.json(
       { error: "AI returned an invalid design. The browser artwork matcher will be used." },
-      { status: 502, headers: noStoreHeaders() },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
   return NextResponse.json(
     { style: { ...style, source: "openai" } },
-    { headers: noStoreHeaders() },
+    { headers: noStoreHeaders(rateHeaders) },
   );
 }
