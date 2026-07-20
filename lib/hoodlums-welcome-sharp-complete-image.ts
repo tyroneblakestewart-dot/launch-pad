@@ -55,12 +55,5 @@ export const HOODLUMS_WELCOME_COMPLETE_PARTS = [
   HOODLUMS_WELCOME_COMPLETE_PART_17,
 ] as const;
 
-function decodeBase64Chunk(value: string): Uint8Array {
-  const binary = window.atob(value);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-}
-
-export function createHoodlumsWelcomeCompleteImageUrl(): string {
-  const chunks = HOODLUMS_WELCOME_COMPLETE_PARTS.map(decodeBase64Chunk);
-  return URL.createObjectURL(new Blob(chunks, { type: "image/webp" }));
-}
+export const HOODLUMS_WELCOME_COMPLETE_IMAGE =
+  `data:image/webp;base64,${HOODLUMS_WELCOME_COMPLETE_PARTS.join("")}`;
