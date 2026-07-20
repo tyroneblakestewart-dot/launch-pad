@@ -20,6 +20,7 @@ async function json(response: Response) {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -205,20 +206,30 @@ describe("GET /api/dexscreener-pair", () => {
     expect(await json(response)).toEqual({ error: "Dexscreener returned an invalid response." });
   });
 
-  it("distinguishes timeout and generic network failures", async () => {
-    const timeoutError = Object.assign(new Error("aborted"), { name: "AbortError" });
-    const fetchMock = vi
-      .fn()
-      .mockRejectedValueOnce(timeoutError)
-      .mockRejectedValueOnce(new Error("socket closed"));
+  it("aborts an unresolved Dexscreener request after eight seconds", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((_: string, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+        });
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    const timedOut = await GET(request(VALID_ADDRESS));
-    expect(timedOut.status).toBe(502);
-    expect(await json(timedOut)).toEqual({ error: "Dexscreener lookup timed out." });
+    const responsePromise = GET(request(VALID_ADDRESS));
+    await vi.advanceTimersByTimeAsync(8_000);
+    const response = await responsePromise;
 
-    const failed = await GET(request(VALID_ADDRESS));
-    expect(failed.status).toBe(502);
-    expect(await json(failed)).toEqual({ error: "Dexscreener pair lookup failed." });
+    expect(response.status).toBe(502);
+    expect(await json(response)).toEqual({ error: "Dexscreener lookup timed out." });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps generic network failures to status 502", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("socket closed")));
+    const response = await GET(request(VALID_ADDRESS));
+    expect(response.status).toBe(502);
+    expect(await json(response)).toEqual({ error: "Dexscreener pair lookup failed." });
   });
 });
