@@ -68,7 +68,7 @@ describe("Hoodlums welcome modal", () => {
     expect(component.match(/data-crew-hotspot/g)).toHaveLength(2);
     expect(component).toContain("activeCrew === character.id");
     expect(component).toContain('event.pointerType === "mouse"');
-    expect(component).toContain('event.pointerType !== "mouse"');
+    expect(component).toContain('if (event.pointerType === "mouse") return;');
     expect(component).toContain("onPointerEnter");
     expect(component).toContain("onPointerLeave");
     expect(component).toContain("onPointerDown");
