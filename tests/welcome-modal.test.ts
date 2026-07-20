@@ -7,9 +7,18 @@ const ROOT = process.cwd();
 
 describe("Hoodlums welcome modal", () => {
   it("assembles all binary chunks into one complete WebP image", () => {
-    const image = Buffer.concat(
-      HOODLUMS_WELCOME_SHARP_PARTS.map((part) => Buffer.from(part, "base64")),
+    const decoded = HOODLUMS_WELCOME_SHARP_PARTS.map((part) => Buffer.from(part, "base64"));
+    console.log(
+      "welcome image chunks",
+      HOODLUMS_WELCOME_SHARP_PARTS.map((part, index) => ({
+        index,
+        encoded: part.length,
+        decoded: decoded[index].length,
+        start: part.slice(0, 12),
+        end: part.slice(-12),
+      })),
     );
+    const image = Buffer.concat(decoded);
 
     expect(HOODLUMS_WELCOME_SHARP_PARTS).toHaveLength(3);
     expect(image.length).toBeGreaterThan(120_000);
