@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { GENERATE_SITE_STYLE_HEADER } from "@/lib/server/api-protection";
+
+const GENERATE_SITE_STYLE_HEADER = "x-hoodlums-api-key";
 
 export function GenerateSiteStyleAuthBridge() {
   useEffect(() => {
