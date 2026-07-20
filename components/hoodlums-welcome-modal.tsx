@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { HOODLUMS_WELCOME_CREW_IMAGE } from "@/lib/hoodlums-welcome-crew-image";
+import { HOODLUMS_WELCOME_COMPLETE_IMAGE } from "@/lib/hoodlums-welcome-sharp-complete-image";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./hoodlums-welcome-modal.module.css";
 
-const STORAGE_KEY = "hoodlums.welcome.accepted.v2";
+const STORAGE_KEY = "hoodlums.welcome.accepted.v3";
 
 export function HoodlumsWelcomeModal() {
   const [open, setOpen] = useState(false);
@@ -39,12 +39,17 @@ export function HoodlumsWelcomeModal() {
   return (
     <div className={styles.backdrop} role="presentation">
       <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="hoodlums-welcome-title">
-        <div
-          className={styles.hero}
-          role="img"
-          aria-label="The Hoodlums crew"
-          style={{ backgroundImage: `url(${HOODLUMS_WELCOME_CREW_IMAGE})` }}
-        />
+        <div className={styles.hero}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={HOODLUMS_WELCOME_COMPLETE_IMAGE}
+            alt="The Hoodlums collection"
+            width={800}
+            height={600}
+            decoding="sync"
+            fetchPriority="high"
+          />
+        </div>
 
         <div className={styles.copy}>
           <div className={styles.titleRow}>
