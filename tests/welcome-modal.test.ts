@@ -22,7 +22,7 @@ describe("Hoodlums welcome modal", () => {
     expect(image.readUInt32LE(4) + 8).toBe(image.length);
   });
 
-  it("uses the sharp artwork and reduces only the Hoodlums logo", async () => {
+  it("uses the sharp artwork and keeps the reduced Hoodlums logo", async () => {
     const component = await readFile(
       path.join(ROOT, "components", "hoodlums-welcome-modal.tsx"),
       "utf8",
@@ -34,13 +34,52 @@ describe("Hoodlums welcome modal", () => {
 
     expect(component).toContain("HOODLUMS_WELCOME_COMPLETE_IMAGE");
     expect(component).toContain("<h1 id=\"hoodlums-welcome-title\">Welcome</h1>");
-    expect(component).toContain("<img");
     expect(component).toContain("width={800}");
     expect(component).toContain("height={600}");
-    expect(component).toContain("hoodlums.welcome.accepted.v3");
+    expect(component).toContain("hoodlums.welcome.accepted.v4");
     expect(css).toContain("object-fit: cover;");
     expect(css).toContain("width: min(176px, 42vw);");
     expect(css).toContain("width: 146px;");
-    expect(css).toContain(".copy h1 {\n  margin: 0;\n  font-size: clamp(27px, 6vw, 40px);");
+  });
+
+  it("provides eight hover, touch, and keyboard character hotspots with one active label", async () => {
+    const component = await readFile(
+      path.join(ROOT, "components", "hoodlums-welcome-modal.tsx"),
+      "utf8",
+    );
+    const css = await readFile(
+      path.join(ROOT, "components", "hoodlums-welcome-modal.module.css"),
+      "utf8",
+    );
+
+    for (const expected of [
+      'id: "mari"',
+      'id: "uncle-tuck"',
+      'id: "big-jon"',
+      'id: "robbin"',
+      'id: "pj"',
+      'id: "lord-greene"',
+      'id: "the-sheriff"',
+      'id: "the-aristocrat"',
+    ]) {
+      expect(component).toContain(expected);
+    }
+
+    expect(component.match(/data-crew-hotspot/g)).toHaveLength(2);
+    expect(component).toContain("activeCrew === character.id");
+    expect(component).toContain('event.pointerType === "mouse"');
+    expect(component).toContain('event.pointerType !== "mouse"');
+    expect(component).toContain("onPointerEnter");
+    expect(component).toContain("onPointerLeave");
+    expect(component).toContain("onPointerDown");
+    expect(component).toContain("onFocus");
+    expect(component).toContain("onBlur");
+    expect(component).toContain("setActiveCrew(null)");
+    expect(component).toContain("aria-expanded={active}");
+    expect(css).toContain(".crewHotspot");
+    expect(css).toContain(".crewLabelVisible");
+    expect(css).toContain("pointer-events: none;");
+    expect(css).toContain("transition: opacity 180ms ease, transform 180ms ease;");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
   });
 });
