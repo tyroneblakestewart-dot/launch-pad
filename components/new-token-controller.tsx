@@ -47,6 +47,10 @@ function buttonLabel(button: HTMLButtonElement): string {
   return button.textContent?.replace(/\s+/g, " ").trim() || "";
 }
 
+export function isProjectRecoveryButtonLabel(label: string): boolean {
+  return label.startsWith("Projects") || label === "Open saved launches";
+}
+
 function focusNewProjectEditor() {
   const panel = document.querySelector<HTMLElement>(".builder-panel");
   panel?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -87,10 +91,7 @@ export function NewTokenController() {
         if (!projectsModal) {
           const recoveryButton = Array.from(
             document.querySelectorAll<HTMLButtonElement>("button"),
-          ).find((button) => {
-            const label = buttonLabel(button);
-            return label.startsWith("Projects") || label === "Open saved launches";
-          });
+          ).find((button) => isProjectRecoveryButtonLabel(buttonLabel(button)));
           recoveryButton?.click();
         }
 
