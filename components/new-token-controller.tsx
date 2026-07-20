@@ -43,6 +43,10 @@ function readProjects(): TokenProject[] {
   }
 }
 
+function buttonLabel(button: HTMLButtonElement): string {
+  return button.textContent?.replace(/\s+/g, " ").trim() || "";
+}
+
 function focusNewProjectEditor() {
   const panel = document.querySelector<HTMLElement>(".builder-panel");
   panel?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -67,7 +71,7 @@ export function NewTokenController() {
           document.querySelectorAll<HTMLButtonElement>(".project-main"),
         );
         const pendingButton = projectButtons.find((button) => {
-          const text = button.textContent || "";
+          const text = buttonLabel(button);
           return text.includes("Untitled") && text.includes("$TOKEN");
         });
 
@@ -81,10 +85,13 @@ export function NewTokenController() {
 
         const projectsModal = document.querySelector(".projects-modal");
         if (!projectsModal) {
-          const projectsButton = Array.from(
+          const recoveryButton = Array.from(
             document.querySelectorAll<HTMLButtonElement>("button"),
-          ).find((button) => button.textContent?.trim().startsWith("Projects"));
-          projectsButton?.click();
+          ).find((button) => {
+            const label = buttonLabel(button);
+            return label.startsWith("Projects") || label === "Open saved launches";
+          });
+          recoveryButton?.click();
         }
 
         if (openAttempts >= 50) {
@@ -99,7 +106,7 @@ export function NewTokenController() {
       const button = target?.closest<HTMLButtonElement>("button");
       if (!button) return;
 
-      const label = button.textContent?.replace(/\s+/g, " ").trim() || "";
+      const label = buttonLabel(button);
       if (label !== "+ New token" && label !== "+ Create another token") return;
 
       event.preventDefault();
