@@ -54,6 +54,30 @@ Never expose `OPENAI_API_KEY` through a `NEXT_PUBLIC_` variable.
 - Mainnet token deployment, liquidity and bonding curves remain disabled
 - Always complete both testnet flows before enabling a reviewed mainnet switch
 
+## Automated testing
+
+Run the complete automated suite with one command:
+
+```bash
+npm test
+```
+
+The suite uses Vitest in Node mode with V8 coverage. All outbound OpenAI, Dexscreener and Telegram requests are mocked, so tests never contact production services, use real credentials or alter real data. The project currently has no database; if one is added, tests must use a separate disposable test database.
+
+The suite covers every server endpoint and its extracted server helpers, including successful requests, validation errors, upstream failures, malformed responses, boundary values and timeout/network errors. There are currently no route-level authenticated endpoints. Any protected route added later must include tests proving that missing and invalid credentials are rejected before the feature can be merged.
+
+### Mandatory change policy
+
+Every feature addition or behavioural change must include new or updated tests. Before work is marked complete, all of the following must pass:
+
+```bash
+npm test
+npm run lint
+npm run build
+```
+
+Never merge or report a feature as complete while any existing test is failing.
+
 ## Development
 
 ```bash
@@ -65,7 +89,7 @@ Open `http://localhost:3000` for the studio and `http://localhost:3000/testnet` 
 
 ## Validation
 
-GitHub Actions runs ESLint and a production Next.js build on every branch update and pull request.
+GitHub Actions runs ESLint and a production Next.js build on pull requests. A separate test workflow runs the full Vitest suite on every push and pull request and fails when any test or coverage threshold fails.
 
 ## Remaining before a production launch
 
