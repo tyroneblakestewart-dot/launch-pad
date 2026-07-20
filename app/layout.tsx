@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { AppNavigation, MobileBottomNavigation } from "@/components/app-navigation";
+import { GenerateSiteStyleAuthBridge } from "@/components/generate-site-style-auth-bridge";
 import { WalletProviderSelector } from "@/components/wallet-provider-selector";
 import "./globals.css";
 import "./hoodlums-brand-theme.css";
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body>
+        <GenerateSiteStyleAuthBridge />
         <AppNavigation />
         {children}
         <MobileBottomNavigation />
