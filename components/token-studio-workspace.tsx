@@ -78,6 +78,38 @@ function findStudioButton(label: string) {
   ).find((button) => button.textContent?.toLowerCase().includes(label.toLowerCase()));
 }
 
+export function calculateProjectWorkspaceScrollTop(
+  workspaceViewportTop: number,
+  currentScrollY: number,
+  stickyHeaderHeight: number,
+): number {
+  return Math.max(0, workspaceViewportTop + currentScrollY - stickyHeaderHeight);
+}
+
+function focusNewProjectEditor() {
+  const workspace = document.getElementById("launch-studio");
+  const panel = document.querySelector<HTMLElement>(".builder-panel");
+  const mobileBrand = document.querySelector<HTMLElement>('a[aria-label="HOODLUMS home"]');
+  const stickyHeader = mobileBrand?.closest<HTMLElement>("header");
+
+  if (workspace) {
+    window.scrollTo({
+      top: calculateProjectWorkspaceScrollTop(
+        workspace.getBoundingClientRect().top,
+        window.scrollY,
+        stickyHeader?.getBoundingClientRect().height || 0,
+      ),
+      behavior: "smooth",
+    });
+  }
+
+  window.setTimeout(() => {
+    panel
+      ?.querySelector<HTMLInputElement>('input[placeholder="Hoodlums"]')
+      ?.focus({ preventScroll: true });
+  }, 180);
+}
+
 export function TokenStudioWorkspace() {
   const [isOpen, setIsOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
@@ -90,13 +122,17 @@ export function TokenStudioWorkspace() {
     if (!isOpen || !pendingAction) return;
 
     let attempts = 0;
+    const action = pendingAction;
     const timer = window.setInterval(() => {
       attempts += 1;
-      const button = findStudioButton(pendingAction === "new" ? "new token" : "projects");
+      const button = findStudioButton(action === "new" ? "new token" : "projects");
       if (button) {
         button.click();
         setPendingAction(null);
         window.clearInterval(timer);
+        if (action === "new") {
+          window.requestAnimationFrame(focusNewProjectEditor);
+        }
       } else if (attempts >= 20) {
         setPendingAction(null);
         window.clearInterval(timer);
