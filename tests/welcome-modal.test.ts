@@ -1,17 +1,17 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { HOODLUMS_WELCOME_SHARP_IMAGE } from "@/lib/hoodlums-welcome-sharp-image";
+import { HOODLUMS_WELCOME_SHARP_PARTS } from "@/lib/hoodlums-welcome-sharp-image";
 
 const ROOT = process.cwd();
 
 describe("Hoodlums welcome modal", () => {
-  it("assembles a complete WebP image instead of a broken or partial payload", () => {
-    expect(HOODLUMS_WELCOME_SHARP_IMAGE.startsWith("data:image/webp;base64,")).toBe(true);
+  it("assembles all binary chunks into one complete WebP image", () => {
+    const image = Buffer.concat(
+      HOODLUMS_WELCOME_SHARP_PARTS.map((part) => Buffer.from(part, "base64")),
+    );
 
-    const encoded = HOODLUMS_WELCOME_SHARP_IMAGE.split(",", 2)[1];
-    const image = Buffer.from(encoded, "base64");
-
+    expect(HOODLUMS_WELCOME_SHARP_PARTS).toHaveLength(3);
     expect(image.length).toBeGreaterThan(120_000);
     expect(image.subarray(0, 4).toString("ascii")).toBe("RIFF");
     expect(image.subarray(8, 12).toString("ascii")).toBe("WEBP");
@@ -28,7 +28,7 @@ describe("Hoodlums welcome modal", () => {
       "utf8",
     );
 
-    expect(component).toContain("HOODLUMS_WELCOME_SHARP_IMAGE");
+    expect(component).toContain("createHoodlumsWelcomeSharpImageUrl");
     expect(component).toContain("<h1 id=\"hoodlums-welcome-title\">Welcome</h1>");
     expect(component).toContain("<img");
     expect(component).toContain("hoodlums.welcome.accepted.v3");
