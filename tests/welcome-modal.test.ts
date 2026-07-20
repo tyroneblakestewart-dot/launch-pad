@@ -7,9 +7,16 @@ const ROOT = process.cwd();
 
 describe("Hoodlums welcome modal", () => {
   it("assembles all chunks into the complete sharp WebP image", () => {
-    const image = Buffer.concat(
-      HOODLUMS_WELCOME_COMPLETE_PARTS.map((part) => Buffer.from(part, "base64")),
+    const decoded = HOODLUMS_WELCOME_COMPLETE_PARTS.map((part) => Buffer.from(part, "base64"));
+    console.log(
+      "sharp welcome chunk sizes",
+      HOODLUMS_WELCOME_COMPLETE_PARTS.map((part, index) => ({
+        index,
+        encoded: part.length,
+        decoded: decoded[index].length,
+      })),
     );
+    const image = Buffer.concat(decoded);
 
     expect(HOODLUMS_WELCOME_COMPLETE_PARTS).toHaveLength(18);
     expect(image.length).toBe(80_732);
