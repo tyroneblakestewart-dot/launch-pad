@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { HOODLUMS_WELCOME_COMPLETE_PARTS } from "@/lib/hoodlums-welcome-sharp-complete-image";
+import {
+  HOODLUMS_WELCOME_COMPLETE_IMAGE,
+  HOODLUMS_WELCOME_COMPLETE_PARTS,
+} from "@/lib/hoodlums-welcome-sharp-complete-image";
 
 const ROOT = process.cwd();
 
@@ -12,6 +15,7 @@ describe("Hoodlums welcome modal", () => {
     );
 
     expect(HOODLUMS_WELCOME_COMPLETE_PARTS).toHaveLength(18);
+    expect(HOODLUMS_WELCOME_COMPLETE_IMAGE.startsWith("data:image/webp;base64,")).toBe(true);
     expect(image.length).toBe(80_732);
     expect(image.subarray(0, 4).toString("ascii")).toBe("RIFF");
     expect(image.subarray(8, 12).toString("ascii")).toBe("WEBP");
@@ -28,7 +32,7 @@ describe("Hoodlums welcome modal", () => {
       "utf8",
     );
 
-    expect(component).toContain("createHoodlumsWelcomeCompleteImageUrl");
+    expect(component).toContain("HOODLUMS_WELCOME_COMPLETE_IMAGE");
     expect(component).toContain("<h1 id=\"hoodlums-welcome-title\">Welcome</h1>");
     expect(component).toContain("<img");
     expect(component).toContain("width={800}");
