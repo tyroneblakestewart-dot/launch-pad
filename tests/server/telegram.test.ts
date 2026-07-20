@@ -181,7 +181,7 @@ describe("Telegram helpers", () => {
 
     await sendTelegramText(fetchMock, VALID_TOKEN, VALID_CHAT, "Hello crew");
     const [textUrl, textInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(textUrl).toEndWith("/sendMessage");
+    expect(textUrl.endsWith("/sendMessage")).toBe(true);
     expect(JSON.parse(String(textInit.body))).toEqual({
       chat_id: VALID_CHAT,
       text: "Hello crew",
@@ -194,7 +194,7 @@ describe("Telegram helpers", () => {
     if (!artwork) return;
     await sendTelegramArtwork(fetchMock, VALID_TOKEN, VALID_CHAT, artwork, "Caption");
     const [photoUrl, photoInit] = fetchMock.mock.calls[1] as [string, RequestInit];
-    expect(photoUrl).toEndWith("/sendPhoto");
+    expect(photoUrl.endsWith("/sendPhoto")).toBe(true);
     expect(photoInit.body).toBeInstanceOf(FormData);
     const form = photoInit.body as FormData;
     expect(form.get("chat_id")).toBe(VALID_CHAT);
@@ -271,7 +271,7 @@ describe("POST /api/social/telegram", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await json(response)).toEqual({ ok: true, messageIds: [101] });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0][0])).toEndWith("/sendMessage");
+    expect(String(fetchMock.mock.calls[0][0]).endsWith("/sendMessage")).toBe(true);
   });
 
   it("publishes artwork with an exact maximum-length caption in one request", async () => {
@@ -290,7 +290,7 @@ describe("POST /api/social/telegram", () => {
     expect(response.status).toBe(200);
     expect(await json(response)).toEqual({ ok: true, messageIds: [202] });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0][0])).toEndWith("/sendPhoto");
+    expect(String(fetchMock.mock.calls[0][0]).endsWith("/sendPhoto")).toBe(true);
     const form = (fetchMock.mock.calls[0][1] as RequestInit).body as FormData;
     expect(form.get("caption")).toBe(caption);
   });
@@ -314,8 +314,8 @@ describe("POST /api/social/telegram", () => {
     expect(response.status).toBe(200);
     expect(await json(response)).toEqual({ ok: true, messageIds: [301, 302] });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(String(fetchMock.mock.calls[0][0])).toEndWith("/sendPhoto");
-    expect(String(fetchMock.mock.calls[1][0])).toEndWith("/sendMessage");
+    expect(String(fetchMock.mock.calls[0][0]).endsWith("/sendPhoto")).toBe(true);
+    expect(String(fetchMock.mock.calls[1][0]).endsWith("/sendMessage")).toBe(true);
     const photoForm = (fetchMock.mock.calls[0][1] as RequestInit).body as FormData;
     expect(photoForm.get("caption")).toBeNull();
     const textBody = JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body));
