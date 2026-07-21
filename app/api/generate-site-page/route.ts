@@ -155,9 +155,9 @@ export async function POST(request: Request) {
     : null;
 
   const [artworkResult, inspirationResult] = await Promise.all([
-    requestOpenAI(apiKey, artworkBody, 20_000, "page-artwork-analysis"),
+    requestOpenAI(apiKey, artworkBody, 18_000, "page-artwork-analysis"),
     inspirationBody
-      ? requestOpenAI(apiKey, inspirationBody, 22_000, "page-inspiration-analysis")
+      ? requestOpenAI(apiKey, inspirationBody, 18_000, "page-inspiration-analysis")
       : Promise.resolve<OpenAIRequestResult>({ ok: true, payload: {} }),
   ]);
 
