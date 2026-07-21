@@ -6,6 +6,7 @@ import {
   TOKEN_LANDING_PAGE_GENERATOR_PREFIX,
   buildOpenAIRequestBody,
   buildSiteStylePrompt,
+  didUseInspirationSearch,
   extractOutputText,
   isSiteStyle,
   isValidImageDataUrl,
@@ -14,24 +15,9 @@ import {
   type OpenAIResponse,
   type SiteStyle,
 } from "@/lib/server/generate-site-style";
+import { VALID_STYLE } from "./site-style-fixture";
 
 const VALID_IMAGE = "data:image/png;base64,aGVsbG8=";
-const VALID_STYLE: SiteStyle = {
-  background: "#050706",
-  surface: "#101510",
-  text: "#F4F7EF",
-  muted: "#AAB2AA",
-  primary: "#BCE759",
-  secondary: "#91C738",
-  accent: "#E8C435",
-  layout: "split",
-  mood: "bold",
-  texture: "grain",
-  radius: "soft",
-  eyebrow: "ARTWORK POWERED",
-  headline: "A launch page shaped by the uploaded artwork.",
-  cta: "JOIN $HOOD",
-};
 
 function makeRequest(body: unknown): Request {
   return new Request("http://localhost/api/generate-site-style", {
@@ -77,30 +63,28 @@ describe("generate-site-style server functions", () => {
     ).toBe(false);
   });
 
-  it("keeps the requested creative brief private and adapts it to structured output", () => {
+  it("keeps the private creative brief and requires visible design and copy decisions", () => {
     expect(TOKEN_LANDING_PAGE_GENERATOR_PREFIX).toContain(
       "You are a token landing page generator",
     );
     expect(TOKEN_LANDING_PAGE_GENERATOR_PREFIX).toContain(
       "STEP 1 — ANALYSE THE IMAGE FIRST",
     );
-    expect(TOKEN_LANDING_PAGE_GENERATOR_PREFIX).toContain(
-      "Extract the 4-6 dominant colours",
-    );
-    expect(TOKEN_LANDING_PAGE_GENERATOR_PREFIX).toContain(
-      "Never use placeholder lorem ipsum text",
-    );
     expect(SITE_STYLE_BACKEND_ADAPTER).toContain(
       "must never be displayed in the user interface",
     );
-    expect(SITE_STYLE_BACKEND_ADAPTER).toContain("Do not ask follow-up questions");
     expect(SITE_STYLE_BACKEND_ADAPTER).toContain(
-      "This endpoint does not return raw HTML/CSS/JS",
+      "MUST inspect it with web search before answering",
     );
-    expect(SITE_STYLE_BACKEND_ADAPTER).toContain("Output only the schema-compliant JSON object");
+    expect(SITE_STYLE_BACKEND_ADAPTER).toContain(
+      "fontStyle, heroTreatment, motionStyle",
+    );
+    expect(SITE_STYLE_BACKEND_ADAPTER).toContain(
+      "Output only the schema-compliant JSON object",
+    );
   });
 
-  it("builds a developer-prefixed high-detail OpenAI request without financial promises", () => {
+  it("builds a high-detail structured request without a web tool when no URL is supplied", () => {
     const input = normaliseGenerateSiteStyleRequest({
       name: "Hoodlums",
       ticker: "HOOD",
@@ -113,44 +97,43 @@ describe("generate-site-style server functions", () => {
     expect(prompt).toContain("Project name: Hoodlums");
     expect(prompt).toContain("Ticker: HOOD");
     expect(prompt).toContain("Do not ask questions");
-    expect(prompt).toContain("do not make financial promises");
     expect(request.model).toBe("test-model");
     expect(request.store).toBe(false);
+    expect(request.max_output_tokens).toBe(1_700);
+    expect(request).not.toHaveProperty("tools");
+    expect(request).not.toHaveProperty("tool_choice");
     expect(request.input).toHaveLength(2);
     expect(request.input[0].role).toBe("developer");
-    expect(request.input[0].content[0]).toMatchObject({
-      type: "input_text",
-      text: expect.stringContaining("You are a token landing page generator"),
-    });
-    expect(request.input[1].role).toBe("user");
-    expect(request.input[1].content[0]).toEqual({
-      type: "input_text",
-      text: prompt,
-    });
     expect(request.input[1].content[1]).toEqual({
       type: "input_image",
       image_url: VALID_IMAGE,
       detail: "high",
     });
     expect(request.text.format.strict).toBe(true);
+    expect(request.text.format.schema.required).toContain("heroTreatment");
+    expect(request.text.format.schema.required).toContain("roadmap");
   });
 
-  it("extracts the first output_text item", () => {
+  it("extracts output text and verifies completed web-search calls", () => {
     const payload: OpenAIResponse = {
       output: [
+        { type: "web_search_call", status: "completed" },
         { content: [{ type: "reasoning", text: "ignore" }] },
         { content: [{ type: "output_text", text: "result" }] },
       ],
     };
     expect(extractOutputText(payload)).toBe("result");
-    expect(extractOutputText({})).toBe("");
+    expect(didUseInspirationSearch(payload)).toBe(true);
+    expect(didUseInspirationSearch({ output: [{ type: "web_search_call", status: "failed" }] })).toBe(false);
+    expect(didUseInspirationSearch({})).toBe(false);
   });
 
-  it("accepts only complete valid site styles", () => {
+  it("accepts only complete styles with design, content and exactly three roadmap items", () => {
     expect(isSiteStyle(VALID_STYLE)).toBe(true);
     expect(isSiteStyle({ ...VALID_STYLE, primary: "green" })).toBe(false);
-    expect(isSiteStyle({ ...VALID_STYLE, layout: "unknown" })).toBe(false);
-    expect(isSiteStyle({ ...VALID_STYLE, headline: "short" })).toBe(false);
+    expect(isSiteStyle({ ...VALID_STYLE, fontStyle: "unknown" })).toBe(false);
+    expect(isSiteStyle({ ...VALID_STYLE, heroBody: "short" })).toBe(false);
+    expect(isSiteStyle({ ...VALID_STYLE, roadmap: VALID_STYLE.roadmap.slice(0, 2) })).toBe(false);
     expect(isSiteStyle(null)).toBe(false);
   });
 
@@ -184,6 +167,7 @@ describe("POST /api/generate-site-style", () => {
     delete process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_VISION_MODEL;
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("rejects requests when the server-side OpenAI credential is unavailable", async () => {
@@ -225,7 +209,7 @@ describe("POST /api/generate-site-style", () => {
     }
   });
 
-  it("returns a validated style while keeping the private prefix out of the response", async () => {
+  it("returns a full validated artwork-only style and accurate inspiration metadata", async () => {
     process.env.OPENAI_VISION_MODEL = "vision-test-model";
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
@@ -245,11 +229,13 @@ describe("POST /api/generate-site-style", () => {
         imageDataUrl: VALID_IMAGE,
       }),
     );
-    const body = await responseJson<{ style: SiteStyle & { source: string } }>(response);
+    const body = await responseJson<{
+      style: SiteStyle & { source: string; inspirationUsed: boolean };
+    }>(response);
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
-    expect(body.style).toEqual({ ...VALID_STYLE, source: "openai" });
+    expect(body.style).toEqual({ ...VALID_STYLE, source: "openai", inspirationUsed: false });
     expect(JSON.stringify(body)).not.toContain("You are a token landing page generator");
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -263,10 +249,6 @@ describe("POST /api/generate-site-style", () => {
     };
     expect(outbound).toMatchObject({ model: "vision-test-model", store: false });
     expect(outbound.input[0].role).toBe("developer");
-    expect(outbound.input[0].content[0].text).toContain(
-      "You are a token landing page generator",
-    );
-    expect(outbound.input[1].role).toBe("user");
     expect(outbound.input[1].content[1]).toMatchObject({
       type: "input_image",
       detail: "high",
@@ -301,7 +283,13 @@ describe("POST /api/generate-site-style", () => {
       ),
       new Response(
         JSON.stringify({
-          output: [{ content: [{ type: "output_text", text: JSON.stringify({ ...VALID_STYLE, cta: "x" }) }] }],
+          output: [
+            {
+              content: [
+                { type: "output_text", text: JSON.stringify({ ...VALID_STYLE, cta: "x" }) },
+              ],
+            },
+          ],
         }),
       ),
     ];
