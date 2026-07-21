@@ -64,6 +64,7 @@ describe("generate-site-style server functions", () => {
       ticker: "TOKEN",
       description: "Community token project",
       imageDataUrl: "",
+      inspirationUrl: "",
     });
   });
 
@@ -302,7 +303,6 @@ describe("POST /api/generate-site-style", () => {
         JSON.stringify({
           output: [{ content: [{ type: "output_text", text: JSON.stringify({ ...VALID_STYLE, cta: "x" }) }] }],
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     ];
 
