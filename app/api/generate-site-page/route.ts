@@ -8,7 +8,6 @@ import {
   type OpenAIResponse,
 } from "@/lib/server/generate-site-style";
 import {
-  buildArtworkIdentityRequestBody,
   buildInspirationInspectionRequestBody,
   extractVerifiedInspirationAnalysis,
   getFusionBriefIds,
@@ -16,7 +15,9 @@ import {
 } from "@/lib/site-style-openai-pipeline";
 import {
   NO_URL_PRESENTATION_BRIEF,
+  buildGeneratedPageAcceptanceProfile,
   buildGeneratedSitePageRequestBody,
+  buildPageArtworkIdentityRequestBody,
   parseGeneratedSitePageResponse,
 } from "@/lib/site-page-openai-pipeline";
 import {
@@ -148,7 +149,7 @@ export async function POST(request: Request) {
   }
 
   const model = process.env.OPENAI_VISION_MODEL || "gpt-5-mini";
-  const artworkBody = buildArtworkIdentityRequestBody(input, model);
+  const artworkBody = buildPageArtworkIdentityRequestBody(input, model);
   const domain = input.inspirationUrl ? getInspirationDomain(input.inspirationUrl) : null;
   const inspirationBody = input.inspirationUrl
     ? buildInspirationInspectionRequestBody(input, model)
@@ -194,6 +195,7 @@ export async function POST(request: Request) {
   }
 
   const briefIds = getFusionBriefIds(artworkIdentity, inspirationAnalysis);
+  const acceptance = buildGeneratedPageAcceptanceProfile(artworkIdentity, inspirationAnalysis);
   const generation = await requestOpenAI(
     apiKey,
     buildGeneratedSitePageRequestBody(input, model, artworkIdentity, inspirationAnalysis),
@@ -207,18 +209,18 @@ export async function POST(request: Request) {
         error:
           generation.kind === "invalid"
             ? "AI returned an invalid website document. Try generating again."
-            : "The artwork and inspiration were analysed, but the full website could not be generated. Try again.",
+            : "The artwork and inspiration were analysed, but the standalone website could not be generated. Try again.",
       },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
-  const page = parseGeneratedSitePageResponse(generation.payload, briefIds);
+  const page = parseGeneratedSitePageResponse(generation.payload, briefIds, acceptance);
   if (!page) {
     return NextResponse.json(
       {
         error:
-          "AI returned a website that was incomplete, unsafe, or did not prove it used both sources. Try again.",
+          "AI returned a website that was incomplete, unsafe, still resembled the legacy terminal fallback, or did not apply the inspiration structure. Try again.",
       },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
