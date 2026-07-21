@@ -102,7 +102,7 @@ describe("POST /api/generate-site-page", () => {
       input: Array<{ content: Array<{ type: string; text?: string; image_url?: string }> }>;
     };
     expect(finalRequest.max_output_tokens).toBe(12_000);
-    expect(finalRequest.input[1].content[0].text).toContain("Artwork owns the page identity");
+    expect(finalRequest.input[0].content[0].text).toContain("Artwork owns the page identity");
     expect(finalRequest.input[1].content[0].text).toContain(INSPIRATION);
     expect(finalRequest.input[1].content[1]).toMatchObject({
       type: "input_image",
