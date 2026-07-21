@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
+import {
+  SITE_GENERATION_TIMEOUT_MS,
+  failSitePreviewGeneration,
+  finishSitePreviewGeneration,
+  previewFailureMessage,
+  previewTimeoutMessage,
+  startSitePreviewGeneration,
+} from "@/lib/site-preview-state";
 
 const REQUIRED_DESCRIPTION_LENGTH = 20;
 const MAX_INSPIRATION_URL_LENGTH = 500;
@@ -99,6 +107,13 @@ export function BuildSiteGate() {
     let button: HTMLButtonElement | null = null;
     let checklist: HTMLDivElement | null = null;
     let hint: HTMLParagraphElement | null = null;
+    let generationTimeout: number | null = null;
+
+    function clearGenerationTimeout() {
+      if (generationTimeout === null) return;
+      window.clearTimeout(generationTimeout);
+      generationTimeout = null;
+    }
 
     function currentDetail(panel: Element): GenerateDetail {
       return {
@@ -142,8 +157,27 @@ export function BuildSiteGate() {
         button?.addEventListener("click", () => {
           if (button?.disabled || generating) return;
           const detail = currentDetail(panel);
-          generating = true;
+          const next = startSitePreviewGeneration();
+          unlocked = next.unlocked;
+          generating = next.generating;
+          if (hint) {
+            hint.textContent = detail.inspirationUrl
+              ? "Your website preview is ready below. AI is now applying the inspiration website."
+              : "Your website preview is ready below. AI is now enhancing it from the uploaded artwork.";
+          }
           refresh();
+          document.querySelector(".preview-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+          clearGenerationTimeout();
+          generationTimeout = window.setTimeout(() => {
+            if (!generating) return;
+            const timedOut = finishSitePreviewGeneration();
+            unlocked = timedOut.unlocked;
+            generating = timedOut.generating;
+            if (hint) hint.textContent = previewTimeoutMessage(Boolean(detail.inspirationUrl));
+            refresh();
+          }, SITE_GENERATION_TIMEOUT_MS);
+
           window.dispatchEvent(new CustomEvent("launchpad:generate-site", { detail }));
         });
       }
@@ -215,29 +249,37 @@ export function BuildSiteGate() {
     }
 
     function onGenerated(event: Event) {
-      const detail = (event as CustomEvent<{ style?: { source?: string } }>).detail;
-      generating = false;
-      unlocked = true;
+      clearGenerationTimeout();
+      const detail = (event as CustomEvent<{
+        style?: { source?: string; inspirationUsed?: boolean };
+      }>).detail;
+      const next = finishSitePreviewGeneration();
+      generating = next.generating;
+      unlocked = next.unlocked;
       const hasInspiration = Boolean(
         document.querySelector<HTMLInputElement>(".build-site-inspiration-url")?.value.trim(),
       );
       if (hint) {
         hint.textContent =
           detail?.style?.source === "openai"
-            ? hasInspiration
-              ? "AI analysed the uploaded content and the optional inspiration website to generate this design."
-              : "AI analysed the uploaded artwork and generated this design. Social accounts remain optional."
-            : "The browser matched the uploaded artwork's palette, mood and shape. Website inspiration requires AI analysis.";
+            ? detail.style.inspirationUsed
+              ? "AI analysed the uploaded content and inspiration website and applied the finished design."
+              : "AI analysed the uploaded artwork and applied the finished design."
+            : hasInspiration
+              ? "Your artwork-based website is visible. AI inspiration enhancement is still required for the URL."
+              : "The browser matched the uploaded artwork's palette, mood and shape.";
       }
       refresh();
       document.querySelector(".preview-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     function onFailed(event: Event) {
-      generating = false;
-      unlocked = false;
+      clearGenerationTimeout();
       const message = (event as CustomEvent<{ message?: string }>).detail?.message;
-      if (hint) hint.textContent = message || "The artwork could not be analysed. Try another PNG, JPG or WEBP image.";
+      const next = failSitePreviewGeneration(unlocked);
+      generating = next.generating;
+      unlocked = next.unlocked;
+      if (hint) hint.textContent = previewFailureMessage(message, unlocked);
       refresh();
     }
 
@@ -247,6 +289,7 @@ export function BuildSiteGate() {
     refresh();
 
     return () => {
+      clearGenerationTimeout();
       window.clearInterval(interval);
       window.removeEventListener("launchpad:site-generated", onGenerated);
       window.removeEventListener("launchpad:site-generation-failed", onFailed);
