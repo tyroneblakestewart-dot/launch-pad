@@ -107,7 +107,7 @@ export function BuildSiteGate() {
     let button: HTMLButtonElement | null = null;
     let checklist: HTMLDivElement | null = null;
     let hint: HTMLParagraphElement | null = null;
-    let generationTimeout: ReturnType<typeof window.setTimeout> | null = null;
+    let generationTimeout: number | null = null;
 
     function clearGenerationTimeout() {
       if (generationTimeout === null) return;
