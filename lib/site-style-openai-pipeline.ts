@@ -23,7 +23,8 @@ type MutableContent = {
   detail?: string;
 };
 
-type MutableStyleRequest = ReturnType<typeof buildOpenAIRequestBody> & {
+type MutableStyleRequest = {
+  [key: string]: unknown;
   input: Array<{
     role: string;
     content: MutableContent[];
@@ -131,9 +132,8 @@ export function buildFinalSiteStyleRequestBody(
   model: string,
   inspirationAnalysis = "",
 ) {
-  const body = buildOpenAIRequestBody(
-    { ...request, inspirationUrl: "" },
-    model,
+  const body = structuredClone(
+    buildOpenAIRequestBody({ ...request, inspirationUrl: "" }, model),
   ) as unknown as MutableStyleRequest;
 
   // The server validates exactly three roadmap entries after generation. Removing these
