@@ -190,6 +190,12 @@ export async function POST(request: Request) {
     "artwork-site-generation",
   );
   if (!generation.ok) {
+    if (generation.kind === "invalid") {
+      return NextResponse.json(
+        { error: "AI returned an invalid design. Try generating the website again." },
+        { status: 502, headers: noStoreHeaders(rateHeaders) },
+      );
+    }
     return NextResponse.json(
       {
         error: input.inspirationUrl
