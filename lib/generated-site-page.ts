@@ -16,6 +16,21 @@ const FORBIDDEN_TEMPLATE_MARKERS = [
   "the loot",
   "take from the rich. give to the memes",
 ];
+const TERMINAL_AESTHETIC_MARKERS = [
+  "root@",
+  "tokenomics.sh",
+  "initiate_",
+  "command centre",
+  "rhc test",
+  "matrix rain",
+  "green-on-black",
+  "join the heist",
+];
+
+export type GeneratedPageAcceptanceProfile = {
+  forbidTerminalAesthetic?: boolean;
+  requireRetailMarketplacePresentation?: boolean;
+};
 
 export type GeneratedPageEvidence = {
   artworkBriefId: string;
@@ -26,7 +41,36 @@ export type GeneratedPagePayload = GeneratedPageEvidence & {
   html: string;
 };
 
-export function isCompleteGeneratedPageHtml(value: unknown): value is string {
+function countMatches(value: string, pattern: RegExp): number {
+  return value.match(pattern)?.length || 0;
+}
+
+function hasRetailMarketplacePresentation(html: string): boolean {
+  const hasHeaderNavigation = /<header\b/i.test(html) && /<nav\b/i.test(html);
+  const hasDiscoveryPattern =
+    /type=["']search["']/i.test(html) ||
+    /role=["']search["']/i.test(html) ||
+    /(?:class|id)=["'][^"']*(?:search|discover|category|browse)[^"']*["']/i.test(html);
+  const articleCount = countMatches(html, /<article\b/gi);
+  const namedCardCount = countMatches(
+    html,
+    /(?:class|id)=["'][^"']*(?:card|tile|campaign|category)[^"']*["']/gi,
+  );
+  const hasCampaignLanguage =
+    /\b(?:discover|featured|campaign|category|collection|top picks|explore|offers)\b/i.test(html);
+
+  return (
+    hasHeaderNavigation &&
+    hasDiscoveryPattern &&
+    articleCount + namedCardCount >= 6 &&
+    hasCampaignLanguage
+  );
+}
+
+export function isCompleteGeneratedPageHtml(
+  value: unknown,
+  acceptance: GeneratedPageAcceptanceProfile = {},
+): value is string {
   if (typeof value !== "string") return false;
   const html = value.trim();
   if (html.length < MIN_GENERATED_HTML_LENGTH || html.length > MAX_GENERATED_HTML_LENGTH) {
@@ -48,6 +92,18 @@ export function isCompleteGeneratedPageHtml(value: unknown): value is string {
   if (/<(?:iframe|object|embed)\b/i.test(html)) return false;
   if (/javascript\s*:/i.test(html)) return false;
   if (FORBIDDEN_TEMPLATE_MARKERS.some((marker) => lower.includes(marker))) return false;
+  if (
+    acceptance.forbidTerminalAesthetic &&
+    TERMINAL_AESTHETIC_MARKERS.some((marker) => lower.includes(marker))
+  ) {
+    return false;
+  }
+  if (
+    acceptance.requireRetailMarketplacePresentation &&
+    !hasRetailMarketplacePresentation(html)
+  ) {
+    return false;
+  }
 
   return true;
 }
@@ -55,12 +111,13 @@ export function isCompleteGeneratedPageHtml(value: unknown): value is string {
 export function parseGeneratedPagePayload(
   value: unknown,
   expected: GeneratedPageEvidence,
+  acceptance: GeneratedPageAcceptanceProfile = {},
 ): GeneratedPagePayload | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
   if (item.artworkBriefId !== expected.artworkBriefId) return null;
   if (item.inspirationBriefId !== expected.inspirationBriefId) return null;
-  if (!isCompleteGeneratedPageHtml(item.html)) return null;
+  if (!isCompleteGeneratedPageHtml(item.html, acceptance)) return null;
   return {
     html: item.html,
     artworkBriefId: expected.artworkBriefId,

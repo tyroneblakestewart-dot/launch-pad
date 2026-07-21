@@ -4,6 +4,7 @@ import {
   isCompleteGeneratedPageHtml,
   parseGeneratedPagePayload,
   prepareGeneratedPageForPreview,
+  type GeneratedPageAcceptanceProfile,
 } from "@/lib/generated-site-page";
 
 function validHtml(extra = "") {
@@ -32,6 +33,21 @@ ${extra}
 </html>`;
 }
 
+function retailHtml(extra = "") {
+  return validHtml(extra)
+    .replace(
+      "<header><nav>Home About Roadmap Community</nav></header>",
+      '<header><nav>Discover Categories About Community</nav><form role="search"><input type="search" aria-label="Discover"></form></header>',
+    )
+    .replace('class="grid"', 'class="grid category-cards"')
+    .replace('class="grid"', 'class="grid campaign-cards"');
+}
+
+const RETAIL_PROFILE: GeneratedPageAcceptanceProfile = {
+  forbidTerminalAesthetic: true,
+  requireRetailMarketplacePresentation: true,
+};
+
 describe("generated full website document", () => {
   it("accepts a complete original single-file page with every required section", () => {
     expect(isCompleteGeneratedPageHtml(validHtml())).toBe(true);
@@ -42,6 +58,17 @@ describe("generated full website document", () => {
     expect(isCompleteGeneratedPageHtml(validHtml("<iframe src='https://example.com'></iframe>"))).toBe(false);
     expect(isCompleteGeneratedPageHtml(validHtml().replace('id="community"', 'id="missing"'))).toBe(false);
     expect(isCompleteGeneratedPageHtml(validHtml().replace(ARTWORK_PLACEHOLDER, "image.png"))).toBe(false);
+  });
+
+  it("requires retail discovery structure and rejects terminal styling when the briefs demand it", () => {
+    expect(isCompleteGeneratedPageHtml(retailHtml(), RETAIL_PROFILE)).toBe(true);
+    expect(isCompleteGeneratedPageHtml(validHtml(), RETAIL_PROFILE)).toBe(false);
+    expect(
+      isCompleteGeneratedPageHtml(
+        retailHtml("<p>root@token:~$ tokenomics.sh join the heist</p>"),
+        RETAIL_PROFILE,
+      ),
+    ).toBe(false);
   });
 
   it("requires the exact artwork and inspiration evidence IDs", () => {
