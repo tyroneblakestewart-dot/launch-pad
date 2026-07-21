@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/generate-site-style/route";
 import {
   MAX_IMAGE_DATA_URL_LENGTH,
+  SITE_STYLE_BACKEND_ADAPTER,
+  TOKEN_LANDING_PAGE_GENERATOR_PREFIX,
   buildOpenAIRequestBody,
   buildSiteStylePrompt,
   extractOutputText,
@@ -74,7 +76,30 @@ describe("generate-site-style server functions", () => {
     ).toBe(false);
   });
 
-  it("builds a prompt and OpenAI request without financial promises", () => {
+  it("keeps the requested creative brief private and adapts it to structured output", () => {
+    expect(TOKEN_LANDING_PAGE_GENERATOR_PREFIX).toContain(
+      "You are a token landing page generator",
+    );
+    expect(TOKEN_LANDING_PAGE_GENERATOR_PREFIX).toContain(
+      "STEP 1 — ANALYSE THE IMAGE FIRST",
+    );
+    expect(TOKEN_LANDING_PAGE_GENERATOR_PREFIX).toContain(
+      "Extract the 4-6 dominant colours",
+    );
+    expect(TOKEN_LANDING_PAGE_GENERATOR_PREFIX).toContain(
+      "Never use placeholder lorem ipsum text",
+    );
+    expect(SITE_STYLE_BACKEND_ADAPTER).toContain(
+      "must never be displayed in the user interface",
+    );
+    expect(SITE_STYLE_BACKEND_ADAPTER).toContain("Do not ask follow-up questions");
+    expect(SITE_STYLE_BACKEND_ADAPTER).toContain(
+      "This endpoint does not return raw HTML/CSS/JS",
+    );
+    expect(SITE_STYLE_BACKEND_ADAPTER).toContain("Output only the schema-compliant JSON object");
+  });
+
+  it("builds a developer-prefixed high-detail OpenAI request without financial promises", () => {
     const input = normaliseGenerateSiteStyleRequest({
       name: "Hoodlums",
       ticker: "HOOD",
@@ -86,13 +111,25 @@ describe("generate-site-style server functions", () => {
 
     expect(prompt).toContain("Project name: Hoodlums");
     expect(prompt).toContain("Ticker: HOOD");
-    expect(prompt).toContain("Do not make financial promises");
+    expect(prompt).toContain("Do not ask questions");
+    expect(prompt).toContain("do not make financial promises");
     expect(request.model).toBe("test-model");
     expect(request.store).toBe(false);
-    expect(request.input[0].content[1]).toEqual({
+    expect(request.input).toHaveLength(2);
+    expect(request.input[0].role).toBe("developer");
+    expect(request.input[0].content[0]).toMatchObject({
+      type: "input_text",
+      text: expect.stringContaining("You are a token landing page generator"),
+    });
+    expect(request.input[1].role).toBe("user");
+    expect(request.input[1].content[0]).toEqual({
+      type: "input_text",
+      text: prompt,
+    });
+    expect(request.input[1].content[1]).toEqual({
       type: "input_image",
       image_url: VALID_IMAGE,
-      detail: "low",
+      detail: "high",
     });
     expect(request.text.format.strict).toBe(true);
   });
@@ -187,7 +224,7 @@ describe("POST /api/generate-site-style", () => {
     }
   });
 
-  it("returns a validated style for a successful OpenAI response", async () => {
+  it("returns a validated style while keeping the private prefix out of the response", async () => {
     process.env.OPENAI_VISION_MODEL = "vision-test-model";
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
@@ -212,13 +249,27 @@ describe("POST /api/generate-site-style", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(body.style).toEqual({ ...VALID_STYLE, source: "openai" });
+    expect(JSON.stringify(body)).not.toContain("You are a token landing page generator");
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://api.openai.com/v1/responses");
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer test-openai-key");
-    const outbound = JSON.parse(String(init.body)) as { model: string; store: boolean };
+    const outbound = JSON.parse(String(init.body)) as {
+      model: string;
+      store: boolean;
+      input: Array<{ role: string; content: Array<{ type: string; text?: string; detail?: string }> }>;
+    };
     expect(outbound).toMatchObject({ model: "vision-test-model", store: false });
+    expect(outbound.input[0].role).toBe("developer");
+    expect(outbound.input[0].content[0].text).toContain(
+      "You are a token landing page generator",
+    );
+    expect(outbound.input[1].role).toBe("user");
+    expect(outbound.input[1].content[1]).toMatchObject({
+      type: "input_image",
+      detail: "high",
+    });
   });
 
   it("returns 502 when OpenAI responds with an error", async () => {
