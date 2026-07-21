@@ -9,9 +9,15 @@ import {
   type OpenAIResponse,
 } from "@/lib/server/generate-site-style";
 import {
+  buildArtworkIdentityRequestBody,
   buildFinalSiteStyleRequestBody,
   buildInspirationInspectionRequestBody,
   extractVerifiedInspirationAnalysis,
+  getFusionBriefIds,
+  parseArtworkIdentityResponse,
+  parseCollaborativeSiteStyleResponse,
+  type ArtworkIdentity,
+  type FusionBriefIds,
 } from "@/lib/site-style-openai-pipeline";
 import {
   GENERATE_SITE_STYLE_LIMIT,
@@ -143,24 +149,26 @@ export async function POST(request: Request) {
 
   const model = process.env.OPENAI_VISION_MODEL || "gpt-5-mini";
   let inspirationAnalysis = "";
+  let artworkIdentity: ArtworkIdentity | undefined;
+  let fusionBriefIds: FusionBriefIds | undefined;
 
   if (input.inspirationUrl) {
     const domain = getInspirationDomain(input.inspirationUrl);
-    const inspectionBody = buildInspirationInspectionRequestBody(input, model);
-    if (!domain || !inspectionBody) {
+    const inspirationBody = buildInspirationInspectionRequestBody(input, model);
+    const artworkBody = buildArtworkIdentityRequestBody(input, model);
+    if (!domain || !inspirationBody) {
       return NextResponse.json(
         { error: "Enter a valid public http or https inspiration website URL." },
         { status: 400, headers: noStoreHeaders(rateHeaders) },
       );
     }
 
-    const inspection = await requestOpenAI(
-      apiKey,
-      inspectionBody,
-      22_000,
-      "inspiration-inspection",
-    );
-    if (!inspection.ok) {
+    const [inspirationResult, artworkResult] = await Promise.all([
+      requestOpenAI(apiKey, inspirationBody, 22_000, "inspiration-inspection"),
+      requestOpenAI(apiKey, artworkBody, 20_000, "artwork-identity-analysis"),
+    ]);
+
+    if (!inspirationResult.ok) {
       return NextResponse.json(
         {
           error:
@@ -169,23 +177,48 @@ export async function POST(request: Request) {
         { status: 502, headers: noStoreHeaders(rateHeaders) },
       );
     }
-
-    const verifiedAnalysis = extractVerifiedInspirationAnalysis(inspection.payload, domain);
-    if (!verifiedAnalysis) {
+    if (!artworkResult.ok) {
       return NextResponse.json(
         {
           error:
-            "The inspiration website was not inspected, so no design was generated. Try the URL again or remove it.",
+            "The uploaded artwork could not be analysed for collaboration. Re-upload it and try again.",
         },
         { status: 502, headers: noStoreHeaders(rateHeaders) },
       );
     }
-    inspirationAnalysis = verifiedAnalysis;
+
+    const verifiedInspiration = extractVerifiedInspirationAnalysis(
+      inspirationResult.payload,
+      domain,
+    );
+    artworkIdentity = parseArtworkIdentityResponse(artworkResult.payload) || undefined;
+
+    if (!verifiedInspiration) {
+      return NextResponse.json(
+        {
+          error:
+            "The inspiration website was not inspected, so no collaborative design was generated. Try the URL again or remove it.",
+        },
+        { status: 502, headers: noStoreHeaders(rateHeaders) },
+      );
+    }
+    if (!artworkIdentity) {
+      return NextResponse.json(
+        {
+          error:
+            "The artwork identity could not be extracted, so it could not collaborate with the inspiration website.",
+        },
+        { status: 502, headers: noStoreHeaders(rateHeaders) },
+      );
+    }
+
+    inspirationAnalysis = verifiedInspiration;
+    fusionBriefIds = getFusionBriefIds(artworkIdentity, inspirationAnalysis);
   }
 
   const generation = await requestOpenAI(
     apiKey,
-    buildFinalSiteStyleRequestBody(input, model, inspirationAnalysis),
+    buildFinalSiteStyleRequestBody(input, model, inspirationAnalysis, artworkIdentity),
     28_000,
     "artwork-site-generation",
   );
@@ -199,17 +232,23 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: input.inspirationUrl
-          ? "The inspiration website was inspected, but the artwork design could not be generated. Try again."
+          ? "The artwork and inspiration were analysed, but their collaborative website could not be generated. Try again."
           : "AI analysis was unavailable. The browser artwork matcher will be used.",
       },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
-  const style = parseSiteStyleResponse(generation.payload);
+  const style = fusionBriefIds
+    ? parseCollaborativeSiteStyleResponse(generation.payload, fusionBriefIds)
+    : parseSiteStyleResponse(generation.payload);
   if (!style) {
     return NextResponse.json(
-      { error: "AI returned an invalid design. Try generating the website again." },
+      {
+        error: fusionBriefIds
+          ? "AI returned a design that did not prove collaboration between the artwork and inspiration website. Try again."
+          : "AI returned an invalid design. Try generating the website again.",
+      },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
@@ -219,7 +258,7 @@ export async function POST(request: Request) {
       style: {
         ...style,
         source: "openai",
-        inspirationUsed: Boolean(inspirationAnalysis),
+        inspirationUsed: Boolean(fusionBriefIds),
       },
     },
     { headers: noStoreHeaders(rateHeaders) },
