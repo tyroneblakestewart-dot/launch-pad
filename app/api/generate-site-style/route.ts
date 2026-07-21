@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import {
-  buildOpenAIRequestBody,
-  didUseInspirationSearch,
+  getInspirationDomain,
   isValidImageDataUrl,
   isValidInspirationUrl,
   normaliseGenerateSiteStyleRequest,
@@ -10,6 +9,11 @@ import {
   type OpenAIResponse,
 } from "@/lib/server/generate-site-style";
 import {
+  buildFinalSiteStyleRequestBody,
+  buildInspirationInspectionRequestBody,
+  extractVerifiedInspirationAnalysis,
+} from "@/lib/site-style-openai-pipeline";
+import {
   GENERATE_SITE_STYLE_LIMIT,
   consumeGenerateSiteStyleRateLimit,
   getClientIp,
@@ -17,9 +21,54 @@ import {
 } from "@/lib/server/api-protection";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
+
+const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+
+type OpenAIRequestResult =
+  | { ok: true; payload: OpenAIResponse }
+  | { ok: false; kind: "network" | "http" | "invalid" };
 
 function noStoreHeaders(extra: Record<string, string> = {}) {
   return { "Cache-Control": "no-store", ...extra };
+}
+
+async function requestOpenAI(
+  apiKey: string,
+  body: unknown,
+  timeoutMs: number,
+  stage: string,
+): Promise<OpenAIRequestResult> {
+  let response: Response;
+  try {
+    response = await fetch(OPENAI_RESPONSES_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    console.error(
+      `OpenAI ${stage} request failed before receiving a response`,
+      error instanceof Error ? error.message : error,
+    );
+    return { ok: false, kind: "network" };
+  }
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    console.error(`OpenAI ${stage} request failed`, response.status, message.slice(0, 500));
+    return { ok: false, kind: "http" };
+  }
+
+  try {
+    return { ok: true, payload: (await response.json()) as OpenAIResponse };
+  } catch {
+    return { ok: false, kind: "invalid" };
+  }
 }
 
 export async function POST(request: Request) {
@@ -92,69 +141,72 @@ export async function POST(request: Request) {
     );
   }
 
-  let response: Response;
-  try {
-    response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(
-        buildOpenAIRequestBody(input, process.env.OPENAI_VISION_MODEL || "gpt-5-mini"),
-      ),
-      signal: AbortSignal.timeout(input.inspirationUrl ? 45_000 : 25_000),
-    });
-  } catch (error) {
-    console.error(
-      "OpenAI site-style request failed before receiving a response",
-      error instanceof Error ? error.message : error,
+  const model = process.env.OPENAI_VISION_MODEL || "gpt-5-mini";
+  let inspirationAnalysis = "";
+
+  if (input.inspirationUrl) {
+    const domain = getInspirationDomain(input.inspirationUrl);
+    const inspectionBody = buildInspirationInspectionRequestBody(input, model);
+    if (!domain || !inspectionBody) {
+      return NextResponse.json(
+        { error: "Enter a valid public http or https inspiration website URL." },
+        { status: 400, headers: noStoreHeaders(rateHeaders) },
+      );
+    }
+
+    const inspection = await requestOpenAI(
+      apiKey,
+      inspectionBody,
+      22_000,
+      "inspiration-inspection",
     );
+    if (!inspection.ok) {
+      return NextResponse.json(
+        {
+          error:
+            "The inspiration website could not be inspected. Check that it is public and try again.",
+        },
+        { status: 502, headers: noStoreHeaders(rateHeaders) },
+      );
+    }
+
+    const verifiedAnalysis = extractVerifiedInspirationAnalysis(inspection.payload, domain);
+    if (!verifiedAnalysis) {
+      return NextResponse.json(
+        {
+          error:
+            "The inspiration website was not inspected, so no design was generated. Try the URL again or remove it.",
+        },
+        { status: 502, headers: noStoreHeaders(rateHeaders) },
+      );
+    }
+    inspirationAnalysis = verifiedAnalysis;
+  }
+
+  const generation = await requestOpenAI(
+    apiKey,
+    buildFinalSiteStyleRequestBody(input, model, inspirationAnalysis),
+    28_000,
+    "artwork-site-generation",
+  );
+  if (!generation.ok) {
+    if (generation.kind === "invalid") {
+      return NextResponse.json(
+        { error: "AI returned an invalid design. Try generating the website again." },
+        { status: 502, headers: noStoreHeaders(rateHeaders) },
+      );
+    }
     return NextResponse.json(
       {
         error: input.inspirationUrl
-          ? "The inspiration website could not be inspected. Check that it is public and try again."
+          ? "The inspiration website was inspected, but the artwork design could not be generated. Try again."
           : "AI analysis was unavailable. The browser artwork matcher will be used.",
       },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
-  if (!response.ok) {
-    const message = await response.text().catch(() => "");
-    console.error("OpenAI site-style request failed", response.status, message.slice(0, 500));
-    return NextResponse.json(
-      {
-        error: input.inspirationUrl
-          ? "The inspiration website could not be inspected. Check that it is public and try again."
-          : "AI analysis was unavailable. The browser artwork matcher will be used.",
-      },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
-  }
-
-  let payload: OpenAIResponse;
-  try {
-    payload = (await response.json()) as OpenAIResponse;
-  } catch {
-    return NextResponse.json(
-      { error: "AI returned an invalid design. Try generating the website again." },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
-  }
-
-  const inspirationUsed = input.inspirationUrl ? didUseInspirationSearch(payload) : false;
-  if (input.inspirationUrl && !inspirationUsed) {
-    return NextResponse.json(
-      {
-        error:
-          "The inspiration website was not inspected, so no design was generated. Try the URL again or remove it.",
-      },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
-  }
-
-  const style = parseSiteStyleResponse(payload);
+  const style = parseSiteStyleResponse(generation.payload);
   if (!style) {
     return NextResponse.json(
       { error: "AI returned an invalid design. Try generating the website again." },
@@ -163,7 +215,13 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json(
-    { style: { ...style, source: "openai", inspirationUsed } },
+    {
+      style: {
+        ...style,
+        source: "openai",
+        inspirationUsed: Boolean(inspirationAnalysis),
+      },
+    },
     { headers: noStoreHeaders(rateHeaders) },
   );
 }
