@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   buildOpenAIRequestBody,
+  didUseInspirationSearch,
   isValidImageDataUrl,
   isValidInspirationUrl,
   normaliseGenerateSiteStyleRequest,
@@ -102,7 +103,7 @@ export async function POST(request: Request) {
       body: JSON.stringify(
         buildOpenAIRequestBody(input, process.env.OPENAI_VISION_MODEL || "gpt-5-mini"),
       ),
-      signal: AbortSignal.timeout(input.inspirationUrl ? 30_000 : 20_000),
+      signal: AbortSignal.timeout(input.inspirationUrl ? 45_000 : 25_000),
     });
   } catch (error) {
     console.error(
@@ -110,7 +111,11 @@ export async function POST(request: Request) {
       error instanceof Error ? error.message : error,
     );
     return NextResponse.json(
-      { error: "AI analysis was unavailable. The browser artwork matcher will be used." },
+      {
+        error: input.inspirationUrl
+          ? "The inspiration website could not be inspected. Check that it is public and try again."
+          : "AI analysis was unavailable. The browser artwork matcher will be used.",
+      },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
@@ -119,7 +124,11 @@ export async function POST(request: Request) {
     const message = await response.text().catch(() => "");
     console.error("OpenAI site-style request failed", response.status, message.slice(0, 500));
     return NextResponse.json(
-      { error: "AI analysis was unavailable. The browser artwork matcher will be used." },
+      {
+        error: input.inspirationUrl
+          ? "The inspiration website could not be inspected. Check that it is public and try again."
+          : "AI analysis was unavailable. The browser artwork matcher will be used.",
+      },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
@@ -129,7 +138,18 @@ export async function POST(request: Request) {
     payload = (await response.json()) as OpenAIResponse;
   } catch {
     return NextResponse.json(
-      { error: "AI returned an invalid design. The browser artwork matcher will be used." },
+      { error: "AI returned an invalid design. Try generating the website again." },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  const inspirationUsed = input.inspirationUrl ? didUseInspirationSearch(payload) : false;
+  if (input.inspirationUrl && !inspirationUsed) {
+    return NextResponse.json(
+      {
+        error:
+          "The inspiration website was not inspected, so no design was generated. Try the URL again or remove it.",
+      },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
@@ -137,13 +157,13 @@ export async function POST(request: Request) {
   const style = parseSiteStyleResponse(payload);
   if (!style) {
     return NextResponse.json(
-      { error: "AI returned an invalid design. The browser artwork matcher will be used." },
+      { error: "AI returned an invalid design. Try generating the website again." },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
   return NextResponse.json(
-    { style: { ...style, source: "openai" } },
+    { style: { ...style, source: "openai", inspirationUsed } },
     { headers: noStoreHeaders(rateHeaders) },
   );
 }
