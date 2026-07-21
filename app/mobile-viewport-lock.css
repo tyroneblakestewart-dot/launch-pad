@@ -1,0 +1,87 @@
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
+@supports (overflow: clip) {
+  html,
+  body {
+    overflow-x: clip;
+  }
+}
+
+body {
+  position: relative;
+}
+
+body > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+.app-shell,
+#launch-studio,
+.workspace,
+.builder-panel,
+.preview-panel,
+.site-preview,
+.hero-section,
+.preview-content,
+.buy-section,
+.modal-backdrop,
+.modal-card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.topbar > *,
+.notice-bar > *,
+.panel-heading > *,
+.preview-toolbar > *,
+.build-site-gate-heading > * {
+  min-width: 0;
+}
+
+.preview-toolbar > span {
+  max-width: 48%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticker-input input,
+.url-input input,
+.build-site-inspiration-field input,
+.contract-strip code {
+  min-width: 0;
+}
+
+.contract-strip code {
+  flex: 1;
+}
+
+@media (max-width: 1099px) {
+  html,
+  body {
+    touch-action: pan-y pinch-zoom;
+  }
+
+  .topbar,
+  .notice-bar,
+  .workspace,
+  .builder-panel,
+  .preview-panel {
+    width: 100%;
+  }
+}
