@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/generate-site-style/route";
 import { isValidInspirationWebsiteUrl } from "@/components/build-site-gate";
+import { requestGeneratedSiteStyle } from "@/components/artwork-site-generator";
 import {
   MAX_INSPIRATION_URL_LENGTH,
   buildOpenAIRequestBody,
@@ -10,28 +11,12 @@ import {
   getInspirationDomain,
   isValidInspirationUrl,
   normaliseGenerateSiteStyleRequest,
-  type SiteStyle,
 } from "@/lib/server/generate-site-style";
+import { VALID_STYLE } from "./site-style-fixture";
 
 const ROOT = process.cwd();
 const VALID_IMAGE = "data:image/png;base64,aGVsbG8=";
 const INSPIRATION_URL = "https://example.com/meme-launch";
-const VALID_STYLE: SiteStyle = {
-  background: "#050706",
-  surface: "#101510",
-  text: "#F4F7EF",
-  muted: "#AAB2AA",
-  primary: "#BCE759",
-  secondary: "#91C738",
-  accent: "#E8C435",
-  layout: "split",
-  mood: "playful",
-  texture: "grain",
-  radius: "soft",
-  eyebrow: "MEME POWERED",
-  headline: "A landing page born from the uploaded meme artwork.",
-  cta: "JOIN $MEME",
-};
 
 function request(body: unknown) {
   return new Request("http://localhost/api/generate-site-style", {
@@ -41,11 +26,24 @@ function request(body: unknown) {
   });
 }
 
+function successfulOpenAIResponse(withSearch = true) {
+  return new Response(
+    JSON.stringify({
+      output: [
+        ...(withSearch ? [{ type: "web_search_call", status: "completed" }] : []),
+        { content: [{ type: "output_text", text: JSON.stringify(VALID_STYLE) }] },
+      ],
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
 describe("optional inspiration website URL", () => {
   beforeEach(() => {
     process.env.OPENAI_API_KEY = "test-openai-key";
     delete process.env.GENERATE_SITE_STYLE_SHARED_SECRET;
     delete process.env.GENERATE_SITE_STYLE_ALLOWED_ORIGIN;
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -93,7 +91,7 @@ describe("optional inspiration website URL", () => {
     expect(getInspirationDomain("")).toBeNull();
   });
 
-  it("adds domain-restricted web inspiration only when a URL is supplied", () => {
+  it("forces a high-context domain-restricted web inspection when a URL is supplied", () => {
     const withInspiration = normaliseGenerateSiteStyleRequest({
       name: "Meme",
       ticker: "MEME",
@@ -105,21 +103,22 @@ describe("optional inspiration website URL", () => {
     const outbound = buildOpenAIRequestBody(withInspiration, "test-model");
 
     expect(prompt).toContain(`Optional inspiration website: ${INSPIRATION_URL}`);
-    expect(prompt).toContain("uploaded artwork/content remains mandatory");
-    expect(prompt).toContain("Do not copy branding, logos, source code, assets, wording");
+    expect(prompt).toContain("Use web search now");
+    expect(prompt).toContain("typography, hero composition, motion language");
+    expect(prompt).toContain("fontStyle, heroTreatment, motionStyle");
     expect(outbound.tools).toEqual([
       {
         type: "web_search",
-        search_context_size: "low",
+        search_context_size: "high",
         filters: { allowed_domains: ["example.com"] },
       },
     ]);
+    expect(outbound.tool_choice).toBe("required");
+    expect(outbound.include).toEqual(["web_search_call.action.sources"]);
 
-    const uploadOnly = normaliseGenerateSiteStyleRequest({
-      imageDataUrl: VALID_IMAGE,
-    });
-    expect(buildSiteStylePrompt(uploadOnly)).toContain("No inspiration website was supplied");
+    const uploadOnly = normaliseGenerateSiteStyleRequest({ imageDataUrl: VALID_IMAGE });
     expect(buildOpenAIRequestBody(uploadOnly, "test-model")).not.toHaveProperty("tools");
+    expect(buildOpenAIRequestBody(uploadOnly, "test-model")).not.toHaveProperty("tool_choice");
   });
 
   it("keeps uploaded content mandatory even when an inspiration URL is supplied", async () => {
@@ -148,15 +147,25 @@ describe("optional inspiration website URL", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("passes a valid inspiration URL privately to the domain-restricted OpenAI request", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          output: [{ content: [{ type: "output_text", text: JSON.stringify(VALID_STYLE) }] }],
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
+  it("refuses to claim inspiration was used when OpenAI did not run web search", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(successfulOpenAIResponse(false)));
+
+    const response = await POST(
+      request({
+        name: "Meme",
+        ticker: "MEME",
+        description: "A meme project with enough story to generate a website.",
+        imageDataUrl: VALID_IMAGE,
+        inspirationUrl: INSPIRATION_URL,
+      }),
     );
+
+    expect(response.status).toBe(502);
+    expect((await response.json()).error).toContain("was not inspected");
+  });
+
+  it("returns inspirationUsed only after a completed website inspection", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(successfulOpenAIResponse(true));
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(
@@ -171,34 +180,79 @@ describe("optional inspiration website URL", () => {
     const responseBody = await response.json();
 
     expect(response.status).toBe(200);
+    expect(responseBody.style).toEqual({
+      ...VALID_STYLE,
+      source: "openai",
+      inspirationUsed: true,
+    });
     expect(JSON.stringify(responseBody)).not.toContain(INSPIRATION_URL);
+
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const outbound = JSON.parse(String(init.body)) as {
+      tool_choice?: string;
       tools?: Array<{ filters?: { allowed_domains?: string[] } }>;
       input: Array<{ role: string; content: Array<{ text?: string }> }>;
     };
+    expect(outbound.tool_choice).toBe("required");
     expect(outbound.tools?.[0].filters?.allowed_domains).toEqual(["example.com"]);
     expect(outbound.input[1].content[0].text).toContain(INSPIRATION_URL);
   });
 
-  it("shows the optional field while enforcing the required upload in the website builder", async () => {
-    const gate = await readFile(
-      path.join(ROOT, "components", "build-site-gate.tsx"),
-      "utf8",
+  it("does not silently fall back to artwork-only generation when a requested URL fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: "The inspiration website could not be inspected." }), {
+          status: 502,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
     );
+
+    await expect(
+      requestGeneratedSiteStyle({
+        name: "Meme",
+        ticker: "MEME",
+        description: "A meme project with enough story to generate a website.",
+        imageDataUrl: VALID_IMAGE,
+        inspirationUrl: INSPIRATION_URL,
+      }),
+    ).rejects.toThrow("could not be inspected");
+  });
+
+  it("still permits browser artwork fallback when no inspiration URL was requested", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Unavailable" }), { status: 502 })),
+    );
+
+    await expect(
+      requestGeneratedSiteStyle({
+        name: "Meme",
+        ticker: "MEME",
+        description: "A meme project with enough story to generate a website.",
+        imageDataUrl: VALID_IMAGE,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("applies inspiration to visible typography, hero, motion and section content", async () => {
+    const gate = await readFile(path.join(ROOT, "components", "build-site-gate.tsx"), "utf8");
     const generator = await readFile(
       path.join(ROOT, "components", "artwork-site-generator.tsx"),
       "utf8",
     );
 
     expect(gate).toContain("Inspiration website URL");
-    expect(gate).toContain("build-site-inspiration-url");
-    expect(gate).toContain('type="url"');
-    expect(gate).toContain("Uploaded artwork/content is still required");
     expect(gate).toContain('label: "Uploaded artwork/content"');
-    expect(gate).toContain('detail.imageDataUrl?.startsWith("data:image/")');
-    expect(gate).toContain("inspirationUrl:");
-    expect(gate).toContain('new CustomEvent("launchpad:generate-site", { detail })');
-    expect(generator).toContain("body: JSON.stringify(detail)");
+    expect(generator).toContain("style.inspirationUsed");
+    expect(generator).toContain("data-generated-font");
+    expect(generator).toContain("data-generated-hero");
+    expect(generator).toContain("data-generated-motion");
+    expect(generator).toContain("style.heroBody");
+    expect(generator).toContain("style.aboutBody");
+    expect(generator).toContain("style.roadmap[index]");
+    expect(generator).toContain("style.tickerPhrase");
+    expect(generator).not.toContain("requestGeneratedSiteStyle(detail).catch(() => null)");
   });
 });
