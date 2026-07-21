@@ -3,12 +3,14 @@
 import { useEffect } from "react";
 
 const REQUIRED_DESCRIPTION_LENGTH = 20;
+const MAX_INSPIRATION_URL_LENGTH = 500;
 
 type GenerateDetail = {
   name: string;
   ticker: string;
   description: string;
   imageDataUrl?: string;
+  inspirationUrl?: string;
 };
 
 function findControl(panel: Element, labelText: string) {
@@ -36,6 +38,58 @@ function addOptionalMarker(panel: Element, labelText: string) {
   heading.appendChild(marker);
 }
 
+export function isValidInspirationWebsiteUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (trimmed.length > MAX_INSPIRATION_URL_LENGTH) return false;
+
+  try {
+    const url = new URL(trimmed);
+    const hostname = url.hostname.toLowerCase();
+    const rawIp = /^(?:\d{1,3}\.){3}\d{1,3}$|^\[[0-9a-f:]+\]$/i;
+    return (
+      (url.protocol === "https:" || url.protocol === "http:") &&
+      !url.username &&
+      !url.password &&
+      hostname.includes(".") &&
+      hostname !== "localhost" &&
+      !hostname.endsWith(".localhost") &&
+      !hostname.endsWith(".local") &&
+      !rawIp.test(hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function ensureInspirationField(panel: Element, uploadBox: Element) {
+  const existing = panel.querySelector<HTMLInputElement>(".build-site-inspiration-url");
+  if (existing) return existing;
+
+  const label = document.createElement("label");
+  label.className = "build-site-inspiration-field";
+  label.innerHTML = `
+    <span class="field-label">
+      Inspiration website URL
+      <span class="build-site-optional-marker">OPTIONAL</span>
+    </span>
+    <input
+      class="build-site-inspiration-url"
+      type="url"
+      inputmode="url"
+      maxlength="${MAX_INSPIRATION_URL_LENGTH}"
+      autocomplete="url"
+      placeholder="https://example.com"
+      aria-describedby="build-site-inspiration-help"
+    />
+    <small id="build-site-inspiration-help" class="build-site-inspiration-help">
+      Uploaded artwork/content is still required. This optional link only guides the visual direction.
+    </small>
+  `;
+  uploadBox.insertAdjacentElement("beforebegin", label);
+  return label.querySelector<HTMLInputElement>(".build-site-inspiration-url");
+}
+
 export function BuildSiteGate() {
   useEffect(() => {
     let unlocked = false;
@@ -52,6 +106,8 @@ export function BuildSiteGate() {
         ticker: findControl(panel, "Ticker")?.value.trim() || "",
         description: findControl(panel, "Project story")?.value.trim() || "",
         imageDataUrl: panel.querySelector<HTMLImageElement>(".upload-box img")?.src,
+        inspirationUrl:
+          panel.querySelector<HTMLInputElement>(".build-site-inspiration-url")?.value.trim() || "",
       };
     }
 
@@ -64,6 +120,7 @@ export function BuildSiteGate() {
 
       addOptionalMarker(panel, "X handle");
       addOptionalMarker(panel, "Telegram");
+      ensureInspirationField(panel, uploadBox);
 
       if (!gate || !gate.isConnected) {
         gate = document.createElement("div");
@@ -75,7 +132,7 @@ export function BuildSiteGate() {
           </div>
           <div class="build-site-checklist" aria-live="polite"></div>
           <button class="build-site-button" type="button">GENERATE SITE FROM ARTWORK</button>
-          <p class="build-site-hint">Your image drives the colours, mood and layout. Social accounts are optional.</p>
+          <p class="build-site-hint">Upload content to define the site. An inspiration website is optional.</p>
         `;
         uploadBox.insertAdjacentElement("afterend", gate);
         button = gate.querySelector<HTMLButtonElement>(".build-site-button");
@@ -98,7 +155,7 @@ export function BuildSiteGate() {
           <div>
             <span>ARTWORK WEBSITE GENERATOR</span>
             <strong>Your artwork should define the website</strong>
-            <p>Enter a token name, ticker and description, then generate a design inspired by the uploaded image.</p>
+            <p>Enter the project details and upload content. You may also add an optional website for design inspiration.</p>
           </div>
         `;
         previewPanel.appendChild(overlay);
@@ -119,7 +176,17 @@ export function BuildSiteGate() {
           label: `Description (${REQUIRED_DESCRIPTION_LENGTH}+ characters)`,
           complete: detail.description.length >= REQUIRED_DESCRIPTION_LENGTH,
         },
+        {
+          label: "Uploaded artwork/content",
+          complete: Boolean(detail.imageDataUrl?.startsWith("data:image/")),
+        },
       ];
+      if (detail.inspirationUrl) {
+        checks.push({
+          label: "Valid inspiration website URL",
+          complete: isValidInspirationWebsiteUrl(detail.inspirationUrl),
+        });
+      }
       const ready = checks.every((item) => item.complete);
 
       if (!ready) unlocked = false;
@@ -134,7 +201,9 @@ export function BuildSiteGate() {
       button.disabled = !ready || generating;
       button.setAttribute("aria-busy", String(generating));
       button.textContent = generating
-        ? "ANALYSING ARTWORK…"
+        ? detail.inspirationUrl
+          ? "ANALYSING ARTWORK + INSPIRATION…"
+          : "ANALYSING ARTWORK…"
         : unlocked
           ? "REGENERATE FROM ARTWORK ↻"
           : "GENERATE SITE FROM ARTWORK";
@@ -149,11 +218,16 @@ export function BuildSiteGate() {
       const detail = (event as CustomEvent<{ style?: { source?: string } }>).detail;
       generating = false;
       unlocked = true;
+      const hasInspiration = Boolean(
+        document.querySelector<HTMLInputElement>(".build-site-inspiration-url")?.value.trim(),
+      );
       if (hint) {
         hint.textContent =
           detail?.style?.source === "openai"
-            ? "AI analysed the uploaded artwork and generated this design. Social accounts remain optional."
-            : "The browser matched the uploaded artwork's palette, mood and shape. Add an OpenAI key later for deeper vision analysis.";
+            ? hasInspiration
+              ? "AI analysed the uploaded content and the optional inspiration website to generate this design."
+              : "AI analysed the uploaded artwork and generated this design. Social accounts remain optional."
+            : "The browser matched the uploaded artwork's palette, mood and shape. Website inspiration requires AI analysis.";
       }
       refresh();
       document.querySelector(".preview-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -178,6 +252,7 @@ export function BuildSiteGate() {
       window.removeEventListener("launchpad:site-generation-failed", onFailed);
       gate?.remove();
       overlay?.remove();
+      document.querySelector(".build-site-inspiration-field")?.remove();
       document
         .querySelectorAll(".build-site-optional-marker")
         .forEach((marker) => marker.remove());
@@ -189,6 +264,26 @@ export function BuildSiteGate() {
 
   return (
     <style>{`
+      .build-site-inspiration-field { display: block; margin-bottom: 16px; }
+      .build-site-inspiration-field input {
+        width: 100%;
+        min-height: 48px;
+        padding: 0 13px;
+        border: 1px solid rgba(131,183,139,.2);
+        border-radius: 7px;
+        outline: none;
+        color: #f3f6ef;
+        background: #070b08;
+        font-size: 14px;
+      }
+      .build-site-inspiration-field input:focus { border-color: rgba(85,255,120,.65); }
+      .build-site-inspiration-field input:invalid:not(:placeholder-shown) { border-color: rgba(255,102,102,.7); }
+      .build-site-inspiration-help {
+        display: block;
+        margin-top: 7px;
+        color: #68736a;
+        font: 9px/1.55 "IBM Plex Mono", monospace;
+      }
       .build-site-gate {
         display: grid;
         gap: 11px;
