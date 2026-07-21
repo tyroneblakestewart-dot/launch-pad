@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect } from "react";
+import {
+  ARTWORK_COMPRESSION_STEPS,
+  fitArtworkDimensions,
+  type ArtworkCompressionStep,
+} from "@/lib/artwork-compression";
 import styles from "./artwork-upload-controller.module.css";
 
 const EXISTING_UPLOAD_LIMIT = 1_500_000;
 const MAX_SOURCE_BYTES = 20_000_000;
-const TARGET_BYTES = 1_350_000;
-const INITIAL_MAX_DIMENSION = 1800;
+const TARGET_BYTES = 1_250_000;
 const UPLOAD_HELP =
   "PNG, JPG, WEBP, GIF or AVIF · up to 20 MB · large files auto-optimised";
 
@@ -98,6 +102,50 @@ function canvasToBlob(
   return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
 }
 
+async function encodeArtwork(
+  image: HTMLImageElement,
+  step: ArtworkCompressionStep,
+  type: "image/webp" | "image/jpeg",
+): Promise<Blob | null> {
+  const { width, height } = fitArtworkDimensions(
+    image.naturalWidth,
+    image.naturalHeight,
+    step.maxDimension,
+  );
+  const opaque = type === "image/jpeg";
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext("2d", { alpha: !opaque });
+  if (!context) throw new Error("The browser could not prepare the image canvas.");
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  if (opaque) {
+    context.fillStyle = "#050706";
+    context.fillRect(0, 0, width, height);
+  }
+  context.drawImage(image, 0, 0, width, height);
+
+  return canvasToBlob(canvas, type, step.quality);
+}
+
+function optimisedExtension(blob: Blob): "webp" | "jpg" | "png" {
+  if (blob.type === "image/jpeg") return "jpg";
+  if (blob.type === "image/png") return "png";
+  return "webp";
+}
+
+function makeOptimisedFile(source: File, blob: Blob): File {
+  const baseName = source.name.replace(/\.[^.]+$/, "") || "token-artwork";
+  const extension = optimisedExtension(blob);
+  return new File([blob], `${baseName}-optimised.${extension}`, {
+    type: blob.type || (extension === "jpg" ? "image/jpeg" : `image/${extension}`),
+    lastModified: Date.now(),
+  });
+}
+
 async function optimiseArtwork(file: File): Promise<File> {
   const image = await loadImage(file);
   const sourceWidth = image.naturalWidth;
@@ -107,48 +155,24 @@ async function optimiseArtwork(file: File): Promise<File> {
     throw new Error("The selected image has no readable dimensions.");
   }
 
-  let maxDimension = INITIAL_MAX_DIMENSION;
-  let lastBlob: Blob | null = null;
+  let smallestBlob: Blob | null = null;
 
-  for (let attempt = 0; attempt < 9; attempt += 1) {
-    const scale = Math.min(
-      1,
-      maxDimension / sourceWidth,
-      maxDimension / sourceHeight,
-    );
-    const width = Math.max(1, Math.round(sourceWidth * scale));
-    const height = Math.max(1, Math.round(sourceHeight * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-
-    const context = canvas.getContext("2d", { alpha: true });
-    if (!context) throw new Error("The browser could not prepare the image canvas.");
-
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    context.drawImage(image, 0, 0, width, height);
-
-    const quality = Math.max(0.56, 0.9 - attempt * 0.05);
-    const blob = await canvasToBlob(canvas, "image/webp", quality);
-    if (!blob) throw new Error("The browser could not optimise this image.");
-
-    lastBlob = blob;
-    if (blob.size <= TARGET_BYTES) break;
-    maxDimension = Math.max(900, Math.round(maxDimension * 0.84));
+  for (const type of ["image/webp", "image/jpeg"] as const) {
+    for (const step of ARTWORK_COMPRESSION_STEPS) {
+      const blob = await encodeArtwork(image, step, type);
+      if (!blob) continue;
+      if (!smallestBlob || blob.size < smallestBlob.size) smallestBlob = blob;
+      if (blob.size <= TARGET_BYTES) return makeOptimisedFile(file, blob);
+    }
   }
 
-  if (!lastBlob || lastBlob.size > EXISTING_UPLOAD_LIMIT) {
-    throw new Error(
-      "The artwork is still too detailed to store locally. Try a JPG or WEBP version below 20 MB.",
-    );
+  if (smallestBlob && smallestBlob.size <= EXISTING_UPLOAD_LIMIT) {
+    return makeOptimisedFile(file, smallestBlob);
   }
 
-  const baseName = file.name.replace(/\.[^.]+$/, "") || "token-artwork";
-  return new File([lastBlob], `${baseName}-optimised.webp`, {
-    type: "image/webp",
-    lastModified: Date.now(),
-  });
+  throw new Error(
+    "This browser could not shrink the artwork enough. Export it as a JPG or WEBP at 3000 px or less and try again.",
+  );
 }
 
 export function ArtworkUploadController() {
