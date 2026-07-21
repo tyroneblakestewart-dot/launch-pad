@@ -1,7 +1,7 @@
-import { ArtworkSiteGenerator } from "@/components/artwork-site-generator";
 import { ArtworkUploadController } from "@/components/artwork-upload-controller";
 import { BuildSiteGate } from "@/components/build-site-gate";
 import { DexscreenerSiteSection } from "@/components/dexscreener-site-section";
+import { FullWebsiteGenerator } from "@/components/full-website-generator";
 import { GeneratedSiteProjectGuard } from "@/components/generated-site-project-guard";
 import { HoodlumsWelcomeModal } from "@/components/hoodlums-welcome-modal";
 import { RobinhoodTestnetDeploymentController } from "@/components/robinhood-testnet-deployment-controller";
@@ -12,7 +12,7 @@ export default function Home() {
     <>
       <HoodlumsWelcomeModal />
       <ArtworkUploadController />
-      <ArtworkSiteGenerator />
+      <FullWebsiteGenerator />
       <DexscreenerSiteSection />
       <GeneratedSiteProjectGuard />
       <BuildSiteGate />

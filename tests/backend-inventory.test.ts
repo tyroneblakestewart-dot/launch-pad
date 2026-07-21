@@ -29,6 +29,7 @@ describe("backend test inventory", () => {
 
     expect(routeFiles).toEqual([
       "app/api/dexscreener-pair/route.ts",
+      "app/api/generate-site-page/route.ts",
       "app/api/generate-site-style/route.ts",
       "app/api/social/telegram/route.ts",
     ]);
@@ -45,6 +46,7 @@ describe("backend test inventory", () => {
 
     expect(Object.fromEntries(methods)).toEqual({
       "app/api/dexscreener-pair/route.ts": ["GET"],
+      "app/api/generate-site-page/route.ts": ["POST"],
       "app/api/generate-site-style/route.ts": ["POST"],
       "app/api/social/telegram/route.ts": ["POST"],
     });
