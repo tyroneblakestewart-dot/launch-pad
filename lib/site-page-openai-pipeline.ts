@@ -56,6 +56,8 @@ export const GENERATED_PAGE_SCHEMA = {
 
 const TERMINAL_IDENTITY_PATTERN =
   /\b(?:terminal|hacker|cyber|matrix|code[- ]?rain|command centre|heist|console|shell)\b/i;
+const TERMINAL_NEGATION_PATTERN =
+  /\b(?:do not|don't|never|avoid|without|not|rather than|instead of)\b[^.!?]{0,120}\b(?:terminal|hacker|cyber|matrix|code[- ]?rain|command centre|heist|console|shell)\b/i;
 const RETAIL_PRESENTATION_PATTERN =
   /\b(?:retail|marketplace|e-?commerce|shopping|shop|product discovery|category navigation|campaign cards?|commercial homepage|supermarket|grocer)\b/i;
 
@@ -71,13 +73,18 @@ function artworkBriefLines(identity: ArtworkIdentity): string[] {
   ];
 }
 
+function artworkUsesTerminalAesthetic(identityText: string): boolean {
+  if (TERMINAL_NEGATION_PATTERN.test(identityText)) return false;
+  return TERMINAL_IDENTITY_PATTERN.test(identityText);
+}
+
 export function buildGeneratedPageAcceptanceProfile(
   artworkIdentity: ArtworkIdentity,
   inspirationAnalysis: string,
 ): GeneratedPageAcceptanceProfile {
   const identityText = Object.values(artworkIdentity).join(" ");
   return {
-    forbidTerminalAesthetic: !TERMINAL_IDENTITY_PATTERN.test(identityText),
+    forbidTerminalAesthetic: !artworkUsesTerminalAesthetic(identityText),
     requireRetailMarketplacePresentation: RETAIL_PRESENTATION_PATTERN.test(inspirationAnalysis),
   };
 }
