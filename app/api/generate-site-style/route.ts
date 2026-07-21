@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   buildOpenAIRequestBody,
   isValidImageDataUrl,
+  isValidInspirationUrl,
   normaliseGenerateSiteStyleRequest,
   parseSiteStyleResponse,
   type GenerateSiteStyleRequest,
@@ -83,6 +84,12 @@ export async function POST(request: Request) {
       { status: 400, headers: noStoreHeaders(rateHeaders) },
     );
   }
+  if (!isValidInspirationUrl(input.inspirationUrl)) {
+    return NextResponse.json(
+      { error: "Enter a valid public http or https inspiration website URL." },
+      { status: 400, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
 
   let response: Response;
   try {
@@ -95,7 +102,7 @@ export async function POST(request: Request) {
       body: JSON.stringify(
         buildOpenAIRequestBody(input, process.env.OPENAI_VISION_MODEL || "gpt-5-mini"),
       ),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(input.inspirationUrl ? 30_000 : 20_000),
     });
   } catch (error) {
     console.error(
