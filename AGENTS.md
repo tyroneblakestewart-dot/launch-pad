@@ -30,15 +30,16 @@ npm run build        # production build
 ## Architecture map
 
 - `app/` — routes: `/` studio, `/providers`, `/allocations`,
-  `/liquidity-lab`, `/testnet`, `/monad`, `/social`, `/account` (disabled
-  preview). See README route table for status of each.
+  `/liquidity-lab`, `/bonding-curve`, `/testnet`, `/monad`, `/social`,
+  `/account` (disabled preview). See README route table for status of each.
 - `app/api/` — server routes: `generate-site-style` (OpenAI-backed),
   `dexscreener-pair`, `social/telegram`.
 - `lib/server/` — server-side logic incl. `api-protection.ts`
   (shared-secret + origin check + per-IP rate limiting).
 - `contracts/` — Solidity: `FixedSupplyMemeToken.sol`,
-  `HoodlumsTestLiquidityPool.sol` (test-only AMM), and
-  `HoodlumsTokenFactory.sol` (+ `.t.sol` tests): deploys fixed-supply
+  `HoodlumsTestLiquidityPool.sol` (test-only AMM),
+  `HoodlumsTestBondingCurve.sol` (testnet curve + automatic pool graduation),
+  and `HoodlumsTokenFactory.sol` (+ `.t.sol` tests): deploys fixed-supply
   burnable ERC-20s, records launches on-chain, collects a launch fee to the
   Hoodlums treasury, fee hard-capped at 0.1 native token, two-step
   ownership, reentrancy-guarded.
@@ -84,7 +85,8 @@ npm run build        # production build
   on-chain**. Next: deploy to Robinhood Chain Testnet with zero fee,
   verify on the explorer, route the `/testnet` deploy button through
   `launchToken()`.
-- Bonding-curve foundation is being developed testnet-first. The approved
-  supply model places the complete token supply into the curve before
-  trading and locks all initial LP at graduation. Platform/creator/reserve
-  fee percentages remain undecided and must not be invented.
+- HoodlumsTestBondingCurve is merged (PR #103). The `/bonding-curve` route
+  is the fifth visible workflow step and currently explains the approved
+  lifecycle. The curve is not deployed or factory-connected yet, and live
+  quote/buy/sell controls are not active. Platform/creator/reserve fee
+  percentages remain undecided and must not be invented.
