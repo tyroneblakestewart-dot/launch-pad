@@ -26,11 +26,13 @@ import {
   getClientIp,
   isGenerateSiteStyleRequestAuthorised,
 } from "@/lib/server/api-protection";
+import {
+  resolveAIResponsesRuntime,
+  type AIResponsesRuntime,
+} from "@/lib/server/ai-responses-runtime";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 
 type OpenAIRequestResult =
   | { ok: true; payload: OpenAIResponse }
@@ -41,17 +43,17 @@ function noStoreHeaders(extra: Record<string, string> = {}) {
 }
 
 async function requestOpenAI(
-  apiKey: string,
+  ai: AIResponsesRuntime,
   body: unknown,
   timeoutMs: number,
   stage: string,
 ): Promise<OpenAIRequestResult> {
   let response: Response;
   try {
-    response = await fetch(OPENAI_RESPONSES_URL, {
+    response = await fetch(ai.responsesUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${ai.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -59,7 +61,7 @@ async function requestOpenAI(
     });
   } catch (error) {
     console.error(
-      `OpenAI ${stage} request failed before receiving a response`,
+      `AI ${stage} request failed before receiving a response`,
       error instanceof Error ? error.message : error,
     );
     return { ok: false, kind: "network" };
@@ -67,7 +69,11 @@ async function requestOpenAI(
 
   if (!response.ok) {
     const message = await response.text().catch(() => "");
-    console.error(`OpenAI ${stage} request failed`, response.status, message.slice(0, 500));
+    console.error(
+      `AI ${stage} request failed through ${ai.source}`,
+      response.status,
+      message.slice(0, 500),
+    );
     return { ok: false, kind: "http" };
   }
 
@@ -116,10 +122,13 @@ export async function POST(request: Request) {
     }
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
+  const ai = resolveAIResponsesRuntime();
+  if (!ai) {
     return NextResponse.json(
-      { error: "AI website generation is not configured." },
+      {
+        error:
+          "AI website generation is unavailable because neither OpenAI nor Vercel AI Gateway authentication is available.",
+      },
       { status: 503, headers: noStoreHeaders(rateHeaders) },
     );
   }
@@ -148,7 +157,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const model = process.env.OPENAI_VISION_MODEL || "gpt-5-mini";
+  const model = ai.model;
   const artworkBody = buildPageArtworkIdentityRequestBody(input, model);
   const domain = input.inspirationUrl ? getInspirationDomain(input.inspirationUrl) : null;
   const inspirationBody = input.inspirationUrl
@@ -156,9 +165,9 @@ export async function POST(request: Request) {
     : null;
 
   const [artworkResult, inspirationResult] = await Promise.all([
-    requestOpenAI(apiKey, artworkBody, 18_000, "page-artwork-analysis"),
+    requestOpenAI(ai, artworkBody, 18_000, "page-artwork-analysis"),
     inspirationBody
-      ? requestOpenAI(apiKey, inspirationBody, 18_000, "page-inspiration-analysis")
+      ? requestOpenAI(ai, inspirationBody, 18_000, "page-inspiration-analysis")
       : Promise.resolve<OpenAIRequestResult>({ ok: true, payload: {} }),
   ]);
 
@@ -197,7 +206,7 @@ export async function POST(request: Request) {
   const briefIds = getFusionBriefIds(artworkIdentity, inspirationAnalysis);
   const acceptance = buildGeneratedPageAcceptanceProfile(artworkIdentity, inspirationAnalysis);
   const generation = await requestOpenAI(
-    apiKey,
+    ai,
     buildGeneratedSitePageRequestBody(input, model, artworkIdentity, inspirationAnalysis),
     38_000,
     "full-page-generation",
@@ -229,7 +238,7 @@ export async function POST(request: Request) {
   return NextResponse.json(
     {
       html: page.html,
-      source: "openai",
+      source: ai.source,
       inspirationUsed: Boolean(input.inspirationUrl),
     },
     { headers: noStoreHeaders(rateHeaders) },
