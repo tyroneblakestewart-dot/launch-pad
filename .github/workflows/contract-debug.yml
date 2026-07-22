@@ -1,9 +1,9 @@
 name: Contract debug
 
 on:
-  push:
+  pull_request:
     branches:
-      - feat/robinhood-testnet-token-factory
+      - main
 
 permissions:
   contents: read
