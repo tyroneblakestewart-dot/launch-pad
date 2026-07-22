@@ -17,6 +17,7 @@ import {
   type Eip1193Provider,
 } from "viem";
 import { ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./liquidity-lab.module.css";
 
 const HOODLUMS_TEST_AMM_ABI = parseAbi([
@@ -33,8 +34,6 @@ const ERC20_ABI = parseAbi([
   "function decimals() view returns (uint8)",
 ]);
 
-type BrowserWindow = Window & { ethereum?: Eip1193Provider; __launchpadEthereum?: Eip1193Provider };
-
 const chain = defineChain({
   id: ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL,
   name: ROBINHOOD_TESTNET.chainName,
@@ -44,9 +43,8 @@ const chain = defineChain({
   testnet: true,
 });
 
-function getProvider() {
-  const browserWindow = window as BrowserWindow;
-  return browserWindow.__launchpadEthereum || browserWindow.ethereum;
+function getProvider(): Eip1193Provider | undefined {
+  return (getInjectedEvmProvider() as Eip1193Provider | null) ?? undefined;
 }
 
 function deadline() {

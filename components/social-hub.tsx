@@ -66,7 +66,7 @@ function cleanTelegram(value: string): string {
 
 function websiteFor(project: TokenProject): string {
   if (!project.websiteSlug) return "";
-  return `https://your-domain.com/${project.websiteSlug}`;
+  return `https://hoodlums.dev/${project.websiteSlug}`;
 }
 
 function buildTemplate(project: TokenProject, template: TemplateId): string {

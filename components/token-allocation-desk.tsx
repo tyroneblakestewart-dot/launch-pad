@@ -14,6 +14,7 @@ import {
 } from "viem";
 import { ROBINHOOD_TESTNET } from "@/lib/chains";
 import type { TokenProject } from "@/lib/types";
+import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./token-allocation-desk.module.css";
 
 const PROJECT_STORAGE_KEY = "private-meme-token-studio-projects-v1";
@@ -34,13 +35,6 @@ const publicClient = createPublicClient({
 
 type AllocationKey = "liquidity" | "community" | "team" | "reserve";
 type DistributionKey = Exclude<AllocationKey, "liquidity">;
-
-type EthereumProvider = {
-  request: (args: {
-    method: string;
-    params?: unknown[] | Record<string, unknown>;
-  }) => Promise<unknown>;
-};
 
 type SavedAllocationPlan = {
   projectId: string;
@@ -91,10 +85,6 @@ const ALLOCATIONS: Array<{
     description: "Keep reserve funds separate from the creator and liquidity wallets.",
   },
 ];
-
-function getEthereum(): EthereumProvider | undefined {
-  return (window as Window & { ethereum?: EthereumProvider }).ethereum;
-}
 
 function readError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -247,7 +237,7 @@ export function TokenAllocationDesk() {
   }
 
   async function connectWallet() {
-    const ethereum = getEthereum();
+    const ethereum = getInjectedEvmProvider();
     if (!ethereum) {
       setStatus("Install an EVM wallet such as MetaMask or Robinhood Wallet first.");
       return;
@@ -415,7 +405,7 @@ export function TokenAllocationDesk() {
   }
 
   async function sendDistribution(key: DistributionKey) {
-    const ethereum = getEthereum();
+    const ethereum = getInjectedEvmProvider();
     if (!ethereum) {
       setStatus("Connect an EVM wallet before sending tokens.");
       return;
