@@ -8,8 +8,10 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {HoodlumsTestLiquidityPool} from "./HoodlumsTestLiquidityPool.sol";
 
 /// @notice Testnet-only virtual-reserve bonding curve for a fixed-supply ERC-20.
-/// @dev This contract has no platform or creator trading fees. Fee policy and
-///      production economics require a separate owner decision and audit.
+/// @dev The complete current token supply must enter the curve before trading.
+///      This prevents an unlocked creator allocation from being sold into buyers.
+///      There are no platform or creator trading fees yet; production economics
+///      require a separate owner decision and audit.
 contract HoodlumsTestBondingCurve is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -34,7 +36,8 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
 
     error InvalidAddress();
     error InvalidConfiguration();
-    error InsufficientCurveFunding(uint256 required, uint256 received);
+    error FullSupplyRequired(uint256 required, uint256 creatorBalance);
+    error InsufficientCurveFunding(uint256 required, uint256 available);
     error BuyExceedsGraduationTarget(uint256 remaining, uint256 received);
     error OnlyCreator();
     error AlreadyFunded();
@@ -115,24 +118,34 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         virtualEthReserve = virtualEthReserve_;
     }
 
-    /// @notice Fund the curve once after the creator has approved this contract.
-    function fundCurve(uint256 tokenAmount) external onlyCreator nonReentrant {
+    /// @notice Fund the curve once with the token's complete current supply.
+    /// @dev The creator must approve this contract for totalSupply() first.
+    function fundCurve() external onlyCreator nonReentrant {
         if (funded) revert AlreadyFunded();
-        if (tokenAmount == 0) revert ZeroInput();
+
+        uint256 fullSupply = token.totalSupply();
+        if (fullSupply == 0) revert ZeroInput();
+
+        uint256 creatorBalance = token.balanceOf(msg.sender);
+        if (creatorBalance != fullSupply) {
+            revert FullSupplyRequired(fullSupply, creatorBalance);
+        }
 
         uint256 requiredFunding = minimumCurveFunding();
-        if (tokenAmount < requiredFunding) {
-            revert InsufficientCurveFunding(requiredFunding, tokenAmount);
+        if (fullSupply < requiredFunding) {
+            revert InsufficientCurveFunding(requiredFunding, fullSupply);
         }
 
         uint256 balanceBefore = token.balanceOf(address(this));
-        token.safeTransferFrom(msg.sender, address(this), tokenAmount);
-        uint256 received = token.balanceOf(address(this)) - balanceBefore;
-        if (received != tokenAmount) revert UnsupportedTokenTransfer();
+        if (balanceBefore != 0) revert InvalidConfiguration();
 
-        curveTokenSupply = tokenAmount;
+        token.safeTransferFrom(msg.sender, address(this), fullSupply);
+        uint256 received = token.balanceOf(address(this)) - balanceBefore;
+        if (received != fullSupply) revert UnsupportedTokenTransfer();
+
+        curveTokenSupply = fullSupply;
         funded = true;
-        emit CurveFunded(msg.sender, tokenAmount);
+        emit CurveFunded(msg.sender, fullSupply);
     }
 
     /// @notice Buy curve tokens with native testnet currency.
