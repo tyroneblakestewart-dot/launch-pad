@@ -1,0 +1,255 @@
+.page {
+  min-height: 100vh;
+  padding: 52px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 78% 4%, rgba(185, 239, 77, 0.1), transparent 30%),
+    radial-gradient(circle at 18% 55%, rgba(45, 113, 61, 0.12), transparent 36%),
+    #050706;
+  color: #f5f7f2;
+}
+
+.hero,
+.summaryGrid,
+.flowSection,
+.nextStep {
+  width: min(1120px, 100%);
+  margin-inline: auto;
+}
+
+.hero {
+  padding: 26px 0 34px;
+}
+
+.eyebrow,
+.cardLabel,
+.sectionHeading > p {
+  margin: 0;
+  color: #bce759;
+  font: 800 11px "IBM Plex Mono", monospace;
+  letter-spacing: 0.14em;
+}
+
+.hero h1 {
+  max-width: 860px;
+  margin: 10px 0 14px;
+  font-size: clamp(46px, 8vw, 94px);
+  line-height: 0.94;
+  letter-spacing: -0.055em;
+}
+
+.intro {
+  max-width: 760px;
+  margin: 0;
+  color: #a5afa8;
+  font-size: clamp(16px, 2vw, 20px);
+  line-height: 1.65;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 28px;
+  padding: 15px 18px;
+  border: 1px solid rgba(185, 239, 77, 0.28);
+  border-radius: 13px;
+  background: rgba(14, 23, 15, 0.88);
+}
+
+.status span {
+  flex: 0 0 auto;
+  padding: 7px 9px;
+  border-radius: 999px;
+  background: #bce759;
+  color: #071006;
+  font: 900 10px "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+}
+
+.status p {
+  margin: 0;
+  color: #c6d0c8;
+  line-height: 1.5;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.card,
+.flowSection,
+.nextStep {
+  border: 1px solid rgba(131, 183, 139, 0.2);
+  border-radius: 16px;
+  background: rgba(11, 17, 12, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.card {
+  min-height: 190px;
+  padding: 24px;
+}
+
+.card h2,
+.nextStep h2,
+.sectionHeading h2 {
+  margin: 10px 0 12px;
+  font-size: clamp(21px, 3vw, 30px);
+  letter-spacing: -0.025em;
+}
+
+.card p,
+.nextStep p,
+.flow p {
+  margin: 0;
+  color: #9ba49d;
+  line-height: 1.62;
+}
+
+.flowSection {
+  margin-top: 16px;
+  padding: 28px;
+}
+
+.sectionHeading {
+  max-width: 720px;
+  margin-bottom: 22px;
+}
+
+.flow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flow li {
+  position: relative;
+  min-height: 208px;
+  padding: 18px;
+  border: 1px solid rgba(131, 183, 139, 0.17);
+  border-radius: 13px;
+  background: #080d09;
+}
+
+.flow li:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  top: 19px;
+  right: -10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #131b15;
+  color: #bce759;
+  font-size: 12px;
+}
+
+.flow li > span {
+  color: #bce759;
+  font: 800 11px "IBM Plex Mono", monospace;
+}
+
+.flow h3 {
+  margin: 30px 0 9px;
+  font-size: 16px;
+}
+
+.flow p {
+  font-size: 13px;
+}
+
+.nextStep {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.6fr);
+  gap: 28px;
+  align-items: center;
+  margin-top: 16px;
+  padding: 28px;
+}
+
+.actions {
+  display: grid;
+  gap: 10px;
+}
+
+.actions a {
+  display: grid;
+  place-items: center;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 1px solid #bce759;
+  border-radius: 10px;
+  background: #bce759;
+  color: #071006;
+  font-weight: 900;
+  text-align: center;
+  text-decoration: none;
+}
+
+.actions a:hover {
+  filter: brightness(1.05);
+}
+
+.actions .secondaryAction {
+  background: transparent;
+  color: #bce759;
+}
+
+@media (max-width: 900px) {
+  .page {
+    padding: 28px 18px;
+  }
+
+  .flow {
+    grid-template-columns: 1fr;
+  }
+
+  .flow li {
+    min-height: auto;
+  }
+
+  .flow li:not(:last-child)::after {
+    content: "↓";
+    top: auto;
+    right: 18px;
+    bottom: -11px;
+  }
+
+  .flow h3 {
+    margin-top: 18px;
+  }
+
+  .nextStep {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding-top: 10px;
+  }
+
+  .status {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .card,
+  .flowSection,
+  .nextStep {
+    padding: 20px;
+  }
+}
