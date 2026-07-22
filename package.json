@@ -2,13 +2,17 @@
   "name": "private-meme-token-studio",
   "version": "0.2.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run && hardhat test solidity",
+    "test:app": "vitest run",
+    "test:contracts": "hardhat test solidity",
+    "test:watch": "vitest",
+    "contracts:compile": "hardhat compile"
   },
   "dependencies": {
     "@solana/spl-token": "0.4.15",
@@ -19,11 +23,13 @@
     "viem": "2.55.2"
   },
   "devDependencies": {
+    "@openzeppelin/contracts": "5.6.1",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "16.2.10",
+    "hardhat": "3.11.0",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
   }
