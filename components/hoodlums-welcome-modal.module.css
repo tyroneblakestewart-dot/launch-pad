@@ -52,6 +52,7 @@
   object-fit: cover;
   object-position: center;
   image-rendering: auto;
+  filter: brightness(1.22) contrast(1.06) saturate(1.08);
   -webkit-user-select: none;
   user-select: none;
 }
@@ -80,16 +81,17 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.crewHotspot:focus-visible {
-  outline: 2px solid #bce759;
+.crewHotspot:focus-visible,
+.crewHotspotActive {
+  outline: 2px solid rgba(188, 231, 89, 0.86);
   outline-offset: -2px;
-  background: rgba(188, 231, 89, 0.06);
-  box-shadow: 0 0 22px rgba(188, 231, 89, 0.24);
+  background: radial-gradient(circle at 50% 42%, rgba(188, 231, 89, 0.18), transparent 72%);
+  box-shadow: 0 0 24px rgba(188, 231, 89, 0.32);
 }
 
 .crewLabel {
   position: absolute;
-  top: 61.5%;
+  top: 58.5%;
   left: clamp(12%, var(--label-x), 88%);
   z-index: 4;
   display: grid;
@@ -97,14 +99,15 @@
   min-height: 54px;
   place-content: center;
   gap: 1px;
-  padding: 5px 7px 7px;
+  padding: 6px 8px 8px;
+  border: 1px solid rgba(230, 185, 65, 0.32);
   border-radius: 10px;
-  background: radial-gradient(circle at 50% 45%, rgba(5, 8, 6, 0.9), rgba(3, 5, 4, 0.28) 66%, transparent 78%);
+  background: rgba(3, 6, 4, 0.9);
   opacity: 0;
   transform: translate(-50%, 8px) scale(0.97);
   transition: opacity 180ms ease, transform 180ms ease;
   pointer-events: none;
-  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.9));
+  filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.94));
 }
 
 .crewLabelVisible {
@@ -135,6 +138,11 @@
   font-size: clamp(7px, 1.75vw, 10px);
   letter-spacing: 0.015em;
   text-transform: uppercase;
+}
+
+.tapHint {
+  display: none;
+  pointer-events: none;
 }
 
 .srOnly {
@@ -238,7 +246,29 @@
 
 @media (hover: hover) and (pointer: fine) {
   .crewHotspot:hover {
-    background: radial-gradient(circle at 50% 42%, rgba(188, 231, 89, 0.08), transparent 72%);
+    background: radial-gradient(circle at 50% 42%, rgba(188, 231, 89, 0.12), transparent 72%);
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .tapHint {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    z-index: 5;
+    display: block;
+    width: max-content;
+    max-width: calc(100% - 24px);
+    margin: 0;
+    padding: 6px 10px;
+    border: 1px solid rgba(198, 245, 62, 0.28);
+    border-radius: 999px;
+    background: rgba(3, 8, 5, 0.78);
+    color: #edf4e9;
+    font: 800 9px/1.2 "IBM Plex Mono", monospace;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transform: translateX(-50%);
   }
 }
 
@@ -265,16 +295,20 @@
     border-radius: 17px;
   }
 
+  .crewArtwork {
+    filter: brightness(1.24) contrast(1.07) saturate(1.09);
+  }
+
   .crewHotspot {
     top: 15%;
     height: 54%;
   }
 
   .crewLabel {
-    top: 60.5%;
+    top: 57.5%;
     width: clamp(78px, 23%, 112px);
     min-height: 46px;
-    padding: 4px 5px 6px;
+    padding: 5px 6px 7px;
   }
 
   .crewName {
