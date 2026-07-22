@@ -33,8 +33,6 @@ contract HoodlumsTokenFactory is Ownable2Step, ReentrancyGuard {
         address indexed token,
         address indexed creator,
         address recipient,
-        string name,
-        string symbol,
         uint256 wholeTokenSupply,
         uint8 decimals,
         uint256 feePaid
@@ -91,7 +89,7 @@ contract HoodlumsTokenFactory is Ownable2Step, ReentrancyGuard {
         tokenAddress = address(token);
 
         uint256 launchIndex = _allTokens.length;
-        LaunchRecord memory record = LaunchRecord({
+        launches[tokenAddress] = LaunchRecord({
             token: tokenAddress,
             creator: msg.sender,
             recipient: recipient,
@@ -103,7 +101,6 @@ contract HoodlumsTokenFactory is Ownable2Step, ReentrancyGuard {
 
         _allTokens.push(tokenAddress);
         _creatorTokens[msg.sender].push(tokenAddress);
-        launches[tokenAddress] = record;
         isFactoryToken[tokenAddress] = true;
 
         if (requiredFee != 0) {
@@ -116,8 +113,6 @@ contract HoodlumsTokenFactory is Ownable2Step, ReentrancyGuard {
             tokenAddress,
             msg.sender,
             recipient,
-            name,
-            symbol,
             wholeTokenSupply,
             decimals,
             requiredFee
