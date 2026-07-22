@@ -42,6 +42,7 @@ jobs:
             -H 'x-hoodlums-api-key: hoodlums-generation-bridge-v1' \
             --data-binary @payload.json)
 
+          echo "$status" > response-status.txt
           echo "HTTP_STATUS=$status"
           python - "$status" <<'PY'
           import json, re, sys
@@ -75,3 +76,13 @@ jobs:
                   raise SystemExit('legacy terminal marker: ' + marker)
           print('LIVE_FULL_GENERATION=PASS')
           PY
+
+      - name: Upload production response
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-generation-response
+          path: |
+            response.json
+            response-status.txt
+          if-no-files-found: warn
