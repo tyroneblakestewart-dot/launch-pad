@@ -10,6 +10,7 @@ export type AIResponsesRuntime = {
 };
 
 type AIEnvironment = {
+  [key: string]: string | undefined;
   OPENAI_API_KEY?: string;
   OPENAI_VISION_MODEL?: string;
   AI_GATEWAY_API_KEY?: string;
@@ -34,7 +35,7 @@ export function getVercelOidcToken(request: Request): string {
 }
 
 export function resolveAIResponsesRuntime(
-  environment: AIEnvironment = process.env as AIEnvironment,
+  environment: AIEnvironment = process.env,
   requestOidcToken = "",
 ): AIResponsesRuntime | null {
   const configuredModel = value(environment.OPENAI_VISION_MODEL) || "gpt-5-mini";
