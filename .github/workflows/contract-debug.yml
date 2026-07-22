@@ -1,43 +1,44 @@
-name: Contract debug
+name: Lock contract dependencies
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
+      - feat/robinhood-testnet-token-factory
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  contracts:
+  lock:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       NPM_CONFIG_AUDIT: "false"
       NPM_CONFIG_FUND: "false"
     steps:
-      - name: Checkout
+      - name: Checkout feature branch
         uses: actions/checkout@v4
+        with:
+          ref: feat/robinhood-testnet-token-factory
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Install dependencies
+      - name: Generate exact dependency lock
         run: npm install --silent
 
-      - name: Run Solidity tests
+      - name: Commit generated lockfile
         shell: bash
         run: |
-          set -o pipefail
-          npm run test:contracts 2>&1 | tee contract-test-output.txt
-
-      - name: Upload Solidity output and dependency lock
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: contract-build-record
-          path: |
-            contract-test-output.txt
-            package-lock.json
+          set -euo pipefail
+          if git diff --quiet -- package-lock.json && git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
+            echo "package-lock.json is already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "Lock Solidity toolchain dependencies"
+          git push origin HEAD:feat/robinhood-testnet-token-factory
