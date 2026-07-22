@@ -119,7 +119,8 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     }
 
     /// @notice Fund the curve once with the token's complete current supply.
-    /// @dev The creator must approve this contract for totalSupply() first.
+    /// @dev The creator must hold and approve totalSupply(). Trading cannot open
+    ///      while any token remains in another wallet.
     function fundCurve() external onlyCreator nonReentrant {
         if (funded) revert AlreadyFunded();
 
