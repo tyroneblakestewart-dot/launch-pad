@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - diagnostic/live-generation-readiness
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
