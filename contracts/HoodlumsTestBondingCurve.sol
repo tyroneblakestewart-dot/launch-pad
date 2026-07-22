@@ -14,6 +14,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint256 public constant BPS = 10_000;
+    uint256 public constant POOL_MINIMUM_LIQUIDITY_SQUARED = 1_000_000;
     address public constant LP_LOCK_ADDRESS = address(1);
 
     IERC20 public immutable token;
@@ -34,6 +35,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     error InvalidAddress();
     error InvalidConfiguration();
     error InsufficientCurveFunding(uint256 required, uint256 received);
+    error BuyExceedsGraduationTarget(uint256 remaining, uint256 received);
     error OnlyCreator();
     error AlreadyFunded();
     error NotFunded();
@@ -144,6 +146,11 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     {
         if (msg.value == 0) revert ZeroInput();
 
+        uint256 remainingToGraduate = graduationTarget - realNativeReserve;
+        if (msg.value > remainingToGraduate) {
+            revert BuyExceedsGraduationTarget(remainingToGraduate, msg.value);
+        }
+
         tokensOut = quoteBuy(msg.value);
         if (tokensOut == 0 || tokensOut < minTokensOut) revert SlippageExceeded();
         if (tokensOut > token.balanceOf(address(this))) revert InsufficientCurveTokens();
@@ -161,7 +168,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
             virtualEthReserve
         );
 
-        if (realNativeReserve >= graduationTarget) {
+        if (realNativeReserve == graduationTarget) {
             _graduate();
         }
     }
@@ -223,14 +230,20 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         );
     }
 
-    /// @notice Minimum token amount that leaves non-zero liquidity at graduation.
+    /// @notice Minimum funding that both reaches the target and seeds a usable pool.
     function minimumCurveFunding() public view returns (uint256) {
         uint256 tokensSoldAtTarget = Math.mulDiv(
             graduationTarget,
             initialVirtualTokenReserve,
             initialVirtualEthReserve + graduationTarget
         );
-        return tokensSoldAtTarget + 1;
+        uint256 minimumPoolTokens = (POOL_MINIMUM_LIQUIDITY_SQUARED / graduationTarget) + 1;
+        return tokensSoldAtTarget + minimumPoolTokens;
+    }
+
+    function remainingNativeToGraduate() external view returns (uint256) {
+        if (graduated) return 0;
+        return graduationTarget - realNativeReserve;
     }
 
     function nativeReserve() external view returns (uint256) {
