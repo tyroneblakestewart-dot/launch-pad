@@ -14,9 +14,9 @@ import {
   parseEther,
   parseUnits,
   type Address,
-  type Eip1193Provider,
 } from "viem";
 import { ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./liquidity-lab.module.css";
 
 const HOODLUMS_TEST_AMM_ABI = parseAbi([
@@ -33,8 +33,6 @@ const ERC20_ABI = parseAbi([
   "function decimals() view returns (uint8)",
 ]);
 
-type BrowserWindow = Window & { ethereum?: Eip1193Provider; __launchpadEthereum?: Eip1193Provider };
-
 const chain = defineChain({
   id: ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL,
   name: ROBINHOOD_TESTNET.chainName,
@@ -43,11 +41,6 @@ const chain = defineChain({
   blockExplorers: { default: { name: "Robinhood Testnet Explorer", url: ROBINHOOD_TESTNET.blockExplorerUrls[0] } },
   testnet: true,
 });
-
-function getProvider() {
-  const browserWindow = window as BrowserWindow;
-  return browserWindow.__launchpadEthereum || browserWindow.ethereum;
-}
 
 function deadline() {
   return BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
@@ -77,7 +70,7 @@ export function LiquidityLab() {
   }, []);
 
   async function connect() {
-    const injected = getProvider();
+    const injected = getInjectedEvmProvider();
     if (!injected) {
       setStatus("Unlock MetaMask, then select it from the Hoodlums wallet chooser.");
       return;
@@ -114,7 +107,7 @@ export function LiquidityLab() {
   }
 
   async function approveAndAdd() {
-    const injected = getProvider();
+    const injected = getInjectedEvmProvider();
     if (!injected || !account || !pool) {
       setStatus("Connect the wallet and register the test pool first.");
       return;

@@ -12,6 +12,7 @@ import {
 } from "viem";
 import { ROBINHOOD_MAINNET } from "@/lib/chains";
 import type { TokenProject } from "@/lib/types";
+import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./provider-launcher.module.css";
 
 const PROJECT_STORAGE_KEY = "private-meme-token-studio-projects-v1";
@@ -28,13 +29,6 @@ const ERC20_ABI = parseAbi([
 
 type ProviderId = "noxa" | "pons";
 
-type EthereumProvider = {
-  request: (args: {
-    method: string;
-    params?: unknown[] | Record<string, unknown>;
-  }) => Promise<unknown>;
-};
-
 type LaunchVerification = {
   provider: ProviderId;
   projectId: string;
@@ -47,12 +41,6 @@ type LaunchVerification = {
   factoryConfirmed: boolean | null;
   verifiedAt: string;
 };
-
-declare global {
-  interface Window {
-    ethereum?: EthereumProvider;
-  }
-}
 
 const PROVIDERS = {
   noxa: {
@@ -211,7 +199,7 @@ export function ProviderLauncher() {
     setName(project.name);
     setTicker(project.ticker);
     setDescription(project.description);
-    setWebsite(project.websiteSlug ? `https://your-domain.com/${project.websiteSlug}` : "");
+    setWebsite(project.websiteSlug ? `https://hoodlums.dev/${project.websiteSlug}` : "");
     setXHandle(project.xHandle);
     setTelegram(project.telegram);
     setArtwork(project.heroImage);
@@ -232,25 +220,26 @@ export function ProviderLauncher() {
   }
 
   async function connectWallet() {
-    if (!window.ethereum) {
+    const ethereum = getInjectedEvmProvider();
+    if (!ethereum) {
       setStatus("Install an EVM wallet such as MetaMask or Robinhood Wallet first.");
       return;
     }
     setBusy(true);
     try {
-      const accounts = (await window.ethereum.request({
+      const accounts = (await ethereum.request({
         method: "eth_requestAccounts",
       })) as string[];
       if (!accounts[0]) throw new Error("The wallet returned no account.");
 
       try {
-        await window.ethereum.request({
+        await ethereum.request({
           method: "wallet_switchEthereumChain",
           params: [{ chainId: ROBINHOOD_MAINNET.chainId }],
         });
       } catch (switchError) {
         if ((switchError as { code?: number }).code !== 4902) throw switchError;
-        await window.ethereum.request({
+        await ethereum.request({
           method: "wallet_addEthereumChain",
           params: [ROBINHOOD_MAINNET],
         });

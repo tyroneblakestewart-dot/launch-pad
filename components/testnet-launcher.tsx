@@ -30,15 +30,10 @@ import {
   FIXED_SUPPLY_TOKEN_ABI,
   FIXED_SUPPLY_TOKEN_BYTECODE,
 } from "@/lib/evm-token-artifact";
+import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./testnet-launcher.module.css";
 
 type Network = "robinhood-testnet" | "solana-devnet";
-type EthereumProvider = {
-  request: (args: {
-    method: string;
-    params?: unknown[] | Record<string, unknown>;
-  }) => Promise<unknown>;
-};
 type PhantomProvider = {
   connect: () => Promise<{ publicKey: { toString: () => string } }>;
   signAndSendTransaction: (
@@ -80,10 +75,6 @@ function readError(error: unknown): string {
 
 function shortAddress(value: string): string {
   return value.length > 18 ? `${value.slice(0, 9)}…${value.slice(-7)}` : value;
-}
-
-function getEthereumProvider(): EthereumProvider | undefined {
-  return (window as unknown as { ethereum?: EthereumProvider }).ethereum;
 }
 
 function getPhantomProvider(): PhantomProvider | undefined {
@@ -133,7 +124,7 @@ export function TestnetLauncher() {
     setResult(null);
     try {
       if (network === "robinhood-testnet") {
-        const provider = getEthereumProvider();
+        const provider = getInjectedEvmProvider();
         if (!provider) throw new Error("Install MetaMask or Robinhood Wallet first.");
 
         try {
@@ -178,7 +169,7 @@ export function TestnetLauncher() {
   }
 
   async function deployRobinhoodToken(): Promise<LaunchResult> {
-    const provider = getEthereumProvider();
+    const provider = getInjectedEvmProvider();
     if (!provider) throw new Error("EVM wallet disconnected.");
 
     const transport = custom(provider);
