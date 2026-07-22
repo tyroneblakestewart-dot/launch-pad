@@ -1,9 +1,9 @@
 name: Lock contract dependencies
 
 on:
-  push:
+  pull_request:
     branches:
-      - feat/robinhood-testnet-token-factory
+      - main
 
 permissions:
   contents: write
@@ -16,10 +16,10 @@ jobs:
       NPM_CONFIG_AUDIT: "false"
       NPM_CONFIG_FUND: "false"
     steps:
-      - name: Checkout feature branch
+      - name: Checkout pull request head
         uses: actions/checkout@v4
         with:
-          ref: feat/robinhood-testnet-token-factory
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -41,4 +41,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package-lock.json
           git commit -m "Lock Solidity toolchain dependencies"
-          git push origin HEAD:feat/robinhood-testnet-token-factory
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
