@@ -168,7 +168,7 @@ contract HoodlumsTestBondingCurveTest {
         require(token.balanceOf(STRANGER) == tokensIn, "failed sell moved tokens");
     }
 
-    function testGraduationBeforeTargetAndDirectPaymentsAreRejected() public {
+    function testOnlyRecordedBuysCountTowardGraduation() public {
         (bool earlyGraduation,) = address(curve).call(
             abi.encodeCall(HoodlumsTestBondingCurve.graduate, ())
         );
@@ -176,12 +176,24 @@ contract HoodlumsTestBondingCurveTest {
 
         (bool directPayment,) = address(curve).call{value: 1 wei}("");
         require(!directPayment, "curve accepted direct payment");
-        require(curve.nativeReserve() == 0, "direct payment remained in curve");
+        require(curve.nativeReserve() == 0, "direct payment remained in reserve");
+
+        vm.deal(address(curve), 2 ether);
+        require(curve.actualNativeBalance() == 2 ether, "forced balance missing");
+        require(curve.nativeReserve() == 0, "forced balance counted as reserve");
+        require(curve.graduationProgressBps() == 0, "forced balance changed progress");
+
+        (bool forcedGraduation,) = address(curve).call(
+            abi.encodeCall(HoodlumsTestBondingCurve.graduate, ())
+        );
+        require(!forcedGraduation, "forced balance triggered graduation");
     }
 
     function testTargetBuyAutomaticallyGraduatesAndLocksAllInitialLp() public {
         uint256 target = 0.5 ether;
+        uint256 forcedBalance = 0.2 ether;
         HoodlumsTestBondingCurve graduatingCurve = _deployFundedCurve(target);
+        vm.deal(address(graduatingCurve), forcedBalance);
         uint256 tokensOutQuote = graduatingCurve.quoteBuy(target);
 
         vm.deal(BUYER, 1 ether);
@@ -197,12 +209,12 @@ contract HoodlumsTestBondingCurveTest {
 
         HoodlumsTestLiquidityPool pool = HoodlumsTestLiquidityPool(payable(poolAddress));
         require(pool.token() == address(token), "pool uses wrong token");
-        require(pool.reserveEth() == target, "native liquidity wrong");
+        require(pool.reserveEth() == target, "forced balance entered pool liquidity");
         require(pool.reserveToken() > 0, "token liquidity missing");
         require(pool.balanceOf(address(1)) == pool.totalSupply(), "initial LP not fully locked");
         require(pool.balanceOf(address(graduatingCurve)) == 0, "curve retained LP tokens");
         require(token.balanceOf(address(graduatingCurve)) == 0, "curve retained tokens");
-        require(address(graduatingCurve).balance == 0, "curve retained native currency");
+        require(address(graduatingCurve).balance == forcedBalance, "forced balance accounting wrong");
     }
 
     function testTradingStopsAfterGraduation() public {
