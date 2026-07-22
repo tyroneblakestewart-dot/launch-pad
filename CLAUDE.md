@@ -65,11 +65,16 @@ npm run build        # production build
    treasury addresses, and the bonding-curve/graduation fee model are set
    by the owner. Implement what the task specifies; don't invent or adjust
    fee numbers, and flag anything that changes who gets paid.
-6. **Tests are the referee.** Every behaviour change ships with tests, and
+6. **Bonding-curve supply model is decided.** The complete current token
+   supply enters the bonding curve before trading. The creator keeps no
+   unlocked launch allocation and will earn only through a separately
+   approved creator-fee policy. Do not introduce creator-held launch tokens
+   without an explicit owner decision.
+7. **Tests are the referee.** Every behaviour change ships with tests, and
    the full existing suite must pass. Never mark work complete with failing
    tests, and never edit a test's assertions just to make it pass —
    if a test seems wrong, say so in the PR instead.
-7. **Keep changes reviewable.** One concern per PR, plain-English
+8. **Keep changes reviewable.** One concern per PR, plain-English
    description of what changed and why, note any trade-offs or caveats.
 
 ## Current roadmap (update as milestones land)
@@ -78,6 +83,7 @@ npm run build        # production build
   on-chain**. Next: deploy to Robinhood Chain Testnet with zero fee,
   verify on the explorer, route the `/testnet` deploy button through
   `launchToken()`.
-- Later: bonding curve with platform/creator/reserve fee split, token
-  graduation into an official Hoodlums pool with post-graduation swap
-  fees. None of this is active yet — don't document it as live.
+- Bonding-curve foundation is being developed testnet-first. The approved
+  supply model places the complete token supply into the curve before
+  trading and locks all initial LP at graduation. Platform/creator/reserve
+  fee percentages remain undecided and must not be invented.
