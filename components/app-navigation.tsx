@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/providers", label: "Providers", icon: "wallet", step: "2", description: "Choose the launch provider" },
   { href: "/allocations", label: "Allocations", icon: "allocate", step: "3", description: "Plan token distribution" },
   { href: "/liquidity-lab", label: "Liquidity Lab", icon: "liquidity", step: "4", description: "Test the token pool" },
+  { href: "/bonding-curve", label: "Bonding Curve", icon: "curve", step: "5", description: "Track token graduation" },
 ] as const;
 
 function isActive(pathname: string, href: string) {
@@ -28,7 +29,10 @@ function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
   if (name === "allocate") {
     return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14M17 5v14M4 9h6M14 15h6M7 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" /></svg>;
   }
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v5.2c0 .5-.2 1-.6 1.4L4.8 11.2a4 4 0 0 0 0 5.6l2.4 2.4a4 4 0 0 0 5.6 0l6.4-6.4a4 4 0 0 0 0-5.6l-2.4-2.4a4 4 0 0 0-5.6 0L9.6 6.4M14 8l2 2M9 13l2 2" /></svg>;
+  if (name === "liquidity") {
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v5.2c0 .5-.2 1-.6 1.4L4.8 11.2a4 4 0 0 0 0 5.6l2.4 2.4a4 4 0 0 0 5.6 0l6.4-6.4a4 4 0 0 0 0-5.6l-2.4-2.4a4 4 0 0 0-5.6 0L9.6 6.4M14 8l2 2M9 13l2 2" /></svg>;
+  }
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h16M5 16l4-5 3 2 5-7 2 2M17 6h2v2" /></svg>;
 }
 
 export function AppNavigation() {
