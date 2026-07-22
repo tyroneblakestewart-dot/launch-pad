@@ -218,6 +218,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     }
 
     function graduationProgressBps() external view returns (uint256) {
+        if (graduated) return BPS;
         uint256 reserve = address(this).balance;
         if (reserve >= graduationTarget) return BPS;
         return Math.mulDiv(reserve, BPS, graduationTarget);
