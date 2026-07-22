@@ -1,77 +1,127 @@
-# Private Meme Token Studio
+# HOODLUMS Launch Platform
 
-A private, non-custodial workspace for preparing meme-token launches on Solana and Robinhood Chain, generating an artwork-matched landing page and testing wallet-signed token creation.
+HOODLUMS is a browser-based workspace for preparing and testing a meme-token launch. It keeps project data in the browser, uses connected wallets for every blockchain approval, and separates the launch workflow into a studio, provider handoff, token allocation, and testnet liquidity tools.
 
-## Working MVP
+The application is intentionally **testnet-first**. It does not offer an unattended mainnet deploy, custody funds, or ask for seed phrases or private keys.
 
-- Create, save, load, delete and export token projects in the browser
-- Choose Solana or Robinhood Chain
-- Upload token artwork up to 20 MB with automatic browser optimisation
-- Generate a landing-page palette, layout, mood and copy from the uploaded artwork
-- Use OpenAI vision for deeper artwork analysis when `OPENAI_API_KEY` is configured
-- Fall back to private browser-side colour and composition analysis when no AI key is present
-- Configure token name, ticker, supply, decimals, website path and optional socials
-- Detect Phantom and EVM browser wallets
-- Prepare a launch summary while keeping mainnet deployment blocked in the studio
-- Open `/testnet` to create wallet-signed test tokens
+## Current features
 
-## Artwork-driven website generator
+### Launch studio
 
-The **Generate site from artwork** step is enabled after the token name, ticker and description are complete. It uses the uploaded image as the primary design reference and chooses between split, poster, gallery and minimal layouts. Generated sites replace the fixed Hoodlums copy and styling with project-neutral content.
+- Create, save, reopen, delete, and export token projects from browser storage.
+- Configure a token name, ticker, description, fixed supply, decimals, website slug, contract address, X profile, and Telegram link.
+- Target Solana or Robinhood Chain Testnet.
+- Upload artwork up to 20 MB and optimize it in the browser before saving it with the project.
+- Generate an artwork-directed token landing page, including its palette, typography, layout, and project-specific copy.
+- Preview the generated page in an isolated frame and automatically show a Dexscreener chart when a trading pair is found for the saved contract address.
+- Detect compatible injected wallets while keeping signing and approvals in the wallet.
 
-The generator works without an external API by analysing the image in the browser. For deeper vision analysis, add these server-side Vercel environment variables:
+Project records and generated-site state are local to the current browser; cross-device accounts and hosted project synchronization are not active yet.
+
+### Artwork-driven site generation
+
+The **Generate site from artwork** flow becomes available after the required project details and artwork are present. Site style analysis can use OpenAI vision, and the full-page generator returns a self-contained landing-page preview based on the project rather than fixed demo copy.
+
+Generation endpoints support an origin check and shared-secret protection. Configure the server and browser bridge with matching values:
 
 ```bash
 OPENAI_API_KEY=your_server_side_key
 OPENAI_VISION_MODEL=gpt-5-mini
+GENERATE_SITE_STYLE_ALLOWED_ORIGIN=http://localhost:3000
+GENERATE_SITE_STYLE_SHARED_SECRET=replace_with_a_long_random_value
+NEXT_PUBLIC_GENERATE_SITE_STYLE_SHARED_SECRET=replace_with_the_same_value
 ```
 
-Never expose `OPENAI_API_KEY` through a `NEXT_PUBLIC_` variable.
+`OPENAI_API_KEY` must remain server-side; never expose it through a `NEXT_PUBLIC_` variable. The public shared secret is an access gate, not a substitute for user authentication.
 
-## Testnet launcher
+### Robinhood provider desk
 
-### Robinhood Chain testnet
+The provider workflow prepares a launch package for an external launch provider without taking custody of the token or creator funds. It can:
 
-- Adds or switches the wallet to chain ID `46630`
-- Deploys a fixed-supply, burnable ERC-20
-- Mints the complete supply to the signing wallet
-- Has no owner and no external mint function
-- Returns the contract address and testnet explorer link
+- Load a saved studio project and connect an EVM wallet to Robinhood Chain Testnet (chain ID `46630`).
+- Copy the complete launch package or individual project fields and download the artwork.
+- Open the selected provider for the wallet-signed launch.
+- Verify the resulting contract and display discovered token details.
+- Open the provider's buy flow, track the creator purchase separately, and refresh the connected wallet's token balance.
+- Save the verified launch address back to local project records.
 
-### Solana devnet
+Provider launch and purchase transactions occur on the provider site and in the user's wallet; they are not atomic transactions controlled by this application.
 
-- Creates an SPL token mint and associated token account
-- Mints the selected fixed supply to the connected Phantom wallet
-- Permanently revokes mint authority after minting
-- Returns the mint address and devnet explorer link
+### Allocation and distribution desk
 
-## Safety model
+For a deployed Robinhood Chain Testnet ERC-20, the allocation desk can:
 
-- Never request or store a seed phrase or private key
-- All blockchain actions are signed in the user's wallet
-- The OpenAI key, when used, remains server-side
-- The testnet page explicitly requires test funds
-- Mainnet token deployment, liquidity and bonding curves remain disabled
-- Always complete both testnet flows before enabling a reviewed mainnet switch
+- Read token metadata and the connected wallet's balance from the contract.
+- Plan liquidity, community, team, and reserve percentages with an exact 100% check.
+- Send community, team, and reserve allocations as separate wallet-approved ERC-20 transfers.
+- Record confirmed transaction hashes, destination wallets, and planned native-token liquidity.
+- Save allocation plans in browser storage and download them as JSON launch records.
+
+Liquidity tokens remain in the connected wallet until a verified pool transaction is ready. The desk does not provide vesting contracts, and its production liquidity router is deliberately disabled.
+
+### Testnet liquidity lab
+
+The Liquidity Lab supports a private, test-only constant-product pool on Robinhood Chain Testnet. After deploying `contracts/HoodlumsTestLiquidityPool.sol` separately, users can register its address, approve token spending, add initial token/test-ETH liquidity, and inspect pool reserves. The lab is for testing only and is not an audited production AMM.
+
+### Wallet-signed token test lab
+
+The `/testnet` route supports two proof-of-launch flows:
+
+- **Robinhood Chain Testnet:** add or switch to chain ID `46630`, deploy a burnable fixed-supply ERC-20, and mint the complete supply once to the signing wallet. The contract has no owner or external mint function.
+- **Solana devnet:** create an SPL mint and associated token account, mint the selected fixed supply to the connected Phantom wallet, and permanently revoke mint authority.
+
+Both flows return a transaction or token address with an explorer link. They do not create metadata, liquidity, a bonding curve, or a public sale. A custom Solana endpoint can be supplied with `NEXT_PUBLIC_SOLANA_DEVNET_RPC`.
+
+An additional `/monad` test page deploys the same fixed-supply EVM token design on Monad Testnet and blocks deployment unless the wallet reports chain ID `10143`.
+
+### Social publishing workspace
+
+The `/social` route loads saved projects and provides reusable launch, contract-live, and community announcement drafts. Users can edit and save copy locally, copy it, download project artwork, open the official X composer for final approval, and publish to Telegram with their own bot token and channel ID. Telegram bot tokens are submitted only for the requested post, cleared from the form afterward, and are not stored in browser project data.
+
+### Account status
+
+The `/account` route previews planned Google, GitHub, X, MetaMask, Rabby, and Phantom account options. These controls are currently disabled; wallet connections inside individual launch tools continue to work independently.
+
+## Routes
+
+| Route | Purpose | Status |
+| --- | --- | --- |
+| `/` | Project studio, artwork upload, site generation, and Dexscreener preview | Available |
+| `/providers` | Robinhood provider handoff, contract verification, and creator-buy tracking | Available; external actions require a provider and wallet |
+| `/allocations` | Allocation planning and wallet-approved testnet distribution | Available |
+| `/liquidity-lab` | Register and fund a separately deployed test AMM | Test-only |
+| `/testnet` | Robinhood Chain Testnet and Solana devnet token creation | Test-only |
+| `/monad` | Monad Testnet ERC-20 deployment | Test-only |
+| `/social` | X handoff and Telegram publishing workspace | Available |
+| `/account` | Account-provider interface preview | Coming later |
+
+## Safety model and limitations
+
+- The application never requests or stores a seed phrase or private key.
+- Blockchain transactions require explicit approval in the connected wallet.
+- Mainnet deployment is not exposed by the studio or test lab.
+- Testnet actions spend test ETH, test MON, or devnet SOL and do not create a market by themselves.
+- Browser-local project data is not an encrypted vault or a hosted backup.
+- The platform does not yet provide hosted image/metadata storage, automatic site publishing, domains, audited vesting, or production liquidity management.
+- Contracts and test liquidity tooling should be independently reviewed before any production use.
 
 ## Development
+
+Requirements: a current Node.js release supported by Next.js 16 and npm.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` for the studio and `http://localhost:3000/testnet` for the test lab.
+Open `http://localhost:3000` for the launch studio. The other tools are available at the routes listed above.
 
 ## Validation
 
-GitHub Actions runs ESLint and a production Next.js build on every branch update and pull request.
+```bash
+npm run lint
+npm test
+npm run build
+```
 
-## Remaining before a production launch
-
-- Execute and verify one Robinhood Chain testnet deployment
-- Execute and verify one Solana devnet mint
-- Add hosted image and token metadata storage
-- Add automatic website publishing and a real domain
-- Add explicit mainnet review, transaction simulation and confirmation guards
-- Decide how liquidity will be created and managed
+The test command runs the Vitest application suite followed by the Hardhat Solidity tests. GitHub Actions also runs linting and a production Next.js build for branch updates and pull requests.
