@@ -35,12 +35,51 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+type OpenAIRequestFailure = {
+  ok: false;
+  kind: "network" | "http" | "invalid";
+  status?: number;
+  detail?: string;
+};
+
 type OpenAIRequestResult =
   | { ok: true; payload: OpenAIResponse }
-  | { ok: false; kind: "network" | "http" | "invalid" };
+  | OpenAIRequestFailure;
+
+type ProviderError = {
+  stage: string;
+  provider: AIResponsesRuntime["source"];
+  kind: OpenAIRequestFailure["kind"];
+  status: number | null;
+  detail: string | null;
+};
 
 function noStoreHeaders(extra: Record<string, string> = {}) {
   return { "Cache-Control": "no-store", ...extra };
+}
+
+function sanitiseProviderDetail(value: unknown): string {
+  const text = typeof value === "string" ? value : value instanceof Error ? value.message : String(value || "");
+  return text
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/(?:api[_-]?key|token)([\"'\s:=]+)[A-Za-z0-9._~+/=-]+/gi, "credential$1[redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+}
+
+function providerError(
+  stage: string,
+  ai: AIResponsesRuntime,
+  failure: OpenAIRequestFailure,
+): ProviderError {
+  return {
+    stage,
+    provider: ai.source,
+    kind: failure.kind,
+    status: failure.status ?? null,
+    detail: failure.detail || null,
+  };
 }
 
 async function requestOpenAI(
@@ -61,27 +100,25 @@ async function requestOpenAI(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
-    console.error(
-      `AI ${stage} request failed before receiving a response`,
-      error instanceof Error ? error.message : error,
-    );
-    return { ok: false, kind: "network" };
+    const detail = sanitiseProviderDetail(error);
+    console.error(`AI ${stage} request failed before receiving a response`, detail);
+    return { ok: false, kind: "network", detail };
   }
 
   if (!response.ok) {
-    const message = await response.text().catch(() => "");
+    const message = sanitiseProviderDetail(await response.text().catch(() => ""));
     console.error(
       `AI ${stage} request failed through ${ai.source}`,
       response.status,
-      message.slice(0, 500),
+      message,
     );
-    return { ok: false, kind: "http" };
+    return { ok: false, kind: "http", status: response.status, detail: message };
   }
 
   try {
     return { ok: true, payload: (await response.json()) as OpenAIResponse };
-  } catch {
-    return { ok: false, kind: "invalid" };
+  } catch (error) {
+    return { ok: false, kind: "invalid", detail: sanitiseProviderDetail(error) };
   }
 }
 
@@ -174,30 +211,60 @@ export async function POST(request: Request) {
 
   if (!artworkResult.ok) {
     return NextResponse.json(
-      { error: "The uploaded artwork could not be analysed. Re-upload it and try again." },
+      {
+        error: "The uploaded artwork could not be analysed. Re-upload it and try again.",
+        providerError: providerError("page-artwork-analysis", ai, artworkResult),
+      },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
   const artworkIdentity = parseArtworkIdentityResponse(artworkResult.payload);
   if (!artworkIdentity) {
     return NextResponse.json(
-      { error: "The uploaded artwork did not produce a complete visual identity analysis." },
+      {
+        error: "The uploaded artwork did not produce a complete visual identity analysis.",
+        providerError: {
+          stage: "page-artwork-analysis-parse",
+          provider: ai.source,
+          kind: "invalid",
+          status: null,
+          detail: "The provider response was successful but did not match the required artwork identity object.",
+        },
+      },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
   let inspirationAnalysis = NO_URL_PRESENTATION_BRIEF;
   if (input.inspirationUrl) {
-    if (!domain || !inspirationBody || !inspirationResult.ok) {
+    if (!domain || !inspirationBody) {
       return NextResponse.json(
-        { error: "The inspiration website could not be inspected. Check that it is public and try again." },
+        { error: "Enter a valid public http or https inspiration website URL." },
+        { status: 400, headers: noStoreHeaders(rateHeaders) },
+      );
+    }
+    if (!inspirationResult.ok) {
+      return NextResponse.json(
+        {
+          error: "The inspiration website could not be inspected. Check that it is public and try again.",
+          providerError: providerError("page-inspiration-analysis", ai, inspirationResult),
+        },
         { status: 502, headers: noStoreHeaders(rateHeaders) },
       );
     }
     const verified = extractVerifiedInspirationAnalysis(inspirationResult.payload, domain);
     if (!verified) {
       return NextResponse.json(
-        { error: "The inspiration website was not inspected, so no full website was generated." },
+        {
+          error: "The inspiration website was not inspected, so no full website was generated.",
+          providerError: {
+            stage: "page-inspiration-analysis-verify",
+            provider: ai.source,
+            kind: "invalid",
+            status: null,
+            detail: "The provider response did not contain a completed search result from the requested domain.",
+          },
+        },
         { status: 502, headers: noStoreHeaders(rateHeaders) },
       );
     }
@@ -220,6 +287,7 @@ export async function POST(request: Request) {
           generation.kind === "invalid"
             ? "AI returned an invalid website document. Try generating again."
             : "The artwork and inspiration were analysed, but the standalone website could not be generated. Try again.",
+        providerError: providerError("full-page-generation", ai, generation),
       },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
@@ -231,6 +299,13 @@ export async function POST(request: Request) {
       {
         error:
           "AI returned a website that was incomplete, unsafe, still resembled the legacy terminal fallback, or did not apply the inspiration structure. Try again.",
+        providerError: {
+          stage: "full-page-generation-parse",
+          provider: ai.source,
+          kind: "invalid",
+          status: null,
+          detail: "The generated document failed the server-side completeness, safety, evidence, or inspiration acceptance checks.",
+        },
       },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
