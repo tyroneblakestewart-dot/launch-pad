@@ -8,13 +8,15 @@ export type AIResponsesRuntime = {
   source: "openai" | "vercel-ai-gateway";
 };
 
-type AIEnvironment = Pick<
-  NodeJS.ProcessEnv,
-  | "OPENAI_API_KEY"
-  | "OPENAI_VISION_MODEL"
-  | "AI_GATEWAY_API_KEY"
-  | "AI_GATEWAY_MODEL"
-  | "VERCEL_OIDC_TOKEN"
+type AIEnvironment = Partial<
+  Pick<
+    NodeJS.ProcessEnv,
+    | "OPENAI_API_KEY"
+    | "OPENAI_VISION_MODEL"
+    | "AI_GATEWAY_API_KEY"
+    | "AI_GATEWAY_MODEL"
+    | "VERCEL_OIDC_TOKEN"
+  >
 >;
 
 function value(input: string | undefined): string {
