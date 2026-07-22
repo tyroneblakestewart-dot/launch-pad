@@ -30,7 +30,8 @@ npm run build        # production build
 ## Architecture map
 
 - `app/` — routes: `/` studio, `/providers`, `/allocations`,
-  `/liquidity-lab`, `/testnet`, `/monad`, `/social`, `/account` (disabled
+  `/liquidity-lab`, `/testnet`, `/monad`, `/factory-setup` (owner-only
+  HoodlumsTokenFactory deploy panel), `/social`, `/account` (disabled
   preview). See README route table for status of each.
 - `app/api/` — server routes: `generate-site-style` (OpenAI-backed),
   `dexscreener-pair`, `social/telegram`.
@@ -75,9 +76,16 @@ npm run build        # production build
 ## Current roadmap (update as milestones land)
 
 - HoodlumsTokenFactory is merged (PR #91) but **not yet deployed
-  on-chain**. Next: deploy to Robinhood Chain Testnet with zero fee,
-  verify on the explorer, route the `/testnet` deploy button through
-  `launchToken()`.
+  on-chain**. The owner-gated, wallet-signed deploy panel at
+  `/factory-setup` (issue #101) exists so the owner can perform that
+  deployment themselves — the app has not deployed it and does not claim
+  to. The panel's factory bytecode artifact
+  (`lib/hoodlums-token-factory-artifact.ts`) still needs to be generated
+  from a real `npm run contracts:compile` run (see that file's header
+  comment); the deploy action stays disabled until it is. Next: run the
+  owner-signed deployment, verify the resulting address, then route the
+  `/testnet` deploy button through `launchToken()` in a separate reviewed
+  change.
 - Later: bonding curve with platform/creator/reserve fee split, token
   graduation into an official Hoodlums pool with post-graduation swap
   fees. None of this is active yet — don't document it as live.

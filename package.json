@@ -12,7 +12,8 @@
     "test:app": "vitest run",
     "test:contracts": "hardhat test solidity",
     "test:watch": "vitest",
-    "contracts:compile": "hardhat compile"
+    "contracts:compile": "hardhat compile",
+    "contracts:factory-artifact": "node scripts/generate-hoodlums-token-factory-artifact.mjs"
   },
   "dependencies": {
     "@solana/spl-token": "0.4.15",

@@ -74,6 +74,17 @@ Both flows return a transaction or token address with an explorer link. They do 
 
 An additional `/monad` test page deploys the same fixed-supply EVM token design on Monad Testnet and blocks deployment unless the wallet reports chain ID `10143`.
 
+### Factory setup (owner-only)
+
+The `/factory-setup` route is a testnet-only, owner-gated panel that deploys the existing `contracts/HoodlumsTokenFactory.sol` using the approved owner's own wallet. It:
+
+- Blocks the deploy action unless the connected wallet reports chain ID `46630` and matches the approved owner address exactly, re-checking both immediately before the wallet signs.
+- Deploys with the owner-approved constructor arguments only: owner address, treasury address, and a `0` initial launch fee, in that exact order.
+- Reads the deployed contract back on-chain and checks `owner()`, `feeRecipient()`, `launchFee()` and `launchCount()` against the approved configuration before calling the deployment verified.
+- Produces a copyable and downloadable JSON deployment record (chain ID, addresses, transaction hash, factory address, verification results) with no secrets.
+
+This route deploys the factory only. It does not route public token launches through it — `/testnet` keeps deploying standalone test tokens until a reviewed follow-up change points it at `launchToken()`. The factory's compiled bytecode ships as a generated artifact (`lib/hoodlums-token-factory-artifact.ts`); see that file and `scripts/generate-hoodlums-token-factory-artifact.mjs` for how to regenerate it after `npm run contracts:compile`.
+
 ### Social publishing workspace
 
 The `/social` route loads saved projects and provides reusable launch, contract-live, and community announcement drafts. Users can edit and save copy locally, copy it, download project artwork, open the official X composer for final approval, and publish to Telegram with their own bot token and channel ID. Telegram bot tokens are submitted only for the requested post, cleared from the form afterward, and are not stored in browser project data.
@@ -92,6 +103,7 @@ The `/account` route previews planned Google, GitHub, X, MetaMask, Rabby, and Ph
 | `/liquidity-lab` | Register and fund a separately deployed test AMM | Test-only |
 | `/testnet` | Robinhood Chain Testnet and Solana devnet token creation | Test-only |
 | `/monad` | Monad Testnet ERC-20 deployment | Test-only |
+| `/factory-setup` | Owner-only, wallet-signed HoodlumsTokenFactory deployment on Robinhood Chain Testnet | Test-only |
 | `/social` | X handoff and Telegram publishing workspace | Available |
 | `/account` | Account-provider interface preview | Coming later |
 
