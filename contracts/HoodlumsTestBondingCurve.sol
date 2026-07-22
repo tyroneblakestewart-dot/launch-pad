@@ -14,7 +14,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint256 public constant BPS = 10_000;
-    uint256 public constant POOL_MINIMUM_LIQUIDITY_SQUARED = 1_000_000;
+    uint256 public constant POOL_MINIMUM_LIQUIDITY_SQUARED = 1_002_001;
     address public constant LP_LOCK_ADDRESS = address(1);
 
     IERC20 public immutable token;
