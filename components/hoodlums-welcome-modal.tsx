@@ -6,7 +6,7 @@ import { HOODLUMS_WELCOME_COMPLETE_IMAGE } from "@/lib/hoodlums-welcome-sharp-co
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./hoodlums-welcome-modal.module.css";
 
-const STORAGE_KEY = "hoodlums.welcome.accepted.v5";
+const STORAGE_KEY = "hoodlums.welcome.accepted.v4";
 
 const CREW = [
   { id: "mari", name: "Mari", role: "The Strategist", left: "4.5%", width: "12.5%", labelX: "10.5%" },
