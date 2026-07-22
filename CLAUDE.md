@@ -67,9 +67,10 @@ npm run build        # production build
    fee numbers, and flag anything that changes who gets paid.
 6. **Bonding-curve supply model is decided.** The complete current token
    supply enters the bonding curve before trading. The creator keeps no
-   unlocked launch allocation and will earn only through a separately
-   approved creator-fee policy. Do not introduce creator-held launch tokens
-   without an explicit owner decision.
+   unlocked launch allocation, preventing a creator-held token balance from
+   being sold into curve buyers. Creator earnings must come only through a
+   separately approved creator-fee policy. Do not introduce creator-held
+   launch tokens without an explicit owner decision.
 7. **Tests are the referee.** Every behaviour change ships with tests, and
    the full existing suite must pass. Never mark work complete with failing
    tests, and never edit a test's assertions just to make it pass —
