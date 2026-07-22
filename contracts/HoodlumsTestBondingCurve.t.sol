@@ -17,9 +17,10 @@ contract HoodlumsTestBondingCurveTest {
     address private constant BUYER = address(0xB0B);
     address private constant STRANGER = address(0xBAD);
     uint256 private constant DEADLINE = type(uint256).max;
+    uint256 private constant WHOLE_TOKEN_SUPPLY = 1_000_000;
+    uint256 private constant TOKEN_SUPPLY = WHOLE_TOKEN_SUPPLY * 1 ether;
     uint256 private constant VIRTUAL_TOKEN_RESERVE = 1_000_000 ether;
     uint256 private constant VIRTUAL_ETH_RESERVE = 1 ether;
-    uint256 private constant CURVE_TOKEN_SUPPLY = 800_000 ether;
     uint256 private constant DEFAULT_GRADUATION_TARGET = 1 ether;
 
     FixedSupplyMemeToken private token;
@@ -27,67 +28,73 @@ contract HoodlumsTestBondingCurveTest {
 
     function setUp() public {
         vm.deal(address(this), 100 ether);
-        token = new FixedSupplyMemeToken(
-            "Hoodlums Curve Test",
-            "HCT",
-            5_000_000,
-            18,
-            address(this)
-        );
-        curve = _deployFundedCurve(DEFAULT_GRADUATION_TARGET);
+        token = _deployToken(WHOLE_TOKEN_SUPPLY);
+        curve = _deployFundedCurve(token, DEFAULT_GRADUATION_TARGET);
     }
 
-    function testCreatorFundsCurveOnce() public view {
+    function testCreatorFundsCurveWithCompleteSupplyAndKeepsNoUnlockedAllocation() public view {
         require(curve.funded(), "curve not funded");
-        require(curve.curveTokenSupply() == CURVE_TOKEN_SUPPLY, "wrong curve supply");
-        require(curve.tokensAvailable() == CURVE_TOKEN_SUPPLY, "tokens not held by curve");
+        require(curve.curveTokenSupply() == TOKEN_SUPPLY, "wrong curve supply");
+        require(curve.tokensAvailable() == TOKEN_SUPPLY, "complete supply not held by curve");
+        require(token.balanceOf(address(this)) == 0, "creator retained unlocked tokens");
         require(address(curve.token()) == address(token), "wrong token");
         require(curve.creator() == address(this), "wrong creator");
-        require(curve.minimumCurveFunding() <= CURVE_TOKEN_SUPPLY, "curve underfunded");
+        require(curve.minimumCurveFunding() <= TOKEN_SUPPLY, "curve underfunded");
         require(curve.remainingNativeToGraduate() == DEFAULT_GRADUATION_TARGET, "wrong target remainder");
     }
 
     function testOnlyCreatorCanFundAndCurveCannotBeFundedTwice() public {
-        HoodlumsTestBondingCurve unfunded = new HoodlumsTestBondingCurve(
-            address(token),
-            address(this),
-            VIRTUAL_TOKEN_RESERVE,
-            VIRTUAL_ETH_RESERVE,
-            DEFAULT_GRADUATION_TARGET
-        );
+        FixedSupplyMemeToken freshToken = _deployToken(WHOLE_TOKEN_SUPPLY);
+        HoodlumsTestBondingCurve unfunded = _deployCurve(freshToken, DEFAULT_GRADUATION_TARGET);
+        freshToken.approve(address(unfunded), freshToken.totalSupply());
 
         vm.prank(STRANGER);
         (bool strangerFunded,) = address(unfunded).call(
-            abi.encodeCall(HoodlumsTestBondingCurve.fundCurve, (1 ether))
+            abi.encodeCall(HoodlumsTestBondingCurve.fundCurve, ())
         );
         require(!strangerFunded, "non-creator funded curve");
 
         (bool fundedTwice,) = address(curve).call(
-            abi.encodeCall(HoodlumsTestBondingCurve.fundCurve, (1 ether))
+            abi.encodeCall(HoodlumsTestBondingCurve.fundCurve, ())
         );
         require(!fundedTwice, "curve funded twice");
     }
 
-    function testFundingMustLeaveTokensForGraduationLiquidity() public {
-        HoodlumsTestBondingCurve unfunded = new HoodlumsTestBondingCurve(
-            address(token),
-            address(this),
-            VIRTUAL_TOKEN_RESERVE,
-            VIRTUAL_ETH_RESERVE,
-            DEFAULT_GRADUATION_TARGET
-        );
-        uint256 minimumFunding = unfunded.minimumCurveFunding();
-        token.approve(address(unfunded), minimumFunding);
+    function testFundingRejectsAnyCreatorAllocationOutsideTheCurve() public {
+        FixedSupplyMemeToken freshToken = _deployToken(WHOLE_TOKEN_SUPPLY);
+        HoodlumsTestBondingCurve unfunded = _deployCurve(freshToken, DEFAULT_GRADUATION_TARGET);
+        uint256 fullSupply = freshToken.totalSupply();
 
-        (bool underfunded,) = address(unfunded).call(
-            abi.encodeCall(HoodlumsTestBondingCurve.fundCurve, (minimumFunding - 1))
+        freshToken.transfer(STRANGER, 1 ether);
+        freshToken.approve(address(unfunded), fullSupply);
+
+        (bool partialFunding,) = address(unfunded).call(
+            abi.encodeCall(HoodlumsTestBondingCurve.fundCurve, ())
         );
-        require(!underfunded, "underfunded curve accepted");
+        require(!partialFunding, "partial creator allocation accepted");
         require(!unfunded.funded(), "failed funding activated curve");
         require(unfunded.tokensAvailable() == 0, "failed funding moved tokens");
 
-        unfunded.fundCurve(minimumFunding);
-        require(unfunded.funded(), "minimum valid funding rejected");
+        vm.prank(STRANGER);
+        freshToken.transfer(address(this), 1 ether);
+        unfunded.fundCurve();
+
+        require(unfunded.funded(), "complete supply funding rejected");
+        require(unfunded.tokensAvailable() == fullSupply, "curve missing full supply");
+        require(freshToken.balanceOf(address(this)) == 0, "creator retained tokens");
+    }
+
+    function testFullSupplyMustStillBeLargeEnoughForGraduationLiquidity() public {
+        FixedSupplyMemeToken smallToken = _deployToken(100);
+        HoodlumsTestBondingCurve unfunded = _deployCurve(smallToken, DEFAULT_GRADUATION_TARGET);
+        smallToken.approve(address(unfunded), smallToken.totalSupply());
+
+        (bool underfunded,) = address(unfunded).call(
+            abi.encodeCall(HoodlumsTestBondingCurve.fundCurve, ())
+        );
+        require(!underfunded, "insufficient full supply accepted");
+        require(!unfunded.funded(), "underfunded curve activated");
+        require(unfunded.tokensAvailable() == 0, "underfunded curve moved tokens");
     }
 
     function testBuyUsesLiveQuoteAndUpdatesVirtualAndRealReserves() public {
@@ -164,6 +171,10 @@ contract HoodlumsTestBondingCurveTest {
 
     function testSellCannotUseVirtualNativeReserveThatDoesNotExist() public {
         uint256 tokensIn = 1_000 ether;
+
+        // Simulate tokens acquired outside the normal curve path. The real-reserve
+        // check must still stop virtual native liquidity from being withdrawn.
+        vm.prank(address(curve));
         token.transfer(STRANGER, tokensIn);
         vm.prank(STRANGER);
         token.approve(address(curve), tokensIn);
@@ -201,7 +212,8 @@ contract HoodlumsTestBondingCurveTest {
     function testTargetBuyAutomaticallyGraduatesAndLocksAllInitialLp() public {
         uint256 target = 0.5 ether;
         uint256 forcedBalance = 0.2 ether;
-        HoodlumsTestBondingCurve graduatingCurve = _deployFundedCurve(target);
+        (FixedSupplyMemeToken graduatingToken, HoodlumsTestBondingCurve graduatingCurve) =
+            _deployFreshFundedCurve(target);
         vm.deal(address(graduatingCurve), forcedBalance);
         uint256 tokensOutQuote = graduatingCurve.quoteBuy(target);
 
@@ -218,18 +230,19 @@ contract HoodlumsTestBondingCurveTest {
         require(poolAddress != address(0), "pool not created");
 
         HoodlumsTestLiquidityPool pool = HoodlumsTestLiquidityPool(payable(poolAddress));
-        require(pool.token() == address(token), "pool uses wrong token");
+        require(pool.token() == address(graduatingToken), "pool uses wrong token");
         require(pool.reserveEth() == target, "forced balance entered pool liquidity");
         require(pool.reserveToken() > 0, "token liquidity missing");
         require(pool.balanceOf(address(1)) == pool.totalSupply(), "initial LP not fully locked");
         require(pool.balanceOf(address(graduatingCurve)) == 0, "curve retained LP tokens");
-        require(token.balanceOf(address(graduatingCurve)) == 0, "curve retained tokens");
+        require(graduatingToken.balanceOf(address(graduatingCurve)) == 0, "curve retained tokens");
         require(address(graduatingCurve).balance == forcedBalance, "forced balance accounting wrong");
     }
 
     function testTradingStopsAfterGraduation() public {
         uint256 target = 0.5 ether;
-        HoodlumsTestBondingCurve graduatingCurve = _deployFundedCurve(target);
+        (FixedSupplyMemeToken graduatingToken, HoodlumsTestBondingCurve graduatingCurve) =
+            _deployFreshFundedCurve(target);
 
         vm.deal(BUYER, 1 ether);
         vm.prank(BUYER);
@@ -242,7 +255,7 @@ contract HoodlumsTestBondingCurveTest {
         require(!buySuccess, "buy remained open after graduation");
 
         vm.prank(BUYER);
-        token.approve(address(graduatingCurve), bought);
+        graduatingToken.approve(address(graduatingCurve), bought);
         vm.prank(BUYER);
         (bool sellSuccess,) = address(graduatingCurve).call(
             abi.encodeCall(HoodlumsTestBondingCurve.sell, (bought, 0, DEADLINE))
@@ -250,19 +263,44 @@ contract HoodlumsTestBondingCurveTest {
         require(!sellSuccess, "sell remained open after graduation");
     }
 
-    function _deployFundedCurve(uint256 target)
+    function _deployToken(uint256 wholeSupply) internal returns (FixedSupplyMemeToken freshToken) {
+        freshToken = new FixedSupplyMemeToken(
+            "Hoodlums Curve Test",
+            "HCT",
+            wholeSupply,
+            18,
+            address(this)
+        );
+    }
+
+    function _deployCurve(FixedSupplyMemeToken curveToken, uint256 target)
         internal
-        returns (HoodlumsTestBondingCurve fundedCurve)
+        returns (HoodlumsTestBondingCurve freshCurve)
     {
-        fundedCurve = new HoodlumsTestBondingCurve(
-            address(token),
+        freshCurve = new HoodlumsTestBondingCurve(
+            address(curveToken),
             address(this),
             VIRTUAL_TOKEN_RESERVE,
             VIRTUAL_ETH_RESERVE,
             target
         );
-        token.approve(address(fundedCurve), CURVE_TOKEN_SUPPLY);
-        fundedCurve.fundCurve(CURVE_TOKEN_SUPPLY);
+    }
+
+    function _deployFundedCurve(FixedSupplyMemeToken curveToken, uint256 target)
+        internal
+        returns (HoodlumsTestBondingCurve fundedCurve)
+    {
+        fundedCurve = _deployCurve(curveToken, target);
+        curveToken.approve(address(fundedCurve), curveToken.totalSupply());
+        fundedCurve.fundCurve();
+    }
+
+    function _deployFreshFundedCurve(uint256 target)
+        internal
+        returns (FixedSupplyMemeToken freshToken, HoodlumsTestBondingCurve fundedCurve)
+    {
+        freshToken = _deployToken(WHOLE_TOKEN_SUPPLY);
+        fundedCurve = _deployFundedCurve(freshToken, target);
     }
 
     receive() external payable {}
