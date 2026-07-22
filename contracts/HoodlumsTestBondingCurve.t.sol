@@ -44,6 +44,7 @@ contract HoodlumsTestBondingCurveTest {
         require(address(curve.token()) == address(token), "wrong token");
         require(curve.creator() == address(this), "wrong creator");
         require(curve.minimumCurveFunding() <= CURVE_TOKEN_SUPPLY, "curve underfunded");
+        require(curve.remainingNativeToGraduate() == DEFAULT_GRADUATION_TARGET, "wrong target remainder");
     }
 
     function testOnlyCreatorCanFundAndCurveCannotBeFundedTwice() public {
@@ -105,13 +106,21 @@ contract HoodlumsTestBondingCurveTest {
         require(curve.virtualEthReserve() == nativeReserveBefore + nativeIn, "native reserve wrong");
         require(curve.nativeReserve() == nativeIn, "real native reserve wrong");
         require(curve.actualNativeBalance() == nativeIn, "actual native balance wrong");
+        require(curve.remainingNativeToGraduate() == 0.9 ether, "remaining target wrong");
         require(curve.graduationProgressBps() == 1_000, "graduation progress wrong");
     }
 
-    function testBuyEnforcesMinimumOutputAndDeadline() public {
+    function testBuyEnforcesTargetMinimumOutputAndDeadline() public {
         uint256 nativeIn = 0.1 ether;
         uint256 quotedTokens = curve.quoteBuy(nativeIn);
-        vm.deal(BUYER, 1 ether);
+        vm.deal(BUYER, 2 ether);
+
+        vm.prank(BUYER);
+        (bool targetSuccess,) = address(curve).call{value: DEFAULT_GRADUATION_TARGET + 1}(
+            abi.encodeCall(HoodlumsTestBondingCurve.buy, (0, DEADLINE))
+        );
+        require(!targetSuccess, "buy exceeded graduation target");
+        require(curve.nativeReserve() == 0, "over-target buy retained native currency");
 
         vm.prank(BUYER);
         (bool slippageSuccess,) = address(curve).call{value: nativeIn}(
@@ -203,6 +212,7 @@ contract HoodlumsTestBondingCurveTest {
         require(graduatingCurve.graduated(), "curve did not graduate");
         require(graduatingCurve.graduationProgressBps() == 10_000, "graduation not complete");
         require(graduatingCurve.nativeReserve() == 0, "graduated reserve not cleared");
+        require(graduatingCurve.remainingNativeToGraduate() == 0, "graduated target remainder not cleared");
 
         address poolAddress = graduatingCurve.liquidityPool();
         require(poolAddress != address(0), "pool not created");
