@@ -1,0 +1,27 @@
+name: Live generation readiness diagnostic
+
+on:
+  push:
+    branches:
+      - diagnostic/live-generation-readiness
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check production generation runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 30 \
+            -sS -o response.json -w "%{http_code}" \
+            https://hoodlums.dev/api/generation-status)
+          echo "HTTP_STATUS=$status"
+          cat response.json
+          echo
+          test "$status" = "200"
+          node -e "const fs=require('fs'); const body=JSON.parse(fs.readFileSync('response.json','utf8')); if(body.ready!==true) process.exit(1); if(!['openai','vercel-ai-gateway'].includes(body.provider)) process.exit(1); console.log('PROVIDER='+body.provider); console.log('MODEL='+body.model);"
