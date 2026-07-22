@@ -8,16 +8,13 @@ export type AIResponsesRuntime = {
   source: "openai" | "vercel-ai-gateway";
 };
 
-type AIEnvironment = Partial<
-  Pick<
-    NodeJS.ProcessEnv,
-    | "OPENAI_API_KEY"
-    | "OPENAI_VISION_MODEL"
-    | "AI_GATEWAY_API_KEY"
-    | "AI_GATEWAY_MODEL"
-    | "VERCEL_OIDC_TOKEN"
-  >
->;
+type AIEnvironment = {
+  OPENAI_API_KEY?: string;
+  OPENAI_VISION_MODEL?: string;
+  AI_GATEWAY_API_KEY?: string;
+  AI_GATEWAY_MODEL?: string;
+  VERCEL_OIDC_TOKEN?: string;
+};
 
 function value(input: string | undefined): string {
   return input?.trim() || "";
@@ -32,7 +29,7 @@ function gatewayModel(model: string): string {
 }
 
 export function resolveAIResponsesRuntime(
-  environment: AIEnvironment = process.env,
+  environment: AIEnvironment = process.env as AIEnvironment,
 ): AIResponsesRuntime | null {
   const configuredModel = value(environment.OPENAI_VISION_MODEL) || "gpt-5-mini";
   const openAIKey = value(environment.OPENAI_API_KEY);
