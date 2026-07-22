@@ -25,6 +25,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     uint256 public virtualTokenReserve;
     uint256 public virtualEthReserve;
     uint256 public curveTokenSupply;
+    uint256 public realNativeReserve;
 
     bool public funded;
     bool public graduated;
@@ -32,6 +33,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
 
     error InvalidAddress();
     error InvalidConfiguration();
+    error InsufficientCurveFunding(uint256 required, uint256 received);
     error OnlyCreator();
     error AlreadyFunded();
     error NotFunded();
@@ -93,7 +95,12 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         uint256 graduationTarget_
     ) {
         if (token_ == address(0) || creator_ == address(0)) revert InvalidAddress();
-        if (virtualTokenReserve_ == 0 || virtualEthReserve_ == 0 || graduationTarget_ == 0) {
+        if (
+            virtualTokenReserve_ == 0 ||
+            virtualEthReserve_ == 0 ||
+            graduationTarget_ == 0 ||
+            virtualEthReserve_ > type(uint256).max - graduationTarget_
+        ) {
             revert InvalidConfiguration();
         }
 
@@ -110,6 +117,11 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     function fundCurve(uint256 tokenAmount) external onlyCreator nonReentrant {
         if (funded) revert AlreadyFunded();
         if (tokenAmount == 0) revert ZeroInput();
+
+        uint256 requiredFunding = minimumCurveFunding();
+        if (tokenAmount < requiredFunding) {
+            revert InsufficientCurveFunding(requiredFunding, tokenAmount);
+        }
 
         uint256 balanceBefore = token.balanceOf(address(this));
         token.safeTransferFrom(msg.sender, address(this), tokenAmount);
@@ -138,6 +150,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
 
         virtualEthReserve += msg.value;
         virtualTokenReserve -= tokensOut;
+        realNativeReserve += msg.value;
         token.safeTransfer(msg.sender, tokensOut);
 
         emit TokensPurchased(
@@ -148,7 +161,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
             virtualEthReserve
         );
 
-        if (address(this).balance >= graduationTarget) {
+        if (realNativeReserve >= graduationTarget) {
             _graduate();
         }
     }
@@ -165,7 +178,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
 
         nativeOut = quoteSell(tokensIn);
         if (nativeOut == 0 || nativeOut < minNativeOut) revert SlippageExceeded();
-        if (nativeOut > address(this).balance) revert InsufficientNativeReserve();
+        if (nativeOut > realNativeReserve) revert InsufficientNativeReserve();
 
         uint256 balanceBefore = token.balanceOf(address(this));
         token.safeTransferFrom(msg.sender, address(this), tokensIn);
@@ -174,6 +187,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
 
         virtualTokenReserve += tokensIn;
         virtualEthReserve -= nativeOut;
+        realNativeReserve -= nativeOut;
         _safeTransferNative(msg.sender, nativeOut);
 
         emit TokensSold(
@@ -187,7 +201,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
 
     /// @notice Permissionless fallback graduation once the target is met.
     function graduate() external nonReentrant tradingOpen {
-        if (address(this).balance < graduationTarget) revert GraduationTargetNotReached();
+        if (realNativeReserve < graduationTarget) revert GraduationTargetNotReached();
         _graduate();
     }
 
@@ -209,7 +223,21 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         );
     }
 
+    /// @notice Minimum token amount that leaves non-zero liquidity at graduation.
+    function minimumCurveFunding() public view returns (uint256) {
+        uint256 tokensSoldAtTarget = Math.mulDiv(
+            graduationTarget,
+            initialVirtualTokenReserve,
+            initialVirtualEthReserve + graduationTarget
+        );
+        return tokensSoldAtTarget + 1;
+    }
+
     function nativeReserve() external view returns (uint256) {
+        return realNativeReserve;
+    }
+
+    function actualNativeBalance() external view returns (uint256) {
         return address(this).balance;
     }
 
@@ -219,9 +247,8 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
 
     function graduationProgressBps() external view returns (uint256) {
         if (graduated) return BPS;
-        uint256 reserve = address(this).balance;
-        if (reserve >= graduationTarget) return BPS;
-        return Math.mulDiv(reserve, BPS, graduationTarget);
+        if (realNativeReserve >= graduationTarget) return BPS;
+        return Math.mulDiv(realNativeReserve, BPS, graduationTarget);
     }
 
     function _graduate() internal {
@@ -230,6 +257,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         if (tokenLiquidity == 0 || nativeLiquidity == 0) revert InvalidConfiguration();
 
         graduated = true;
+        realNativeReserve = 0;
 
         HoodlumsTestLiquidityPool pool = new HoodlumsTestLiquidityPool(address(token));
         liquidityPool = address(pool);
