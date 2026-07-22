@@ -72,7 +72,7 @@ contract HoodlumsTokenFactoryTest {
 
         uint256 balanceBefore = address(feeReceiver).balance;
         vm.prank(CREATOR);
-        address tokenAddress = factory.launchToken{value: fee}(
+        factory.launchToken{value: fee}(
             "Fee Test",
             "FEE",
             1_000_000,
@@ -82,7 +82,7 @@ contract HoodlumsTokenFactoryTest {
 
         require(address(feeReceiver).balance == balanceBefore + fee, "fee was not forwarded");
         require(address(factory).balance == 0, "factory retained launch fee");
-        require(factory.launches(tokenAddress).feePaid == fee, "fee not recorded");
+        require(factory.launchAt(0).feePaid == fee, "fee not recorded");
     }
 
     function testIncorrectLaunchFeeRevertsWithoutRecordingLaunch() public {
