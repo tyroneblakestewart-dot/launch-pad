@@ -33,9 +33,11 @@ jobs:
           set -o pipefail
           npm run test:contracts 2>&1 | tee contract-test-output.txt
 
-      - name: Upload Solidity output
+      - name: Upload Solidity output and dependency lock
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: contract-test-output
-          path: contract-test-output.txt
+          name: contract-build-record
+          path: |
+            contract-test-output.txt
+            package-lock.json
