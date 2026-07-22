@@ -253,7 +253,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
 
     function _graduate() internal {
         uint256 tokenLiquidity = token.balanceOf(address(this));
-        uint256 nativeLiquidity = address(this).balance;
+        uint256 nativeLiquidity = realNativeReserve;
         if (tokenLiquidity == 0 || nativeLiquidity == 0) revert InvalidConfiguration();
 
         graduated = true;
