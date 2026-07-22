@@ -27,6 +27,7 @@ import {
   isGenerateSiteStyleRequestAuthorised,
 } from "@/lib/server/api-protection";
 import {
+  getVercelOidcToken,
   resolveAIResponsesRuntime,
   type AIResponsesRuntime,
 } from "@/lib/server/ai-responses-runtime";
@@ -122,7 +123,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const ai = resolveAIResponsesRuntime();
+  const ai = resolveAIResponsesRuntime(process.env, getVercelOidcToken(request));
   if (!ai) {
     return NextResponse.json(
       {
