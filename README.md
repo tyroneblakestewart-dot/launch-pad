@@ -1,6 +1,6 @@
 # HOODLUMS Launch Platform
 
-HOODLUMS is a browser-based workspace for preparing and testing a meme-token launch. It keeps project data in the browser, uses connected wallets for every blockchain approval, and separates the launch workflow into a studio, provider handoff, token allocation, and testnet liquidity tools.
+HOODLUMS is a browser-based workspace for preparing and testing a meme-token launch. It keeps project data in the browser, uses connected wallets for every blockchain approval, and separates the launch workflow into a studio, provider handoff, token allocation, testnet liquidity tools, and a bonding-curve graduation workspace.
 
 The application is intentionally **testnet-first**. It does not offer an unattended mainnet deploy, custody funds, or ask for seed phrases or private keys.
 
@@ -63,6 +63,10 @@ Liquidity tokens remain in the connected wallet until a verified pool transactio
 
 The Liquidity Lab supports a private, test-only constant-product pool on Robinhood Chain Testnet. After deploying `contracts/HoodlumsTestLiquidityPool.sol` separately, users can register its address, approve token spending, add initial token/test-ETH liquidity, and inspect pool reserves. The lab is for testing only and is not an audited production AMM.
 
+### Bonding curve workflow
+
+The `/bonding-curve` route is the fifth launch-workflow page. It explains the approved full-supply launch model, wallet-signed curve trading, the graduation target, automatic Hoodlums pool creation, and permanent initial LP locking. The bonding-curve contract foundation is merged, but it is not deployed or connected to live buy/sell controls yet.
+
 ### Wallet-signed token test lab
 
 The `/testnet` route supports two proof-of-launch flows:
@@ -90,6 +94,7 @@ The `/account` route previews planned Google, GitHub, X, MetaMask, Rabby, and Ph
 | `/providers` | Robinhood provider handoff, contract verification, and creator-buy tracking | Available; external actions require a provider and wallet |
 | `/allocations` | Allocation planning and wallet-approved testnet distribution | Available |
 | `/liquidity-lab` | Register and fund a separately deployed test AMM | Test-only |
+| `/bonding-curve` | Review the full-supply curve and automatic pool-graduation lifecycle | Foundation page; live trading not active |
 | `/testnet` | Robinhood Chain Testnet and Solana devnet token creation | Test-only |
 | `/monad` | Monad Testnet ERC-20 deployment | Test-only |
 | `/social` | X handoff and Telegram publishing workspace | Available |
