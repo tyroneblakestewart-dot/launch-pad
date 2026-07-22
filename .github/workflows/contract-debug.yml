@@ -1,0 +1,41 @@
+name: Contract debug
+
+on:
+  push:
+    branches:
+      - feat/robinhood-testnet-token-factory
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NPM_CONFIG_AUDIT: "false"
+      NPM_CONFIG_FUND: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --silent
+
+      - name: Run Solidity tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:contracts 2>&1 | tee contract-test-output.txt
+
+      - name: Upload Solidity output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-test-output
+          path: contract-test-output.txt
