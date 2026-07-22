@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
-import { resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
+import {
+  getVercelOidcToken,
+  resolveAIResponsesRuntime,
+} from "@/lib/server/ai-responses-runtime";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  const ai = resolveAIResponsesRuntime();
+export async function GET(request: Request) {
+  const ai = resolveAIResponsesRuntime(process.env, getVercelOidcToken(request));
   const body = ai
     ? {
         ready: true,
