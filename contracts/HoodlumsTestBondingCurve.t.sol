@@ -43,6 +43,7 @@ contract HoodlumsTestBondingCurveTest {
         require(curve.tokensAvailable() == CURVE_TOKEN_SUPPLY, "tokens not held by curve");
         require(address(curve.token()) == address(token), "wrong token");
         require(curve.creator() == address(this), "wrong creator");
+        require(curve.minimumCurveFunding() <= CURVE_TOKEN_SUPPLY, "curve underfunded");
     }
 
     function testOnlyCreatorCanFundAndCurveCannotBeFundedTwice() public {
@@ -66,6 +67,28 @@ contract HoodlumsTestBondingCurveTest {
         require(!fundedTwice, "curve funded twice");
     }
 
+    function testFundingMustLeaveTokensForGraduationLiquidity() public {
+        HoodlumsTestBondingCurve unfunded = new HoodlumsTestBondingCurve(
+            address(token),
+            address(this),
+            VIRTUAL_TOKEN_RESERVE,
+            VIRTUAL_ETH_RESERVE,
+            DEFAULT_GRADUATION_TARGET
+        );
+        uint256 minimumFunding = unfunded.minimumCurveFunding();
+        token.approve(address(unfunded), minimumFunding);
+
+        (bool underfunded,) = address(unfunded).call(
+            abi.encodeCall(HoodlumsTestBondingCurve.fundCurve, (minimumFunding - 1))
+        );
+        require(!underfunded, "underfunded curve accepted");
+        require(!unfunded.funded(), "failed funding activated curve");
+        require(unfunded.tokensAvailable() == 0, "failed funding moved tokens");
+
+        unfunded.fundCurve(minimumFunding);
+        require(unfunded.funded(), "minimum valid funding rejected");
+    }
+
     function testBuyUsesLiveQuoteAndUpdatesVirtualAndRealReserves() public {
         uint256 nativeIn = 0.1 ether;
         uint256 quotedTokens = curve.quoteBuy(nativeIn);
@@ -81,6 +104,7 @@ contract HoodlumsTestBondingCurveTest {
         require(curve.virtualTokenReserve() == tokenReserveBefore - quotedTokens, "token reserve wrong");
         require(curve.virtualEthReserve() == nativeReserveBefore + nativeIn, "native reserve wrong");
         require(curve.nativeReserve() == nativeIn, "real native reserve wrong");
+        require(curve.actualNativeBalance() == nativeIn, "actual native balance wrong");
         require(curve.graduationProgressBps() == 1_000, "graduation progress wrong");
     }
 
@@ -126,6 +150,7 @@ contract HoodlumsTestBondingCurveTest {
         require(BUYER.balance == buyerNativeBefore + nativeOut, "seller missing native currency");
         require(curve.tokensAvailable() == curveTokensBefore + tokensIn, "sold tokens not returned");
         require(token.balanceOf(BUYER) == bought - tokensIn, "seller token balance wrong");
+        require(curve.nativeReserve() == nativeIn - nativeOut, "real reserve not reduced");
     }
 
     function testSellCannotUseVirtualNativeReserveThatDoesNotExist() public {
@@ -165,6 +190,7 @@ contract HoodlumsTestBondingCurveTest {
 
         require(graduatingCurve.graduated(), "curve did not graduate");
         require(graduatingCurve.graduationProgressBps() == 10_000, "graduation not complete");
+        require(graduatingCurve.nativeReserve() == 0, "graduated reserve not cleared");
 
         address poolAddress = graduatingCurve.liquidityPool();
         require(poolAddress != address(0), "pool not created");
