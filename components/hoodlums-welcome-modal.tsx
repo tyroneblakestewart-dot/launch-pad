@@ -100,6 +100,7 @@ export function HoodlumsWelcomeModal() {
           <p className={styles.srOnly} id="crew-interaction-help">
             Hover, focus, or tap a character to reveal their name and role.
           </p>
+          <p className={styles.tapHint} aria-hidden="true">Tap a character to reveal their name</p>
 
           {CREW.map((character) => {
             const active = activeCrew === character.id;
@@ -113,7 +114,7 @@ export function HoodlumsWelcomeModal() {
               <div className={styles.crewInteraction} style={positioning} key={character.id}>
                 <button
                   type="button"
-                  className={styles.crewHotspot}
+                  className={`${styles.crewHotspot} ${active ? styles.crewHotspotActive : ""}`}
                   data-crew-hotspot={character.id}
                   aria-label={`${character.name} — ${character.role}`}
                   aria-describedby="crew-interaction-help"
