@@ -12,7 +12,8 @@
     "test:app": "vitest run",
     "test:contracts": "hardhat test solidity",
     "test:watch": "vitest",
-    "contracts:compile": "hardhat compile"
+    "contracts:compile": "hardhat compile",
+    "deploy:factory:robinhood": "hardhat run scripts/deploy-hoodlums-factory.ts --network robinhoodTestnet"
   },
   "dependencies": {
     "@solana/spl-token": "0.4.15",
