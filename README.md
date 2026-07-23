@@ -67,11 +67,31 @@ The Liquidity Lab supports a private, test-only constant-product pool on Robinho
 
 The `/bonding-curve` route is the fifth launch-workflow page. It explains the approved full-supply launch model, wallet-signed curve trading, the graduation target, automatic Hoodlums pool creation, and permanent initial LP locking. The bonding-curve contract foundation is merged, but it is not deployed or connected to live buy/sell controls yet.
 
-### Factory deployment (prep only)
+### Factory deployment (live on Robinhood Chain Testnet)
 
-`contracts/HoodlumsTokenFactory.sol` is merged but **not yet deployed**. A
-Hardhat script prepares — but does not run — a deployment to Robinhood Chain
-Testnet:
+`contracts/HoodlumsTokenFactory.sol` is deployed and verified on Robinhood
+Chain Testnet (chain ID `46630`):
+
+| | |
+| --- | --- |
+| Factory | `0x39207baa4d0a30a5194770563ec586978c9fbcb3` |
+| Owner | `0x3990b0b29f08c1D415978E8EDB93aD00E5dC966a` |
+| Treasury | `0x505217CBbe3059993877983b4fDAD5C6e32AF1F5` |
+| Launch fee | `0` |
+
+`lib/factory-config.ts` ships this address as a public default for chain
+`46630`, so the `/testnet` route (`components/testnet-launcher.tsx`) reads
+`launchFee()`, calls `launchToken()` with exactly that fee as the
+transaction value, and resolves the created token address from the
+confirmed receipt's `TokenLaunched` event — no configuration required. A
+redeploy, or a factory on another chain, can still be pointed at with
+`NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES` (public JSON, e.g.
+`{"46630":"0xYourDeployedAddress"}`), which overrides the default per chain.
+If no factory address is configured for the connected chain, `/testnet`
+falls back to the direct `FixedSupplyMemeToken` deployment unchanged.
+
+A Hardhat script prepares (and, run deliberately, performs) this
+deployment:
 
 ```bash
 npm run contracts:compile
@@ -90,20 +110,15 @@ commit real values):
 
 The script deploys with `initialLaunchFee = 0` and prints the deployed
 address plus the exact constructor arguments for explorer verification. It
-does not touch the `/testnet` UI, does not update
+does not touch the `/testnet` UI or update
 `NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES`, and is never run automatically —
 running it is a deliberate, owner-initiated action.
-
-Once a deployment is verified, the frontend can read its address through
-`lib/factory-config.ts`, which exposes the factory ABI and reads a per-chain
-address map from `NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES` (public JSON, e.g.
-`{"46630":"0xYourDeployedAddress"}`).
 
 ### Wallet-signed token test lab
 
 The `/testnet` route supports two proof-of-launch flows:
 
-- **Robinhood Chain Testnet:** add or switch to chain ID `46630`, deploy a burnable fixed-supply ERC-20, and mint the complete supply once to the signing wallet. The contract has no owner or external mint function.
+- **Robinhood Chain Testnet:** add or switch to chain ID `46630`, then deploy through the live HoodlumsTokenFactory above (paying its current `0` launch fee) or, if no factory is configured for the connected chain, deploy a burnable fixed-supply ERC-20 directly. Either way the contract has no owner or external mint function and the complete supply mints once to the signing wallet.
 - **Solana devnet:** create an SPL mint and associated token account, mint the selected fixed supply to the connected Phantom wallet, and permanently revoke mint authority.
 
 Both flows return a transaction or token address with an explorer link. They do not create metadata, liquidity, a bonding curve, or a public sale. A custom Solana endpoint can be supplied with `NEXT_PUBLIC_SOLANA_DEVNET_RPC`.

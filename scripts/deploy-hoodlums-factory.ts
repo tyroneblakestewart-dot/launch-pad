@@ -32,7 +32,7 @@ async function main() {
   const treasuryAddress = requireAddress("HOODLUMS_FACTORY_TREASURY_ADDRESS");
 
   const artifact = await hre.artifacts.readArtifact("HoodlumsTokenFactory");
-  const connection = await network.connect("robinhoodTestnet");
+  const connection = await network.create();
 
   const chain = {
     id: ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL,

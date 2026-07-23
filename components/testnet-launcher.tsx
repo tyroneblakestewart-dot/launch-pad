@@ -30,6 +30,8 @@ import {
   FIXED_SUPPLY_TOKEN_ABI,
   FIXED_SUPPLY_TOKEN_BYTECODE,
 } from "@/lib/evm-token-artifact";
+import { getFactoryAddress, HOODLUMS_TOKEN_FACTORY_ABI } from "@/lib/factory-config";
+import { extractLaunchedTokenAddress } from "@/lib/factory-launch";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./testnet-launcher.module.css";
 
@@ -178,29 +180,51 @@ export function TestnetLauncher() {
     const [account] = await walletClient.getAddresses();
     if (!account) throw new Error("No connected EVM account.");
 
-    const transaction = await walletClient.deployContract({
-      account,
-      abi: FIXED_SUPPLY_TOKEN_ABI,
-      bytecode: FIXED_SUPPLY_TOKEN_BYTECODE,
-      args: [
-        name.trim(),
-        symbol.trim().toUpperCase(),
-        BigInt(supply),
-        decimals,
-        account as Address,
-      ],
-    });
+    const factoryAddress = getFactoryAddress(robinhoodTestnet.id);
+    const constructorArgs = [
+      name.trim(),
+      symbol.trim().toUpperCase(),
+      BigInt(supply),
+      decimals,
+      account as Address,
+    ] as const;
+
+    const transaction = factoryAddress
+      ? await (async () => {
+          const launchFee = await publicClient.readContract({
+            address: factoryAddress,
+            abi: HOODLUMS_TOKEN_FACTORY_ABI,
+            functionName: "launchFee",
+          });
+          return walletClient.writeContract({
+            account,
+            address: factoryAddress,
+            abi: HOODLUMS_TOKEN_FACTORY_ABI,
+            functionName: "launchToken",
+            args: constructorArgs,
+            value: launchFee,
+          });
+        })()
+      : await walletClient.deployContract({
+          account,
+          abi: FIXED_SUPPLY_TOKEN_ABI,
+          bytecode: FIXED_SUPPLY_TOKEN_BYTECODE,
+          args: constructorArgs,
+        });
 
     setStatus(`Deployment submitted: ${shortAddress(transaction)}`);
     const receipt = await publicClient.waitForTransactionReceipt({ hash: transaction });
-    if (!receipt.contractAddress) {
+    const tokenAddress = factoryAddress
+      ? extractLaunchedTokenAddress(receipt.logs)
+      : receipt.contractAddress;
+    if (!tokenAddress) {
       throw new Error("Receipt did not contain a contract address.");
     }
 
     return {
-      address: receipt.contractAddress,
+      address: tokenAddress,
       transaction,
-      explorerUrl: `https://explorer.testnet.chain.robinhood.com/address/${receipt.contractAddress}`,
+      explorerUrl: `https://explorer.testnet.chain.robinhood.com/address/${tokenAddress}`,
     };
   }
 
