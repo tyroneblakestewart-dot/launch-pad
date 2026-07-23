@@ -67,6 +67,38 @@ The Liquidity Lab supports a private, test-only constant-product pool on Robinho
 
 The `/bonding-curve` route is the fifth launch-workflow page. It explains the approved full-supply launch model, wallet-signed curve trading, the graduation target, automatic Hoodlums pool creation, and permanent initial LP locking. The bonding-curve contract foundation is merged, but it is not deployed or connected to live buy/sell controls yet.
 
+### Factory deployment (prep only)
+
+`contracts/HoodlumsTokenFactory.sol` is merged but **not yet deployed**. A
+Hardhat script prepares — but does not run — a deployment to Robinhood Chain
+Testnet:
+
+```bash
+npm run contracts:compile
+npm run deploy:factory:robinhood
+```
+
+Required environment variables (set locally, e.g. in `.env.local`; never
+commit real values):
+
+| Variable | Purpose |
+| --- | --- |
+| `ROBINHOOD_TESTNET_RPC_URL` | RPC endpoint used by the `robinhoodTestnet` Hardhat network. |
+| `HOODLUMS_FACTORY_DEPLOYER_PRIVATE_KEY` | Private key of the funded testnet-only account that sends the deployment transaction. Read only by Hardhat at deploy time; never logged, stored, or committed. |
+| `HOODLUMS_FACTORY_OWNER_ADDRESS` | Constructor `initialOwner` — the address that can adjust the launch fee and fee recipient after deployment. |
+| `HOODLUMS_FACTORY_TREASURY_ADDRESS` | Constructor `initialFeeRecipient` — the treasury address that would receive launch fees. |
+
+The script deploys with `initialLaunchFee = 0` and prints the deployed
+address plus the exact constructor arguments for explorer verification. It
+does not touch the `/testnet` UI, does not update
+`NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES`, and is never run automatically —
+running it is a deliberate, owner-initiated action.
+
+Once a deployment is verified, the frontend can read its address through
+`lib/factory-config.ts`, which exposes the factory ABI and reads a per-chain
+address map from `NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES` (public JSON, e.g.
+`{"46630":"0xYourDeployedAddress"}`).
+
 ### Wallet-signed token test lab
 
 The `/testnet` route supports two proof-of-launch flows:
