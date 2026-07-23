@@ -67,11 +67,39 @@ The Liquidity Lab supports a private, test-only constant-product pool on Robinho
 
 The `/bonding-curve` route is the fifth launch-workflow page. It explains the approved full-supply launch model, wallet-signed curve trading, the graduation target, automatic Hoodlums pool creation, and permanent initial LP locking. The bonding-curve contract foundation is merged, but it is not deployed or connected to live buy/sell controls yet.
 
-### Factory deployment (prep only)
+### Factory deployment
 
-`contracts/HoodlumsTokenFactory.sol` is merged but **not yet deployed**. A
-Hardhat script prepares — but does not run — a deployment to Robinhood Chain
-Testnet:
+`contracts/HoodlumsTokenFactory.sol` is deployed and live on Robinhood Chain
+Testnet (chain ID `46630`):
+
+| Field | Value |
+| --- | --- |
+| Factory address | `0x39207baa4d0a30a5194770563ec586978c9fbcb3` |
+| Owner | `0x3990b0b29f08c1D415978E8EDB93aD00E5dC966a` |
+| Treasury (fee recipient) | `0x505217CBbe3059993877983b4fDAD5C6e32AF1F5` |
+| Launch fee | `0` (zero, per this deployment) |
+
+The address is baked into `lib/factory-config.ts` as the public default for
+chain `46630`, so the production build routes through the live factory with
+no environment variable required. Setting
+`NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES` (public JSON, e.g.
+`{"46630":"0xYourDeployedAddress"}`) still overrides the default per chain —
+useful for a fork or a redeploy.
+
+`/testnet`'s Robinhood flow (`components/testnet-launcher.tsx`) reads the
+configured factory address for the connected chain through
+`getFactoryAddress()` and, when one is configured, routes the deploy button
+through `HoodlumsTokenFactory.launchToken()` instead of deploying
+`FixedSupplyMemeToken` directly: it reads `launchFee()` immediately before
+submitting, sends exactly that value with the transaction, and resolves the
+new token address from the `TokenLaunched` event (`lib/factory-launch.ts`).
+If no factory address is configured for the connected chain, the page falls
+back to the original direct `FixedSupplyMemeToken` deploy rather than
+breaking.
+
+The Hardhat script used for the deployment above lives at
+`scripts/deploy-hoodlums-factory.ts` and can be re-run for a future
+redeploy:
 
 ```bash
 npm run contracts:compile
@@ -89,21 +117,19 @@ commit real values):
 | `HOODLUMS_FACTORY_TREASURY_ADDRESS` | Constructor `initialFeeRecipient` — the treasury address that would receive launch fees. |
 
 The script deploys with `initialLaunchFee = 0` and prints the deployed
-address plus the exact constructor arguments for explorer verification. It
-does not touch the `/testnet` UI, does not update
+address plus the exact constructor arguments for explorer verification. Its
+`--network robinhoodTestnet` flag (from the npm script above) already
+selects the Hardhat network to use, so the script calls `network.create()`
+with no arguments rather than the deprecated `network.connect("robinhoodTestnet")`.
+It does not touch the `/testnet` UI or update
 `NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES`, and is never run automatically —
 running it is a deliberate, owner-initiated action.
-
-Once a deployment is verified, the frontend can read its address through
-`lib/factory-config.ts`, which exposes the factory ABI and reads a per-chain
-address map from `NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES` (public JSON, e.g.
-`{"46630":"0xYourDeployedAddress"}`).
 
 ### Wallet-signed token test lab
 
 The `/testnet` route supports two proof-of-launch flows:
 
-- **Robinhood Chain Testnet:** add or switch to chain ID `46630`, deploy a burnable fixed-supply ERC-20, and mint the complete supply once to the signing wallet. The contract has no owner or external mint function.
+- **Robinhood Chain Testnet:** add or switch to chain ID `46630`, then deploy a burnable fixed-supply ERC-20 that mints the complete supply once to the signing wallet. When a factory address is configured for the connected chain (see "Factory deployment" above), the deploy button routes through the live `HoodlumsTokenFactory.launchToken()`; otherwise it falls back to deploying `FixedSupplyMemeToken` directly. Either path has no owner or external mint function on the resulting token.
 - **Solana devnet:** create an SPL mint and associated token account, mint the selected fixed supply to the connected Phantom wallet, and permanently revoke mint authority.
 
 Both flows return a transaction or token address with an explorer link. They do not create metadata, liquidity, a bonding curve, or a public sale. A custom Solana endpoint can be supplied with `NEXT_PUBLIC_SOLANA_DEVNET_RPC`.

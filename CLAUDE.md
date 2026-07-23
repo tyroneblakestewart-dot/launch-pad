@@ -81,10 +81,13 @@ npm run build        # production build
 
 ## Current roadmap (update as milestones land)
 
-- HoodlumsTokenFactory is merged (PR #91) but **not yet deployed
-  on-chain**. Next: deploy to Robinhood Chain Testnet with zero fee,
-  verify on the explorer, route the `/testnet` deploy button through
-  `launchToken()`.
+- HoodlumsTokenFactory is merged (PR #91) and deployed on Robinhood Chain
+  Testnet (`46630`) with a zero launch fee — see README.md "Factory
+  deployment" for the live address, owner, and treasury. `/testnet`'s
+  Robinhood flow now routes through `launchToken()` when a factory address
+  is configured for the connected chain, falling back to the direct
+  `FixedSupplyMemeToken` deploy otherwise. Next: decide whether the studio
+  launch-modal controller should route through the same factory path.
 - HoodlumsTestBondingCurve is merged (PR #103). The `/bonding-curve` route
   is the fifth visible workflow step and currently explains the approved
   lifecycle. The curve is not deployed or factory-connected yet, and live

@@ -32,7 +32,10 @@ async function main() {
   const treasuryAddress = requireAddress("HOODLUMS_FACTORY_TREASURY_ADDRESS");
 
   const artifact = await hre.artifacts.readArtifact("HoodlumsTokenFactory");
-  const connection = await network.connect("robinhoodTestnet");
+  // No network name is passed here: the npm script always runs this with
+  // `--network robinhoodTestnet`, which already selects the network Hardhat
+  // connects to by default.
+  const connection = await network.create();
 
   const chain = {
     id: ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL,

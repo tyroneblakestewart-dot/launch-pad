@@ -30,6 +30,8 @@ import {
   FIXED_SUPPLY_TOKEN_ABI,
   FIXED_SUPPLY_TOKEN_BYTECODE,
 } from "@/lib/evm-token-artifact";
+import { getFactoryAddress } from "@/lib/factory-config";
+import { launchTokenViaFactory } from "@/lib/factory-launch";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./testnet-launcher.module.css";
 
@@ -177,6 +179,31 @@ export function TestnetLauncher() {
     const publicClient = createPublicClient({ chain: robinhoodTestnet, transport });
     const [account] = await walletClient.getAddresses();
     if (!account) throw new Error("No connected EVM account.");
+
+    const factoryAddress = getFactoryAddress(robinhoodTestnet.id);
+    if (factoryAddress) {
+      setStatus("Submitting the launch to the HoodlumsTokenFactory…");
+      const launch = await launchTokenViaFactory(
+        walletClient,
+        publicClient,
+        factoryAddress,
+        account,
+        {
+          name: name.trim(),
+          symbol: symbol.trim().toUpperCase(),
+          wholeTokenSupply: BigInt(supply),
+          decimals,
+          recipient: account as Address,
+        },
+      );
+
+      setStatus(`Deployment submitted: ${shortAddress(launch.transactionHash)}`);
+      return {
+        address: launch.address,
+        transaction: launch.transactionHash,
+        explorerUrl: `https://explorer.testnet.chain.robinhood.com/address/${launch.address}`,
+      };
+    }
 
     const transaction = await walletClient.deployContract({
       account,

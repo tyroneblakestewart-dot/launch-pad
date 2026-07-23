@@ -293,6 +293,19 @@ export const FACTORY_ADDRESSES_ENV_VAR = "NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES
 
 export type FactoryAddressMap = Partial<Record<number, `0x${string}`>>;
 
+/**
+ * Public, already-deployed factory addresses baked into the app so the
+ * production build works with no env var configured. HoodlumsTokenFactory
+ * was deployed to Robinhood Chain Testnet with a zero launch fee, owned by
+ * the Hoodlums treasury (see README.md "Factory deployment"). These are
+ * contract addresses, not secrets, and are safe to ship in client code.
+ * `NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES` still overrides an entry here,
+ * e.g. to point a fork or local deployment at a different address.
+ */
+export const DEFAULT_FACTORY_ADDRESSES: FactoryAddressMap = {
+  [ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL]: "0x39207baa4d0a30a5194770563ec586978c9fbcb3",
+};
+
 function isHexAddress(value: unknown): value is `0x${string}` {
   return typeof value === "string" && /^0x[0-9a-fA-F]{40}$/.test(value);
 }
@@ -327,14 +340,19 @@ export function parseFactoryAddressMap(raw: string | undefined): FactoryAddressM
 }
 
 /**
- * Reads the deployed factory address for a given chain id from the
- * environment. Pass `env` explicitly in tests; defaults to `process.env`.
+ * Reads the deployed factory address for a given chain id. An address
+ * configured through `NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES` overrides the
+ * baked-in public default for that chain; otherwise the default is used.
+ * Pass `env` explicitly in tests; defaults to `process.env`.
  */
 export function getFactoryAddress(
   chainId: number,
   env: Record<string, string | undefined> = process.env,
 ): `0x${string}` | undefined {
-  return parseFactoryAddressMap(env[FACTORY_ADDRESSES_ENV_VAR])[chainId];
+  return (
+    parseFactoryAddressMap(env[FACTORY_ADDRESSES_ENV_VAR])[chainId] ??
+    DEFAULT_FACTORY_ADDRESSES[chainId]
+  );
 }
 
 /** Convenience accessor for the chain this factory is being prepared for. */
