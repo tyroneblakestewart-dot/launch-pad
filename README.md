@@ -67,11 +67,31 @@ The Liquidity Lab supports a private, test-only constant-product pool on Robinho
 
 The `/bonding-curve` route is the fifth launch-workflow page. It explains the approved full-supply launch model, wallet-signed curve trading, the graduation target, automatic Hoodlums pool creation, and permanent initial LP locking. The bonding-curve contract foundation is merged, but it is not deployed or connected to live buy/sell controls yet.
 
-### Factory deployment (prep only)
+### Factory deployment
 
-`contracts/HoodlumsTokenFactory.sol` is merged but **not yet deployed**. A
-Hardhat script prepares — but does not run — a deployment to Robinhood Chain
-Testnet:
+`contracts/HoodlumsTokenFactory.sol` is **deployed** on Robinhood Chain
+Testnet (chain ID `46630`):
+
+| | |
+| --- | --- |
+| Factory address | `0x39207baa4d0a30a5194770563ec586978c9fbcb3` |
+| Owner | `0x3990b0b29f08c1D415978E8EDB93aD00E5dC966a` |
+| Treasury (fee recipient) | `0x505217CBbe3059993877983b4fDAD5C6e32AF1F5` |
+| Launch fee | `0` (zero, per this deployment) |
+
+The frontend reads this address through `lib/factory-config.ts`'s
+`getFactoryAddress()`, which checks the public JSON env var
+`NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES` first (e.g.
+`{"46630":"0xYourDeployedAddress"}`) and otherwise falls back to the public
+deployment above — so the production build works with no env var, while a
+fork or a redeploy on the same chain can still override it. `/testnet`
+routes Robinhood launches through this factory's `launchToken()` whenever an
+address is configured for the connected chain; if none is configured (e.g. an
+unsupported chain, or a cleared env override with no public default), it
+falls back to the original direct `FixedSupplyMemeToken` deployment path
+instead of breaking the page.
+
+A Hardhat script performs the (already-run) deployment:
 
 ```bash
 npm run contracts:compile
@@ -90,20 +110,18 @@ commit real values):
 
 The script deploys with `initialLaunchFee = 0` and prints the deployed
 address plus the exact constructor arguments for explorer verification. It
-does not touch the `/testnet` UI, does not update
-`NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES`, and is never run automatically —
-running it is a deliberate, owner-initiated action.
-
-Once a deployment is verified, the frontend can read its address through
-`lib/factory-config.ts`, which exposes the factory ABI and reads a per-chain
-address map from `NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES` (public JSON, e.g.
-`{"46630":"0xYourDeployedAddress"}`).
+is never run automatically — running it is a deliberate, owner-initiated
+action. The script's `--network robinhoodTestnet` flag already selects the
+Hardhat network for the run, so the script calls `network.create()` (no
+network name argument) rather than the deprecated
+`network.connect("robinhoodTestnet")`, which would open a redundant second
+connection.
 
 ### Wallet-signed token test lab
 
 The `/testnet` route supports two proof-of-launch flows:
 
-- **Robinhood Chain Testnet:** add or switch to chain ID `46630`, deploy a burnable fixed-supply ERC-20, and mint the complete supply once to the signing wallet. The contract has no owner or external mint function.
+- **Robinhood Chain Testnet:** add or switch to chain ID `46630`, then launch a burnable fixed-supply ERC-20 through the deployed `HoodlumsTokenFactory` (see "Factory deployment" above) — reading `launchFee()` immediately before submitting and sending exactly that amount with `launchToken()`, then resolving the new token address from the `TokenLaunched` event. If no factory address is configured for the connected chain, it falls back to deploying `FixedSupplyMemeToken` directly. Either way the complete supply is minted once to the signing wallet, and the contract has no owner or external mint function.
 - **Solana devnet:** create an SPL mint and associated token account, mint the selected fixed supply to the connected Phantom wallet, and permanently revoke mint authority.
 
 Both flows return a transaction or token address with an explorer link. They do not create metadata, liquidity, a bonding curve, or a public sale. A custom Solana endpoint can be supplied with `NEXT_PUBLIC_SOLANA_DEVNET_RPC`.

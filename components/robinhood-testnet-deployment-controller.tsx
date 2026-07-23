@@ -7,6 +7,7 @@ import {
   createWalletClient,
   custom,
   defineChain,
+  parseEventLogs,
   type Address,
   type Hash,
 } from "viem";
@@ -19,23 +20,17 @@ import {
   FIXED_SUPPLY_TOKEN_ABI,
   FIXED_SUPPLY_TOKEN_BYTECODE,
 } from "@/lib/evm-token-artifact";
+import { HOODLUMS_TOKEN_FACTORY_ABI, getFactoryAddress } from "@/lib/factory-config";
 import type { TokenProject } from "@/lib/types";
+import { getInjectedEvmProvider } from "@/lib/wallet-provider";
+import type { Eip1193Provider } from "@/lib/wallet-provider";
 import styles from "./robinhood-testnet-deployment-controller.module.css";
 
-type Eip1193Provider = {
-  request: (args: {
-    method: string;
-    params?: unknown[] | Record<string, unknown>;
-  }) => Promise<unknown>;
-};
-
 type BrowserWindow = Window & {
-  ethereum?: Eip1193Provider;
-  __launchpadEthereum?: Eip1193Provider;
   __launchpadEthereumInfo?: { name?: string; rdns?: string };
 };
 
-type DeploymentResult = {
+export type DeploymentResult = {
   contractAddress: Address;
   transactionHash: Hash;
 };
@@ -57,11 +52,6 @@ const robinhoodTestnet = defineChain({
   },
   testnet: true,
 });
-
-function getProvider(): Eip1193Provider | null {
-  const browserWindow = window as BrowserWindow;
-  return browserWindow.__launchpadEthereum || browserWindow.ethereum || null;
-}
 
 function normaliseChainId(value: unknown): string {
   if (typeof value !== "string") return "";
@@ -133,6 +123,96 @@ function readError(error: unknown): string {
     return String((error as { message: unknown }).message);
   }
   return "The testnet deployment failed.";
+}
+
+export type DeployClients = {
+  account: Address;
+  walletClient: ReturnType<typeof createWalletClient>;
+  publicClient: ReturnType<typeof createPublicClient>;
+};
+
+/**
+ * Launches through the deployed HoodlumsTokenFactory: reads `launchFee()`
+ * immediately before submitting so the transaction value always matches the
+ * fee actually charged, then resolves the new token from `TokenLaunched`.
+ */
+export async function deployViaFactory(
+  factoryAddress: Address,
+  project: TokenProject,
+  { account, walletClient, publicClient }: DeployClients,
+  onStatus: (status: string) => void,
+): Promise<DeploymentResult> {
+  const launchFee = await publicClient.readContract({
+    address: factoryAddress,
+    abi: HOODLUMS_TOKEN_FACTORY_ABI,
+    functionName: "launchFee",
+  });
+
+  onStatus("Review and approve the factory launch transaction in MetaMask…");
+  const transactionHash = await walletClient.writeContract({
+    account,
+    chain: robinhoodTestnet,
+    address: factoryAddress,
+    abi: HOODLUMS_TOKEN_FACTORY_ABI,
+    functionName: "launchToken",
+    args: [
+      project.name.trim(),
+      project.ticker.trim().toUpperCase(),
+      BigInt(project.supply),
+      project.decimals,
+      account,
+    ],
+    value: launchFee,
+  });
+
+  onStatus(`Launch submitted: ${shortAddress(transactionHash)}`);
+  const receipt = await publicClient.waitForTransactionReceipt({
+    hash: transactionHash,
+  });
+
+  const [launchedEvent] = parseEventLogs({
+    abi: HOODLUMS_TOKEN_FACTORY_ABI,
+    eventName: "TokenLaunched",
+    logs: receipt.logs,
+  });
+  const contractAddress = launchedEvent?.args.token;
+  if (!contractAddress) {
+    throw new Error("The confirmed receipt did not include a TokenLaunched event.");
+  }
+
+  return { contractAddress, transactionHash };
+}
+
+/** Deploys `FixedSupplyMemeToken` directly — the path used when no factory is configured. */
+export async function deployDirect(
+  project: TokenProject,
+  { account, walletClient, publicClient }: DeployClients,
+  onStatus: (status: string) => void,
+): Promise<DeploymentResult> {
+  onStatus("Review and approve the testnet contract deployment in MetaMask…");
+  const transactionHash = await walletClient.deployContract({
+    account,
+    chain: robinhoodTestnet,
+    abi: FIXED_SUPPLY_TOKEN_ABI,
+    bytecode: FIXED_SUPPLY_TOKEN_BYTECODE,
+    args: [
+      project.name.trim(),
+      project.ticker.trim().toUpperCase(),
+      BigInt(project.supply),
+      project.decimals,
+      account,
+    ],
+  });
+
+  onStatus(`Deployment submitted: ${shortAddress(transactionHash)}`);
+  const receipt = await publicClient.waitForTransactionReceipt({
+    hash: transactionHash,
+  });
+  if (!receipt.contractAddress) {
+    throw new Error("The confirmed receipt did not contain a contract address.");
+  }
+
+  return { contractAddress: receipt.contractAddress, transactionHash };
 }
 
 export function RobinhoodTestnetDeploymentController() {
@@ -211,7 +291,7 @@ export function RobinhoodTestnetDeploymentController() {
 
   async function deploy() {
     if (!project || busy || !confirmed) return;
-    const provider = getProvider();
+    const provider = getInjectedEvmProvider();
     if (!provider) {
       setStatus("Reconnect MetaMask from the builder before deploying.");
       return;
@@ -243,7 +323,6 @@ export function RobinhoodTestnetDeploymentController() {
       const account = accounts[0] as Address | undefined;
       if (!account) throw new Error("The selected wallet returned no account.");
 
-      setStatus("Review and approve the testnet contract deployment in MetaMask…");
       const transport = custom(provider);
       const walletClient = createWalletClient({
         chain: robinhoodTestnet,
@@ -254,38 +333,18 @@ export function RobinhoodTestnetDeploymentController() {
         transport,
       });
 
-      const transactionHash = await walletClient.deployContract({
-        account,
-        abi: FIXED_SUPPLY_TOKEN_ABI,
-        bytecode: FIXED_SUPPLY_TOKEN_BYTECODE,
-        args: [
-          project.name.trim(),
-          project.ticker.trim().toUpperCase(),
-          BigInt(project.supply),
-          project.decimals,
-          account,
-        ],
-      });
+      const clients: DeployClients = { account, walletClient, publicClient };
+      const factoryAddress = getFactoryAddress(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL);
+      const deploymentResult = factoryAddress
+        ? await deployViaFactory(factoryAddress, project, clients, setStatus)
+        : await deployDirect(project, clients, setStatus);
 
-      setStatus(`Deployment submitted: ${shortAddress(transactionHash)}`);
-      const receipt = await publicClient.waitForTransactionReceipt({
-        hash: transactionHash,
-      });
-      if (!receipt.contractAddress) {
-        throw new Error("The confirmed receipt did not contain a contract address.");
-      }
-
-      const contractAddress: Address = receipt.contractAddress;
-      const deploymentResult: DeploymentResult = {
-        contractAddress,
-        transactionHash,
-      };
       setResult(deploymentResult);
-      updateStoredProject(project, contractAddress);
-      updateStudioContractAddress(contractAddress);
+      updateStoredProject(project, deploymentResult.contractAddress);
+      updateStudioContractAddress(deploymentResult.contractAddress);
       setProject((current) =>
         current
-          ? { ...current, contractAddress, status: "launched" }
+          ? { ...current, contractAddress: deploymentResult.contractAddress, status: "launched" }
           : current,
       );
       setStatus("Testnet token deployed successfully. Mainnet is still blocked.");

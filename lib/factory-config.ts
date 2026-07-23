@@ -286,12 +286,23 @@ export const HOODLUMS_TOKEN_FACTORY_ABI = [
  *
  *   NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES={"46630":"0xYourDeployedAddress"}
  *
- * The value is public JSON, safe to expose to the browser, and left unset
- * until the factory documented in README.md is actually deployed.
+ * The value is public JSON, safe to expose to the browser. Entries in this
+ * env var override the public defaults below for the same chain id, which
+ * lets a fork or local deployment point at a different factory without a
+ * code change.
  */
 export const FACTORY_ADDRESSES_ENV_VAR = "NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES";
 
 export type FactoryAddressMap = Partial<Record<number, `0x${string}`>>;
+
+/**
+ * Publicly known factory deployments, baked in so the production build works
+ * without requiring every deployer to set the env var above. See README.md
+ * "Factory deployment" for deployment details (owner, treasury, fee).
+ */
+export const DEFAULT_FACTORY_ADDRESSES: FactoryAddressMap = {
+  [ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL]: "0x39207baa4d0a30a5194770563ec586978c9fbcb3",
+};
 
 function isHexAddress(value: unknown): value is `0x${string}` {
   return typeof value === "string" && /^0x[0-9a-fA-F]{40}$/.test(value);
@@ -327,14 +338,17 @@ export function parseFactoryAddressMap(raw: string | undefined): FactoryAddressM
 }
 
 /**
- * Reads the deployed factory address for a given chain id from the
- * environment. Pass `env` explicitly in tests; defaults to `process.env`.
+ * Reads the deployed factory address for a given chain id: an env var
+ * override takes priority, falling back to the public default deployment
+ * for that chain (if any). Pass `env` explicitly in tests; defaults to
+ * `process.env`.
  */
 export function getFactoryAddress(
   chainId: number,
   env: Record<string, string | undefined> = process.env,
 ): `0x${string}` | undefined {
-  return parseFactoryAddressMap(env[FACTORY_ADDRESSES_ENV_VAR])[chainId];
+  const fromEnv = parseFactoryAddressMap(env[FACTORY_ADDRESSES_ENV_VAR])[chainId];
+  return fromEnv ?? DEFAULT_FACTORY_ADDRESSES[chainId];
 }
 
 /** Convenience accessor for the chain this factory is being prepared for. */

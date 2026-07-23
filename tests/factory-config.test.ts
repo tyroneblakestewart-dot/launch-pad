@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "../lib/chains";
 import {
+  DEFAULT_FACTORY_ADDRESSES,
   FACTORY_ADDRESSES_ENV_VAR,
   HOODLUMS_TOKEN_FACTORY_ABI,
   getFactoryAddress,
@@ -96,16 +97,18 @@ describe("factory-config", () => {
   });
 
   describe("getFactoryAddress", () => {
-    it("returns undefined when the env var is unset", () => {
-      expect(getFactoryAddress(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, {})).toBeUndefined();
+    it("falls back to the public default when the env var is unset", () => {
+      expect(getFactoryAddress(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, {})).toBe(
+        DEFAULT_FACTORY_ADDRESSES[ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL],
+      );
     });
 
-    it("returns undefined when the chain is missing from the map", () => {
+    it("returns undefined for a chain with no default and no env entry", () => {
       const env = { [FACTORY_ADDRESSES_ENV_VAR]: JSON.stringify({ 10143: OTHER_ADDRESS }) };
-      expect(getFactoryAddress(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, env)).toBeUndefined();
+      expect(getFactoryAddress(999999, env)).toBeUndefined();
     });
 
-    it("returns the configured address for a known chain", () => {
+    it("returns the env-configured address for a known chain, overriding the default", () => {
       const env = {
         [FACTORY_ADDRESSES_ENV_VAR]: JSON.stringify({
           [ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL]: VALID_ADDRESS,
@@ -116,7 +119,7 @@ describe("factory-config", () => {
   });
 
   describe("getRobinhoodTestnetFactoryAddress", () => {
-    it("reads the Robinhood Chain Testnet entry from the shared env var", () => {
+    it("reads the Robinhood Chain Testnet entry from the shared env var, overriding the default", () => {
       const env = {
         [FACTORY_ADDRESSES_ENV_VAR]: JSON.stringify({
           [ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL]: VALID_ADDRESS,
@@ -125,8 +128,18 @@ describe("factory-config", () => {
       expect(getRobinhoodTestnetFactoryAddress(env)).toBe(VALID_ADDRESS);
     });
 
-    it("returns undefined before the factory is deployed", () => {
-      expect(getRobinhoodTestnetFactoryAddress({})).toBeUndefined();
+    it("returns the public default deployment when no env override is set", () => {
+      expect(getRobinhoodTestnetFactoryAddress({})).toBe(
+        DEFAULT_FACTORY_ADDRESSES[ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL],
+      );
+    });
+  });
+
+  describe("DEFAULT_FACTORY_ADDRESSES", () => {
+    it("configures the live Robinhood Chain Testnet factory deployment", () => {
+      expect(DEFAULT_FACTORY_ADDRESSES[ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL]).toBe(
+        "0x39207baa4d0a30a5194770563ec586978c9fbcb3",
+      );
     });
   });
 });

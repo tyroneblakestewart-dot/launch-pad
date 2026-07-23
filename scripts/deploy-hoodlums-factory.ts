@@ -32,7 +32,11 @@ async function main() {
   const treasuryAddress = requireAddress("HOODLUMS_FACTORY_TREASURY_ADDRESS");
 
   const artifact = await hre.artifacts.readArtifact("HoodlumsTokenFactory");
-  const connection = await network.connect("robinhoodTestnet");
+  // The npm script invokes `hardhat run --network robinhoodTestnet`, which
+  // already selects the network; `network.create()` (no args) picks that
+  // CLI-selected network up. `network.connect("robinhoodTestnet")` is
+  // deprecated and would open a second, redundant connection.
+  const connection = await network.create();
 
   const chain = {
     id: ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL,

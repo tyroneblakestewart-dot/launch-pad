@@ -27,6 +27,7 @@ describe("wallet provider consistency", () => {
       "components/token-allocation-desk.tsx",
       "components/testnet-launcher.tsx",
       "components/liquidity-lab.tsx",
+      "components/robinhood-testnet-deployment-controller.tsx",
     ];
 
     for (const target of targets) {
