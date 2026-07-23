@@ -286,8 +286,8 @@ export const HOODLUMS_TOKEN_FACTORY_ABI = [
  *
  *   NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES={"46630":"0xYourDeployedAddress"}
  *
- * The value is public JSON, safe to expose to the browser, and left unset
- * until the factory documented in README.md is actually deployed.
+ * The value is public JSON, safe to expose to the browser, and overrides the
+ * public defaults below on a per-chain basis.
  */
 export const FACTORY_ADDRESSES_ENV_VAR = "NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES";
 
@@ -327,14 +327,28 @@ export function parseFactoryAddressMap(raw: string | undefined): FactoryAddressM
 }
 
 /**
- * Reads the deployed factory address for a given chain id from the
- * environment. Pass `env` explicitly in tests; defaults to `process.env`.
+ * Public factory addresses that ship with the app so `/testnet` routes
+ * through the factory without any env var configuration. Robinhood Chain
+ * Testnet's HoodlumsTokenFactory (owner `0x3990b0b29f08c1D415978E8EDB93aD00E5dC966a`,
+ * treasury `0x505217CBbe3059993877983b4fDAD5C6e32AF1F5`, launch fee `0`) is
+ * verified and live — see README.md "Factory deployment".
+ */
+const DEFAULT_FACTORY_ADDRESSES: FactoryAddressMap = {
+  [ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL]: "0x39207baa4d0a30a5194770563ec586978c9fbcb3",
+};
+
+/**
+ * Reads the deployed factory address for a given chain id: an
+ * `NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES` entry takes precedence, falling
+ * back to the public default above. Pass `env` explicitly in tests; defaults
+ * to `process.env`.
  */
 export function getFactoryAddress(
   chainId: number,
   env: Record<string, string | undefined> = process.env,
 ): `0x${string}` | undefined {
-  return parseFactoryAddressMap(env[FACTORY_ADDRESSES_ENV_VAR])[chainId];
+  const override = parseFactoryAddressMap(env[FACTORY_ADDRESSES_ENV_VAR])[chainId];
+  return override ?? DEFAULT_FACTORY_ADDRESSES[chainId];
 }
 
 /** Convenience accessor for the chain this factory is being prepared for. */
