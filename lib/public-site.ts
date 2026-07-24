@@ -16,8 +16,10 @@ export interface PublicGeneratedSite {
   chain: SupportedChain;
   /** Data URL for the saved token artwork, or "" if none was uploaded. */
   heroImage: string;
-  /** Validated standalone generated page HTML, or null if none exists yet. */
+  /** Validated standalone generated page HTML for the chosen design. */
   generatedSiteHtml: string | null;
+  generatedSiteVariantId?: string | null;
+  generatedSiteVariantLabel?: string | null;
   contractAddress: string;
   xHandle: string;
   telegram: string;
@@ -43,6 +45,8 @@ export function buildPublicGeneratedSiteFromProject(project: TokenProject): Publ
     chain: project.chain,
     heroImage: project.heroImage,
     generatedSiteHtml: project.generatedSiteHtml || null,
+    generatedSiteVariantId: project.generatedSiteVariantId || null,
+    generatedSiteVariantLabel: project.generatedSiteVariantLabel || null,
     contractAddress: project.contractAddress,
     xHandle: project.xHandle,
     telegram: project.telegram,
