@@ -38,5 +38,6 @@ export function resetPublicGeneratedSiteAdapterForTests(): void {
 }
 
 export async function getPublicGeneratedSiteBySlug(slug: string): Promise<PublicGeneratedSite | null> {
-  return activeAdapter(slug);
+  const site = await activeAdapter(slug);
+  return site?.slug === slug ? site : null;
 }

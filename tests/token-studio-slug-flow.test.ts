@@ -38,7 +38,7 @@ describe("Token studio save flow wiring", () => {
   it("clears the captured generated site HTML when the token identity changes", async () => {
     const studio = await readFile(path.join(ROOT, "components", "token-studio.tsx"), "utf8");
 
-    expect(studio).toContain('const IDENTITY_KEYS = new Set<keyof TokenProject>(["name", "ticker", "heroImage"]);');
+    expect(studio).toContain('"description",');
     expect(studio).toContain("const identityChanged = IDENTITY_KEYS.has(key) && current[key] !== value");
     expect(studio).toContain("generatedSiteHtml: identityChanged ? null : current.generatedSiteHtml");
   });

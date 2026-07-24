@@ -3,6 +3,7 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { CHAIN_CONFIG, ROBINHOOD_MAINNET } from "@/lib/chains";
 import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
+import { PROJECT_SAVE_RESULT_EVENT } from "@/lib/project-save-result";
 import { findSlugCollision, slugify, validateSlug } from "@/lib/slug";
 import type { SupportedChain, TokenProject, WalletState } from "@/lib/types";
 
@@ -86,7 +87,12 @@ function formatSupply(value: string): string {
   return Number.isFinite(numeric) ? numeric.toLocaleString("en-GB") : value;
 }
 
-const IDENTITY_KEYS = new Set<keyof TokenProject>(["name", "ticker", "heroImage"]);
+const IDENTITY_KEYS = new Set<keyof TokenProject>([
+  "name",
+  "ticker",
+  "description",
+  "heroImage",
+]);
 
 export function TokenStudio() {
   const [project, setProject] = useState<TokenProject>(DEFAULT_PROJECT);
@@ -187,6 +193,9 @@ export function TokenStudio() {
     const validation = validateSlug(slug);
     if (!validation.valid) {
       setNotice(validation.reason);
+      window.dispatchEvent(
+        new CustomEvent(PROJECT_SAVE_RESULT_EVENT, { detail: { success: false } }),
+      );
       return false;
     }
 
@@ -194,6 +203,9 @@ export function TokenStudio() {
     if (collision) {
       setNotice(
         `"${slug}" is already used by ${collision.name || "another saved project"} in this browser. Choose a different website path.`,
+      );
+      window.dispatchEvent(
+        new CustomEvent(PROJECT_SAVE_RESULT_EVENT, { detail: { success: false } }),
       );
       return false;
     }
@@ -215,6 +227,9 @@ export function TokenStudio() {
     setProject(saved);
     persist(nextProjects);
     setNotice(`${saved.name || "Project"} saved privately in this browser.`);
+    window.dispatchEvent(
+      new CustomEvent(PROJECT_SAVE_RESULT_EVENT, { detail: { success: true } }),
+    );
     return true;
   }
 

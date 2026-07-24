@@ -11,7 +11,8 @@ import { PublicDexscreenerSection } from "@/components/public-dexscreener-sectio
 import { PublicSiteFrame } from "@/components/public-site-frame";
 import { PublicTokenFallback } from "@/components/public-token-fallback";
 
-const PNG_BASE64 = Buffer.from("fake-png-bytes").toString("base64");
+const PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=";
 const ARTWORK_DATA_URL = `data:image/png;base64,${PNG_BASE64}`;
 
 function validGeneratedHtml(): string {

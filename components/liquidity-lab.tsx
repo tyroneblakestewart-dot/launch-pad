@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   createPublicClient,
@@ -239,7 +240,7 @@ export function LiquidityLab() {
         </article>
       </section>
       <p className={styles.status}>{status}</p>
-      <a className={styles.back} href="/allocations">← Return to allocations</a>
+      <Link className={styles.back} href="/allocations">← Return to allocations</Link>
     </main>
   );
 }

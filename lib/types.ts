@@ -24,7 +24,7 @@ export interface TokenProject {
    * so a future publish adapter has the complete design available; not
    * used for anything else today. Cleared whenever the name, ticker or
    * artwork changes so one token's page can never be mistaken for
-   * another's.
+   * another's. The same reset applies when the project description changes.
    */
   generatedSiteHtml?: string | null;
   /** Increments each time `generatedSiteHtml` is captured. */

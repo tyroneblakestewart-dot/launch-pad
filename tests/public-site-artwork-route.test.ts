@@ -6,7 +6,8 @@ import {
 } from "@/lib/server/public-generated-sites";
 import type { PublicGeneratedSite } from "@/lib/public-site";
 
-const PNG_BASE64 = Buffer.from("fake-png-bytes").toString("base64");
+const PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=";
 
 const BASE_FIXTURE: PublicGeneratedSite = {
   slug: "hoodlums",
@@ -44,12 +45,21 @@ describe("GET /[slug]/artwork", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("image/png");
     const buffer = Buffer.from(await response.arrayBuffer());
-    expect(buffer.toString()).toBe("fake-png-bytes");
+    expect(buffer.subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
   });
 
   it("returns 404 for an invalid path slug without looking up a record", async () => {
     setPublicGeneratedSiteAdapter(async () => BASE_FIXTURE);
     const response = await call("Not-A-Valid-Slug!");
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 404 when the adapter returns a record for another slug", async () => {
+    setPublicGeneratedSiteAdapter(async () => ({ ...BASE_FIXTURE, slug: "another-slug" }));
+    const response = await call("hoodlums");
     expect(response.status).toBe(404);
   });
 

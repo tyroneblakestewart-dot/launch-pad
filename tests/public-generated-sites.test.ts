@@ -46,6 +46,11 @@ describe("public generated site repository boundary", () => {
     expect(await getPublicGeneratedSiteBySlug("unknown")).toBeNull();
   });
 
+  it("rejects an injected adapter record whose slug does not match the lookup", async () => {
+    setPublicGeneratedSiteAdapter(async () => FIXTURE);
+    expect(await getPublicGeneratedSiteBySlug("different-slug")).toBeNull();
+  });
+
   it("restores the no-records default after resetPublicGeneratedSiteAdapterForTests", async () => {
     setPublicGeneratedSiteAdapter(async () => FIXTURE);
     resetPublicGeneratedSiteAdapterForTests();

@@ -32,6 +32,7 @@ export async function GET(_request: Request, { params }: { params: Promise<Route
     headers: {
       "Content-Type": artwork.contentType,
       "Cache-Control": "public, max-age=300",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

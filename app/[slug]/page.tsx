@@ -51,7 +51,7 @@ export default async function PublicGeneratedSitePage({ params }: PublicSiteRout
   if (!site) notFound();
 
   const hasGeneratedHtml = isCompleteGeneratedPageHtml(site.generatedSiteHtml);
-  const hasArtwork = site.heroImage.startsWith("data:image/");
+  const hasArtwork = Boolean(decodeArtworkDataUrl(site.heroImage));
 
   return (
     <main className="public-generated-site">

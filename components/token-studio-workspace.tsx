@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  PROJECT_SAVE_RESULT_EVENT,
+  shouldCloseWorkspaceAfterSave,
+  type ProjectSaveResultDetail,
+} from "@/lib/project-save-result";
 import type { TokenProject } from "@/lib/types";
 import { TokenStudio } from "./token-studio";
 import styles from "./token-studio-workspace.module.css";
@@ -113,9 +118,24 @@ function focusNewProjectEditor() {
 export function TokenStudioWorkspace() {
   const [isOpen, setIsOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const awaitingSaveAndClose = useRef(false);
 
   useEffect(() => {
     seedHoodlumsLaunch();
+  }, []);
+
+  useEffect(() => {
+    function onProjectSaveResult(event: Event) {
+      if (!awaitingSaveAndClose.current) return;
+      const detail = (event as CustomEvent<ProjectSaveResultDetail>).detail;
+      awaitingSaveAndClose.current = false;
+      if (!shouldCloseWorkspaceAfterSave(detail)) return;
+      setPendingAction(null);
+      setIsOpen(false);
+    }
+
+    window.addEventListener(PROJECT_SAVE_RESULT_EVENT, onProjectSaveResult);
+    return () => window.removeEventListener(PROJECT_SAVE_RESULT_EVENT, onProjectSaveResult);
   }, []);
 
   useEffect(() => {
@@ -160,11 +180,9 @@ export function TokenStudioWorkspace() {
 
   function saveAndClose() {
     const saveButton = findStudioButton("save project");
-    saveButton?.click();
-    window.setTimeout(() => {
-      setPendingAction(null);
-      setIsOpen(false);
-    }, 100);
+    if (!saveButton) return;
+    awaitingSaveAndClose.current = true;
+    saveButton.click();
   }
 
   if (!isOpen) {
