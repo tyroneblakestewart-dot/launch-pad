@@ -22,7 +22,7 @@ describe("Hoodlums welcome modal", () => {
     expect(image.readUInt32LE(4) + 8).toBe(image.length);
   });
 
-  it("uses the sharp artwork and keeps the reduced Hoodlums logo", async () => {
+  it("loads the exact sharp artwork outside the client bundle and keeps the reduced Hoodlums logo", async () => {
     const component = await readFile(
       path.join(ROOT, "components", "hoodlums-welcome-modal.tsx"),
       "utf8",
@@ -32,7 +32,10 @@ describe("Hoodlums welcome modal", () => {
       "utf8",
     );
 
-    expect(component).toContain("HOODLUMS_WELCOME_COMPLETE_IMAGE");
+    expect(component).toContain('const WELCOME_ARTWORK_URL = "/assets/hoodlums-welcome"');
+    expect(component).toContain("src={WELCOME_ARTWORK_URL}");
+    expect(component).toContain('decoding="async"');
+    expect(component).not.toContain("HOODLUMS_WELCOME_COMPLETE_IMAGE");
     expect(component).toContain("<h1 id=\"hoodlums-welcome-title\">Welcome</h1>");
     expect(component).toContain("width={800}");
     expect(component).toContain("height={600}");
