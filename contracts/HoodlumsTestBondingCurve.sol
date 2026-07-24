@@ -290,28 +290,30 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     }
 
     /// @notice Withdraw the caller's claimable trading fees.
-    /// @dev Pull payment: only the treasury or the creator can call this, and
-    ///      each can only withdraw its own balance. Checks-effects-interactions
-    ///      and `nonReentrant` ensure a reverting or malicious recipient cannot
-    ///      block their own future withdrawals or the other recipient's.
+    /// @dev Pull payment: only the treasury or the creator can call this. If
+    ///      `treasury == creator`, the shared address withdraws both balances
+    ///      in one call so neither share is ever stranded. Checks-effects-
+    ///      interactions and `nonReentrant` ensure a reverting or malicious
+    ///      recipient cannot block their own future withdrawals or the other
+    ///      recipient's.
     function withdrawFees() external nonReentrant returns (uint256 amount) {
-        if (msg.sender == treasury) {
-            amount = treasuryFeeBalance;
-            if (amount == 0) revert NoFeesToWithdraw();
+        bool isTreasury = msg.sender == treasury;
+        bool isCreator = msg.sender == creator;
+        if (!isTreasury && !isCreator) revert NotFeeRecipient();
+
+        if (isTreasury) {
+            amount += treasuryFeeBalance;
             treasuryFeeBalance = 0;
-            totalFeesWithdrawn += amount;
-            emit FeeWithdrawn(msg.sender, amount);
-            _safeTransferNative(msg.sender, amount);
-        } else if (msg.sender == creator) {
-            amount = creatorFeeBalance;
-            if (amount == 0) revert NoFeesToWithdraw();
-            creatorFeeBalance = 0;
-            totalFeesWithdrawn += amount;
-            emit FeeWithdrawn(msg.sender, amount);
-            _safeTransferNative(msg.sender, amount);
-        } else {
-            revert NotFeeRecipient();
         }
+        if (isCreator) {
+            amount += creatorFeeBalance;
+            creatorFeeBalance = 0;
+        }
+        if (amount == 0) revert NoFeesToWithdraw();
+
+        totalFeesWithdrawn += amount;
+        emit FeeWithdrawn(msg.sender, amount);
+        _safeTransferNative(msg.sender, amount);
     }
 
     /// @notice Net tokens a buyer receives for a given gross native input, after fees.
@@ -339,11 +341,12 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         return _tradingFee(_quoteSellGross(tokensIn));
     }
 
-    /// @notice Claimable fee balance for the treasury or the creator, zero for any other address.
-    function claimableFees(address recipient) external view returns (uint256) {
-        if (recipient == treasury) return treasuryFeeBalance;
-        if (recipient == creator) return creatorFeeBalance;
-        return 0;
+    /// @notice Claimable fee balance for `recipient`. If `recipient` is both the
+    ///         treasury and the creator, returns the sum of both balances; zero
+    ///         for any address that is neither.
+    function claimableFees(address recipient) external view returns (uint256 amount) {
+        if (recipient == treasury) amount += treasuryFeeBalance;
+        if (recipient == creator) amount += creatorFeeBalance;
     }
 
     /// @notice Total accrued fee liability currently outstanding across both recipients.

@@ -400,6 +400,39 @@ contract HoodlumsTestBondingCurveTest {
         require(!strangerWithdraw, "non-recipient withdrawal succeeded");
     }
 
+    function testWithdrawFeesCombinesBothSharesWhenTreasuryAndCreatorAreTheSameAddress() public {
+        FixedSupplyMemeToken sharedToken = _deployToken(WHOLE_TOKEN_SUPPLY);
+        HoodlumsTestBondingCurve sharedCurve = new HoodlumsTestBondingCurve(
+            address(sharedToken),
+            address(this),
+            address(this),
+            VIRTUAL_TOKEN_RESERVE,
+            VIRTUAL_ETH_RESERVE,
+            DEFAULT_GRADUATION_TARGET
+        );
+        sharedToken.approve(address(sharedCurve), sharedToken.totalSupply());
+        sharedCurve.fundCurve();
+
+        vm.deal(BUYER, 1 ether);
+        vm.prank(BUYER);
+        sharedCurve.buy{value: 0.2 ether}(0, DEADLINE);
+
+        uint256 treasuryOwed = sharedCurve.treasuryFeeBalance();
+        uint256 creatorOwed = sharedCurve.creatorFeeBalance();
+        require(treasuryOwed > 0 && creatorOwed > 0, "fees not accrued");
+
+        uint256 combinedExpected = treasuryOwed + creatorOwed;
+        require(sharedCurve.claimableFees(address(this)) == combinedExpected, "combined claimable wrong");
+
+        uint256 balanceBefore = address(this).balance;
+        uint256 withdrawn = sharedCurve.withdrawFees();
+        require(withdrawn == combinedExpected, "combined withdrawal amount wrong");
+        require(address(this).balance == balanceBefore + combinedExpected, "combined payment not received");
+        require(sharedCurve.treasuryFeeBalance() == 0, "treasury balance not zeroed");
+        require(sharedCurve.creatorFeeBalance() == 0, "creator balance not zeroed");
+        require(sharedCurve.claimableFees(address(this)) == 0, "claimable not zeroed after withdrawal");
+    }
+
     function testRevertingFeeRecipientCannotBlockTradesOrTheOtherRecipient() public {
         RevertingFeeRecipient revertingTreasury = new RevertingFeeRecipient();
         FixedSupplyMemeToken revToken = _deployToken(WHOLE_TOKEN_SUPPLY);
