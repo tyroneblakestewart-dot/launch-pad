@@ -47,3 +47,10 @@
   .bottomNav a.active { border-color:rgba(198,245,62,.34) !important; background:rgba(198,245,62,.14) !important; color:#c6f53e !important; box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 0 18px rgba(198,245,62,.08) !important; }
   .bottomNav svg { width:23px; height:23px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 }
+
+
+/* Public generated token pages are standalone sites, not private workspace screens. */
+:global(body:has(.public-generated-site)) { padding-left:0 !important; padding-bottom:0 !important; }
+:global(body:has(.public-generated-site)) .sidebar,
+:global(body:has(.public-generated-site)) .mobileHeader,
+:global(body:has(.public-generated-site)) .bottomNav { display:none !important; }
