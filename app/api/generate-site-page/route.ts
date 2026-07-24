@@ -20,6 +20,8 @@ import {
   buildPageArtworkIdentityRequestBody,
   parseGeneratedSitePageResponse,
 } from "@/lib/site-page-openai-pipeline";
+import { haveDistinctVariantLayouts, type GeneratedSiteVariant } from "@/lib/generated-site-variants";
+import { SITE_DESIGN_VARIANTS } from "@/lib/site-design-variants";
 import {
   GENERATE_SITE_STYLE_LIMIT,
   consumeGenerateSiteStyleRateLimit,
@@ -62,7 +64,7 @@ function sanitiseProviderDetail(value: unknown): string {
   const text = typeof value === "string" ? value : value instanceof Error ? value.message : String(value || "");
   return text
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
-    .replace(/(?:api[_-]?key|token)([\"'\s:=]+)[A-Za-z0-9._~+/=-]+/gi, "credential$1[redacted]")
+    .replace(/(?:api[_-]?key|token)(["'\s:=]+)[A-Za-z0-9._~+/=-]+/gi, "credential$1[redacted]")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 500);
@@ -202,6 +204,7 @@ export async function POST(request: Request) {
     ? buildInspirationInspectionRequestBody(input, model)
     : null;
 
+  // Artwork and inspiration are analysed once and shared by all five directions.
   const [artworkResult, inspirationResult] = await Promise.all([
     requestOpenAI(ai, artworkBody, 18_000, "page-artwork-analysis"),
     inspirationBody
@@ -273,38 +276,87 @@ export async function POST(request: Request) {
 
   const briefIds = getFusionBriefIds(artworkIdentity, inspirationAnalysis);
   const acceptance = buildGeneratedPageAcceptanceProfile(artworkIdentity, inspirationAnalysis);
-  const generation = await requestOpenAI(
-    ai,
-    buildGeneratedSitePageRequestBody(input, model, artworkIdentity, inspirationAnalysis),
-    38_000,
-    "full-page-generation",
+
+  // One protected browser request fans out to five parallel full-page calls.
+  const generationResults = await Promise.all(
+    SITE_DESIGN_VARIANTS.map((variant) =>
+      requestOpenAI(
+        ai,
+        buildGeneratedSitePageRequestBody(
+          input,
+          model,
+          artworkIdentity,
+          inspirationAnalysis,
+          variant,
+        ),
+        38_000,
+        `full-page-generation-${variant.id}`,
+      ),
+    ),
   );
 
-  if (!generation.ok) {
-    return NextResponse.json(
-      {
-        error:
-          generation.kind === "invalid"
-            ? "AI returned an invalid website document. Try generating again."
-            : "The artwork and inspiration were analysed, but the standalone website could not be generated. Try again.",
-        providerError: providerError("full-page-generation", ai, generation),
-      },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
+  for (let index = 0; index < generationResults.length; index += 1) {
+    const generation = generationResults[index];
+    const variant = SITE_DESIGN_VARIANTS[index];
+    if (!generation.ok) {
+      return NextResponse.json(
+        {
+          error:
+            generation.kind === "invalid"
+              ? `AI returned an invalid ${variant.label} website. Try generating all five designs again.`
+              : `The ${variant.label} design could not be generated. Try generating all five designs again.`,
+          providerError: providerError(`full-page-generation-${variant.id}`, ai, generation),
+        },
+        { status: 502, headers: noStoreHeaders(rateHeaders) },
+      );
+    }
   }
 
-  const page = parseGeneratedSitePageResponse(generation.payload, briefIds, acceptance);
-  if (!page) {
+  const variants: GeneratedSiteVariant[] = [];
+  for (let index = 0; index < generationResults.length; index += 1) {
+    const generation = generationResults[index];
+    const descriptor = SITE_DESIGN_VARIANTS[index];
+    if (!generation.ok) continue;
+    const page = parseGeneratedSitePageResponse(
+      generation.payload,
+      briefIds,
+      acceptance,
+      descriptor,
+    );
+    if (!page) {
+      return NextResponse.json(
+        {
+          error: `${descriptor.label} failed the completeness, safety, identity or variant checks. Generate all five designs again.`,
+          providerError: {
+            stage: `full-page-generation-parse-${descriptor.id}`,
+            provider: ai.source,
+            kind: "invalid",
+            status: null,
+            detail: "One generated document failed its server-side page, evidence, variant marker or safety checks.",
+          },
+        },
+        { status: 502, headers: noStoreHeaders(rateHeaders) },
+      );
+    }
+    variants.push({
+      id: descriptor.id,
+      label: descriptor.label,
+      description: descriptor.description,
+      html: page.html,
+    });
+  }
+
+  if (variants.length !== SITE_DESIGN_VARIANTS.length || !haveDistinctVariantLayouts(variants)) {
     return NextResponse.json(
       {
         error:
-          "AI returned a website that was incomplete, unsafe, still resembled the legacy terminal fallback, or did not apply the inspiration structure. Try again.",
+          "The five generated websites were not structurally distinct enough. Generate again for five genuinely different layouts.",
         providerError: {
-          stage: "full-page-generation-parse",
+          stage: "full-page-generation-diversity",
           provider: ai.source,
           kind: "invalid",
           status: null,
-          detail: "The generated document failed the server-side completeness, safety, evidence, or inspiration acceptance checks.",
+          detail: "Duplicate or colour-swap-only layout structures were detected across the generated variants.",
         },
       },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
@@ -313,7 +365,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json(
     {
-      html: page.html,
+      variants,
       source: ai.source,
       inspirationUsed: Boolean(input.inspirationUrl),
     },
