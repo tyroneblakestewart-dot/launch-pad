@@ -12,15 +12,19 @@ The application is intentionally **testnet-first**. It does not offer an unatten
 - Configure a token name, ticker, description, fixed supply, decimals, website slug, contract address, X profile, and Telegram link.
 - Target Solana or Robinhood Chain Testnet.
 - Upload artwork up to 20 MB and optimize it in the browser before saving it with the project.
-- Generate an artwork-directed token landing page, including its palette, typography, layout, and project-specific copy.
-- Preview the generated page in an isolated frame and automatically show a Dexscreener chart when a trading pair is found for the saved contract address.
+- Generate five artwork-directed token landing-page directions, each with a genuinely different composition, navigation, hero treatment and section rhythm.
+- Preview all five in isolated frames, switch between them without another AI call, save the chosen design with the project, and automatically show a Dexscreener chart when a trading pair is found for the saved contract address.
 - Detect compatible injected wallets while keeping signing and approvals in the wallet.
 
 Project records and generated-site state are local to the current browser; cross-device accounts and hosted project synchronization are not active yet.
 
 ### Artwork-driven site generation
 
-The **Generate site from artwork** flow becomes available after the required project details and artwork are present. Site style analysis can use OpenAI vision, and the full-page generator returns a self-contained landing-page preview based on the project rather than fixed demo copy.
+The **Generate site from artwork** flow becomes available after the required project details and artwork are present. One protected browser request analyses the artwork (and optional inspiration) once, then runs five full-page OpenAI generations in parallel and returns five self-contained landing-page previews rather than fixed demo copy.
+
+The five stable directions are **Editorial Poster** (asymmetrical magazine storytelling), **Cinematic Showcase** (full-bleed scene-led pacing), **Modular Cardscape** (varied bento modules), **Kinetic Collage** (overlap, diagonals and playful movement), and **Minimal Gallery** (restrained artwork-first exhibition pacing). Server-side variant markers and a structural diversity check reject missing directions, duplicate layouts and obvious colour-swap-only outputs. The first direction is selected by default; creators can switch among all five without another request, and only the currently chosen HTML plus variant ID/label is saved with the project/public payload.
+
+This feature keeps the same OpenAI Responses runtime, secret/origin checks, no-store headers and 10-request/hour per-IP protection. A generation action still consumes one request-limit slot, but it now performs five full-page model calls after the shared analysis, so full-page AI usage and cost are roughly five times the previous one-page generation.
 
 Generation endpoints support an origin check and shared-secret protection. Configure the server and browser bridge with matching values:
 
@@ -158,7 +162,7 @@ At save time, `components/token-studio.tsx` rejects an invalid or reserved slug 
 
 ### Capturing the generated design for a future publish
 
-`TokenProject` gained optional `generatedSiteHtml`/`generatedSiteVersion` fields. The studio listens for the existing `launchpad:site-generated` event (now carrying the validated HTML from `FullWebsiteGenerator`), re-validates it, and stores it on the current project when saved — without scraping the DOM. Changing the token name, ticker, or artwork clears the captured HTML so one token's saved project can never accidentally carry another token's generated page. This is only local capture; nothing is published anywhere yet.
+`TokenProject` stores the chosen design in optional `generatedSiteHtml`/`generatedSiteVersion` plus `generatedSiteVariantId`/`generatedSiteVariantLabel` fields. The studio listens for the existing `launchpad:site-generated` event (carrying validated selected HTML and variant metadata), re-validates it, and updates the current project without scraping the DOM. Switching a preview replaces the chosen HTML/metadata without another fetch. Changing the token name, ticker, description, or artwork clears all captured design fields so one token cannot carry a stale page. This is only local capture; public publishing persistence remains unchanged.
 
 ## Routes
 
