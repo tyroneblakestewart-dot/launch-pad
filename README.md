@@ -135,6 +135,31 @@ The `/social` route loads saved projects and provides reusable launch, contract-
 
 The `/account` route previews planned Google, GitHub, X, MetaMask, Rabby, and Phantom account options. These controls are currently disabled; wallet connections inside individual launch tools continue to work independently.
 
+### Public generated token site (route + renderer only — not yet publishable)
+
+`app/[slug]/page.tsx` is a root dynamic route so a persisted project would be servable at `https://hoodlums.dev/<slug>`. It is a **complete route, renderer, validation and metadata scaffold with no durable backend behind it yet** — see the honesty note below before assuming anything is publicly live.
+
+- **Data contract:** `lib/public-site.ts` defines `PublicGeneratedSite` (slug, token name/ticker/description/supply/decimals/chain, artwork, generated HTML, optional contract address/X/Telegram, status, timestamps) and a pure `buildPublicGeneratedSiteFromProject()` mapper from a saved `TokenProject`.
+- **Repository boundary:** `lib/server/public-generated-sites.ts` exposes `getPublicGeneratedSiteBySlug(slug)`. No durable store exists, so the default adapter always returns no record — it deliberately does not fall back to an in-memory `Map` or browser storage, because that would look like persistence without surviving a restart or being shared across serverless instances. `setPublicGeneratedSiteAdapter()` lets tests inject a fixture; production code has nothing to inject yet.
+- **Rendering:** the route loads only through that repository boundary (never `localStorage`), validates the path slug, and calls `notFound()` for an unknown, invalid, or missing record. When a record exists with complete, validated generated HTML and artwork, it renders that HTML sandboxed in a client iframe (`components/public-site-frame.tsx`, reusing `lib/generated-site-page.ts`'s existing validation/CSP/`postMessage` height bridge — never raw `dangerouslySetInnerHTML`). Otherwise it renders a safe plain-token-details fallback (`components/public-token-fallback.tsx`) instead of crashing or serving corrupt HTML.
+- **Metadata and artwork/OG image:** `generateMetadata` returns a title with the token name/ticker, the token description, a canonical `https://hoodlums.dev/<slug>` URL, and Open Graph/Twitter metadata. The image is an HTTP-fetchable endpoint, `app/[slug]/artwork/route.ts`, not a `data:` URL in metadata — it re-validates the record and artwork MIME type and returns `404` (no body) for anything missing or invalid, and metadata for an unknown/invalid slug is `{}` rather than crashing.
+- **Dexscreener:** when the record has a non-empty contract address, the page shows `components/public-dexscreener-section.tsx`, which calls the existing `/api/dexscreener-pair` endpoint (via the new shared `lib/dexscreener-client.ts` helper, also now used by the studio's own Dexscreener section) and falls back to the same safe empty state when no pair is found. No contract address means the section is omitted entirely.
+
+### Slug rules
+
+`lib/slug.ts` is the single source of truth for website-path rules, shared by the studio save flow and the public route:
+
+- lowercase ASCII letters, digits and single hyphens only;
+- 48 characters maximum (unchanged from the previous limit);
+- no leading/trailing hyphen, no repeated hyphens;
+- reserved and rejected outright: `api`, `account`, `testnet`, `providers`, `allocations`, `liquidity-lab`, `monad`, `social`, `bonding-curve`, `admin`, `www`.
+
+At save time, `components/token-studio.tsx` rejects an invalid or reserved slug and a slug that collides with another locally saved project (excluding the project being edited), leaving the form open and the notice bar showing the reason instead of silently saving or overwriting the other project. The website-path field now shows the real `hoodlums.dev/` prefix. **This collision check only sees projects saved in the same browser** — it is a local UX guard, not a uniqueness guarantee. The future publish endpoint must still perform its own atomic, server-side unique-slug constraint.
+
+### Capturing the generated design for a future publish
+
+`TokenProject` gained optional `generatedSiteHtml`/`generatedSiteVersion` fields. The studio listens for the existing `launchpad:site-generated` event (now carrying the validated HTML from `FullWebsiteGenerator`), re-validates it, and stores it on the current project when saved — without scraping the DOM. Changing the token name, ticker, or artwork clears the captured HTML so one token's saved project can never accidentally carry another token's generated page. This is only local capture; nothing is published anywhere yet.
+
 ## Routes
 
 | Route | Purpose | Status |
@@ -148,6 +173,7 @@ The `/account` route previews planned Google, GitHub, X, MetaMask, Rabby, and Ph
 | `/monad` | Monad Testnet ERC-20 deployment | Test-only |
 | `/social` | X handoff and Telegram publishing workspace | Available |
 | `/account` | Account-provider interface preview | Coming later |
+| `/[slug]` | Public generated token site (route, renderer, metadata and OG image) | Route/renderer complete; not publishable — no durable store or publish write path yet |
 
 ## Safety model and limitations
 
@@ -157,6 +183,7 @@ The `/account` route previews planned Google, GitHub, X, MetaMask, Rabby, and Ph
 - Testnet actions spend test ETH, test MON, or devnet SOL and do not create a market by themselves.
 - Browser-local project data is not an encrypted vault or a hosted backup.
 - The platform does not yet provide hosted image/metadata storage, automatic site publishing, domains, audited vesting, or production liquidity management.
+- The `/[slug]` public route, its renderer, its data contract and its local slug validation are complete, but no generated site is actually publicly reachable yet: the repository boundary's default adapter always returns no record, so every slug 404s until a durable store, an authenticated/authorised publish write path, and an atomic server-side unique-slug constraint are added. No user accounts were added as part of this.
 - Contracts and test liquidity tooling should be independently reviewed before any production use.
 
 ## Development

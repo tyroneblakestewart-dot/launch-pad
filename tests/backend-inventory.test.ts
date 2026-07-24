@@ -65,6 +65,8 @@ describe("backend test inventory", () => {
       "lib/server/api-protection.ts",
       "lib/server/dexscreener.ts",
       "lib/server/generate-site-style.ts",
+      "lib/server/public-generated-sites.ts",
+      "lib/server/public-site-artwork.ts",
       "lib/server/telegram.ts",
     ]);
   });

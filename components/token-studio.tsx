@@ -2,6 +2,8 @@
 
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { CHAIN_CONFIG, ROBINHOOD_MAINNET } from "@/lib/chains";
+import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
+import { findSlugCollision, slugify, validateSlug } from "@/lib/slug";
 import type { SupportedChain, TokenProject, WalletState } from "@/lib/types";
 
 type EthereumProvider = {
@@ -73,15 +75,6 @@ function makeProject(): TokenProject {
   };
 }
 
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 48);
-}
-
 function shortAddress(address: string): string {
   return address.length > 12
     ? `${address.slice(0, 6)}…${address.slice(-5)}`
@@ -92,6 +85,8 @@ function formatSupply(value: string): string {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric.toLocaleString("en-GB") : value;
 }
+
+const IDENTITY_KEYS = new Set<keyof TokenProject>(["name", "ticker", "heroImage"]);
 
 export function TokenStudio() {
   const [project, setProject] = useState<TokenProject>(DEFAULT_PROJECT);
@@ -113,6 +108,24 @@ export function TokenStudio() {
     } catch {
       setNotice("Saved projects could not be read. A new local workspace was opened.");
     }
+  }, []);
+
+  useEffect(() => {
+    function onSiteGenerated(event: Event) {
+      const detail = (event as CustomEvent<{ fullPage?: boolean; html?: unknown }>).detail;
+      if (!detail?.fullPage || typeof detail.html !== "string") return;
+      if (!isCompleteGeneratedPageHtml(detail.html)) return;
+      const html = detail.html;
+      setProject((current) => ({
+        ...current,
+        generatedSiteHtml: html,
+        generatedSiteVersion: (current.generatedSiteVersion || 0) + 1,
+        updatedAt: new Date().toISOString(),
+      }));
+    }
+
+    window.addEventListener("launchpad:site-generated", onSiteGenerated);
+    return () => window.removeEventListener("launchpad:site-generated", onSiteGenerated);
   }, []);
 
   const chain = CHAIN_CONFIG[project.chain];
@@ -138,11 +151,16 @@ export function TokenStudio() {
     key: K,
     value: TokenProject[K],
   ) {
-    setProject((current) => ({
-      ...current,
-      [key]: value,
-      updatedAt: new Date().toISOString(),
-    }));
+    setProject((current) => {
+      const identityChanged = IDENTITY_KEYS.has(key) && current[key] !== value;
+      return {
+        ...current,
+        [key]: value,
+        generatedSiteHtml: identityChanged ? null : current.generatedSiteHtml,
+        generatedSiteVersion: identityChanged ? null : current.generatedSiteVersion,
+        updatedAt: new Date().toISOString(),
+      };
+    });
   }
 
   function updateName(value: string) {
@@ -153,6 +171,8 @@ export function TokenStudio() {
         !current.websiteSlug || current.websiteSlug === slugify(current.name)
           ? slugify(value)
           : current.websiteSlug,
+      generatedSiteHtml: current.name !== value ? null : current.generatedSiteHtml,
+      generatedSiteVersion: current.name !== value ? null : current.generatedSiteVersion,
       updatedAt: new Date().toISOString(),
     }));
   }
@@ -162,7 +182,22 @@ export function TokenStudio() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(nextProjects));
   }
 
-  function saveProject(nextStatus: TokenProject["status"] = project.status) {
+  function saveProject(nextStatus: TokenProject["status"] = project.status): boolean {
+    const slug = displaySlug;
+    const validation = validateSlug(slug);
+    if (!validation.valid) {
+      setNotice(validation.reason);
+      return false;
+    }
+
+    const collision = findSlugCollision(projects, slug, project.id);
+    if (collision) {
+      setNotice(
+        `"${slug}" is already used by ${collision.name || "another saved project"} in this browser. Choose a different website path.`,
+      );
+      return false;
+    }
+
     const now = new Date().toISOString();
     const saved: TokenProject = {
       ...project,
@@ -171,7 +206,7 @@ export function TokenStudio() {
       updatedAt: now,
       status: nextStatus,
       ticker: project.ticker.trim().toUpperCase(),
-      websiteSlug: displaySlug,
+      websiteSlug: slug,
     };
     const nextProjects = [
       saved,
@@ -180,6 +215,7 @@ export function TokenStudio() {
     setProject(saved);
     persist(nextProjects);
     setNotice(`${saved.name || "Project"} saved privately in this browser.`);
+    return true;
   }
 
   function startNewProject() {
@@ -270,7 +306,7 @@ export function TokenStudio() {
       setNotice("Complete the required launch checks before preparing the transaction.");
       return;
     }
-    saveProject("prepared");
+    if (!saveProject("prepared")) return;
     setShowLaunchSummary(true);
   }
 
@@ -420,7 +456,7 @@ export function TokenStudio() {
           <label>
             <span className="field-label">Website path</span>
             <div className="url-input">
-              <span>launchpad.site/</span>
+              <span>hoodlums.dev/</span>
               <input
                 value={project.websiteSlug}
                 onChange={(event) =>

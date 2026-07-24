@@ -31,11 +31,20 @@ npm run build        # production build
 
 - `app/` — routes: `/` studio, `/providers`, `/allocations`,
   `/liquidity-lab`, `/bonding-curve`, `/testnet`, `/monad`, `/social`,
-  `/account` (disabled preview). See README route table for status of each.
+  `/account` (disabled preview), `/[slug]` (public generated token site —
+  route/renderer complete, not yet publishable). See README route table
+  for status of each.
 - `app/api/` — server routes: `generate-site-style` (OpenAI-backed),
   `dexscreener-pair`, `social/telegram`.
+- `app/[slug]/artwork/route.ts` — HTTP-fetchable OG/artwork image for a
+  public generated site; not under `app/api`, so it is not part of
+  `backend-inventory.test.ts`'s API route inventory.
 - `lib/server/` — server-side logic incl. `api-protection.ts`
-  (shared-secret + origin check + per-IP rate limiting).
+  (shared-secret + origin check + per-IP rate limiting) and
+  `public-generated-sites.ts` (the public-site repository boundary —
+  default adapter always returns no record; see README).
+- `lib/slug.ts` — shared website-path validation/reserved-word rules used
+  by both the studio save flow and the public route.
 - `contracts/` — Solidity: `FixedSupplyMemeToken.sol`,
   `HoodlumsTestLiquidityPool.sol` (test-only AMM),
   `HoodlumsTestBondingCurve.sol` (testnet curve + automatic pool graduation),
@@ -104,3 +113,15 @@ npm run build        # production build
   count post-fee amounts; fee balances stay outside pool liquidity and
   remain withdrawable after graduation. The curve is still not deployed or
   wired into live UI controls.
+- Public generated token site infrastructure is merged (issue #114): a
+  root dynamic route `app/[slug]/page.tsx`, its data contract
+  (`lib/public-site.ts`), a server-only repository boundary
+  (`lib/server/public-generated-sites.ts`), dynamic metadata plus an
+  HTTP-fetchable OG/artwork image (`app/[slug]/artwork/route.ts`),
+  shared slug validation/reserved words (`lib/slug.ts`) enforced at save
+  time in the studio, and local capture of the validated generated HTML
+  onto `TokenProject` for a future publish payload. **No site is publicly
+  reachable yet** — the repository boundary's default adapter always
+  returns no record, so every slug 404s until a durable store, an
+  authenticated/authorised publish write path, and an atomic server-side
+  unique-slug constraint are built. No user accounts were added.

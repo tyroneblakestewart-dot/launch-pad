@@ -132,6 +132,7 @@ export function FullWebsiteGenerator() {
             detail: {
               style: { source: "openai", inspirationUsed: page.inspirationUsed },
               fullPage: true,
+              html: page.html,
             },
           }),
         );

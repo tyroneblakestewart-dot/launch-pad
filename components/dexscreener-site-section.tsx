@@ -2,17 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-
-type PairResult = {
-  address?: string;
-  found?: boolean;
-  pairUrl?: string;
-  embedUrl?: string;
-  chainId?: string;
-  dexId?: string;
-  liquidityUsd?: number;
-  error?: string;
-};
+import {
+  fetchDexscreenerPair,
+  formatDexscreenerLiquidity,
+  type DexscreenerPairResult,
+} from "@/lib/dexscreener-client";
 
 function getFieldValue(labelText: string) {
   const labels = Array.from(document.querySelectorAll(".builder-panel label"));
@@ -22,20 +16,10 @@ function getFieldValue(labelText: string) {
   return (label?.querySelector("input, textarea") as HTMLInputElement | HTMLTextAreaElement | null)?.value.trim() || "";
 }
 
-function formatLiquidity(value?: number) {
-  if (!value) return "Liquidity detected";
-  return `${new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "USD",
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(value)} liquidity`;
-}
-
 export function DexscreenerSiteSection() {
   const [mount, setMount] = useState<HTMLDivElement | null>(null);
   const [address, setAddress] = useState("");
-  const [result, setResult] = useState<PairResult>({ found: false });
+  const [result, setResult] = useState<DexscreenerPairResult>({ found: false });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -74,15 +58,7 @@ export function DexscreenerSiteSection() {
     const timer = window.setTimeout(async () => {
       setLoading(true);
       try {
-        const response = await fetch(`/api/dexscreener-pair?address=${encodeURIComponent(address)}`, {
-          signal: controller.signal,
-        });
-        const payload = (await response.json()) as PairResult;
-        setResult(
-          response.ok
-            ? { ...payload, address }
-            : { address, found: false, error: payload.error || "Pair lookup failed." },
-        );
+        setResult(await fetchDexscreenerPair(address, controller.signal));
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") return;
         setResult({ address, found: false, error: "Dexscreener pair lookup failed." });
@@ -121,7 +97,7 @@ export function DexscreenerSiteSection() {
         <div className="dexscreener-frame-shell">
           <div className="dexscreener-status">
             <span><i /> LIVE PAIR</span>
-            <b>{visibleResult.dexId?.toUpperCase()} · {formatLiquidity(visibleResult.liquidityUsd)}</b>
+            <b>{visibleResult.dexId?.toUpperCase()} · {formatDexscreenerLiquidity(visibleResult.liquidityUsd)}</b>
           </div>
           <iframe
             title="Live Dexscreener chart"
