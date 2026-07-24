@@ -67,6 +67,8 @@ The Liquidity Lab supports a private, test-only constant-product pool on Robinho
 
 The `/bonding-curve` route is the fifth launch-workflow page. It explains the approved full-supply launch model, wallet-signed curve trading, the graduation target, automatic Hoodlums pool creation, and permanent initial LP locking. The bonding-curve contract foundation is merged, but it is not deployed or connected to live buy/sell controls yet.
 
+`contracts/HoodlumsTestBondingCurve.sol` charges a fixed **1% trading fee on every buy and sell**, split **60% to the protocol treasury and 40% to the token creator** (`TRADING_FEE_BPS = 100`, `PROTOCOL_FEE_SHARE_BPS = 6000`, `CREATOR_FEE_SHARE_BPS = 4000`; both the treasury and creator addresses are constructor parameters, never hardcoded). Fees use **pull payments only**: a buy or sell never pushes native currency to the treasury or creator, it only credits a claimable balance (`treasuryFeeBalance`, `creatorFeeBalance`), which either recipient withdraws themselves via `withdrawFees()`. This means a reverting or gas-griefing treasury or creator can never block a buy, a sell, graduation, or the other recipient's withdrawal. The fee is deducted from the gross trade amount before the curve quote (buys) or from the curve's gross output before payout (sells), so `realNativeReserve` and the graduation target only ever reflect post-fee amounts; accrued fees are tracked separately from curve/pool liquidity and remain withdrawable both before and after graduation.
+
 ### Factory deployment (live on Robinhood Chain Testnet)
 
 `contracts/HoodlumsTokenFactory.sol` is deployed and verified on Robinhood

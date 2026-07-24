@@ -92,5 +92,15 @@ npm run build        # production build
 - HoodlumsTestBondingCurve is merged (PR #103). The `/bonding-curve` route
   is the fifth visible workflow step and currently explains the approved
   lifecycle. The curve is not deployed or factory-connected yet, and live
-  quote/buy/sell controls are not active. Platform/creator/reserve fee
-  percentages remain undecided and must not be invented.
+  quote/buy/sell controls are not active.
+- HoodlumsTestBondingCurve trading fees are decided and implemented
+  (issue #112): 1% on every buy and sell, split 60% protocol treasury /
+  40% creator (`TRADING_FEE_BPS = 100`, `PROTOCOL_FEE_SHARE_BPS = 6000`,
+  `CREATOR_FEE_SHARE_BPS = 4000`). The treasury address is now a required,
+  non-zero constructor parameter alongside creator. Fees are pull-payment
+  only — buys/sells only credit `treasuryFeeBalance` / `creatorFeeBalance`,
+  never push native currency, and each recipient withdraws via
+  `withdrawFees()`. `realNativeReserve` and the graduation target only
+  count post-fee amounts; fee balances stay outside pool liquidity and
+  remain withdrawable after graduation. The curve is still not deployed or
+  wired into live UI controls.
