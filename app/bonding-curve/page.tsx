@@ -84,8 +84,9 @@ export default function BondingCurvePage() {
           <span className={styles.cardLabel}>CURRENT LIMIT</span>
           <h2>Testnet foundation only</h2>
           <p>
-            No platform, creator or reserve fee percentages are configured. The contract is
-            unaudited and must not be used with mainnet funds.
+            The contract charges a fixed 1% trading fee on every buy and sell, split 60% to the
+            Hoodlums treasury and 40% to the token creator, claimed by each recipient separately.
+            It is otherwise unaudited and must not be used with mainnet funds.
           </p>
         </article>
       </section>
