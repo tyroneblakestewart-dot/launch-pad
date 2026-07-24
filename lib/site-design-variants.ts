@@ -1,4 +1,4 @@
-export const SITE_DESIGN_VARIANT_COUNT = 5;
+export const SITE_DESIGN_VARIANT_COUNT = 5 as const;
 
 export type SiteDesignVariant = Readonly<{
   id: string;
@@ -12,7 +12,7 @@ export type SiteDesignVariant = Readonly<{
  * owns palette, subject, motifs and voice; these directions own layout,
  * navigation, hero treatment, section rhythm and interaction style.
  */
-export const SITE_DESIGN_VARIANTS: readonly SiteDesignVariant[] = [
+export const SITE_DESIGN_VARIANTS = [
   {
     id: "editorial-poster",
     label: "Editorial Poster",
@@ -48,7 +48,7 @@ export const SITE_DESIGN_VARIANTS: readonly SiteDesignVariant[] = [
     direction:
       "Use a minimal gallery/exhibition system: generous whitespace, restrained navigation, artwork-first framing, precise type scale, quiet dividers and alternating gallery captions. Avoid dense card grids, collage overlap and cinematic full-screen scene stacking.",
   },
-] as const;
+] as const satisfies readonly SiteDesignVariant[];
 
 export type SiteDesignVariantId = (typeof SITE_DESIGN_VARIANTS)[number]["id"];
 
