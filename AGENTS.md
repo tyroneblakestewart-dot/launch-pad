@@ -81,11 +81,20 @@ npm run build        # production build
    being sold into curve buyers. Creator earnings must come only through a
    separately approved creator-fee policy. Do not introduce creator-held
    launch tokens without an explicit owner decision.
-7. **Tests are the referee.** Every behaviour change ships with tests, and
+7. **Mobile Safari is the primary UI target.** The primary target is mobile
+   Safari on iPhone, and every UI change must be verified there before a PR
+   is opened. PR #118 caused a mobile Safari memory crash, so never mount
+   multiple live iframes simultaneously; keep only one active preview
+   mounted. Keep large generated HTML and artwork data URLs out of React
+   state and out of the initial client bundle. Clean up iframe `srcDoc`,
+   refs, and event listeners on unmount or when switching previews. Prefer
+   lightweight thumbnails, screenshots, or lazy-loaded previews over live
+   documents.
+8. **Tests are the referee.** Every behaviour change ships with tests, and
    the full existing suite must pass. Never mark work complete with failing
    tests, and never edit a test's assertions just to make it pass —
    if a test seems wrong, say so in the PR instead.
-8. **Keep changes reviewable.** One concern per PR, plain-English
+9. **Keep changes reviewable.** One concern per PR, plain-English
    description of what changed and why, note any trade-offs or caveats.
 
 ## Current roadmap (update as milestones land)
