@@ -2,11 +2,11 @@
 
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { useEffect, useState } from "react";
-import { HOODLUMS_WELCOME_COMPLETE_IMAGE } from "@/lib/hoodlums-welcome-sharp-complete-image";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./hoodlums-welcome-modal.module.css";
 
 const STORAGE_KEY = "hoodlums.welcome.accepted.v4";
+const WELCOME_ARTWORK_URL = "/assets/hoodlums-welcome";
 
 const CREW = [
   { id: "mari", name: "Mari", role: "The Strategist", left: "4.5%", width: "12.5%", labelX: "10.5%" },
@@ -89,11 +89,12 @@ export function HoodlumsWelcomeModal() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             className={styles.crewArtwork}
-            src={HOODLUMS_WELCOME_COMPLETE_IMAGE}
+            src={WELCOME_ARTWORK_URL}
             alt="The Hoodlums collection"
             width={800}
             height={600}
-            decoding="sync"
+            decoding="async"
+            loading="eager"
             fetchPriority="high"
           />
 
