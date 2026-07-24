@@ -81,11 +81,12 @@ export default function BondingCurvePage() {
           </p>
         </article>
         <article className={styles.card}>
-          <span className={styles.cardLabel}>CURRENT LIMIT</span>
-          <h2>Testnet foundation only</h2>
+          <span className={styles.cardLabel}>TRADING FEE</span>
+          <h2>1% split 60/40, paid on claim</h2>
           <p>
-            No platform, creator or reserve fee percentages are configured. The contract is
-            unaudited and must not be used with mainnet funds.
+            Every buy and sell charges a fixed 1% fee, split 60% to the Hoodlums treasury and 40%
+            to the token creator. Fees only accrue as a claimable balance and never enter pool
+            liquidity; the contract is unaudited and must not be used with mainnet funds.
           </p>
         </article>
       </section>
