@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   diagnose:
@@ -36,3 +37,16 @@ jobs:
         with:
           name: five-site-variant-validation
           path: validation-output.txt
+      - name: Comment diagnostic tail
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          {
+            echo '### Five-site-variant validation diagnostic'
+            echo
+            echo '```text'
+            tail -n 220 validation-output.txt
+            echo '```'
+          } > diagnostic-comment.md
+          gh issue comment 117 --body-file diagnostic-comment.md
