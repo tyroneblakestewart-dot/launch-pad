@@ -1,0 +1,75 @@
+name: Diagnose site variant tests
+
+on:
+  push:
+    branches:
+      - feat/five-site-design-variants
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/five-site-design-variants
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply lint-safe portal mount
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("components/full-website-generator.tsx")
+          text = path.read_text()
+          old = '''    site.appendChild(container);
+    setMount(container);
+    return () => {
+      container.remove();
+      setMount(null);
+    };'''
+          new = '''    site.appendChild(container);
+    const mountFrame = window.requestAnimationFrame(() => setMount(container));
+    return () => {
+      window.cancelAnimationFrame(mountFrame);
+      container.remove();
+    };'''
+          if old not in text:
+              raise SystemExit("Expected portal mount block not found")
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Capture full test output
+        shell: bash
+        run: |
+          set +e
+          npm test > site-variant-test-output.txt 2>&1
+          status=$?
+          echo "EXIT_STATUS=$status" >> site-variant-test-output.txt
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-variant-test-output
+          path: site-variant-test-output.txt
+
+      - name: Commit portal fix and remove diagnostic workflow
+        shell: bash
+        run: |
+          rm .github/workflows/diagnose-site-variant-tests.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix generated variant portal mount effect"
+          git push origin HEAD:feat/five-site-design-variants
