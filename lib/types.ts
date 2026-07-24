@@ -29,6 +29,10 @@ export interface TokenProject {
   generatedSiteHtml?: string | null;
   /** Increments each time `generatedSiteHtml` is captured. */
   generatedSiteVersion?: number | null;
+  /** Stable ID of the currently chosen generated design direction. */
+  generatedSiteVariantId?: string | null;
+  /** Human-readable label of the currently chosen design direction. */
+  generatedSiteVariantLabel?: string | null;
 }
 
 export interface WalletState {

@@ -42,11 +42,11 @@ describe("POST /api/generate-site-page Vercel runtime authentication", () => {
     vi.restoreAllMocks();
   });
 
-  it("reaches Vercel AI Gateway using the function OIDC request header", async () => {
+  it("reaches Vercel AI Gateway for shared analysis and all five pages using the function OIDC header", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(outputText(ARTWORK))
-      .mockResolvedValueOnce(outputText({ invalid: true }));
+      .mockResolvedValue(outputText({ invalid: true }))
+      .mockResolvedValueOnce(outputText(ARTWORK));
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(
@@ -66,7 +66,7 @@ describe("POST /api/generate-site-page Vercel runtime authentication", () => {
     );
 
     expect(response.status).toBe(502);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
     for (const call of fetchMock.mock.calls) {
       expect(call[0]).toBe(VERCEL_AI_GATEWAY_RESPONSES_URL);
       const init = call[1] as RequestInit;

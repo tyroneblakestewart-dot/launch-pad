@@ -4,6 +4,7 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { CHAIN_CONFIG, ROBINHOOD_MAINNET } from "@/lib/chains";
 import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
 import { PROJECT_SAVE_RESULT_EVENT } from "@/lib/project-save-result";
+import { getSiteDesignVariant } from "@/lib/site-design-variants";
 import { findSlugCollision, slugify, validateSlug } from "@/lib/slug";
 import type { SupportedChain, TokenProject, WalletState } from "@/lib/types";
 
@@ -118,14 +119,23 @@ export function TokenStudio() {
 
   useEffect(() => {
     function onSiteGenerated(event: Event) {
-      const detail = (event as CustomEvent<{ fullPage?: boolean; html?: unknown }>).detail;
+      const detail = (event as CustomEvent<{
+        fullPage?: boolean;
+        html?: unknown;
+        variantId?: unknown;
+        variantLabel?: unknown;
+      }>).detail;
       if (!detail?.fullPage || typeof detail.html !== "string") return;
       if (!isCompleteGeneratedPageHtml(detail.html)) return;
+      const variant = getSiteDesignVariant(typeof detail.variantId === "string" ? detail.variantId : "");
+      if (!variant || detail.variantLabel !== variant.label) return;
       const html = detail.html;
       setProject((current) => ({
         ...current,
         generatedSiteHtml: html,
         generatedSiteVersion: (current.generatedSiteVersion || 0) + 1,
+        generatedSiteVariantId: variant.id,
+        generatedSiteVariantLabel: variant.label,
         updatedAt: new Date().toISOString(),
       }));
     }
@@ -164,6 +174,8 @@ export function TokenStudio() {
         [key]: value,
         generatedSiteHtml: identityChanged ? null : current.generatedSiteHtml,
         generatedSiteVersion: identityChanged ? null : current.generatedSiteVersion,
+        generatedSiteVariantId: identityChanged ? null : current.generatedSiteVariantId,
+        generatedSiteVariantLabel: identityChanged ? null : current.generatedSiteVariantLabel,
         updatedAt: new Date().toISOString(),
       };
     });
@@ -179,6 +191,8 @@ export function TokenStudio() {
           : current.websiteSlug,
       generatedSiteHtml: current.name !== value ? null : current.generatedSiteHtml,
       generatedSiteVersion: current.name !== value ? null : current.generatedSiteVersion,
+      generatedSiteVariantId: current.name !== value ? null : current.generatedSiteVariantId,
+      generatedSiteVariantLabel: current.name !== value ? null : current.generatedSiteVariantLabel,
       updatedAt: new Date().toISOString(),
     }));
   }

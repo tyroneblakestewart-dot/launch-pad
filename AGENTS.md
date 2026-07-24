@@ -45,6 +45,9 @@ npm run build        # production build
   default adapter always returns no record; see README).
 - `lib/slug.ts` — shared website-path validation/reserved-word rules used
   by both the studio save flow and the public route.
+- `lib/site-design-variants.ts` / `lib/generated-site-variants.ts` — the five
+  stable artwork-driven design directions, response validation and structural
+  diversity guard used by the protected full-page generator and selector.
 - `contracts/` — Solidity: `FixedSupplyMemeToken.sol`,
   `HoodlumsTestLiquidityPool.sol` (test-only AMM),
   `HoodlumsTestBondingCurve.sol` (testnet curve + automatic pool graduation),
@@ -113,6 +116,7 @@ npm run build        # production build
   count post-fee amounts; fee balances stay outside pool liquidity and
   remain withdrawable after graduation. The curve is still not deployed or
   wired into live UI controls.
+- Artwork-driven full-page generation now returns five selectable directions (issue #117): Editorial Poster, Cinematic Showcase, Modular Cardscape, Kinetic Collage and Minimal Gallery. One protected browser request reuses one artwork/inspiration analysis and fans out to five parallel full-page OpenAI calls. Live sandboxed thumbnails let the creator switch locally; only the chosen validated HTML plus variant ID/label is saved. The shared-secret, allowed-origin and 10-request/hour request limit are unchanged, while full-page model usage per generation is roughly fivefold.
 - Public generated token site infrastructure is merged (issue #114): a
   root dynamic route `app/[slug]/page.tsx`, its data contract
   (`lib/public-site.ts`), a server-only repository boundary
