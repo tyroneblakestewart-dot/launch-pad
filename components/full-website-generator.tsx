@@ -174,10 +174,10 @@ export function FullWebsiteGenerator() {
     const container = document.createElement("div");
     container.className = "generated-site-variant-mount";
     site.appendChild(container);
-    setMount(container);
+    const mountFrame = window.requestAnimationFrame(() => setMount(container));
     return () => {
+      window.cancelAnimationFrame(mountFrame);
       container.remove();
-      setMount(null);
     };
   }, []);
 
