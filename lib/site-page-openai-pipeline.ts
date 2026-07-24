@@ -3,17 +3,12 @@ import {
   parseGeneratedPagePayload,
   type GeneratedPageAcceptanceProfile,
 } from "@/lib/generated-site-page";
-import { hasVariantMarker } from "@/lib/generated-site-variants";
 import {
   TOKEN_LANDING_PAGE_GENERATOR_PREFIX,
   extractOutputText,
   type NormalisedGenerateSiteStyleRequest,
   type OpenAIResponse,
 } from "@/lib/server/generate-site-style";
-import {
-  SITE_DESIGN_VARIANTS,
-  type SiteDesignVariant,
-} from "@/lib/site-design-variants";
 import {
   getFusionBriefIds,
   type ArtworkIdentity,
@@ -54,9 +49,8 @@ export const GENERATED_PAGE_SCHEMA = {
     html: { type: "string" },
     artworkBriefId: { type: "string" },
     inspirationBriefId: { type: "string" },
-    variantId: { type: "string" },
   },
-  required: ["html", "artworkBriefId", "inspirationBriefId", "variantId"],
+  required: ["html", "artworkBriefId", "inspirationBriefId"],
   additionalProperties: false,
 } as const;
 
@@ -152,7 +146,6 @@ export function buildGeneratedSitePageRequestBody(
   model: string,
   artworkIdentity: ArtworkIdentity,
   inspirationAnalysis = NO_URL_PRESENTATION_BRIEF,
-  variant: SiteDesignVariant = SITE_DESIGN_VARIANTS[0],
 ) {
   const ids = getFusionBriefIds(artworkIdentity, inspirationAnalysis);
   const acceptance = buildGeneratedPageAcceptanceProfile(artworkIdentity, inspirationAnalysis);
@@ -161,7 +154,7 @@ export function buildGeneratedSitePageRequestBody(
       ? "- The artwork is not cyber or terminal themed. Do not use black hacker UI, green-on-black dashboards, shell commands, code rain, monospace console labels, heist language or military display type."
       : "",
     acceptance.requireRetailMarketplacePresentation
-      ? "- The inspiration is retail or marketplace-led. Preserve useful discovery/navigation cues while translating them through this variant's distinct composition system."
+      ? "- The inspiration is retail or marketplace-led. Use a bright, spacious discovery experience with a useful utility header, clear navigation, a search/discovery pattern, a large campaign hero, at least six original content cards across multiple grids, category-style browsing and friendly promotional pacing."
       : "",
   ].filter(Boolean);
 
@@ -173,7 +166,7 @@ export function buildGeneratedSitePageRequestBody(
     "- The generated document is rendered directly in a sandboxed iframe. It is not a theme for an existing Hoodlums template.",
     "- Never reuse the Hoodlums launchpad's black terminal dashboard, heist wording, matrix rain, Tokenomics shell or Dexscreener shell unless the uploaded artwork itself unmistakably requires those choices.",
     "- Artwork owns the page identity: palette, imagery, subject treatment, emotional tone, visual motifs and copy personality.",
-    "- The inspiration brief owns presentation cues, but this assigned design direction owns the final composition.",
+    "- The inspiration brief owns presentation: information architecture, navigation density, hero composition, card/grid behaviour, spacing, type scale, interaction rhythm and section pacing.",
     "- Fuse both sources into one coherent result. Do not place the artwork inside a generic template and do not recolour a copy of the inspiration brand.",
     "- Use original branding and original copy. Never reproduce the inspiration website's name, logo, product copy, proprietary assets, exact trade dress or source code.",
     "- The HTML must contain inline CSS and inline JavaScript. No external JavaScript, iframes, objects or embeds.",
@@ -183,21 +176,12 @@ export function buildGeneratedSitePageRequestBody(
     "- Required section IDs: hero, about, tokenomics, roadmap, how-to-buy, community.",
     "- Include a useful header/navigation, a strong hero, multiple presentation patterns, clear CTA hierarchy, animated but readable interactions and at least one artwork click easter egg.",
     ...presentationRules,
-    "",
-    `ASSIGNED DESIGN VARIANT: ${variant.label} [${variant.id}]`,
-    `- ${variant.direction}`,
-    "- This direction must change DOM composition, navigation pattern, hero treatment, section rhythm, typography scale and interaction style—not just colours, gradients, fonts or border radii.",
-    "- Do not reuse the same layout skeleton that another design direction could use. Do not output a colour-swap-only variation of a generic token template.",
-    `- Add data-design-variant=\"${variant.id}\" to the <body> element or one root wrapper.`,
-    `- Echo ${variant.id} exactly in the JSON variantId field.`,
     "- Echo both supplied brief IDs exactly in artworkBriefId and inspirationBriefId.",
     "- Output only the schema-compliant JSON object.",
   ].join("\n");
 
   const userPrompt = [
-    `Build the finished ${variant.label} token landing page now.`,
-    `Variant ID: ${variant.id}`,
-    `Variant direction: ${variant.direction}`,
+    "Build the finished token landing page now.",
     `Project name: ${request.name}`,
     `Ticker: ${request.ticker}`,
     `Project story: ${request.description}`,
@@ -211,8 +195,9 @@ export function buildGeneratedSitePageRequestBody(
     "END INSPIRATION PRESENTATION.",
     "",
     "SYNTHESIS REQUIREMENT:",
-    "Make the subject and colours feel native to the uploaded artwork while translating the supplied presentation cues through the assigned design direction.",
-    "The result must be recognisably different in layout and pacing from the other four directions, not merely a palette or typeface variation.",
+    "Make the subject and colours feel native to the uploaded artwork while making the page structure and browsing experience recognisably informed by the inspiration brief.",
+    "For retail or marketplace inspiration, translate product discovery, campaign cards, category navigation and promotional rhythm into token storytelling sections rather than falling back to a crypto terminal.",
+    "For editorial, entertainment or app inspiration, translate that site's presentation grammar into the required token sections without copying its brand.",
   ].join("\n");
 
   return {
@@ -247,19 +232,11 @@ export function parseGeneratedSitePageResponse(
   response: OpenAIResponse,
   expectedIds: FusionBriefIds,
   acceptance: GeneratedPageAcceptanceProfile = {},
-  expectedVariant?: SiteDesignVariant,
 ) {
   const text = extractOutputText(response);
   if (!text) return null;
   try {
-    const parsed = JSON.parse(text) as Record<string, unknown>;
-    if (expectedVariant) {
-      if (parsed.variantId !== expectedVariant.id) return null;
-      if (typeof parsed.html !== "string" || !hasVariantMarker(parsed.html, expectedVariant.id)) {
-        return null;
-      }
-    }
-    return parseGeneratedPagePayload(parsed, expectedIds, acceptance);
+    return parseGeneratedPagePayload(JSON.parse(text) as unknown, expectedIds, acceptance);
   } catch {
     return null;
   }

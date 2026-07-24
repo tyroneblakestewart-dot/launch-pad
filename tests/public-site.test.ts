@@ -21,12 +21,10 @@ const PROJECT: TokenProject = {
   theme: "hoodlums",
   generatedSiteHtml: "<!doctype html><html></html>",
   generatedSiteVersion: 2,
-  generatedSiteVariantId: "editorial-poster",
-  generatedSiteVariantLabel: "Editorial Poster",
 };
 
 describe("buildPublicGeneratedSiteFromProject", () => {
-  it("maps every field the chosen public record needs from a saved project", () => {
+  it("maps every field a public record needs from a saved project", () => {
     expect(buildPublicGeneratedSiteFromProject(PROJECT)).toEqual({
       slug: "hoodlums",
       name: "Hoodlums",
@@ -37,8 +35,6 @@ describe("buildPublicGeneratedSiteFromProject", () => {
       chain: "robinhood",
       heroImage: "data:image/png;base64,AAAA",
       generatedSiteHtml: "<!doctype html><html></html>",
-      generatedSiteVariantId: "editorial-poster",
-      generatedSiteVariantLabel: "Editorial Poster",
       contractAddress: "0x3bf7447cd055f1475a8b09090c7b062abc9d3798",
       xHandle: "@hoodlums",
       telegram: "t.me/hoodlums",
@@ -48,25 +44,11 @@ describe("buildPublicGeneratedSiteFromProject", () => {
     });
   });
 
-  it("normalises missing generated design fields to null", () => {
-    const result = buildPublicGeneratedSiteFromProject({
-      ...PROJECT,
-      generatedSiteHtml: undefined,
-      generatedSiteVariantId: undefined,
-      generatedSiteVariantLabel: undefined,
-    });
+  it("normalises a missing generatedSiteHtml to null", () => {
+    const result = buildPublicGeneratedSiteFromProject({ ...PROJECT, generatedSiteHtml: undefined });
     expect(result.generatedSiteHtml).toBeNull();
-    expect(result.generatedSiteVariantId).toBeNull();
-    expect(result.generatedSiteVariantLabel).toBeNull();
 
-    const withNull = buildPublicGeneratedSiteFromProject({
-      ...PROJECT,
-      generatedSiteHtml: null,
-      generatedSiteVariantId: null,
-      generatedSiteVariantLabel: null,
-    });
+    const withNull = buildPublicGeneratedSiteFromProject({ ...PROJECT, generatedSiteHtml: null });
     expect(withNull.generatedSiteHtml).toBeNull();
-    expect(withNull.generatedSiteVariantId).toBeNull();
-    expect(withNull.generatedSiteVariantLabel).toBeNull();
   });
 });
