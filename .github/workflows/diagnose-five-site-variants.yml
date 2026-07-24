@@ -1,0 +1,38 @@
+name: Diagnose five site variants
+
+on:
+  push:
+    branches:
+      - diagnose/five-site-design-variants
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diagnose/five-site-design-variants
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Capture validation output
+        shell: bash
+        run: |
+          set +e
+          npm run lint > validation-output.txt 2>&1
+          lint_status=$?
+          npm test >> validation-output.txt 2>&1
+          test_status=$?
+          npm run build >> validation-output.txt 2>&1
+          build_status=$?
+          printf '\nLINT_STATUS=%s\nTEST_STATUS=%s\nBUILD_STATUS=%s\n' "$lint_status" "$test_status" "$build_status" >> validation-output.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: five-site-variant-validation
+          path: validation-output.txt
