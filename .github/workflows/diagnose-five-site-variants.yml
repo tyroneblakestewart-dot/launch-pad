@@ -21,32 +21,50 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Capture validation output
+      - name: Capture focused Vitest report
         shell: bash
         run: |
           set +e
-          npm run lint > validation-output.txt 2>&1
-          lint_status=$?
-          npm test >> validation-output.txt 2>&1
-          test_status=$?
-          npm run build >> validation-output.txt 2>&1
-          build_status=$?
-          printf '\nLINT_STATUS=%s\nTEST_STATUS=%s\nBUILD_STATUS=%s\n' "$lint_status" "$test_status" "$build_status" >> validation-output.txt
+          npx vitest run --reporter=json --outputFile=vitest-report.json
+          status=$?
+          node <<'NODE' > failed-summary.txt
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('vitest-report.json', 'utf8'));
+          console.log(`Vitest success: ${report.success}`);
+          console.log(`Suites: ${report.numPassedTestSuites}/${report.numTotalTestSuites} passed`);
+          console.log(`Tests: ${report.numPassedTests}/${report.numTotalTests} passed`);
+          console.log('');
+          for (const suite of report.testResults || []) {
+            const failed = (suite.assertionResults || []).filter((item) => item.status === 'failed');
+            if (!failed.length && suite.status !== 'failed') continue;
+            console.log(`FILE: ${suite.name}`);
+            for (const item of failed) {
+              console.log(`TEST: ${(item.ancestorTitles || []).concat(item.title || '').join(' > ')}`);
+              for (const message of item.failureMessages || []) console.log(message);
+              console.log('---');
+            }
+            if (!failed.length && suite.message) console.log(suite.message);
+            console.log('========');
+          }
+          NODE
+          echo "EXIT_STATUS=$status" >> failed-summary.txt
           exit 0
       - uses: actions/upload-artifact@v4
         with:
-          name: five-site-variant-validation
-          path: validation-output.txt
-      - name: Comment diagnostic tail
+          name: five-site-variant-vitest-report
+          path: |
+            failed-summary.txt
+            vitest-report.json
+      - name: Comment focused diagnostic
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           {
-            echo '### Five-site-variant validation diagnostic'
+            echo '### Focused five-site-variant Vitest diagnostic'
             echo
             echo '```text'
-            tail -n 220 validation-output.txt
+            cat failed-summary.txt
             echo '```'
           } > diagnostic-comment.md
           gh issue comment 117 --body-file diagnostic-comment.md
