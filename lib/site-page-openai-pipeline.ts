@@ -178,6 +178,7 @@ export function buildGeneratedSitePageRequestBody(
     "- Include responsive, genuinely different desktop and mobile layouts.",
     "- Required section IDs: hero, about, tokenomics, roadmap, how-to-buy, community.",
     "- Include a useful header/navigation, a strong hero, multiple presentation patterns, clear CTA hierarchy, animated but readable interactions and at least one artwork click easter egg.",
+    "- Keep the document focused and concise enough to finish within the structured response budget; do not repeat large blocks of CSS or copy.",
     ...presentationRules,
     "- Echo both supplied brief IDs exactly in artworkBriefId and inspirationBriefId.",
     "- Output only the schema-compliant JSON object.",
@@ -206,6 +207,10 @@ export function buildGeneratedSitePageRequestBody(
   return {
     model,
     store: false,
+    // The identity has already been analysed in the previous stage. Minimal
+    // reasoning and a low-detail reference reduce Gateway latency while the
+    // verified brief remains the authoritative design source.
+    reasoning: { effort: "minimal" },
     max_output_tokens: 10_000,
     input: [
       {
@@ -216,7 +221,7 @@ export function buildGeneratedSitePageRequestBody(
         role: "user",
         content: [
           { type: "input_text", text: userPrompt },
-          { type: "input_image", image_url: request.imageDataUrl, detail: "high" },
+          { type: "input_image", image_url: request.imageDataUrl, detail: "low" },
         ],
       },
     ],
