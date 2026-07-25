@@ -96,7 +96,10 @@ export function buildPageArtworkIdentityRequestBody(
   return {
     model,
     store: false,
-    max_output_tokens: 850,
+    // This is a short extraction task. Minimal reasoning preserves the output
+    // budget for the strict seven-field JSON object instead of hidden reasoning.
+    reasoning: { effort: "minimal" },
+    max_output_tokens: 1_500,
     input: [
       {
         role: "developer",
