@@ -1,73 +1,30 @@
-name: Apply provider heading compatibility fix
+name: Test
 
 on:
   push:
-    branches:
-      - feat/desktop-launch-bonding-layout
+  pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  fix-and-restore:
-    if: github.event_name == 'push'
+  test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NPM_CONFIG_AUDIT: "false"
+      NPM_CONFIG_FUND: "false"
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          ref: feat/desktop-launch-bonding-layout
+          node-version: 22
 
-      - name: Restore preserved launch-desk wording and normal Test workflow
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
+      - name: Install dependencies
+        run: npm install --silent
 
-          component = Path('components/provider-launcher.tsx')
-          text = component.read_text()
-          old = '<p>STEP 1</p>'
-          new = '<p>STEP 1 · Prepare launch data</p>'
-          if old not in text:
-              raise SystemExit('Expected desktop launch step label was not found')
-          component.write_text(text.replace(old, new, 1))
-          PY
-
-          cat > .github/workflows/test.yml <<'EOF'
-          name: Test
-
-          on:
-            push:
-            pull_request:
-
-          permissions:
-            contents: read
-
-          jobs:
-            test:
-              runs-on: ubuntu-latest
-              timeout-minutes: 15
-              env:
-                NPM_CONFIG_AUDIT: "false"
-                NPM_CONFIG_FUND: "false"
-              steps:
-                - name: Checkout
-                  uses: actions/checkout@v4
-
-                - name: Setup Node
-                  uses: actions/setup-node@v4
-                  with:
-                    node-version: 22
-
-                - name: Install dependencies
-                  run: npm install --silent
-
-                - name: Run full test suite
-                  run: npm test
-          EOF
-
-      - name: Commit narrow fix
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add components/provider-launcher.tsx .github/workflows/test.yml
-          git commit -m "Preserve provider launch desk heading wording"
-          git push origin HEAD:feat/desktop-launch-bonding-layout
+      - name: Run full test suite
+        run: npm test

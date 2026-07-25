@@ -568,7 +568,7 @@ export function ProviderLauncher() {
         <div className={styles.formPanel}>
           <div className={`${styles.sectionHeading} ${styles.launchHeading}`}>
             <div>
-              <p>STEP 1</p>
+              <p>STEP 1 · Prepare launch data</p>
               <h2>Launch token</h2>
               <small className={styles.desktopIntro}>
                 Enter the core launch details, then review the live summary before opening the provider.
