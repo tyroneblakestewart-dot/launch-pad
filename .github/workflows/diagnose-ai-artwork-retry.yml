@@ -1,0 +1,32 @@
+name: Diagnose AI artwork retry
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Capture targeted test output
+        shell: bash
+        run: |
+          set +e
+          npx vitest run tests/generate-site-page.test.ts > ai-retry-test-output.txt 2>&1
+          status=$?
+          printf '\nEXIT_STATUS=%s\n' "$status" >> ai-retry-test-output.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-retry-test-output
+          path: ai-retry-test-output.txt
