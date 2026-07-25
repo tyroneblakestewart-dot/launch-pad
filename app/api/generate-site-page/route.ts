@@ -34,7 +34,8 @@ import {
 } from "@/lib/server/ai-responses-runtime";
 
 export const runtime = "nodejs";
-export const maxDuration = 90;
+export const maxDuration = 120;
+export const FULL_PAGE_GENERATION_TIMEOUT_MS = 70_000;
 
 type OpenAIRequestFailure = {
   ok: false;
@@ -90,6 +91,11 @@ function providerError(
     status: failure.status ?? null,
     detail: failure.detail || null,
   };
+}
+
+function isTimeoutFailure(failure: OpenAIRequestFailure): boolean {
+  if (failure.kind !== "network") return false;
+  return /\b(?:abort|aborted|timeout|timed out)\b/i.test(failure.detail || "");
 }
 
 function artworkParseDetail(payload: OpenAIResponse, attempt: number): string {
@@ -318,15 +324,17 @@ export async function POST(request: Request) {
   const generation = await requestOpenAI(
     ai,
     buildGeneratedSitePageRequestBody(input, model, artworkIdentity, inspirationAnalysis),
-    38_000,
+    FULL_PAGE_GENERATION_TIMEOUT_MS,
     "full-page-generation",
   );
 
   if (!generation.ok) {
+    const timedOut = isTimeoutFailure(generation);
     return NextResponse.json(
       {
-        error:
-          generation.kind === "invalid"
+        error: timedOut
+          ? "The artwork analysis succeeded, but the AI took too long to finish the full website. Try generating again once; the artwork does not need to be replaced."
+          : generation.kind === "invalid"
             ? "AI returned an invalid website document. Try generating again."
             : "The artwork and inspiration were analysed, but the standalone website could not be generated. Try again.",
         providerError: providerError("full-page-generation", ai, generation),
