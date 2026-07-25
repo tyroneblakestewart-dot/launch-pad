@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "env": {
+    "AI_GATEWAY_MODEL": "openai/gpt-5-nano"
+  },
+  "functions": {
+    "app/api/generate-site-page/route.ts": {
+      "maxDuration": 180
+    }
+  }
+}
