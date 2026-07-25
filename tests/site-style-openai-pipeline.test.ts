@@ -88,6 +88,37 @@ describe("verified artwork and inspiration collaboration", () => {
     ).toBeNull();
   });
 
+  it("normalises overlong complete identity fields instead of rejecting them", () => {
+    const verbose = {
+      dominantColours: `${ARTWORK_IDENTITY.dominantColours} ${"green gold black ".repeat(20)}`,
+      memeEnergy: `${ARTWORK_IDENTITY.memeEnergy} ${"rebellious momentum ".repeat(20)}`,
+      subjectAndIcons: `${ARTWORK_IDENTITY.subjectAndIcons} ${"arrows code jewellery ".repeat(20)}`,
+      visibleText: "   ",
+      typographyPersonality: `${ARTWORK_IDENTITY.typographyPersonality} ${"urban display lettering ".repeat(20)}`,
+      copyVoice: `${ARTWORK_IDENTITY.copyVoice} ${"confident community voice ".repeat(20)}`,
+      nonNegotiables: `${ARTWORK_IDENTITY.nonNegotiables} ${"preserve identity ".repeat(20)}`,
+    };
+    const parsed = parseArtworkIdentityResponse({
+      output: [
+        {
+          content: [
+            { type: "output_text", text: JSON.stringify(verbose) },
+          ],
+        },
+      ],
+    });
+
+    expect(parsed).not.toBeNull();
+    expect(parsed?.dominantColours.length).toBeLessThanOrEqual(140);
+    expect(parsed?.memeEnergy.length).toBeLessThanOrEqual(180);
+    expect(parsed?.subjectAndIcons.length).toBeLessThanOrEqual(220);
+    expect(parsed?.typographyPersonality.length).toBeLessThanOrEqual(180);
+    expect(parsed?.copyVoice.length).toBeLessThanOrEqual(180);
+    expect(parsed?.nonNegotiables.length).toBeLessThanOrEqual(220);
+    expect(parsed?.visibleText).toBe("No visible text was identified in the artwork.");
+    expect(parsed?.dominantColours.endsWith("…")).toBe(true);
+  });
+
   it("builds a dedicated domain-restricted presentation inspection", () => {
     const body = buildInspirationInspectionRequestBody(input(), "test-model");
 
