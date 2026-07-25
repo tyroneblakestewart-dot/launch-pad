@@ -1,7 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { POST } from "@/app/api/generate-site-page/route";
+import {
+  FULL_PAGE_GENERATION_TIMEOUT_MS,
+  POST,
+  maxDuration,
+} from "@/app/api/generate-site-page/route";
 import { ARTWORK_PLACEHOLDER } from "@/lib/generated-site-page";
 import { NO_URL_PRESENTATION_BRIEF } from "@/lib/site-page-openai-pipeline";
 import {
@@ -86,6 +90,12 @@ describe("POST /api/generate-site-page", () => {
     vi.restoreAllMocks();
   });
 
+  it("uses a route and provider timeout large enough for one complete full-page generation", () => {
+    expect(maxDuration).toBe(120);
+    expect(FULL_PAGE_GENERATION_TIMEOUT_MS).toBe(70_000);
+    expect(FULL_PAGE_GENERATION_TIMEOUT_MS).toBeLessThan(maxDuration * 1_000);
+  });
+
   it("analyses artwork and URL separately, then returns a complete original page", async () => {
     const ids = getFusionBriefIds(ARTWORK, INSPIRATION);
     const fetchMock = vi
@@ -117,23 +127,58 @@ describe("POST /api/generate-site-page", () => {
     };
     const finalRequest = JSON.parse(String((fetchMock.mock.calls[2][1] as RequestInit).body)) as {
       max_output_tokens: number;
-      input: Array<{ content: Array<{ type: string; text?: string; image_url?: string }> }>;
+      reasoning: { effort: string };
+      input: Array<{ content: Array<{ type: string; text?: string; image_url?: string; detail?: string }> }>;
       text: { format: { schema: unknown } };
     };
     expect(artworkRequest.max_output_tokens).toBe(1_500);
     expect(artworkRequest.reasoning).toEqual({ effort: "minimal" });
     expect(finalRequest.max_output_tokens).toBe(10_000);
+    expect(finalRequest.reasoning).toEqual({ effort: "minimal" });
     expect(finalRequest.input[0].content[0].text).toContain("Artwork owns the page identity");
     expect(finalRequest.input[0].content[0].text).toContain("bright, spacious discovery experience");
+    expect(finalRequest.input[0].content[0].text).toContain("concise enough to finish");
     expect(finalRequest.input[1].content[0].text).toContain(INSPIRATION);
     expect(finalRequest.input[1].content[1]).toMatchObject({
       type: "input_image",
       image_url: VALID_IMAGE,
-      detail: "high",
+      detail: "low",
     });
     expect(JSON.stringify(artworkRequest.text.format.schema)).not.toMatch(/minLength|maxLength|pattern/);
     expect(JSON.stringify(finalRequest.text.format.schema)).not.toMatch(/minLength|maxLength|pattern/);
     expect(JSON.stringify(finalRequest)).not.toContain("initiate_heist");
+  });
+
+  it("returns a truthful timeout error without automatically spending on another full-page attempt", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockRejectedValueOnce(new Error("The operation was aborted due to timeout"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request({
+        name: "Journey",
+        ticker: "RIDE",
+        description: "A community token inspired by finding your route through London.",
+        imageDataUrl: VALID_IMAGE,
+        inspirationUrl: "",
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body.error).toContain("artwork analysis succeeded");
+    expect(body.error).toContain("took too long");
+    expect(body.error).toContain("does not need to be replaced");
+    expect(body.providerError).toMatchObject({
+      stage: "full-page-generation",
+      provider: "openai",
+      kind: "network",
+      status: null,
+    });
+    expect(body.providerError.detail).toContain("aborted due to timeout");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("retries one incomplete artwork response and continues when the retry is valid", async () => {
