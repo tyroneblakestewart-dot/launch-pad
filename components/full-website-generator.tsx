@@ -11,16 +11,43 @@ type GenerateDetail = {
   inspirationUrl?: string;
 };
 
-type GeneratedPageResponse = {
-  html?: unknown;
+type ErrorResponse = {
   error?: string;
-  source?: string;
-  inspirationUsed?: boolean;
 };
+
+export type GenerationStage = "analysing-artwork" | "preparing-design" | "building-page" | "checking-safety";
+
+export type GenerationProgress = {
+  stage: GenerationStage;
+  message: string;
+  receivedCharacters?: number;
+};
+
+type NdjsonEvent =
+  | { type: "progress"; stage: GenerationStage; message: string; receivedCharacters?: number }
+  | { type: "complete"; html?: unknown; source?: string; inspirationUsed?: boolean }
+  | { type: "error"; error?: string };
 
 type PreviewStatus = "generating" | "failed";
 
-export async function requestGeneratedWebsite(detail: GenerateDetail): Promise<{
+function parseNdjsonLine(line: string): NdjsonEvent | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as { type?: unknown };
+    if (parsed.type === "progress" || parsed.type === "complete" || parsed.type === "error") {
+      return parsed as NdjsonEvent;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function requestGeneratedWebsite(
+  detail: GenerateDetail,
+  onProgress?: (progress: GenerationProgress) => void,
+): Promise<{
   html: string;
   inspirationUsed: boolean;
 }> {
@@ -33,18 +60,56 @@ export async function requestGeneratedWebsite(detail: GenerateDetail): Promise<{
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(detail),
   });
-  const payload = (await response.json().catch(() => ({}))) as GeneratedPageResponse;
+
   if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as ErrorResponse;
     throw new Error(payload.error || "The full website could not be generated.");
   }
-  if (typeof payload.html !== "string") {
+  if (!response.body) {
+    throw new Error("The website generation stream was unavailable.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let html: string | null = null;
+  let inspirationUsed = false;
+  let streamError: string | null = null;
+
+  function handleLine(line: string) {
+    const event = parseNdjsonLine(line);
+    if (!event) return;
+    if (event.type === "progress") {
+      onProgress?.({ stage: event.stage, message: event.message, receivedCharacters: event.receivedCharacters });
+    } else if (event.type === "complete") {
+      html = typeof event.html === "string" ? event.html : null;
+      inspirationUsed = event.inspirationUsed === true;
+    } else if (event.type === "error") {
+      streamError = event.error || "The full website could not be generated.";
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newlineIndex = buffer.indexOf("\n");
+    while (newlineIndex !== -1) {
+      handleLine(buffer.slice(0, newlineIndex));
+      buffer = buffer.slice(newlineIndex + 1);
+      newlineIndex = buffer.indexOf("\n");
+    }
+  }
+  handleLine(buffer);
+
+  if (streamError) {
+    throw new Error(streamError);
+  }
+  if (typeof html !== "string") {
     throw new Error("The generated website document was missing.");
   }
 
-  return {
-    html: payload.html,
-    inspirationUsed: payload.inspirationUsed === true,
-  };
+  return { html, inspirationUsed };
 }
 
 function previewElement(): HTMLElement {
@@ -53,7 +118,14 @@ function previewElement(): HTMLElement {
   return site;
 }
 
-function setPreviewStatus(mode: PreviewStatus, message: string) {
+const STAGE_HEADLINES: Record<GenerationStage, string> = {
+  "analysing-artwork": "Analysing artwork…",
+  "preparing-design": "Preparing design…",
+  "building-page": "Writing website…",
+  "checking-safety": "Checking safety…",
+};
+
+function setPreviewStatus(mode: PreviewStatus, message: string, headline?: string) {
   const site = previewElement();
   let status = site.querySelector<HTMLElement>(".full-generated-page-status");
   if (!status) {
@@ -67,7 +139,7 @@ function setPreviewStatus(mode: PreviewStatus, message: string) {
   status.querySelector("span")!.textContent =
     mode === "generating" ? "STANDALONE WEBSITE GENERATOR" : "GENERATION STOPPED";
   status.querySelector("strong")!.textContent =
-    mode === "generating" ? "Building the finished website…" : "No finished website was produced";
+    mode === "generating" ? headline || "Building the finished website…" : "No finished website was produced";
   status.querySelector("p")!.textContent = message;
 
   site.classList.toggle("full-page-generating", mode === "generating");
@@ -121,10 +193,17 @@ export function FullWebsiteGenerator() {
       const sourceMessage = detail.inspirationUrl
         ? "Analysing the uploaded artwork and the inspiration website, then combining them into one original standalone page. The old Hoodlums preview is hidden because it is not the result."
         : "Analysing the uploaded artwork and building one original standalone page. The old Hoodlums preview is hidden because it is not the result.";
-      setPreviewStatus("generating", sourceMessage);
+      setPreviewStatus("generating", sourceMessage, STAGE_HEADLINES["analysing-artwork"]);
 
       try {
-        const page = await requestGeneratedWebsite(detail);
+        const page = await requestGeneratedWebsite(detail, (progress) => {
+          if (currentGeneration !== generationNumber) return;
+          const message =
+            typeof progress.receivedCharacters === "number" && progress.receivedCharacters > 0
+              ? `${progress.message} (${progress.receivedCharacters.toLocaleString()} characters generated so far)`
+              : progress.message;
+          setPreviewStatus("generating", message, STAGE_HEADLINES[progress.stage]);
+        });
         if (currentGeneration !== generationNumber) return;
         activeFrame = renderGeneratedWebsite(page.html, detail.imageDataUrl || "");
         window.dispatchEvent(
