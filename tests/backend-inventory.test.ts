@@ -68,6 +68,7 @@ describe("backend test inventory", () => {
       "lib/server/ai-responses-runtime.ts",
       "lib/server/api-protection.ts",
       "lib/server/dexscreener.ts",
+      "lib/server/generate-site-page-stream.ts",
       "lib/server/generate-site-style.ts",
       "lib/server/postgres-publish-store.ts",
       "lib/server/postgres.ts",
@@ -76,6 +77,7 @@ describe("backend test inventory", () => {
       "lib/server/publish-auth.ts",
       "lib/server/publish-store.ts",
       "lib/server/published-site-validation.ts",
+      "lib/server/sanitise-provider-detail.ts",
       "lib/server/telegram.ts",
     ]);
   });

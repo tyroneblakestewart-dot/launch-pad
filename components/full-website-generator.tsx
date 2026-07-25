@@ -2,6 +2,12 @@
 
 import { useEffect } from "react";
 import { prepareGeneratedPageForPreview } from "@/lib/generated-site-page";
+import {
+  GENERATE_SITE_PAGE_NDJSON_CONTENT_TYPE,
+  parseGenerateSitePageStreamLine,
+  splitNdjsonLines,
+  type GenerateSitePageStreamStage,
+} from "@/lib/generate-site-page-stream-protocol";
 
 type GenerateDetail = {
   name: string;
@@ -11,40 +17,94 @@ type GenerateDetail = {
   inspirationUrl?: string;
 };
 
-type GeneratedPageResponse = {
-  html?: unknown;
-  error?: string;
-  source?: string;
-  inspirationUsed?: boolean;
-};
-
 type PreviewStatus = "generating" | "failed";
 
-export async function requestGeneratedWebsite(detail: GenerateDetail): Promise<{
-  html: string;
-  inspirationUsed: boolean;
-}> {
+type StreamOutcome =
+  | { kind: "complete"; html: string; source: string; inspirationUsed: boolean }
+  | { kind: "error"; message: string };
+
+export async function requestGeneratedWebsiteStream(
+  detail: GenerateDetail,
+  onProgress: (stage: GenerateSitePageStreamStage) => void,
+  signal: AbortSignal,
+): Promise<{ html: string; source: string; inspirationUsed: boolean }> {
   if (!detail.imageDataUrl?.startsWith("data:image/")) {
     throw new Error("Upload artwork before generating the website.");
   }
 
   const response = await fetch("/api/generate-site-page", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Accept: GENERATE_SITE_PAGE_NDJSON_CONTENT_TYPE,
+    },
     body: JSON.stringify(detail),
+    signal,
   });
-  const payload = (await response.json().catch(() => ({}))) as GeneratedPageResponse;
-  if (!response.ok) {
+
+  if (!response.ok || !response.body) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(payload.error || "The full website could not be generated.");
   }
-  if (typeof payload.html !== "string") {
-    throw new Error("The generated website document was missing.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let outcome: StreamOutcome | null = null;
+
+  try {
+    while (!outcome) {
+      const { done, value } = await reader.read();
+      if (value) {
+        buffer += decoder.decode(value, { stream: true });
+        const { lines, remainder } = splitNdjsonLines(buffer);
+        buffer = remainder;
+        for (const line of lines) {
+          const event = parseGenerateSitePageStreamLine(line);
+          if (!event) continue;
+          if (event.type === "progress") {
+            onProgress(event.stage);
+          } else if (event.type === "complete") {
+            outcome = {
+              kind: "complete",
+              html: event.html,
+              source: event.source,
+              inspirationUsed: event.inspirationUsed,
+            };
+            break;
+          } else if (event.type === "error") {
+            outcome = { kind: "error", message: event.error };
+            break;
+          }
+        }
+      }
+      if (outcome) break;
+
+      if (done) {
+        // A proxy may drop the trailing newline on the final NDJSON line;
+        // parse whatever is left in the buffer defensively.
+        const event = parseGenerateSitePageStreamLine(buffer);
+        if (event?.type === "complete") {
+          outcome = {
+            kind: "complete",
+            html: event.html,
+            source: event.source,
+            inspirationUsed: event.inspirationUsed,
+          };
+        } else if (event?.type === "error") {
+          outcome = { kind: "error", message: event.error };
+        }
+        break;
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
   }
 
-  return {
-    html: payload.html,
-    inspirationUsed: payload.inspirationUsed === true,
-  };
+  if (!outcome) throw new Error("The full website could not be generated.");
+  if (outcome.kind === "error") throw new Error(outcome.message);
+  return { html: outcome.html, source: outcome.source, inspirationUsed: outcome.inspirationUsed };
 }
 
 function previewElement(): HTMLElement {
@@ -80,11 +140,37 @@ function clearPreviewStatus(site: HTMLElement) {
   site.querySelector(".full-generated-page-status")?.remove();
 }
 
-function renderGeneratedWebsite(html: string, artworkDataUrl: string) {
+function disposeFrame(frame: HTMLIFrameElement | null) {
+  if (!frame) return;
+  frame.srcdoc = "";
+  frame.remove();
+}
+
+function stageMessage(stage: GenerateSitePageStreamStage, hasInspiration: boolean): string {
+  switch (stage) {
+    case "analysing-artwork":
+      return hasInspiration
+        ? "Analysing the uploaded artwork and the inspiration website, then combining them into one original standalone page. The old Hoodlums preview is hidden because it is not the result."
+        : "Analysing the uploaded artwork and building one original standalone page. The old Hoodlums preview is hidden because it is not the result.";
+    case "preparing-design":
+      return "Fusing the verified artwork identity and inspiration presentation into one design brief.";
+    case "building-page":
+      return "Generating the finished single-file website from the fused brief.";
+    case "checking-safety":
+      return "Running final completeness and safety checks before showing the result.";
+    default:
+      return "Working on your standalone website.";
+  }
+}
+
+function renderGeneratedWebsite(
+  html: string,
+  artworkDataUrl: string,
+  previousFrame: HTMLIFrameElement | null,
+) {
   const site = previewElement();
   const prepared = prepareGeneratedPageForPreview(html, artworkDataUrl);
-  const previous = site.querySelector<HTMLIFrameElement>(".full-generated-page-frame");
-  previous?.remove();
+  disposeFrame(previousFrame);
   clearPreviewStatus(site);
 
   const frame = document.createElement("iframe");
@@ -104,6 +190,7 @@ function renderGeneratedWebsite(html: string, artworkDataUrl: string) {
 export function FullWebsiteGenerator() {
   useEffect(() => {
     let activeFrame: HTMLIFrameElement | null = null;
+    let activeController: AbortController | null = null;
     let generationNumber = 0;
 
     function onMessage(event: MessageEvent) {
@@ -117,16 +204,24 @@ export function FullWebsiteGenerator() {
 
     async function onGenerate(event: Event) {
       const detail = (event as CustomEvent<GenerateDetail>).detail;
+      activeController?.abort();
+      const controller = new AbortController();
+      activeController = controller;
       const currentGeneration = ++generationNumber;
-      const sourceMessage = detail.inspirationUrl
-        ? "Analysing the uploaded artwork and the inspiration website, then combining them into one original standalone page. The old Hoodlums preview is hidden because it is not the result."
-        : "Analysing the uploaded artwork and building one original standalone page. The old Hoodlums preview is hidden because it is not the result.";
-      setPreviewStatus("generating", sourceMessage);
+      const hasInspiration = Boolean(detail.inspirationUrl);
+      setPreviewStatus("generating", stageMessage("analysing-artwork", hasInspiration));
 
       try {
-        const page = await requestGeneratedWebsite(detail);
+        const page = await requestGeneratedWebsiteStream(
+          detail,
+          (stage) => {
+            if (currentGeneration !== generationNumber) return;
+            setPreviewStatus("generating", stageMessage(stage, hasInspiration));
+          },
+          controller.signal,
+        );
         if (currentGeneration !== generationNumber) return;
-        activeFrame = renderGeneratedWebsite(page.html, detail.imageDataUrl || "");
+        activeFrame = renderGeneratedWebsite(page.html, detail.imageDataUrl || "", activeFrame);
         window.dispatchEvent(
           new CustomEvent("launchpad:site-generated", {
             detail: {
@@ -159,10 +254,16 @@ export function FullWebsiteGenerator() {
     window.addEventListener("launchpad:generate-site", onGenerate);
     return () => {
       generationNumber += 1;
+      activeController?.abort();
       window.removeEventListener("message", onMessage);
       window.removeEventListener("launchpad:generate-site", onGenerate);
+      disposeFrame(activeFrame);
+      activeFrame = null;
       const site = document.querySelector<HTMLElement>(".site-preview");
-      if (site) clearPreviewStatus(site);
+      if (site) {
+        clearPreviewStatus(site);
+        site.classList.remove("full-generated-page");
+      }
     };
   }, []);
 

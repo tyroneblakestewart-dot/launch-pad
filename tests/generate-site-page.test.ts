@@ -1,17 +1,15 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  FULL_PAGE_GENERATION_TIMEOUT_MS,
-  POST,
-  maxDuration,
-} from "@/app/api/generate-site-page/route";
+import { POST, maxDuration } from "@/app/api/generate-site-page/route";
 import { ARTWORK_PLACEHOLDER } from "@/lib/generated-site-page";
 import { NO_URL_PRESENTATION_BRIEF } from "@/lib/site-page-openai-pipeline";
 import {
   getFusionBriefIds,
   type ArtworkIdentity,
 } from "@/lib/site-style-openai-pipeline";
+import { GENERATE_SITE_PAGE_NDJSON_CONTENT_TYPE } from "@/lib/generate-site-page-stream-protocol";
+import { collectStreamEvents, findEvent } from "./ndjson-test-utils";
 
 const ROOT = process.cwd();
 const VALID_IMAGE = "data:image/png;base64,aGVsbG8=";
@@ -75,6 +73,12 @@ function inspirationResponse() {
   );
 }
 
+function sseCompleted(value: unknown) {
+  const response = { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(value) }] }] };
+  const body = `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response })}\n\n`;
+  return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+}
+
 describe("POST /api/generate-site-page", () => {
   beforeEach(() => {
     process.env.OPENAI_API_KEY = "test-key";
@@ -90,19 +94,17 @@ describe("POST /api/generate-site-page", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses a route and provider timeout large enough for one complete full-page generation", () => {
+  it("uses a route duration large enough for one streamed full-page generation", () => {
     expect(maxDuration).toBe(120);
-    expect(FULL_PAGE_GENERATION_TIMEOUT_MS).toBe(70_000);
-    expect(FULL_PAGE_GENERATION_TIMEOUT_MS).toBeLessThan(maxDuration * 1_000);
   });
 
-  it("analyses artwork and URL separately, then returns a complete original page", async () => {
+  it("streams ndjson progress events, then a complete event with the validated page", async () => {
     const ids = getFusionBriefIds(ARTWORK, INSPIRATION);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(outputText(ARTWORK))
       .mockResolvedValueOnce(inspirationResponse())
-      .mockResolvedValueOnce(outputText({ html: html(), ...ids }));
+      .mockResolvedValueOnce(sseCompleted({ html: html(), ...ids }));
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(
@@ -114,10 +116,19 @@ describe("POST /api/generate-site-page", () => {
         inspirationUrl: URL,
       }),
     );
-    const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(body).toEqual({ html: html(), source: "openai", inspirationUsed: true });
+    expect(response.headers.get("Content-Type")).toBe(GENERATE_SITE_PAGE_NDJSON_CONTENT_TYPE);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+
+    const events = await collectStreamEvents(response);
+    expect(events.filter((event) => event.type === "progress").map((event) => (event as { stage: string }).stage)).toEqual([
+      "analysing-artwork",
+      "preparing-design",
+      "building-page",
+      "checking-safety",
+    ]);
+    const complete = findEvent(events, "complete");
+    expect(complete).toMatchObject({ html: html(), source: "openai", inspirationUsed: true });
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
     const artworkRequest = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)) as {
@@ -128,6 +139,7 @@ describe("POST /api/generate-site-page", () => {
     const finalRequest = JSON.parse(String((fetchMock.mock.calls[2][1] as RequestInit).body)) as {
       max_output_tokens: number;
       reasoning: { effort: string };
+      stream: boolean;
       input: Array<{ content: Array<{ type: string; text?: string; image_url?: string; detail?: string }> }>;
       text: { format: { schema: unknown } };
     };
@@ -135,6 +147,7 @@ describe("POST /api/generate-site-page", () => {
     expect(artworkRequest.reasoning).toEqual({ effort: "minimal" });
     expect(finalRequest.max_output_tokens).toBe(10_000);
     expect(finalRequest.reasoning).toEqual({ effort: "minimal" });
+    expect(finalRequest.stream).toBe(true);
     expect(finalRequest.input[0].content[0].text).toContain("Artwork owns the page identity");
     expect(finalRequest.input[0].content[0].text).toContain("bright, spacious discovery experience");
     expect(finalRequest.input[0].content[0].text).toContain("concise enough to finish");
@@ -149,11 +162,11 @@ describe("POST /api/generate-site-page", () => {
     expect(JSON.stringify(finalRequest)).not.toContain("initiate_heist");
   });
 
-  it("returns a truthful timeout error without automatically spending on another full-page attempt", async () => {
+  it("streams a single error event and no retry when the full-page provider request fails over the network", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(outputText(ARTWORK))
-      .mockRejectedValueOnce(new Error("The operation was aborted due to timeout"));
+      .mockRejectedValueOnce(new Error("connection reset"));
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(
@@ -165,19 +178,47 @@ describe("POST /api/generate-site-page", () => {
         inspirationUrl: "",
       }),
     );
-    const body = await response.json();
 
-    expect(response.status).toBe(502);
-    expect(body.error).toContain("artwork analysis succeeded");
-    expect(body.error).toContain("took too long");
-    expect(body.error).toContain("does not need to be replaced");
-    expect(body.providerError).toMatchObject({
+    const events = await collectStreamEvents(response);
+    expect(events.some((event) => event.type === "complete")).toBe(false);
+    const error = findEvent(events, "error");
+    expect(error?.error).toContain("standalone website could not be generated");
+    expect(error?.providerError).toMatchObject({
       stage: "full-page-generation",
       provider: "openai",
       kind: "network",
       status: null,
     });
-    expect(body.providerError.detail).toContain("aborted due to timeout");
+    expect(error?.providerError?.detail).toContain("connection reset");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("streams an error event when the full-page provider stream ends incomplete", async () => {
+    const incompleteBody = `event: response.incomplete\ndata: ${JSON.stringify({
+      type: "response.incomplete",
+      response: { status: "incomplete", incomplete_details: { reason: "max_output_tokens" } },
+    })}\n\n`;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(new Response(incompleteBody, { status: 200, headers: { "Content-Type": "text/event-stream" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request({
+        name: "Journey",
+        ticker: "RIDE",
+        description: "A community token inspired by finding your route through London.",
+        imageDataUrl: VALID_IMAGE,
+        inspirationUrl: "",
+      }),
+    );
+
+    const events = await collectStreamEvents(response);
+    expect(events.some((event) => event.type === "complete")).toBe(false);
+    const error = findEvent(events, "error");
+    expect(error?.error).toContain("invalid or incomplete website document");
+    expect(error?.providerError).toMatchObject({ stage: "full-page-generation", kind: "invalid" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -187,7 +228,7 @@ describe("POST /api/generate-site-page", () => {
       .fn()
       .mockResolvedValueOnce(incompleteResponse())
       .mockResolvedValueOnce(outputText(ARTWORK))
-      .mockResolvedValueOnce(outputText({ html: html(), ...ids }));
+      .mockResolvedValueOnce(sseCompleted({ html: html(), ...ids }));
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(
@@ -200,8 +241,9 @@ describe("POST /api/generate-site-page", () => {
       }),
     );
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ source: "openai", inspirationUsed: false });
+    const events = await collectStreamEvents(response);
+    const complete = findEvent(events, "complete");
+    expect(complete).toMatchObject({ source: "openai", inspirationUsed: false });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(console.warn).toHaveBeenCalledWith(
       "AI artwork identity response was incomplete; retrying once",
@@ -209,7 +251,7 @@ describe("POST /api/generate-site-page", () => {
     );
   });
 
-  it("returns a truthful error after two incomplete artwork analyses", async () => {
+  it("streams a truthful error after two incomplete artwork analyses", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(incompleteResponse("max_output_tokens"))
@@ -225,44 +267,43 @@ describe("POST /api/generate-site-page", () => {
         inspirationUrl: "",
       }),
     );
-    const body = await response.json();
 
-    expect(response.status).toBe(502);
-    expect(body.error).toContain("incomplete artwork analysis twice");
-    expect(body.error).toContain("artwork has not been rejected");
-    expect(body.providerError).toMatchObject({
+    const events = await collectStreamEvents(response);
+    const error = findEvent(events, "error");
+    expect(error?.error).toContain("incomplete artwork analysis twice");
+    expect(error?.error).toContain("artwork has not been rejected");
+    expect(error?.providerError).toMatchObject({
       stage: "page-artwork-analysis-parse",
       kind: "invalid",
       status: null,
     });
-    expect(body.providerError.detail).toContain("max_output_tokens");
-    expect(body.providerError.detail).toContain("attempt 2");
+    expect(error?.providerError?.detail).toContain("max_output_tokens");
+    expect(error?.providerError?.detail).toContain("attempt 2");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects a retail-inspired result that falls back to terminal and heist styling", async () => {
+  it("rejects a retail-inspired result that falls back to terminal and heist styling before completing", async () => {
     const ids = getFusionBriefIds(ARTWORK, INSPIRATION);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(outputText(ARTWORK))
       .mockResolvedValueOnce(inspirationResponse())
-      .mockResolvedValueOnce(outputText({ html: html("<p>root@token:~$ tokenomics.sh join the heist</p>"), ...ids }));
+      .mockResolvedValueOnce(sseCompleted({ html: html("<p>root@token:~$ tokenomics.sh join the heist</p>"), ...ids }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await POST(
-      request({ imageDataUrl: VALID_IMAGE, inspirationUrl: URL }),
-    );
-    expect(response.status).toBe(502);
-    expect((await response.json()).error).toContain("legacy terminal fallback");
+    const response = await POST(request({ imageDataUrl: VALID_IMAGE, inspirationUrl: URL }));
+    const events = await collectStreamEvents(response);
+    expect(events.some((event) => event.type === "complete")).toBe(false);
+    expect(findEvent(events, "error")?.error).toContain("legacy terminal fallback");
   });
 
-  it("rejects a full page that echoes the wrong collaboration evidence", async () => {
+  it("rejects a full page that echoes the wrong collaboration evidence before completing", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(outputText(ARTWORK))
       .mockResolvedValueOnce(inspirationResponse())
       .mockResolvedValueOnce(
-        outputText({
+        sseCompleted({
           html: html(),
           artworkBriefId: "art-deadbeef",
           inspirationBriefId: "url-deadbeef",
@@ -270,18 +311,18 @@ describe("POST /api/generate-site-page", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await POST(
-      request({ imageDataUrl: VALID_IMAGE, inspirationUrl: URL }),
-    );
-    expect(response.status).toBe(502);
-    expect((await response.json()).error).toContain("incomplete, unsafe");
+    const response = await POST(request({ imageDataUrl: VALID_IMAGE, inspirationUrl: URL }));
+    const events = await collectStreamEvents(response);
+    expect(events.some((event) => event.type === "complete")).toBe(false);
+    expect(findEvent(events, "error")?.error).toContain("incomplete, unsafe");
   });
 
-  it("keeps uploaded artwork mandatory", async () => {
+  it("keeps uploaded artwork mandatory and never opens the stream for an invalid request", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const response = await POST(request({ inspirationUrl: URL }));
     expect(response.status).toBe(400);
+    expect(response.headers.get("Content-Type")).not.toBe(GENERATE_SITE_PAGE_NDJSON_CONTENT_TYPE);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

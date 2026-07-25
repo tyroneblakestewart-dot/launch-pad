@@ -4,6 +4,7 @@ import {
   VERCEL_AI_GATEWAY_RESPONSES_URL,
   VERCEL_OIDC_HEADER,
 } from "@/lib/server/ai-responses-runtime";
+import { collectStreamEvents, findEvent } from "./ndjson-test-utils";
 
 const ARTWORK = {
   dominantColours: "Powder blue, charcoal black, steel grey, white and restrained transit red accents.",
@@ -29,6 +30,12 @@ function outputText(value: unknown) {
   );
 }
 
+function sseCompleted(value: unknown) {
+  const response = { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(value) }] }] };
+  const body = `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response })}\n\n`;
+  return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+}
+
 describe("POST /api/generate-site-page Vercel runtime authentication", () => {
   beforeEach(() => {
     delete process.env.OPENAI_API_KEY;
@@ -46,7 +53,7 @@ describe("POST /api/generate-site-page Vercel runtime authentication", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(outputText(ARTWORK))
-      .mockResolvedValueOnce(outputText({ invalid: true }));
+      .mockResolvedValueOnce(sseCompleted({ invalid: true }));
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(
@@ -65,7 +72,9 @@ describe("POST /api/generate-site-page Vercel runtime authentication", () => {
       }),
     );
 
-    expect(response.status).toBe(502);
+    const events = await collectStreamEvents(response);
+    expect(events.some((event) => event.type === "complete")).toBe(false);
+    expect(findEvent(events, "error")).toBeDefined();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     for (const call of fetchMock.mock.calls) {
       expect(call[0]).toBe(VERCEL_AI_GATEWAY_RESPONSES_URL);
