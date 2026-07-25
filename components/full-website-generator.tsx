@@ -2,6 +2,11 @@
 
 import { useEffect } from "react";
 import { prepareGeneratedPageForPreview } from "@/lib/generated-site-page";
+import {
+  parseGenerateSitePageStreamLine,
+  splitNdjsonLines,
+  type GenerateSitePageProgressStage,
+} from "@/lib/generate-site-page-stream-protocol";
 
 type GenerateDetail = {
   name: string;
@@ -11,19 +16,17 @@ type GenerateDetail = {
   inspirationUrl?: string;
 };
 
-type GeneratedPageResponse = {
-  html?: unknown;
-  error?: string;
-  source?: string;
-  inspirationUsed?: boolean;
-};
-
 type PreviewStatus = "generating" | "failed";
 
-export async function requestGeneratedWebsite(detail: GenerateDetail): Promise<{
-  html: string;
-  inspirationUsed: boolean;
-}> {
+type RequestGeneratedWebsiteOptions = {
+  signal?: AbortSignal;
+  onProgress?: (stage: GenerateSitePageProgressStage) => void;
+};
+
+export async function requestGeneratedWebsite(
+  detail: GenerateDetail,
+  options: RequestGeneratedWebsiteOptions = {},
+): Promise<{ html: string; inspirationUsed: boolean }> {
   if (!detail.imageDataUrl?.startsWith("data:image/")) {
     throw new Error("Upload artwork before generating the website.");
   }
@@ -32,25 +35,69 @@ export async function requestGeneratedWebsite(detail: GenerateDetail): Promise<{
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(detail),
+    signal: options.signal,
   });
-  const payload = (await response.json().catch(() => ({}))) as GeneratedPageResponse;
-  if (!response.ok) {
+
+  if (!response.ok || !response.body) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(payload.error || "The full website could not be generated.");
   }
-  if (typeof payload.html !== "string") {
-    throw new Error("The generated website document was missing.");
-  }
 
-  return {
-    html: payload.html,
-    inspirationUsed: payload.inspirationUsed === true,
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: { html: string; inspirationUsed: boolean } | null = null;
+
+  const processLine = (line: string) => {
+    if (result) return;
+    const event = parseGenerateSitePageStreamLine(line);
+    if (!event) return;
+    if (event.type === "progress") {
+      options.onProgress?.(event.stage);
+    } else if (event.type === "complete") {
+      result = { html: event.html, inspirationUsed: event.inspirationUsed };
+    } else if (event.type === "error") {
+      throw new Error(event.error);
+    }
   };
+
+  while (!result) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const { lines, remainder } = splitNdjsonLines(buffer);
+    buffer = remainder;
+    for (const line of lines) processLine(line);
+  }
+  if (!result) processLine(buffer);
+
+  if (!result) {
+    throw new Error("The website generation stream ended before it finished.");
+  }
+  return result;
 }
 
 function previewElement(): HTMLElement {
   const site = document.querySelector<HTMLElement>(".site-preview");
   if (!site) throw new Error("Website preview was not found.");
   return site;
+}
+
+function stageMessage(stage: GenerateSitePageProgressStage, hasInspiration: boolean): string {
+  switch (stage) {
+    case "analysing-artwork":
+      return hasInspiration
+        ? "Analysing the uploaded artwork and the inspiration website, then combining them into one original standalone page. The old Hoodlums preview is hidden because it is not the result."
+        : "Analysing the uploaded artwork and building one original standalone page. The old Hoodlums preview is hidden because it is not the result.";
+    case "preparing-design":
+      return "Combining the verified artwork identity and inspiration brief into one design direction.";
+    case "building-page":
+      return "Building the finished standalone website. Large pages can take a little while to finish.";
+    case "checking-safety":
+      return "Checking the finished page for safety and completeness before showing it to you.";
+    default:
+      return "Building the finished website…";
+  }
 }
 
 function setPreviewStatus(mode: PreviewStatus, message: string) {
@@ -80,11 +127,16 @@ function clearPreviewStatus(site: HTMLElement) {
   site.querySelector(".full-generated-page-status")?.remove();
 }
 
+function disposeFrame(frame: HTMLIFrameElement | null) {
+  if (!frame) return;
+  frame.srcdoc = "";
+  frame.remove();
+}
+
 function renderGeneratedWebsite(html: string, artworkDataUrl: string) {
   const site = previewElement();
   const prepared = prepareGeneratedPageForPreview(html, artworkDataUrl);
-  const previous = site.querySelector<HTMLIFrameElement>(".full-generated-page-frame");
-  previous?.remove();
+  disposeFrame(site.querySelector<HTMLIFrameElement>(".full-generated-page-frame"));
   clearPreviewStatus(site);
 
   const frame = document.createElement("iframe");
@@ -104,6 +156,7 @@ function renderGeneratedWebsite(html: string, artworkDataUrl: string) {
 export function FullWebsiteGenerator() {
   useEffect(() => {
     let activeFrame: HTMLIFrameElement | null = null;
+    let activeController: AbortController | null = null;
     let generationNumber = 0;
 
     function onMessage(event: MessageEvent) {
@@ -118,13 +171,20 @@ export function FullWebsiteGenerator() {
     async function onGenerate(event: Event) {
       const detail = (event as CustomEvent<GenerateDetail>).detail;
       const currentGeneration = ++generationNumber;
-      const sourceMessage = detail.inspirationUrl
-        ? "Analysing the uploaded artwork and the inspiration website, then combining them into one original standalone page. The old Hoodlums preview is hidden because it is not the result."
-        : "Analysing the uploaded artwork and building one original standalone page. The old Hoodlums preview is hidden because it is not the result.";
-      setPreviewStatus("generating", sourceMessage);
+      activeController?.abort();
+      const controller = new AbortController();
+      activeController = controller;
+      const hasInspiration = Boolean(detail.inspirationUrl);
+      setPreviewStatus("generating", stageMessage("analysing-artwork", hasInspiration));
 
       try {
-        const page = await requestGeneratedWebsite(detail);
+        const page = await requestGeneratedWebsite(detail, {
+          signal: controller.signal,
+          onProgress: (stage) => {
+            if (currentGeneration !== generationNumber) return;
+            setPreviewStatus("generating", stageMessage(stage, hasInspiration));
+          },
+        });
         if (currentGeneration !== generationNumber) return;
         activeFrame = renderGeneratedWebsite(page.html, detail.imageDataUrl || "");
         window.dispatchEvent(
@@ -159,8 +219,11 @@ export function FullWebsiteGenerator() {
     window.addEventListener("launchpad:generate-site", onGenerate);
     return () => {
       generationNumber += 1;
+      activeController?.abort();
       window.removeEventListener("message", onMessage);
       window.removeEventListener("launchpad:generate-site", onGenerate);
+      disposeFrame(activeFrame);
+      activeFrame = null;
       const site = document.querySelector<HTMLElement>(".site-preview");
       if (site) clearPreviewStatus(site);
     };

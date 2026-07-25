@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/generate-site-page/route";
+import { readNdjsonEvents } from "./generate-site-page-test-helpers";
 
 describe("POST /api/generate-site-page provider diagnostics", () => {
   beforeEach(() => {
@@ -15,7 +16,7 @@ describe("POST /api/generate-site-page provider diagnostics", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns a sanitized stage, provider, status and upstream detail for artwork failures", async () => {
+  it("streams a sanitized stage, provider, status and upstream detail for artwork failures", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -43,19 +44,27 @@ describe("POST /api/generate-site-page provider diagnostics", () => {
         }),
       }),
     );
-    const body = await response.json();
 
-    expect(response.status).toBe(502);
-    expect(body.error).toContain("artwork-analysis service could not complete");
-    expect(body.error).toContain("artwork has not been rejected");
-    expect(body.providerError).toMatchObject({
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Content-Type")).toBe("application/x-ndjson");
+
+    const events = await readNdjsonEvents(response);
+    const errorEvent = events.at(-1) as {
+      type: string;
+      error: string;
+      providerError: { stage: string; provider: string; kind: string; status: number };
+    };
+
+    expect(errorEvent.type).toBe("error");
+    expect(errorEvent.error).toContain("artwork-analysis service could not complete");
+    expect(errorEvent.error).toContain("artwork has not been rejected");
+    expect(errorEvent.providerError).toMatchObject({
       stage: "page-artwork-analysis",
       provider: "openai",
       kind: "http",
       status: 400,
     });
-    expect(body.providerError.detail).toContain("Unsupported image request");
-    expect(JSON.stringify(body)).not.toContain("secret-provider-token");
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(JSON.stringify(errorEvent.providerError)).toContain("Unsupported image request");
+    expect(JSON.stringify(events)).not.toContain("secret-provider-token");
   });
 });
