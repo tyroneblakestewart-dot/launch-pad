@@ -13,7 +13,13 @@ export type StreamedFullPageOutcome =
   | { ok: true; payload: OpenAIResponse }
   | { ok: false; kind: StreamedFullPageFailureKind; status?: number; detail?: string };
 
-type SseEventPayload = { type?: unknown; delta?: unknown; response?: unknown; message?: unknown };
+type SseEventPayload = {
+  type?: unknown;
+  delta?: unknown;
+  text?: unknown;
+  response?: unknown;
+  message?: unknown;
+};
 
 /**
  * Splits a growing SSE text buffer into complete "\n\n"-delimited event
@@ -52,6 +58,14 @@ function failedMessage(response: unknown): string | undefined {
   if (!error || typeof error !== "object") return undefined;
   const message = (error as { message?: unknown }).message;
   return typeof message === "string" && message.trim() ? message.trim() : undefined;
+}
+
+function oversizedFailure(): StreamedFullPageOutcome {
+  return {
+    ok: false,
+    kind: "invalid",
+    detail: `The AI response exceeded the ${STREAMED_OUTPUT_TEXT_BUFFER_LIMIT}-character streaming buffer before completing.`,
+  };
 }
 
 /**
@@ -97,94 +111,123 @@ export async function requestStreamedFullPageGeneration(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let structuredText = "";
+  let structuredTextLength = 0;
+  let receivedDelta = false;
   let settled: StreamedFullPageOutcome | null = null;
+
+  const accountText = (value: string, replaceExisting: boolean) => {
+    structuredTextLength = replaceExisting ? value.length : structuredTextLength + value.length;
+    onDelta?.();
+    if (structuredTextLength > STREAMED_OUTPUT_TEXT_BUFFER_LIMIT) {
+      settled = oversizedFailure();
+    }
+  };
+
+  const processBlock = (block: string) => {
+    if (settled) return;
+    const data = extractSseEventData(block);
+    if (data === null) return;
+
+    if (data === "[DONE]") {
+      settled = {
+        ok: false,
+        kind: "invalid",
+        detail: "The provider stream ended before the website was completed.",
+      };
+      return;
+    }
+
+    let event: SseEventPayload;
+    try {
+      event = JSON.parse(data) as SseEventPayload;
+    } catch {
+      return;
+    }
+
+    switch (event.type) {
+      case "response.output_text.delta": {
+        if (typeof event.delta === "string") {
+          receivedDelta = true;
+          accountText(event.delta, false);
+        }
+        break;
+      }
+      case "response.output_text.done": {
+        // Some Responses-compatible providers send only a final text event,
+        // while others send deltas followed by the same complete text. Count
+        // the done text only when no deltas were received so it is never
+        // double-counted or exposed as a second partial document.
+        if (!receivedDelta && typeof event.text === "string") {
+          accountText(event.text, true);
+        }
+        break;
+      }
+      case "response.completed": {
+        settled = event.response
+          ? { ok: true, payload: event.response as OpenAIResponse }
+          : {
+              ok: false,
+              kind: "invalid",
+              detail: "The provider completed event did not include a response payload.",
+            };
+        break;
+      }
+      case "response.incomplete": {
+        const reason = incompleteReason(event.response);
+        settled = {
+          ok: false,
+          kind: "incomplete",
+          detail: sanitiseProviderDetail(
+            reason
+              ? `The full page generation stream was incomplete because ${reason}.`
+              : "The full page generation stream was incomplete.",
+          ),
+        };
+        break;
+      }
+      case "response.failed": {
+        const message = failedMessage(event.response);
+        settled = {
+          ok: false,
+          kind: "failed",
+          detail: sanitiseProviderDetail(message || "The full page generation stream failed."),
+        };
+        break;
+      }
+      case "error": {
+        const message = typeof event.message === "string" ? event.message : "The provider reported a stream error.";
+        settled = { ok: false, kind: "invalid", detail: sanitiseProviderDetail(message) };
+        break;
+      }
+      default:
+        break;
+    }
+  };
+
+  const processBuffer = (flushRemainder = false) => {
+    const { events, remainder } = splitCompleteSseEvents(buffer);
+    buffer = remainder;
+    for (const block of events) {
+      processBlock(block);
+      if (settled) return;
+    }
+    if (flushRemainder && !settled && buffer.trim()) {
+      processBlock(buffer);
+      buffer = "";
+    }
+  };
 
   try {
     while (!settled) {
       const { value, done } = await reader.read();
-      if (done) break;
+      if (done) {
+        buffer += decoder.decode();
+        processBuffer(true);
+        break;
+      }
 
       buffer += decoder.decode(value, { stream: true });
-      const { events, remainder } = splitCompleteSseEvents(buffer);
-      buffer = remainder;
-
-      for (const block of events) {
-        const data = extractSseEventData(block);
-        if (data === null) continue;
-
-        if (data === "[DONE]") {
-          settled = {
-            ok: false,
-            kind: "invalid",
-            detail: "The provider stream ended before the website was completed.",
-          };
-          break;
-        }
-
-        let event: SseEventPayload;
-        try {
-          event = JSON.parse(data) as SseEventPayload;
-        } catch {
-          continue;
-        }
-
-        switch (event.type) {
-          case "response.output_text.delta": {
-            if (typeof event.delta === "string") structuredText += event.delta;
-            onDelta?.();
-            if (structuredText.length > STREAMED_OUTPUT_TEXT_BUFFER_LIMIT) {
-              settled = {
-                ok: false,
-                kind: "invalid",
-                detail: `The AI response exceeded the ${STREAMED_OUTPUT_TEXT_BUFFER_LIMIT}-character streaming buffer before completing.`,
-              };
-            }
-            break;
-          }
-          case "response.completed": {
-            settled = event.response
-              ? { ok: true, payload: event.response as OpenAIResponse }
-              : {
-                  ok: false,
-                  kind: "invalid",
-                  detail: "The provider completed event did not include a response payload.",
-                };
-            break;
-          }
-          case "response.incomplete": {
-            const reason = incompleteReason(event.response);
-            settled = {
-              ok: false,
-              kind: "incomplete",
-              detail: sanitiseProviderDetail(
-                reason
-                  ? `The full page generation stream was incomplete because ${reason}.`
-                  : "The full page generation stream was incomplete.",
-              ),
-            };
-            break;
-          }
-          case "response.failed": {
-            const message = failedMessage(event.response);
-            settled = {
-              ok: false,
-              kind: "failed",
-              detail: sanitiseProviderDetail(message || "The full page generation stream failed."),
-            };
-            break;
-          }
-          case "error": {
-            const message = typeof event.message === "string" ? event.message : "The provider reported a stream error.";
-            settled = { ok: false, kind: "invalid", detail: sanitiseProviderDetail(message) };
-            break;
-          }
-          default:
-            break;
-        }
-
-        if (settled) break;
-      }
+      processBuffer();
     }
   } catch (error) {
     if (!settled) settled = { ok: false, kind: "network", detail: sanitiseProviderDetail(error) };
@@ -193,6 +236,11 @@ export async function requestStreamedFullPageGeneration(
       await reader.cancel();
     } catch {
       // The stream may already be closed; nothing left to clean up.
+    }
+    try {
+      reader.releaseLock();
+    } catch {
+      // The reader may already have released its lock.
     }
   }
 
