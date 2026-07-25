@@ -24,10 +24,10 @@ jobs:
 
           component = Path('components/provider-launcher.tsx')
           text = component.read_text()
-          old = '<p>STEP 1</p>\n               <h2>Launch token</h2>'
-          new = '<p>STEP 1 · PREPARE LAUNCH DATA</p>\n               <h2>Launch token</h2>'
+          old = '<p>STEP 1</p>'
+          new = '<p>STEP 1 · Prepare launch data</p>'
           if old not in text:
-              raise SystemExit('Expected desktop launch heading was not found')
+              raise SystemExit('Expected desktop launch step label was not found')
           component.write_text(text.replace(old, new, 1))
           PY
 
