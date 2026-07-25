@@ -8,6 +8,9 @@ import { getPublicGeneratedSiteBySlug } from "@/lib/server/public-generated-site
 import { decodeArtworkDataUrl } from "@/lib/server/public-site-artwork";
 import { validateSlug } from "@/lib/slug";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type PublicSiteRouteParams = { slug: string };
 type PublicSiteRouteProps = { params: Promise<PublicSiteRouteParams> };
 

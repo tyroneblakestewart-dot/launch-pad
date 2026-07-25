@@ -1,0 +1,84 @@
+import type { PublicGeneratedSite } from "@/lib/public-site";
+import type { PublishChallenge } from "@/lib/server/publish-auth";
+import type { PublishableSite } from "@/lib/server/published-site-validation";
+import { createPostgresPublishStore } from "@/lib/server/postgres-publish-store";
+
+export type CreatePublishChallengeInput = {
+  nonceHash: string;
+  walletAddress: string;
+  slug: string;
+  walletChainId: number;
+  sitePayloadHash: string;
+  issuedAt: Date;
+  expiresAt: Date;
+};
+
+export type PublishWithChallengeInput = {
+  challengeId: string;
+  nonceHash: string;
+  sitePayloadHash: string;
+  site: PublishableSite;
+};
+
+export type PublishStoreResult =
+  | { status: "published"; site: PublicGeneratedSite; ownerWalletAddress: string }
+  | { status: "nonce_not_found" }
+  | { status: "nonce_expired" }
+  | { status: "nonce_replayed" }
+  | { status: "nonce_mismatch" }
+  | { status: "invalid_signature" }
+  | { status: "slug_conflict" };
+
+export type PublishSignatureVerifier = (challenge: PublishChallenge) => Promise<boolean>;
+
+export interface PublishStore {
+  createChallenge(input: CreatePublishChallengeInput): Promise<PublishChallenge>;
+  publishWithChallenge(
+    input: PublishWithChallengeInput,
+    verifySignature: PublishSignatureVerifier,
+  ): Promise<PublishStoreResult>;
+  getBySlug(slug: string): Promise<PublicGeneratedSite | null>;
+}
+
+export class PublishStoreUnavailableError extends Error {
+  constructor() {
+    super("DATABASE_URL is not configured for durable publishing.");
+    this.name = "PublishStoreUnavailableError";
+  }
+}
+
+const unconfiguredStore: PublishStore = {
+  async createChallenge() {
+    throw new PublishStoreUnavailableError();
+  },
+  async publishWithChallenge() {
+    throw new PublishStoreUnavailableError();
+  },
+  async getBySlug() {
+    return null;
+  },
+};
+
+let testStore: PublishStore | null = null;
+let productionStore: PublishStore | null = null;
+let productionDatabaseUrl = "";
+
+export function setPublishStoreForTests(store: PublishStore): void {
+  testStore = store;
+}
+
+export function resetPublishStoreForTests(): void {
+  testStore = null;
+}
+
+export function getPublishStore(): PublishStore {
+  if (testStore) return testStore;
+
+  const databaseUrl = process.env.DATABASE_URL?.trim() || "";
+  if (!databaseUrl) return unconfiguredStore;
+  if (!productionStore || productionDatabaseUrl !== databaseUrl) {
+    productionStore = createPostgresPublishStore(databaseUrl);
+    productionDatabaseUrl = databaseUrl;
+  }
+  return productionStore;
+}

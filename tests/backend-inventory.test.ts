@@ -32,6 +32,8 @@ describe("backend test inventory", () => {
       "app/api/generate-site-page/route.ts",
       "app/api/generate-site-style/route.ts",
       "app/api/generation-status/route.ts",
+      "app/api/publish/challenge/route.ts",
+      "app/api/publish/route.ts",
       "app/api/social/telegram/route.ts",
     ]);
 
@@ -50,6 +52,8 @@ describe("backend test inventory", () => {
       "app/api/generate-site-page/route.ts": ["POST"],
       "app/api/generate-site-style/route.ts": ["POST"],
       "app/api/generation-status/route.ts": ["GET"],
+      "app/api/publish/challenge/route.ts": ["POST"],
+      "app/api/publish/route.ts": ["POST"],
       "app/api/social/telegram/route.ts": ["POST"],
     });
   });
@@ -65,8 +69,13 @@ describe("backend test inventory", () => {
       "lib/server/api-protection.ts",
       "lib/server/dexscreener.ts",
       "lib/server/generate-site-style.ts",
+      "lib/server/postgres-publish-store.ts",
+      "lib/server/postgres.ts",
       "lib/server/public-generated-sites.ts",
       "lib/server/public-site-artwork.ts",
+      "lib/server/publish-auth.ts",
+      "lib/server/publish-store.ts",
+      "lib/server/published-site-validation.ts",
       "lib/server/telegram.ts",
     ]);
   });

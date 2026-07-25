@@ -3,20 +3,41 @@ import { timingSafeEqual } from "node:crypto";
 export const GENERATE_SITE_STYLE_HEADER = "x-hoodlums-api-key";
 export const GENERATE_SITE_STYLE_LIMIT = 10;
 export const GENERATE_SITE_STYLE_WINDOW_MS = 60 * 60 * 1000;
+export const PUBLISH_CHALLENGE_LIMIT = 20;
+export const PUBLISH_SITE_LIMIT = 10;
+export const PUBLISH_WINDOW_MS = 60 * 60 * 1000;
 
 type RateRecord = { count: number; resetAt: number };
 type RateStore = Map<string, RateRecord>;
 
 type GlobalWithRateStore = typeof globalThis & {
   __hoodlumsGenerateSiteStyleRateStore?: RateStore;
+  __hoodlumsPublishChallengeRateStore?: RateStore;
+  __hoodlumsPublishSiteRateStore?: RateStore;
 };
 
-function rateStore(): RateStore {
+function generateRateStore(): RateStore {
   const globalScope = globalThis as GlobalWithRateStore;
   if (!globalScope.__hoodlumsGenerateSiteStyleRateStore) {
     globalScope.__hoodlumsGenerateSiteStyleRateStore = new Map();
   }
   return globalScope.__hoodlumsGenerateSiteStyleRateStore;
+}
+
+function publishChallengeRateStore(): RateStore {
+  const globalScope = globalThis as GlobalWithRateStore;
+  if (!globalScope.__hoodlumsPublishChallengeRateStore) {
+    globalScope.__hoodlumsPublishChallengeRateStore = new Map();
+  }
+  return globalScope.__hoodlumsPublishChallengeRateStore;
+}
+
+function publishSiteRateStore(): RateStore {
+  const globalScope = globalThis as GlobalWithRateStore;
+  if (!globalScope.__hoodlumsPublishSiteRateStore) {
+    globalScope.__hoodlumsPublishSiteRateStore = new Map();
+  }
+  return globalScope.__hoodlumsPublishSiteRateStore;
 }
 
 function safeEqual(left: string, right: string): boolean {
@@ -40,14 +61,13 @@ export function isGenerateSiteStyleRequestAuthorised(
   return Boolean(sharedSecret && allowedOrigin && safeEqual(suppliedSecret, sharedSecret) && origin === allowedOrigin);
 }
 
-export function consumeGenerateSiteStyleRateLimit(ip: string, now = Date.now()) {
-  const store = rateStore();
+function consumeRateLimit(store: RateStore, ip: string, limit: number, windowMs: number, now: number) {
   const current = store.get(ip);
   const record = !current || current.resetAt <= now
-    ? { count: 0, resetAt: now + GENERATE_SITE_STYLE_WINDOW_MS }
+    ? { count: 0, resetAt: now + windowMs }
     : current;
 
-  if (record.count >= GENERATE_SITE_STYLE_LIMIT) {
+  if (record.count >= limit) {
     return {
       allowed: false,
       remaining: 0,
@@ -60,12 +80,47 @@ export function consumeGenerateSiteStyleRateLimit(ip: string, now = Date.now()) 
   store.set(ip, record);
   return {
     allowed: true,
-    remaining: GENERATE_SITE_STYLE_LIMIT - record.count,
+    remaining: limit - record.count,
     resetAt: record.resetAt,
     retryAfterSeconds: 0,
   };
 }
 
+export function consumeGenerateSiteStyleRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(
+    generateRateStore(),
+    ip,
+    GENERATE_SITE_STYLE_LIMIT,
+    GENERATE_SITE_STYLE_WINDOW_MS,
+    now,
+  );
+}
+
+export function consumePublishChallengeRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(
+    publishChallengeRateStore(),
+    ip,
+    PUBLISH_CHALLENGE_LIMIT,
+    PUBLISH_WINDOW_MS,
+    now,
+  );
+}
+
+export function consumePublishSiteRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(
+    publishSiteRateStore(),
+    ip,
+    PUBLISH_SITE_LIMIT,
+    PUBLISH_WINDOW_MS,
+    now,
+  );
+}
+
 export function resetGenerateSiteStyleRateLimitForTests() {
-  rateStore().clear();
+  generateRateStore().clear();
+}
+
+export function resetPublishRateLimitsForTests() {
+  publishChallengeRateStore().clear();
+  publishSiteRateStore().clear();
 }

@@ -16,7 +16,7 @@ The application is intentionally **testnet-first**. It does not offer an unatten
 - Preview the generated page in an isolated frame and automatically show a Dexscreener chart when a trading pair is found for the saved contract address.
 - Detect compatible injected wallets while keeping signing and approvals in the wallet.
 
-Project records and generated-site state are local to the current browser; cross-device accounts and hosted project synchronization are not active yet.
+Private project records and draft generated-site state remain local to the current browser; cross-device accounts and hosted private-draft synchronization are not active. A project becomes durable only when its generated site is explicitly published through the signed server endpoint described below.
 
 ### Artwork-driven site generation
 
@@ -135,30 +135,44 @@ The `/social` route loads saved projects and provides reusable launch, contract-
 
 The `/account` route previews planned Google, GitHub, X, MetaMask, Rabby, and Phantom account options. These controls are currently disabled; wallet connections inside individual launch tools continue to work independently.
 
-### Public generated token site (route + renderer only — not yet publishable)
+### Durable public generated-token sites
 
-`app/[slug]/page.tsx` is a root dynamic route so a persisted project would be servable at `https://hoodlums.dev/<slug>`. It is a **complete route, renderer, validation and metadata scaffold with no durable backend behind it yet** — see the honesty note below before assuming anything is publicly live.
+Published generated sites are stored in Postgres through the server-only `DATABASE_URL` connection. The browser never receives that connection string, and the application does not create login sessions or user accounts.
 
-- **Data contract:** `lib/public-site.ts` defines `PublicGeneratedSite` (slug, token name/ticker/description/supply/decimals/chain, artwork, generated HTML, optional contract address/X/Telegram, status, timestamps) and a pure `buildPublicGeneratedSiteFromProject()` mapper from a saved `TokenProject`.
-- **Repository boundary:** `lib/server/public-generated-sites.ts` exposes `getPublicGeneratedSiteBySlug(slug)`. No durable store exists, so the default adapter always returns no record — it deliberately does not fall back to an in-memory `Map` or browser storage, because that would look like persistence without surviving a restart or being shared across serverless instances. `setPublicGeneratedSiteAdapter()` lets tests inject a fixture; production code has nothing to inject yet.
-- **Rendering:** the route loads only through that repository boundary (never `localStorage`), validates the path slug, and calls `notFound()` for an unknown, invalid, or missing record. When a record exists with complete, validated generated HTML and artwork, it renders that HTML sandboxed in a client iframe (`components/public-site-frame.tsx`, reusing `lib/generated-site-page.ts`'s existing validation/CSP/`postMessage` height bridge — never raw `dangerouslySetInnerHTML`). Otherwise it renders a safe plain-token-details fallback (`components/public-token-fallback.tsx`) instead of crashing or serving corrupt HTML.
-- **Metadata and artwork/OG image:** `generateMetadata` returns a title with the token name/ticker, the token description, a canonical `https://hoodlums.dev/<slug>` URL, and Open Graph/Twitter metadata. The image is an HTTP-fetchable endpoint, `app/[slug]/artwork/route.ts`, not a `data:` URL in metadata — it re-validates the record and artwork MIME type and returns `404` (no body) for anything missing or invalid, and metadata for an unknown/invalid slug is `{}` rather than crashing.
-- **Dexscreener:** when the record has a non-empty contract address, the page shows `components/public-dexscreener-section.tsx`, which calls the existing `/api/dexscreener-pair` endpoint (via the new shared `lib/dexscreener-client.ts` helper, also now used by the studio's own Dexscreener section) and falls back to the same safe empty state when no pair is found. No contract address means the section is omitted entirely.
+- **Database:** `db/migrations/001_public_publishing.sql` creates `published_sites` and `wallet_nonces`. `published_sites.slug` has a database-level unique constraint, so simultaneous requests cannot claim the same path. Generated HTML is capped at 90,000 UTF-8 bytes; artwork is validated by MIME type and magic bytes, capped at 6 MB decoded and 8.1 MB as the stored data-URL reference.
+- **Wallet proof:** `POST /api/publish/challenge` creates a cryptographically random nonce, stores only its SHA-256 hash, and returns a five-minute message challenge bound to the exact wallet, slug, wallet chain ID, domain, URI, request ID, expiry, and `publish_generated_site` purpose. The signature is a message signature only—no transaction and no gas.
+- **Publish write:** `POST /api/publish` accepts the challenge ID, raw nonce, signature, and site payload. The server locks the nonce row, verifies the EVM signature, rejects expired or replayed challenges, consumes a valid nonce once, sanitises and validates the generated page/artwork, then inserts the site. The owner wallet address comes only from the verified challenge; a client-supplied owner address is rejected.
+- **Public read:** `app/[slug]/page.tsx` reads the durable record on every request. Known slugs render in the existing sandboxed iframe with strict CSP and a second sanitisation pass; unknown or invalid slugs keep returning a proper 404. `app/[slug]/artwork/route.ts` serves the validated artwork for Open Graph/Twitter metadata.
+- **Rate limiting:** challenge creation and publishing have separate per-IP fixed-window limits in addition to signature verification. These are friction controls, not proof that one wallet or IP equals one person.
+
+Publishing is currently an API workflow; no new publish button or account screen is added by this backend milestone. A client should request a challenge, ask the selected wallet to sign the returned exact `message`, then submit the resulting signature and site payload to `/api/publish`.
+
+#### Database setup
+
+Use the Supabase Postgres connection string only through the server environment:
+
+```bash
+DATABASE_URL=postgresql://...              # server only; never NEXT_PUBLIC_
+PUBLISH_ALLOWED_ORIGIN=https://hoodlums.dev # optional; falls back to the generation origin or request origin
+npm run db:migrate
+```
+
+The migration command reads `DATABASE_URL`, applies every SQL file in `db/migrations` in filename order, and never prints the connection string. Apply the migration deliberately before enabling the first production publish. This PR intentionally does not run production migrations automatically.
 
 ### Slug rules
 
-`lib/slug.ts` is the single source of truth for website-path rules, shared by the studio save flow and the public route:
+`lib/slug.ts` is the single source of truth for website-path rules, shared by the studio save flow, publish endpoint, and public route:
 
 - lowercase ASCII letters, digits and single hyphens only;
-- 48 characters maximum (unchanged from the previous limit);
+- 48 characters maximum;
 - no leading/trailing hyphen, no repeated hyphens;
 - reserved and rejected outright: `api`, `account`, `testnet`, `providers`, `allocations`, `liquidity-lab`, `monad`, `social`, `bonding-curve`, `admin`, `www`.
 
-At save time, `components/token-studio.tsx` rejects an invalid or reserved slug and a slug that collides with another locally saved project (excluding the project being edited), leaving the form open and the notice bar showing the reason instead of silently saving or overwriting the other project. The website-path field now shows the real `hoodlums.dev/` prefix. **This collision check only sees projects saved in the same browser** — it is a local UX guard, not a uniqueness guarantee. The future publish endpoint must still perform its own atomic, server-side unique-slug constraint.
+The browser-local collision check remains a convenience, while the authoritative uniqueness guarantee is the Postgres `published_sites_slug_unique` constraint.
 
-### Capturing the generated design for a future publish
+### Capturing the generated design for publishing
 
-`TokenProject` gained optional `generatedSiteHtml`/`generatedSiteVersion` fields. The studio listens for the existing `launchpad:site-generated` event (now carrying the validated HTML from `FullWebsiteGenerator`), re-validates it, and stores it on the current project when saved — without scraping the DOM. Changing the token name, ticker, or artwork clears the captured HTML so one token's saved project can never accidentally carry another token's generated page. This is only local capture; nothing is published anywhere yet.
+`TokenProject` stores optional `generatedSiteHtml`/`generatedSiteVersion` fields. The studio listens for `launchpad:site-generated`, re-validates the generated HTML, and stores it with the local project without scraping the DOM. Changing token identity details clears stale captured HTML. The signed publish endpoint persists only a validated, sanitised copy of the submitted site.
 
 ## Routes
 
@@ -173,17 +187,21 @@ At save time, `components/token-studio.tsx` rejects an invalid or reserved slug 
 | `/monad` | Monad Testnet ERC-20 deployment | Test-only |
 | `/social` | X handoff and Telegram publishing workspace | Available |
 | `/account` | Account-provider interface preview | Coming later |
-| `/[slug]` | Public generated token site (route, renderer, metadata and OG image) | Route/renderer complete; not publishable — no durable store or publish write path yet |
+| `/api/publish/challenge` | Create a short-lived single-use wallet message challenge | Available after `DATABASE_URL` and migration setup |
+| `/api/publish` | Verify the signature and atomically publish a generated site | Available after `DATABASE_URL` and migration setup |
+| `/[slug]` | Public generated token site, metadata, artwork and Dexscreener section | Reads durable published records; unknown slugs 404 |
 
 ## Safety model and limitations
 
 - The application never requests or stores a seed phrase or private key.
-- Blockchain transactions require explicit approval in the connected wallet.
+- Publishing uses a per-request EVM message signature; it creates no login session and sends no blockchain transaction.
+- Blockchain transactions elsewhere require explicit approval in the connected wallet.
 - Mainnet deployment is not exposed by the studio or test lab.
 - Testnet actions spend test ETH, test MON, or devnet SOL and do not create a market by themselves.
-- Browser-local project data is not an encrypted vault or a hosted backup.
-- The platform does not yet provide hosted image/metadata storage, automatic site publishing, domains, audited vesting, or production liquidity management.
-- The `/[slug]` public route, its renderer, its data contract and its local slug validation are complete, but no generated site is actually publicly reachable yet: the repository boundary's default adapter always returns no record, so every slug 404s until a durable store, an authenticated/authorised publish write path, and an atomic server-side unique-slug constraint are added. No user accounts were added as part of this.
+- Private project drafts remain browser-local and are not an encrypted vault or hosted backup.
+- Only explicitly published site records are durable. There is no account-based dashboard, private cross-device draft sync, ownership transfer, update, or deletion flow in this milestone.
+- Artwork is stored as a validated, size-capped data-URL reference in Postgres for this milestone; dedicated object storage is not yet implemented.
+- The publish signature proves control of the selected EVM wallet for that one request. Wallet addresses are free to create, so this is authorisation for a site—not proof of a unique human identity.
 - Contracts and test liquidity tooling should be independently reviewed before any production use.
 
 ## Development
