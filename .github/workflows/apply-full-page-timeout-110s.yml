@@ -1,0 +1,133 @@
+name: Apply full-page timeout fix
+
+on:
+  push:
+    branches:
+      - fix/full-page-timeout-110s
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/full-page-timeout-110s
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+          cache: npm
+
+      - name: Apply narrow timeout and duplicate-vision fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          route = Path("app/api/generate-site-page/route.ts")
+          route_text = route.read_text()
+          replacements = {
+              'export const maxDuration = 120;': 'export const maxDuration = 180;',
+              'export const FULL_PAGE_GENERATION_TIMEOUT_MS = 70_000;': 'export const FULL_PAGE_GENERATION_TIMEOUT_MS = 110_000;',
+          }
+          for old, new in replacements.items():
+              if old not in route_text:
+                  raise SystemExit(f"Expected route text not found: {old}")
+              route_text = route_text.replace(old, new, 1)
+          route.write_text(route_text)
+
+          pipeline = Path("lib/site-page-openai-pipeline.ts")
+          pipeline_text = pipeline.read_text()
+          old_comment = '''    // The identity has already been analysed in the previous stage. Minimal
+              // reasoning and a low-detail reference reduce Gateway latency while the
+              // verified brief remains the authoritative design source.'''
+          new_comment = '''    // The identity has already been analysed in the previous stage. Minimal
+              // reasoning and the verified text brief avoid a duplicate vision pass in
+              // the expensive full-page call.'''
+          if old_comment not in pipeline_text:
+              raise SystemExit("Expected final-stage reasoning comment was not found")
+          pipeline_text = pipeline_text.replace(old_comment, new_comment, 1)
+
+          old_user = '''      {
+                  role: "user",
+                  content: [
+                    { type: "input_text", text: userPrompt },
+                    { type: "input_image", image_url: request.imageDataUrl, detail: "low" },
+                  ],
+                },'''
+          new_user = '''      {
+                  role: "user",
+                  content: [{ type: "input_text", text: userPrompt }],
+                },'''
+          if old_user not in pipeline_text:
+              raise SystemExit("Expected duplicate final-stage image input was not found")
+          pipeline_text = pipeline_text.replace(old_user, new_user, 1)
+
+          old_rule = '    "- Artwork owns the page identity: palette, imagery, subject treatment, emotional tone, visual motifs and copy personality.",'
+          new_rule = '\n'.join([
+              '    "- Artwork owns the page identity: palette, imagery, subject treatment, emotional tone, visual motifs and copy personality.",',
+              '    "- The verified artwork identity below is authoritative. Do not request, infer or wait for another image-analysis pass.",',
+          ])
+          if old_rule not in pipeline_text:
+              raise SystemExit("Expected artwork identity rule was not found")
+          pipeline_text = pipeline_text.replace(old_rule, new_rule, 1)
+          pipeline.write_text(pipeline_text)
+          PY
+
+          cat > tests/full-page-generation-timeout-budget.test.ts <<'EOF'
+          import { readFile } from "node:fs/promises";
+          import path from "node:path";
+          import { describe, expect, it } from "vitest";
+          import {
+            FULL_PAGE_GENERATION_TIMEOUT_MS,
+            maxDuration,
+          } from "@/app/api/generate-site-page/route";
+
+          const ROOT = process.cwd();
+
+          describe("full-page generation timeout budget", () => {
+            it("allows one long Gateway response without an automatic retry", async () => {
+              expect(maxDuration).toBe(180);
+              expect(FULL_PAGE_GENERATION_TIMEOUT_MS).toBe(110_000);
+              expect(FULL_PAGE_GENERATION_TIMEOUT_MS).toBeLessThan(maxDuration * 1_000);
+
+              const pipeline = await readFile(
+                path.join(ROOT, "lib", "site-page-openai-pipeline.ts"),
+                "utf8",
+              );
+              const finalStage = pipeline.slice(
+                pipeline.indexOf("export function buildGeneratedSitePageRequestBody"),
+              );
+
+              expect(finalStage).toContain('reasoning: { effort: "minimal" }');
+              expect(finalStage).toContain("max_output_tokens: 10_000");
+              expect(finalStage).toContain("VERIFIED ARTWORK IDENTITY");
+              expect(finalStage).not.toContain('type: "input_image"');
+            });
+          });
+          EOF
+
+          rm .github/workflows/apply-full-page-timeout-110s.yml
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Commit verified fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/api/generate-site-page/route.ts lib/site-page-openai-pipeline.ts tests/full-page-generation-timeout-budget.test.ts .github/workflows/apply-full-page-timeout-110s.yml
+          git commit -m "Allow full-page AI generation up to 110 seconds"
+          git push origin HEAD:fix/full-page-timeout-110s
