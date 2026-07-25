@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/generate-site-page/route";
 import { ARTWORK_PLACEHOLDER } from "@/lib/generated-site-page";
+import { NO_URL_PRESENTATION_BRIEF } from "@/lib/site-page-openai-pipeline";
 import {
   getFusionBriefIds,
   type ArtworkIdentity,
@@ -43,6 +44,17 @@ function outputText(value: unknown) {
   );
 }
 
+function incompleteResponse(reason = "max_output_tokens") {
+  return new Response(
+    JSON.stringify({
+      status: "incomplete",
+      incomplete_details: { reason },
+      output: [],
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
 function inspirationResponse() {
   return new Response(
     JSON.stringify({
@@ -65,6 +77,7 @@ describe("POST /api/generate-site-page", () => {
     delete process.env.GENERATE_SITE_STYLE_SHARED_SECRET;
     delete process.env.GENERATE_SITE_STYLE_ALLOWED_ORIGIN;
     vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -98,6 +111,8 @@ describe("POST /api/generate-site-page", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
     const artworkRequest = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)) as {
+      max_output_tokens: number;
+      reasoning: { effort: string };
       text: { format: { schema: unknown } };
     };
     const finalRequest = JSON.parse(String((fetchMock.mock.calls[2][1] as RequestInit).body)) as {
@@ -105,6 +120,8 @@ describe("POST /api/generate-site-page", () => {
       input: Array<{ content: Array<{ type: string; text?: string; image_url?: string }> }>;
       text: { format: { schema: unknown } };
     };
+    expect(artworkRequest.max_output_tokens).toBe(1_500);
+    expect(artworkRequest.reasoning).toEqual({ effort: "minimal" });
     expect(finalRequest.max_output_tokens).toBe(10_000);
     expect(finalRequest.input[0].content[0].text).toContain("Artwork owns the page identity");
     expect(finalRequest.input[0].content[0].text).toContain("bright, spacious discovery experience");
@@ -117,6 +134,65 @@ describe("POST /api/generate-site-page", () => {
     expect(JSON.stringify(artworkRequest.text.format.schema)).not.toMatch(/minLength|maxLength|pattern/);
     expect(JSON.stringify(finalRequest.text.format.schema)).not.toMatch(/minLength|maxLength|pattern/);
     expect(JSON.stringify(finalRequest)).not.toContain("initiate_heist");
+  });
+
+  it("retries one incomplete artwork response and continues when the retry is valid", async () => {
+    const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(incompleteResponse())
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(outputText({ html: html(), ...ids }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request({
+        name: "Journey",
+        ticker: "RIDE",
+        description: "A community token inspired by finding your route through London.",
+        imageDataUrl: VALID_IMAGE,
+        inspirationUrl: "",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ source: "openai", inspirationUsed: false });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(console.warn).toHaveBeenCalledWith(
+      "AI artwork identity response was incomplete; retrying once",
+      expect.stringContaining("max_output_tokens"),
+    );
+  });
+
+  it("returns a truthful error after two incomplete artwork analyses", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(incompleteResponse("max_output_tokens"))
+      .mockResolvedValueOnce(outputText({ dominantColours: "too short" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request({
+        name: "Journey",
+        ticker: "RIDE",
+        description: "A community token inspired by finding your route through London.",
+        imageDataUrl: VALID_IMAGE,
+        inspirationUrl: "",
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body.error).toContain("incomplete artwork analysis twice");
+    expect(body.error).toContain("artwork has not been rejected");
+    expect(body.providerError).toMatchObject({
+      stage: "page-artwork-analysis-parse",
+      kind: "invalid",
+      status: null,
+    });
+    expect(body.providerError.detail).toContain("max_output_tokens");
+    expect(body.providerError.detail).toContain("attempt 2");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("rejects a retail-inspired result that falls back to terminal and heist styling", async () => {
