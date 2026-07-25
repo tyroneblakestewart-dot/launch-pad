@@ -10,6 +10,12 @@ export const PUBLISH_WINDOW_MS = 60 * 60 * 1000;
 type RateRecord = { count: number; resetAt: number };
 type RateStore = Map<string, RateRecord>;
 
+type GenerateSiteProtectionEnvironment = {
+  VERCEL_ENV?: string;
+  VERCEL_URL?: string;
+  VERCEL_BRANCH_URL?: string;
+};
+
 type GlobalWithRateStore = typeof globalThis & {
   __hoodlumsGenerateSiteStyleRateStore?: RateStore;
   __hoodlumsPublishChallengeRateStore?: RateStore;
@@ -46,6 +52,46 @@ function safeEqual(left: string, right: string): boolean {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+function normaliseAbsoluteOrigin(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password) return null;
+    if (url.pathname !== "/" || url.search || url.hash) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function normaliseVercelSystemOrigin(value: string | undefined): string | null {
+  const host = value
+    ?.trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "");
+  if (!host || !/^[a-z0-9.-]+(?::\d+)?$/i.test(host)) return null;
+  return `https://${host.toLowerCase()}`;
+}
+
+export function getGenerateSiteAllowedOrigins(
+  allowedOrigin: string,
+  environment: GenerateSiteProtectionEnvironment = process.env,
+): string[] {
+  const origins = new Set<string>();
+  const configuredOrigin = normaliseAbsoluteOrigin(allowedOrigin);
+  if (configuredOrigin) origins.add(configuredOrigin);
+
+  if (environment.VERCEL_ENV === "preview") {
+    const deploymentOrigin = normaliseVercelSystemOrigin(environment.VERCEL_URL);
+    const branchOrigin = normaliseVercelSystemOrigin(environment.VERCEL_BRANCH_URL);
+    if (deploymentOrigin) origins.add(deploymentOrigin);
+    if (branchOrigin) origins.add(branchOrigin);
+  }
+
+  return [...origins];
+}
+
 export function getClientIp(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   return forwarded || request.headers.get("x-real-ip")?.trim() || "unknown";
@@ -55,10 +101,17 @@ export function isGenerateSiteStyleRequestAuthorised(
   request: Request,
   sharedSecret: string,
   allowedOrigin: string,
+  environment: GenerateSiteProtectionEnvironment = process.env,
 ): boolean {
   const suppliedSecret = request.headers.get(GENERATE_SITE_STYLE_HEADER) || "";
-  const origin = request.headers.get("origin") || "";
-  return Boolean(sharedSecret && allowedOrigin && safeEqual(suppliedSecret, sharedSecret) && origin === allowedOrigin);
+  const requestOrigin = normaliseAbsoluteOrigin(request.headers.get("origin") || undefined);
+  const allowedOrigins = getGenerateSiteAllowedOrigins(allowedOrigin, environment);
+  return Boolean(
+    sharedSecret &&
+      requestOrigin &&
+      safeEqual(suppliedSecret, sharedSecret) &&
+      allowedOrigins.includes(requestOrigin),
+  );
 }
 
 function consumeRateLimit(store: RateStore, ip: string, limit: number, windowMs: number, now: number) {
