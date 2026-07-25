@@ -18,11 +18,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Capture targeted test output
+      - name: Capture full test output
         shell: bash
         run: |
           set +e
-          npx vitest run tests/generate-site-page.test.ts > ai-retry-test-output.txt 2>&1
+          npm test > ai-retry-test-output.txt 2>&1
           status=$?
           printf '\nEXIT_STATUS=%s\n' "$status" >> ai-retry-test-output.txt
           exit 0
