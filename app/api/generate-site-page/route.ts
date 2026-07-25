@@ -12,6 +12,7 @@ import {
   extractVerifiedInspirationAnalysis,
   getFusionBriefIds,
   parseArtworkIdentityResponse,
+  type ArtworkIdentity,
 } from "@/lib/site-style-openai-pipeline";
 import {
   NO_URL_PRESENTATION_BRIEF,
@@ -33,7 +34,7 @@ import {
 } from "@/lib/server/ai-responses-runtime";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 type OpenAIRequestFailure = {
   ok: false;
@@ -46,12 +47,21 @@ type OpenAIRequestResult =
   | { ok: true; payload: OpenAIResponse }
   | OpenAIRequestFailure;
 
+type ArtworkIdentityRequestResult =
+  | { ok: true; identity: ArtworkIdentity }
+  | { ok: false; stage: string; failure: OpenAIRequestFailure };
+
 type ProviderError = {
   stage: string;
   provider: AIResponsesRuntime["source"];
   kind: OpenAIRequestFailure["kind"];
   status: number | null;
   detail: string | null;
+};
+
+type OpenAIResponseMetadata = OpenAIResponse & {
+  status?: unknown;
+  incomplete_details?: { reason?: unknown } | null;
 };
 
 function noStoreHeaders(extra: Record<string, string> = {}) {
@@ -62,7 +72,7 @@ function sanitiseProviderDetail(value: unknown): string {
   const text = typeof value === "string" ? value : value instanceof Error ? value.message : String(value || "");
   return text
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
-    .replace(/(?:api[_-]?key|token)([\"'\s:=]+)[A-Za-z0-9._~+/=-]+/gi, "credential$1[redacted]")
+    .replace(/(?:api[_-]?key|token)(["'\s:=]+)[A-Za-z0-9._~+/=-]+/gi, "credential$1[redacted]")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 500);
@@ -80,6 +90,18 @@ function providerError(
     status: failure.status ?? null,
     detail: failure.detail || null,
   };
+}
+
+function artworkParseDetail(payload: OpenAIResponse, attempt: number): string {
+  const metadata = payload as OpenAIResponseMetadata;
+  const reason = metadata.incomplete_details?.reason;
+  if (metadata.status === "incomplete") {
+    const suffix = typeof reason === "string" && reason.trim()
+      ? ` because ${reason.trim()}`
+      : "";
+    return `Artwork analysis attempt ${attempt} returned an incomplete response${suffix}.`;
+  }
+  return `Artwork analysis attempt ${attempt} completed but did not match the required seven-field identity object.`;
 }
 
 async function requestOpenAI(
@@ -120,6 +142,38 @@ async function requestOpenAI(
   } catch (error) {
     return { ok: false, kind: "invalid", detail: sanitiseProviderDetail(error) };
   }
+}
+
+async function requestArtworkIdentity(
+  ai: AIResponsesRuntime,
+  body: unknown,
+): Promise<ArtworkIdentityRequestResult> {
+  const parseDetails: string[] = [];
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const stage = attempt === 1 ? "page-artwork-analysis" : "page-artwork-analysis-retry";
+    const result = await requestOpenAI(ai, body, 18_000, stage);
+    if (!result.ok) return { ok: false, stage, failure: result };
+
+    const identity = parseArtworkIdentityResponse(result.payload);
+    if (identity) return { ok: true, identity };
+
+    const detail = artworkParseDetail(result.payload, attempt);
+    parseDetails.push(detail);
+    if (attempt === 1) {
+      console.warn("AI artwork identity response was incomplete; retrying once", detail);
+    }
+  }
+
+  return {
+    ok: false,
+    stage: "page-artwork-analysis-parse",
+    failure: {
+      ok: false,
+      kind: "invalid",
+      detail: sanitiseProviderDetail(parseDetails.join(" ")),
+    },
+  };
 }
 
 export async function POST(request: Request) {
@@ -203,37 +257,25 @@ export async function POST(request: Request) {
     : null;
 
   const [artworkResult, inspirationResult] = await Promise.all([
-    requestOpenAI(ai, artworkBody, 18_000, "page-artwork-analysis"),
+    requestArtworkIdentity(ai, artworkBody),
     inspirationBody
       ? requestOpenAI(ai, inspirationBody, 18_000, "page-inspiration-analysis")
       : Promise.resolve<OpenAIRequestResult>({ ok: true, payload: {} }),
   ]);
 
   if (!artworkResult.ok) {
+    const parseFailure = artworkResult.failure.kind === "invalid";
     return NextResponse.json(
       {
-        error: "The uploaded artwork could not be analysed. Re-upload it and try again.",
-        providerError: providerError("page-artwork-analysis", ai, artworkResult),
+        error: parseFailure
+          ? "The AI returned an incomplete artwork analysis twice. Try generating again in a moment. Your artwork has not been rejected."
+          : "The AI artwork-analysis service could not complete the request. Try again later; your artwork has not been rejected.",
+        providerError: providerError(artworkResult.stage, ai, artworkResult.failure),
       },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
-  const artworkIdentity = parseArtworkIdentityResponse(artworkResult.payload);
-  if (!artworkIdentity) {
-    return NextResponse.json(
-      {
-        error: "The uploaded artwork did not produce a complete visual identity analysis.",
-        providerError: {
-          stage: "page-artwork-analysis-parse",
-          provider: ai.source,
-          kind: "invalid",
-          status: null,
-          detail: "The provider response was successful but did not match the required artwork identity object.",
-        },
-      },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
-  }
+  const artworkIdentity = artworkResult.identity;
 
   let inspirationAnalysis = NO_URL_PRESENTATION_BRIEF;
   if (input.inspirationUrl) {

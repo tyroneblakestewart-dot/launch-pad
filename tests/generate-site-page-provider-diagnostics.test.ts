@@ -46,7 +46,8 @@ describe("POST /api/generate-site-page provider diagnostics", () => {
     const body = await response.json();
 
     expect(response.status).toBe(502);
-    expect(body.error).toContain("artwork could not be analysed");
+    expect(body.error).toContain("artwork-analysis service could not complete");
+    expect(body.error).toContain("artwork has not been rejected");
     expect(body.providerError).toMatchObject({
       stage: "page-artwork-analysis",
       provider: "openai",
