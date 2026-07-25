@@ -115,6 +115,7 @@ export function ProviderLauncher() {
   const [tokenBalanceRaw, setTokenBalanceRaw] = useState<bigint | null>(null);
   const [balanceBeforeBuyRaw, setBalanceBeforeBuyRaw] = useState<bigint | null>(null);
   const [buyOpened, setBuyOpened] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -512,6 +513,12 @@ export function ProviderLauncher() {
   const providerProofFailed = Boolean(
     verification?.transactionHash && verification.factoryConfirmed === false,
   );
+  const launchReady = Boolean(
+    name.trim() &&
+    ticker.trim() &&
+    description.trim() &&
+    (!immediateBuyEnabled || isPositiveAmount(developerBuy)),
+  );
 
   return (
     <main className={styles.shell}>
@@ -559,12 +566,18 @@ export function ProviderLauncher() {
 
       <section className={styles.workspace}>
         <div className={styles.formPanel}>
-          <div className={styles.sectionHeading}>
-            <div><p>STEP 1</p><h2>Prepare launch data</h2></div>
+          <div className={`${styles.sectionHeading} ${styles.launchHeading}`}>
+            <div>
+              <p>STEP 1</p>
+              <h2>Launch token</h2>
+              <small className={styles.desktopIntro}>
+                Enter the core launch details, then review the live summary before opening the provider.
+              </small>
+            </div>
             <span>{provider.name}</span>
           </div>
 
-          <label>
+          <label className={styles.savedProjectField}>
             <span>Saved Robinhood project</span>
             <select value={selectedProjectId} onChange={(event) => chooseProject(event.target.value)}>
               <option value="">Manual launch pack</option>
@@ -576,25 +589,67 @@ export function ProviderLauncher() {
             </select>
           </label>
 
-          <div className={styles.twoColumns}>
-            <label><span>Name</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={32} /></label>
-            <label><span>Ticker</span><input value={ticker} onChange={(event) => setTicker(event.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10))} /></label>
+          <div className={`${styles.twoColumns} ${styles.tokenIdentityFields}`}>
+            <label>
+              <span>Name</span>
+              <input value={name} onChange={(event) => setName(event.target.value)} maxLength={32} />
+              <small className={styles.fieldHelp}>Up to 32 characters.</small>
+            </label>
+            <label>
+              <span>Ticker</span>
+              <input
+                value={ticker}
+                onChange={(event) =>
+                  setTicker(event.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10))
+                }
+              />
+              <small className={styles.fieldHelp}>Letters and numbers, up to 10.</small>
+            </label>
           </div>
 
-          <label><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={5} /></label>
-          <label><span>Website</span><input value={website} onChange={(event) => setWebsite(event.target.value)} placeholder="https://..." /></label>
+          <label className={styles.descriptionField}>
+            <span>Description</span>
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={5} />
+            <small className={styles.fieldHelp}>
+              A short, clear project description copied into the provider launch pack.
+            </small>
+          </label>
 
-          <div className={styles.twoColumns}>
+          <label
+            className={`${styles.websiteField} ${styles.desktopAdvancedField} ${advancedOpen ? styles.desktopAdvancedVisible : ""}`}
+          >
+            <span>Website</span>
+            <input value={website} onChange={(event) => setWebsite(event.target.value)} placeholder="https://..." />
+          </label>
+
+          <div className={`${styles.twoColumns} ${styles.socialFields}`}>
             <label><span>X profile</span><input value={xHandle} onChange={(event) => setXHandle(event.target.value)} placeholder="x.com/..." /></label>
             <label><span>Telegram</span><input value={telegram} onChange={(event) => setTelegram(event.target.value)} placeholder="t.me/..." /></label>
           </div>
 
-          <div className={styles.twoColumns}>
-            <label><span>Creator wallet</span><input value={creatorWallet} onChange={(event) => setCreatorWallet(event.target.value)} placeholder="0x..." /></label>
-            <label><span>Initial buy amount (ETH)</span><input value={developerBuy} onChange={(event) => setDeveloperBuy(event.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" /></label>
+          <div className={`${styles.twoColumns} ${styles.developerRow}`}>
+            <label
+              className={`${styles.desktopAdvancedField} ${advancedOpen ? styles.desktopAdvancedVisible : ""}`}
+            >
+              <span>Creator wallet</span>
+              <input value={creatorWallet} onChange={(event) => setCreatorWallet(event.target.value)} placeholder="0x..." />
+            </label>
+            <label>
+              <span>Developer buy</span>
+              <input
+                value={developerBuy}
+                onChange={(event) => setDeveloperBuy(event.target.value.replace(/[^0-9.]/g, ""))}
+                inputMode="decimal"
+              />
+              <small className={styles.fieldHelp}>
+                Initial creator-buy amount in test ETH. Existing provider rules still apply.
+              </small>
+            </label>
           </div>
 
-          <label className={styles.toggleRow}>
+          <label
+            className={`${styles.toggleRow} ${styles.desktopAdvancedField} ${advancedOpen ? styles.desktopAdvancedVisible : ""}`}
+          >
             <input
               type="checkbox"
               checked={immediateBuyEnabled}
@@ -606,7 +661,7 @@ export function ProviderLauncher() {
             </span>
           </label>
 
-          <label className={styles.artworkBox}>
+          <label className={`${styles.artworkBox} ${styles.artworkField}`}>
             <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleArtwork} />
             {artwork ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -615,13 +670,29 @@ export function ProviderLauncher() {
             <span>PNG, JPG or WEBP · provider limits may differ</span>
           </label>
 
-          <div className={styles.actionGrid}>
+          <button
+            type="button"
+            className={styles.desktopAdvancedToggle}
+            onClick={() => setAdvancedOpen((current) => !current)}
+            aria-expanded={advancedOpen}
+          >
+            <span>Advanced settings</span>
+            <b>{advancedOpen ? "−" : "+"}</b>
+          </button>
+
+          <div
+            className={`${styles.actionGrid} ${styles.desktopAdvancedField} ${advancedOpen ? styles.desktopAdvancedVisible : ""}`}
+          >
             <button onClick={copyLaunchPack}>Copy launch pack</button>
             <button onClick={downloadArtwork} disabled={!artwork}>Download artwork</button>
-            <button className={styles.launchButton} onClick={openProvider}>Launch on {provider.name} ↗</button>
+            <button className={`${styles.launchButton} ${styles.mobileLaunchButton}`} onClick={openProvider}>
+              Launch on {provider.name} ↗
+            </button>
           </div>
 
-          <div className={styles.copyRows}>
+          <div
+            className={`${styles.copyRows} ${styles.desktopAdvancedField} ${advancedOpen ? styles.desktopAdvancedVisible : ""}`}
+          >
             {[
               ["Name", name], ["Ticker", ticker.toUpperCase()], ["Description", description],
               ["Website", website], ["X profile", xHandle], ["Telegram", telegram],
@@ -633,9 +704,46 @@ export function ProviderLauncher() {
               </button>
             ))}
           </div>
+
+          <div className={styles.desktopLaunchMeta}>
+            <div><span>Network</span><b>Robinhood Chain Testnet</b></div>
+            <div><span>Provider</span><b>{provider.name}</b></div>
+            <div><span>Launch fee</span><b>Confirmed on provider</b></div>
+          </div>
+
+          <button
+            className={styles.desktopPrimaryLaunch}
+            onClick={openProvider}
+            disabled={!launchReady || busy}
+          >
+            Launch on {provider.name} ↗
+          </button>
         </div>
 
         <aside className={styles.verifyPanel}>
+          <div className={styles.desktopTokenSummary} aria-live="polite">
+            <p>LIVE TOKEN SUMMARY</p>
+            <div className={styles.summaryArtwork}>
+              {artwork ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={artwork} alt="Token summary artwork" />
+              ) : (
+                <span>{ticker.trim().slice(0, 1).toUpperCase() || "H"}</span>
+              )}
+            </div>
+            <div className={styles.summaryIdentity}>
+              <h2>{name.trim() || "Your token"}</h2>
+              <span>${ticker.trim().toUpperCase() || "TICKER"}</span>
+            </div>
+            <dl>
+              <div><dt>Launch fee</dt><dd>Confirmed on provider</dd></div>
+              <div><dt>Trading fee</dt><dd>Provider terms</dd></div>
+              <div><dt>Graduation target</dt><dd>Provider-managed</dd></div>
+              <div><dt>Liquidity</dt><dd>Provider-managed</dd></div>
+              <div><dt>Network</dt><dd>Robinhood testnet</dd></div>
+            </dl>
+          </div>
+
           <div className={styles.sectionHeading}>
             <div><p>STEP 2</p><h2>Verify and buy</h2></div>
           </div>
