@@ -1,0 +1,866 @@
+name: Apply desktop launch and bonding layout
+
+on:
+  push:
+    branches:
+      - feat/desktop-launch-bonding-layout
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/desktop-launch-bonding-layout
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+          cache: npm
+
+      - name: Apply desktop-only layout
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          provider = Path("components/provider-launcher.tsx")
+          text = provider.read_text()
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              if old not in text:
+                  raise SystemExit(f"Missing expected provider snippet: {label}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '  const [buyOpened, setBuyOpened] = useState(false);\n',
+              '  const [buyOpened, setBuyOpened] = useState(false);\n  const [advancedOpen, setAdvancedOpen] = useState(false);\n',
+              'advanced state',
+          )
+
+          replace_once(
+              '''  const providerProofFailed = Boolean(
+              verification?.transactionHash && verification.factoryConfirmed === false,
+            );
+
+            return (
+          ''',
+              '''  const providerProofFailed = Boolean(
+              verification?.transactionHash && verification.factoryConfirmed === false,
+            );
+            const launchReady = Boolean(
+              name.trim() &&
+              ticker.trim() &&
+              description.trim() &&
+              (!immediateBuyEnabled || isPositiveAmount(developerBuy))
+            );
+
+            return (
+          ''',
+              'launch readiness',
+          )
+
+          replace_once(
+              '''          <div className={styles.sectionHeading}>
+                        <div><p>STEP 1</p><h2>Prepare launch data</h2></div>
+          ''',
+              '''          <div className={`${styles.sectionHeading} ${styles.launchHeading}`}>
+                        <div>
+                          <p>STEP 1</p>
+                          <h2>Launch token</h2>
+                          <small className={styles.desktopIntro}>Enter the core launch details, then review the live summary before opening the provider.</small>
+                        </div>
+          ''',
+              'launch heading',
+          )
+
+          replace_once(
+              '          <label>\n            <span>Saved Robinhood project</span>',
+              '          <label className={styles.savedProjectField}>\n            <span>Saved Robinhood project</span>',
+              'saved project class',
+          )
+
+          replace_once(
+              '''          <div className={styles.twoColumns}>
+                        <label><span>Name</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={32} /></label>
+                        <label><span>Ticker</span><input value={ticker} onChange={(event) => setTicker(event.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10))} /></label>
+                      </div>
+          ''',
+              '''          <div className={`${styles.twoColumns} ${styles.tokenIdentityFields}`}>
+                        <label>
+                          <span>Name</span>
+                          <input value={name} onChange={(event) => setName(event.target.value)} maxLength={32} />
+                          <small className={styles.fieldHelp}>Up to 32 characters.</small>
+                        </label>
+                        <label>
+                          <span>Ticker</span>
+                          <input value={ticker} onChange={(event) => setTicker(event.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10))} />
+                          <small className={styles.fieldHelp}>Letters and numbers, up to 10.</small>
+                        </label>
+                      </div>
+          ''',
+              'identity fields',
+          )
+
+          replace_once(
+              '          <label><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={5} /></label>',
+              '''          <label className={styles.descriptionField}>
+                        <span>Description</span>
+                        <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={5} />
+                        <small className={styles.fieldHelp}>A short, clear project description copied into the provider launch pack.</small>
+                      </label>''',
+              'description field',
+          )
+
+          replace_once(
+              '          <label><span>Website</span><input value={website} onChange={(event) => setWebsite(event.target.value)} placeholder="https://..." /></label>',
+              '          <label className={`${styles.websiteField} ${styles.desktopAdvancedField} ${advancedOpen ? styles.desktopAdvancedVisible : ""}`}><span>Website</span><input value={website} onChange={(event) => setWebsite(event.target.value)} placeholder="https://..." /></label>',
+              'website advanced class',
+          )
+
+          replace_once(
+              '''          <div className={styles.twoColumns}>
+                        <label><span>X profile</span><input value={xHandle} onChange={(event) => setXHandle(event.target.value)} placeholder="x.com/..." /></label>
+                        <label><span>Telegram</span><input value={telegram} onChange={(event) => setTelegram(event.target.value)} placeholder="t.me/..." /></label>
+                      </div>
+          ''',
+              '''          <div className={`${styles.twoColumns} ${styles.socialFields}`}>
+                        <label><span>X profile</span><input value={xHandle} onChange={(event) => setXHandle(event.target.value)} placeholder="x.com/..." /></label>
+                        <label><span>Telegram</span><input value={telegram} onChange={(event) => setTelegram(event.target.value)} placeholder="t.me/..." /></label>
+                      </div>
+          ''',
+              'social fields',
+          )
+
+          replace_once(
+              '''          <div className={styles.twoColumns}>
+                        <label><span>Creator wallet</span><input value={creatorWallet} onChange={(event) => setCreatorWallet(event.target.value)} placeholder="0x..." /></label>
+                        <label><span>Initial buy amount (ETH)</span><input value={developerBuy} onChange={(event) => setDeveloperBuy(event.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" /></label>
+                      </div>
+          ''',
+              '''          <div className={`${styles.twoColumns} ${styles.developerRow}`}>
+                        <label className={`${styles.desktopAdvancedField} ${advancedOpen ? styles.desktopAdvancedVisible : ""}`}><span>Creator wallet</span><input value={creatorWallet} onChange={(event) => setCreatorWallet(event.target.value)} placeholder="0x..." /></label>
+                        <label><span>Developer buy</span><input value={developerBuy} onChange={(event) => setDeveloperBuy(event.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" /><small className={styles.fieldHelp}>Initial creator-buy amount in test ETH. Existing provider rules still apply.</small></label>
+                      </div>
+          ''',
+              'developer row',
+          )
+
+          replace_once(
+              '          <label className={styles.toggleRow}>',
+              '          <label className={`${styles.toggleRow} ${styles.desktopAdvancedField} ${advancedOpen ? styles.desktopAdvancedVisible : ""}`}>',
+              'toggle advanced class',
+          )
+
+          replace_once(
+              '          <label className={styles.artworkBox}>',
+              '          <label className={`${styles.artworkBox} ${styles.artworkField}`}>',
+              'artwork field class',
+          )
+
+          replace_once(
+              '''          </label>
+
+                      <div className={styles.actionGrid}>
+          ''',
+              '''          </label>
+
+                      <button
+                        type="button"
+                        className={styles.desktopAdvancedToggle}
+                        onClick={() => setAdvancedOpen((current) => !current)}
+                        aria-expanded={advancedOpen}
+                      >
+                        <span>Advanced settings</span>
+                        <b>{advancedOpen ? "−" : "+"}</b>
+                      </button>
+
+                      <div className={`${styles.actionGrid} ${styles.desktopAdvancedField} ${advancedOpen ? styles.desktopAdvancedVisible : ""}`}>
+          ''',
+              'advanced toggle insertion',
+          )
+
+          replace_once(
+              '<button className={styles.launchButton} onClick={openProvider}>Launch on {provider.name} ↗</button>',
+              '<button className={`${styles.launchButton} ${styles.mobileLaunchButton}`} onClick={openProvider}>Launch on {provider.name} ↗</button>',
+              'mobile launch button class',
+          )
+
+          replace_once(
+              '          <div className={styles.copyRows}>',
+              '          <div className={`${styles.copyRows} ${styles.desktopAdvancedField} ${advancedOpen ? styles.desktopAdvancedVisible : ""}`}>',
+              'copy rows advanced class',
+          )
+
+          replace_once(
+              '''            ))}
+                      </div>
+                    </div>
+
+                    <aside className={styles.verifyPanel}>
+          ''',
+              '''            ))}
+                      </div>
+
+                      <div className={styles.desktopLaunchMeta}>
+                        <div><span>Network</span><b>Robinhood Chain Testnet</b></div>
+                        <div><span>Provider</span><b>{provider.name}</b></div>
+                        <div><span>Launch fee</span><b>Confirmed on provider</b></div>
+                      </div>
+
+                      <button
+                        className={styles.desktopPrimaryLaunch}
+                        onClick={openProvider}
+                        disabled={!launchReady || busy}
+                      >
+                        Launch on {provider.name} ↗
+                      </button>
+                    </div>
+
+                    <aside className={styles.verifyPanel}>
+                      <div className={styles.desktopTokenSummary} aria-live="polite">
+                        <p>LIVE TOKEN SUMMARY</p>
+                        <div className={styles.summaryArtwork}>
+                          {artwork ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={artwork} alt="Token summary artwork" />
+                          ) : (
+                            <span>{ticker.trim().slice(0, 1).toUpperCase() || "H"}</span>
+                          )}
+                        </div>
+                        <div className={styles.summaryIdentity}>
+                          <h2>{name.trim() || "Your token"}</h2>
+                          <span>${ticker.trim().toUpperCase() || "TICKER"}</span>
+                        </div>
+                        <dl>
+                          <div><dt>Launch fee</dt><dd>Confirmed on provider</dd></div>
+                          <div><dt>Trading fee</dt><dd>Provider terms</dd></div>
+                          <div><dt>Graduation target</dt><dd>Provider-managed</dd></div>
+                          <div><dt>Liquidity</dt><dd>Provider-managed</dd></div>
+                          <div><dt>Network</dt><dd>Robinhood testnet</dd></div>
+                        </dl>
+                      </div>
+          ''',
+              'desktop summary and primary action',
+          )
+
+          provider.write_text(text)
+
+          provider_css = Path("components/provider-launcher.module.css")
+          provider_css.write_text(provider_css.read_text() + r'''
+
+/* Desktop-only form simplification. Existing <=900px layout remains unchanged. */
+.desktopIntro,
+.fieldHelp,
+.desktopAdvancedToggle,
+.desktopLaunchMeta,
+.desktopPrimaryLaunch,
+.desktopTokenSummary {
+  display: none;
+}
+
+@media (min-width: 901px) {
+  .workspace {
+    max-width: 1220px;
+    grid-template-columns: minmax(0, 1.72fr) minmax(320px, .82fr);
+    gap: 0;
+    overflow: hidden;
+    border: 1px solid rgba(131, 183, 139, .22);
+    border-radius: 16px;
+    background: rgba(10, 15, 11, .94);
+    box-shadow: 0 28px 70px rgba(0, 0, 0, .34);
+  }
+
+  .formPanel,
+  .verifyPanel {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .formPanel {
+    display: flex;
+    flex-direction: column;
+    padding: 34px;
+    border-right: 1px solid rgba(131, 183, 139, .18);
+  }
+
+  .verifyPanel {
+    padding: 34px 28px;
+    background: rgba(255, 255, 255, .018);
+  }
+
+  .launchHeading { order: 1; align-items: flex-start; }
+  .savedProjectField { order: 2; }
+  .tokenIdentityFields { order: 3; grid-template-columns: minmax(0, 1.35fr) minmax(180px, .65fr); }
+  .descriptionField { order: 4; }
+  .artworkField { order: 5; }
+  .socialFields { order: 6; }
+  .developerRow { order: 7; grid-template-columns: 1fr; }
+  .desktopAdvancedToggle { order: 8; }
+  .websiteField,
+  .toggleRow,
+  .actionGrid,
+  .copyRows { order: 9; }
+  .desktopLaunchMeta { order: 10; }
+  .desktopPrimaryLaunch { order: 11; }
+
+  .desktopIntro {
+    display: block;
+    max-width: 580px;
+    margin-top: 8px;
+    color: #89968c;
+    font: 500 12px/1.55 "IBM Plex Mono", monospace;
+  }
+
+  .fieldHelp {
+    display: block;
+    margin-top: 7px;
+    color: #6f7c72;
+    font: 500 10px/1.45 "IBM Plex Mono", monospace;
+  }
+
+  .formPanel label { margin-bottom: 18px; }
+  .formPanel input,
+  .formPanel textarea,
+  .formPanel select { min-height: 48px; border-radius: 9px; }
+  .formPanel textarea { min-height: 126px; }
+  .twoColumns { gap: 14px; }
+  .artworkBox { min-height: 210px; margin-bottom: 24px !important; }
+  .artworkBox img { width: 128px; height: 128px; }
+
+  .desktopAdvancedToggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 50px;
+    margin: 2px 0 20px;
+    padding: 0 15px;
+    border: 1px solid rgba(131, 183, 139, .18);
+    border-radius: 9px;
+    background: #080c09;
+    color: #dbe2dc;
+    font-weight: 850;
+    text-align: left;
+  }
+
+  .desktopAdvancedToggle b { color: #55ff78; font-size: 18px; }
+  .desktopAdvancedField { display: none !important; }
+  .desktopAdvancedField.desktopAdvancedVisible { display: block !important; }
+  .actionGrid.desktopAdvancedVisible { display: grid !important; grid-template-columns: 1fr 1fr; }
+  .copyRows.desktopAdvancedVisible { display: grid !important; }
+  .toggleRow.desktopAdvancedVisible { display: flex !important; }
+  .developerRow > .desktopAdvancedVisible { display: block !important; }
+  .mobileLaunchButton { display: none !important; }
+
+  .desktopLaunchMeta {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 2px;
+    padding: 16px;
+    border: 1px solid rgba(131, 183, 139, .16);
+    border-radius: 10px;
+    background: #080c09;
+  }
+
+  .desktopLaunchMeta div { display: grid; gap: 6px; }
+  .desktopLaunchMeta span { color: #758178; font: 700 9px "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
+  .desktopLaunchMeta b { color: #dbe2dc; font-size: 12px; }
+
+  .desktopPrimaryLaunch {
+    display: block;
+    width: 100%;
+    min-height: 52px;
+    margin-top: 14px;
+    border: 0;
+    border-radius: 10px;
+    background: #55ff78;
+    color: #071008;
+    font-weight: 950;
+  }
+
+  .desktopPrimaryLaunch:disabled { opacity: .46; cursor: not-allowed; }
+
+  .desktopTokenSummary {
+    display: block;
+    margin-bottom: 28px;
+    padding-bottom: 26px;
+    border-bottom: 1px solid rgba(131, 183, 139, .16);
+  }
+
+  .desktopTokenSummary > p { margin: 0 0 16px; color: #55ff78; font: 800 10px "IBM Plex Mono", monospace; letter-spacing: .14em; }
+  .summaryArtwork {
+    width: 76px;
+    height: 76px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid rgba(131, 183, 139, .22);
+    border-radius: 14px;
+    background: #070b08;
+  }
+  .summaryArtwork img { width: 100%; height: 100%; object-fit: cover; }
+  .summaryArtwork span { color: #55ff78; font-size: 28px; font-weight: 950; }
+  .summaryIdentity { margin: 17px 0 16px; }
+  .summaryIdentity h2 { margin: 0 0 5px; font-size: 25px; letter-spacing: -.035em; }
+  .summaryIdentity span { color: #91a095; font: 700 11px "IBM Plex Mono", monospace; }
+  .desktopTokenSummary dl { margin: 0; }
+  .desktopTokenSummary dl div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid rgba(131, 183, 139, .12); }
+  .desktopTokenSummary dt { color: #7e8b81; font-size: 12px; }
+  .desktopTokenSummary dd { margin: 0; color: #d7ded8; font-size: 12px; font-weight: 800; text-align: right; }
+}
+''')
+
+          bonding_page = Path("app/bonding-curve/page.tsx")
+          bonding_page.write_text(r'''import type { Metadata } from "next";
+import Link from "next/link";
+import styles from "./bonding-curve.module.css";
+
+export const metadata: Metadata = {
+  title: "Bonding Curve | HOODLUMS",
+  description:
+    "Review the HOODLUMS testnet bonding-curve launch model and automatic liquidity-pool graduation flow.",
+};
+
+const FLOW_STEPS = [
+  {
+    step: "01",
+    title: "Complete supply",
+    copy: "The creator places 100% of the current token supply into the curve before trading opens.",
+  },
+  {
+    step: "02",
+    title: "Curve trading",
+    copy: "Wallet-signed buys and sells move the live curve price with minimum-output and deadline protection.",
+  },
+  {
+    step: "03",
+    title: "Funding target",
+    copy: "Only genuine curve purchases count towards the configured testnet graduation target.",
+  },
+  {
+    step: "04",
+    title: "Pool creation",
+    copy: "The remaining tokens and raised test ETH automatically seed a new Hoodlums liquidity pool.",
+  },
+  {
+    step: "05",
+    title: "Liquidity locked",
+    copy: "The complete initial LP position is permanently sent to the lock address at graduation.",
+  },
+] as const;
+
+export default function BondingCurvePage() {
+  return (
+    <main className={styles.page}>
+      <section className={styles.desktopWorkspace} aria-labelledby="desktop-bonding-title">
+        <div className={styles.desktopFormPanel}>
+          <div className={styles.desktopHeading}>
+            <p>ROBINHOOD CHAIN TESTNET · STEP 5</p>
+            <h1 id="desktop-bonding-title">Token bonding</h1>
+            <span>Review the approved full-supply curve configuration before live deployment controls are connected.</span>
+          </div>
+
+          <section className={styles.desktopFormSection}>
+            <h2>Token</h2>
+            <div className={styles.readonlyField}>
+              <span>Selected token</span>
+              <strong>No launched token selected</strong>
+              <small>Token selection will activate after the curve is connected to the testnet launch flow.</small>
+            </div>
+          </section>
+
+          <section className={styles.desktopFormSection}>
+            <h2>Bonding-curve settings</h2>
+            <div className={styles.desktopFieldGrid}>
+              <div className={styles.readonlyField}>
+                <span>Supply entering curve</span>
+                <strong>100% of current supply</strong>
+              </div>
+              <div className={styles.readonlyField}>
+                <span>Creator launch allocation</span>
+                <strong>0 unlocked tokens</strong>
+              </div>
+            </div>
+            <div className={styles.readonlyField}>
+              <span>Graduation target</span>
+              <strong>Configured during testnet deployment</strong>
+              <small>Only genuine post-fee curve purchases count towards graduation.</small>
+            </div>
+          </section>
+
+          <section className={styles.desktopFormSection}>
+            <h2>Trading and liquidity</h2>
+            <div className={styles.desktopFieldGrid}>
+              <div className={styles.readonlyField}>
+                <span>Trading fee</span>
+                <strong>1% on buys and sells</strong>
+              </div>
+              <div className={styles.readonlyField}>
+                <span>Fee split</span>
+                <strong>60% treasury · 40% creator</strong>
+              </div>
+            </div>
+            <div className={styles.readonlyField}>
+              <span>Liquidity outcome</span>
+              <strong>Remaining tokens + raised test ETH seed a locked pool</strong>
+            </div>
+          </section>
+
+          <details className={styles.desktopAdvanced}>
+            <summary><span>Advanced bonding settings</span><b>+</b></summary>
+            <div>
+              <p>Virtual ETH may shape the curve price but is never counted as withdrawable real reserves.</p>
+              <p>Minimum-output and deadline protection remain mandatory for wallet-signed trades.</p>
+              <p>Fee balances remain outside liquidity reserves and are withdrawn separately by each recipient.</p>
+            </div>
+          </details>
+
+          <div className={styles.desktopTransactionInfo}>
+            <div><span>Network</span><b>Robinhood Chain Testnet</b></div>
+            <div><span>Current status</span><b>Contract merged · not deployed</b></div>
+            <div><span>Transaction</span><b>No wallet action available</b></div>
+          </div>
+
+          <button className={styles.desktopPrimaryAction} disabled>
+            Bonding deployment not active yet
+          </button>
+        </div>
+
+        <aside className={styles.desktopSummaryPanel}>
+          <p className={styles.desktopSummaryEyebrow}>BONDING SUMMARY</p>
+          <div className={styles.desktopTokenMark}>H</div>
+          <div className={styles.desktopTokenIdentity}>
+            <h2>No token selected</h2>
+            <span>$TICKER</span>
+          </div>
+          <dl>
+            <div><dt>Curve type</dt><dd>Full-supply testnet curve</dd></div>
+            <div><dt>Starting configuration</dt><dd>Set at deployment</dd></div>
+            <div><dt>Trading fee</dt><dd>1%</dd></div>
+            <div><dt>Graduation target</dt><dd>Set at deployment</dd></div>
+            <div><dt>Liquidity outcome</dt><dd>Locked pool</dd></div>
+            <div><dt>Network</dt><dd>Robinhood testnet</dd></div>
+            <div><dt>Current status</dt><dd>Not deployed</dd></div>
+          </dl>
+          <div className={styles.desktopProgress}>
+            <div><span>Graduation progress</span><b>0%</b></div>
+            <i><span /></i>
+            <small>Progress will activate after live curve deployment.</small>
+          </div>
+        </aside>
+      </section>
+
+      <div className={styles.legacyLayout}>
+        <section className={styles.hero}>
+          <p className={styles.eyebrow}>ROBINHOOD CHAIN TESTNET · STEP 5</p>
+          <h1>Bonding Curve</h1>
+          <p className={styles.intro}>
+            Follow the token from a protected full-supply launch through curve trading and into its
+            permanently locked liquidity pool.
+          </p>
+          <div className={styles.status} role="status">
+            <span>FOUNDATION MERGED</span>
+            <p>
+              The testnet contract is in the codebase. Deployment, factory integration and live
+              buy/sell controls are not active yet.
+            </p>
+          </div>
+        </section>
+
+        <section className={styles.summaryGrid} aria-label="Bonding curve launch rules">
+          <article className={styles.card}>
+            <span className={styles.cardLabel}>SUPPLY RULE</span>
+            <h2>Zero unlocked creator tokens</h2>
+            <p>
+              Trading cannot begin unless the creator holds and transfers the complete current token
+              supply into the curve. Buyers receive tokens only through curve purchases.
+            </p>
+          </article>
+          <article className={styles.card}>
+            <span className={styles.cardLabel}>TRADING SAFETY</span>
+            <h2>Wallet-signed and protected</h2>
+            <p>
+              Buys and sells use live quotes, a minimum received amount and a transaction deadline.
+              Virtual ETH can shape the price but cannot be withdrawn as real funds.
+            </p>
+          </article>
+          <article className={styles.card}>
+            <span className={styles.cardLabel}>GRADUATION</span>
+            <h2>Automatic pool migration</h2>
+            <p>
+              Reaching the exact funding target closes curve trading and moves the remaining token
+              inventory plus the recorded test ETH into a new Hoodlums pool.
+            </p>
+          </article>
+          <article className={styles.card}>
+            <span className={styles.cardLabel}>CURRENT LIMIT</span>
+            <h2>Testnet foundation only</h2>
+            <p>
+              The contract charges a fixed 1% trading fee on every buy and sell, split 60% to the
+              Hoodlums treasury and 40% to the token creator, claimed by each recipient separately.
+              It is otherwise unaudited and must not be used with mainnet funds.
+            </p>
+          </article>
+        </section>
+
+        <section className={styles.flowSection} aria-labelledby="curve-flow-title">
+          <div className={styles.sectionHeading}>
+            <p>LAUNCH LIFECYCLE</p>
+            <h2 id="curve-flow-title">From token supply to locked liquidity</h2>
+          </div>
+          <ol className={styles.flow}>
+            {FLOW_STEPS.map((item) => (
+              <li key={item.step}>
+                <span>{item.step}</span>
+                <h3>{item.title}</h3>
+                <p>{item.copy}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section className={styles.nextStep}>
+          <div>
+            <p className={styles.cardLabel}>NEXT MILESTONE</p>
+            <h2>Connect the curve to real testnet launches</h2>
+            <p>
+              The next development step is an atomic factory flow that creates the token, places its
+              full supply into the curve and exposes live quote, buy, sell and graduation progress on
+              this page.
+            </p>
+          </div>
+          <div className={styles.actions}>
+            <Link href="/testnet">Open testnet launcher</Link>
+            <Link href="/liquidity-lab" className={styles.secondaryAction}>
+              Open liquidity lab
+            </Link>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+''')
+
+          bonding_css = Path("app/bonding-curve/bonding-curve.module.css")
+          bonding_css.write_text(bonding_css.read_text() + r'''
+
+/* Desktop-only form presentation. The existing mobile layout remains the legacy view. */
+.desktopWorkspace { display: none; }
+
+@media (min-width: 901px) {
+  .legacyLayout { display: none; }
+  .desktopWorkspace {
+    width: min(1160px, 100%);
+    margin: 24px auto 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1.72fr) minmax(320px, .82fr);
+    overflow: hidden;
+    border: 1px solid rgba(131, 183, 139, .22);
+    border-radius: 17px;
+    background: rgba(10, 15, 11, .94);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .35);
+  }
+
+  .desktopFormPanel {
+    padding: 36px;
+    border-right: 1px solid rgba(131, 183, 139, .18);
+  }
+
+  .desktopSummaryPanel {
+    padding: 36px 28px;
+    background: rgba(255, 255, 255, .018);
+  }
+
+  .desktopHeading { margin-bottom: 30px; }
+  .desktopHeading > p,
+  .desktopSummaryEyebrow {
+    margin: 0;
+    color: #bce759;
+    font: 800 10px "IBM Plex Mono", monospace;
+    letter-spacing: .14em;
+  }
+  .desktopHeading h1 { margin: 10px 0 10px; font-size: 40px; letter-spacing: -.045em; }
+  .desktopHeading > span { display: block; max-width: 680px; color: #95a098; font-size: 14px; line-height: 1.65; }
+
+  .desktopFormSection { margin-top: 28px; }
+  .desktopFormSection h2 { margin: 0 0 14px; font-size: 16px; }
+  .desktopFieldGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .readonlyField {
+    display: grid;
+    gap: 7px;
+    min-height: 70px;
+    margin-bottom: 12px;
+    padding: 14px 15px;
+    border: 1px solid rgba(131, 183, 139, .18);
+    border-radius: 9px;
+    background: #070b08;
+  }
+  .readonlyField > span { color: #78857a; font: 700 9px "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
+  .readonlyField strong { color: #e7ece8; font-size: 13px; }
+  .readonlyField small { color: #6f7b71; font: 500 10px/1.5 "IBM Plex Mono", monospace; }
+
+  .desktopAdvanced {
+    margin-top: 26px;
+    border: 1px solid rgba(131, 183, 139, .18);
+    border-radius: 9px;
+    background: #080c09;
+  }
+  .desktopAdvanced summary { min-height: 50px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; cursor: pointer; font-weight: 850; list-style: none; }
+  .desktopAdvanced summary::-webkit-details-marker { display: none; }
+  .desktopAdvanced summary b { color: #bce759; font-size: 18px; }
+  .desktopAdvanced[open] summary b { transform: rotate(45deg); }
+  .desktopAdvanced > div { display: grid; gap: 10px; padding: 0 15px 15px; }
+  .desktopAdvanced p { margin: 0; color: #89958c; font-size: 12px; line-height: 1.55; }
+
+  .desktopTransactionInfo {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 22px;
+    padding: 16px;
+    border: 1px solid rgba(131, 183, 139, .16);
+    border-radius: 10px;
+    background: #080c09;
+  }
+  .desktopTransactionInfo div { display: grid; gap: 6px; }
+  .desktopTransactionInfo span { color: #758178; font: 700 9px "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
+  .desktopTransactionInfo b { color: #dbe2dc; font-size: 12px; }
+
+  .desktopPrimaryAction {
+    width: 100%;
+    min-height: 52px;
+    margin-top: 14px;
+    border: 0;
+    border-radius: 10px;
+    background: #bce759;
+    color: #071006;
+    font-weight: 950;
+  }
+  .desktopPrimaryAction:disabled { opacity: .42; cursor: not-allowed; }
+
+  .desktopTokenMark {
+    width: 76px;
+    height: 76px;
+    display: grid;
+    place-items: center;
+    margin-top: 18px;
+    border: 1px solid rgba(131, 183, 139, .22);
+    border-radius: 14px;
+    background: #070b08;
+    color: #bce759;
+    font-size: 28px;
+    font-weight: 950;
+  }
+  .desktopTokenIdentity { margin: 17px 0 16px; }
+  .desktopTokenIdentity h2 { margin: 0 0 5px; font-size: 25px; letter-spacing: -.035em; }
+  .desktopTokenIdentity span { color: #91a095; font: 700 11px "IBM Plex Mono", monospace; }
+  .desktopSummaryPanel dl { margin: 0; }
+  .desktopSummaryPanel dl div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid rgba(131, 183, 139, .12); }
+  .desktopSummaryPanel dt { color: #7e8b81; font-size: 12px; }
+  .desktopSummaryPanel dd { margin: 0; color: #d7ded8; font-size: 12px; font-weight: 800; text-align: right; }
+  .desktopProgress { margin-top: 22px; padding: 15px; border: 1px solid rgba(185, 239, 77, .2); border-radius: 10px; background: rgba(185, 239, 77, .035); }
+  .desktopProgress > div { display: flex; justify-content: space-between; gap: 12px; }
+  .desktopProgress > div span { color: #89968c; font-size: 11px; }
+  .desktopProgress > div b { color: #bce759; font-size: 12px; }
+  .desktopProgress i { display: block; height: 7px; margin: 11px 0; overflow: hidden; border-radius: 999px; background: #111713; }
+  .desktopProgress i span { display: block; width: 0; height: 100%; background: #bce759; }
+  .desktopProgress small { color: #6f7b71; font: 500 10px/1.45 "IBM Plex Mono", monospace; }
+}
+''')
+
+          Path("tests/desktop-launch-bonding-layout.test.ts").write_text(r'''import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+const ROOT = process.cwd();
+
+async function source(...parts: string[]) {
+  return readFile(path.join(ROOT, ...parts), "utf8");
+}
+
+describe("desktop launch and bonding form layout", () => {
+  it("adds a desktop launch form summary while retaining provider logic", async () => {
+    const component = await source("components", "provider-launcher.tsx");
+    const css = await source("components", "provider-launcher.module.css");
+
+    expect(component).toContain("desktopTokenSummary");
+    expect(component).toContain("desktopAdvancedToggle");
+    expect(component).toContain("desktopPrimaryLaunch");
+    expect(component).toContain("launchReady");
+    expect(component).toContain("Provider-managed");
+    expect(component).toContain("openProvider");
+    expect(component).toContain("verifyLaunch");
+    expect(component).toContain("openProviderForBuy");
+    expect(component).toContain("ROBINHOOD_MAINNET");
+    expect(component).not.toContain('document.createElement("iframe")');
+
+    expect(css).toContain("@media (min-width: 901px)");
+    expect(css).toContain("grid-template-columns: minmax(0, 1.72fr) minmax(320px, .82fr)");
+    expect(css).toContain(".mobileLaunchButton { display: none !important; }");
+    expect(css).toContain("@media (max-width: 900px)");
+  });
+
+  it("keeps the mobile launch controls visible and unchanged outside desktop rules", async () => {
+    const component = await source("components", "provider-launcher.tsx");
+    const css = await source("components", "provider-launcher.module.css");
+
+    expect(component).toContain("Copy launch pack");
+    expect(component).toContain("Download artwork");
+    expect(component).toContain("Continue straight to BUY TOKEN");
+    expect(component).toContain("mobileLaunchButton");
+    expect(css.indexOf(".desktopAdvancedField { display: none !important; }")).toBeGreaterThan(
+      css.indexOf("@media (min-width: 901px)"),
+    );
+  });
+
+  it("shows a truthful desktop bonding form and preserves the legacy mobile page", async () => {
+    const page = await source("app", "bonding-curve", "page.tsx");
+    const css = await source("app", "bonding-curve", "bonding-curve.module.css");
+
+    expect(page).toContain("desktopWorkspace");
+    expect(page).toContain("legacyLayout");
+    expect(page).toContain("Bonding deployment not active yet");
+    expect(page).toContain("100% of current supply");
+    expect(page).toContain("60% treasury · 40% creator");
+    expect(page).toContain("Contract merged · not deployed");
+    expect(page).toContain("FLOW_STEPS.map");
+    expect(page).not.toContain('document.createElement("iframe")');
+
+    expect(css).toContain(".desktopWorkspace { display: none; }");
+    expect(css).toContain("@media (min-width: 901px)");
+    expect(css).toContain(".legacyLayout { display: none; }");
+    expect(css).toContain("@media (max-width: 900px)");
+  });
+});
+''')
+
+          Path(".github/workflows/apply-desktop-launch-bonding-layout.yml").unlink()
+          PY
+
+      - name: Install dependencies
+        run: npm install --silent
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Commit verified layout
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/provider-launcher.tsx components/provider-launcher.module.css app/bonding-curve/page.tsx app/bonding-curve/bonding-curve.module.css tests/desktop-launch-bonding-layout.test.ts .github/workflows/apply-desktop-launch-bonding-layout.yml
+          git commit -m "Simplify desktop launch and bonding forms"
+          git push origin HEAD:feat/desktop-launch-bonding-layout
