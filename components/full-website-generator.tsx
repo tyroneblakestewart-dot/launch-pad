@@ -33,7 +33,10 @@ export async function requestGeneratedWebsite(
 
   const response = await fetch("/api/generate-site-page", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/x-ndjson",
+    },
     body: JSON.stringify(detail),
     signal: options.signal,
   });
@@ -61,15 +64,29 @@ export async function requestGeneratedWebsite(
     }
   };
 
-  while (!result) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const { lines, remainder } = splitNdjsonLines(buffer);
-    buffer = remainder;
-    for (const line of lines) processLine(line);
+  try {
+    while (!result) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const { lines, remainder } = splitNdjsonLines(buffer);
+      buffer = remainder;
+      for (const line of lines) processLine(line);
+    }
+    buffer += decoder.decode();
+    if (!result) processLine(buffer);
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      // The server may already have completed or the request may be aborted.
+    }
+    try {
+      reader.releaseLock();
+    } catch {
+      // The reader may already have released its lock.
+    }
   }
-  if (!result) processLine(buffer);
 
   if (!result) {
     throw new Error("The website generation stream ended before it finished.");
@@ -82,6 +99,13 @@ function previewElement(): HTMLElement {
   if (!site) throw new Error("Website preview was not found.");
   return site;
 }
+
+const STAGE_HEADLINES: Record<GenerateSitePageProgressStage, string> = {
+  "analysing-artwork": "Analysing artwork…",
+  "preparing-design": "Preparing design…",
+  "building-page": "Writing website…",
+  "checking-safety": "Checking safety…",
+};
 
 function stageMessage(stage: GenerateSitePageProgressStage, hasInspiration: boolean): string {
   switch (stage) {
@@ -100,7 +124,7 @@ function stageMessage(stage: GenerateSitePageProgressStage, hasInspiration: bool
   }
 }
 
-function setPreviewStatus(mode: PreviewStatus, message: string) {
+function setPreviewStatus(mode: PreviewStatus, message: string, headline?: string) {
   const site = previewElement();
   let status = site.querySelector<HTMLElement>(".full-generated-page-status");
   if (!status) {
@@ -114,7 +138,7 @@ function setPreviewStatus(mode: PreviewStatus, message: string) {
   status.querySelector("span")!.textContent =
     mode === "generating" ? "STANDALONE WEBSITE GENERATOR" : "GENERATION STOPPED";
   status.querySelector("strong")!.textContent =
-    mode === "generating" ? "Building the finished website…" : "No finished website was produced";
+    mode === "generating" ? headline || "Building the finished website…" : "No finished website was produced";
   status.querySelector("p")!.textContent = message;
 
   site.classList.toggle("full-page-generating", mode === "generating");
@@ -131,6 +155,10 @@ function disposeFrame(frame: HTMLIFrameElement | null) {
   if (!frame) return;
   frame.srcdoc = "";
   frame.remove();
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 function renderGeneratedWebsite(html: string, artworkDataUrl: string) {
@@ -175,14 +203,18 @@ export function FullWebsiteGenerator() {
       const controller = new AbortController();
       activeController = controller;
       const hasInspiration = Boolean(detail.inspirationUrl);
-      setPreviewStatus("generating", stageMessage("analysing-artwork", hasInspiration));
+      setPreviewStatus(
+        "generating",
+        stageMessage("analysing-artwork", hasInspiration),
+        STAGE_HEADLINES["analysing-artwork"],
+      );
 
       try {
         const page = await requestGeneratedWebsite(detail, {
           signal: controller.signal,
           onProgress: (stage) => {
             if (currentGeneration !== generationNumber) return;
-            setPreviewStatus("generating", stageMessage(stage, hasInspiration));
+            setPreviewStatus("generating", stageMessage(stage, hasInspiration), STAGE_HEADLINES[stage]);
           },
         });
         if (currentGeneration !== generationNumber) return;
@@ -197,7 +229,7 @@ export function FullWebsiteGenerator() {
           }),
         );
       } catch (error) {
-        if (currentGeneration !== generationNumber) return;
+        if (currentGeneration !== generationNumber || isAbortError(error)) return;
         const message =
           error instanceof Error ? error.message : "The full website could not be generated.";
         setPreviewStatus(
@@ -212,6 +244,8 @@ export function FullWebsiteGenerator() {
             },
           }),
         );
+      } finally {
+        if (activeController === controller) activeController = null;
       }
     }
 
@@ -220,12 +254,16 @@ export function FullWebsiteGenerator() {
     return () => {
       generationNumber += 1;
       activeController?.abort();
+      activeController = null;
       window.removeEventListener("message", onMessage);
       window.removeEventListener("launchpad:generate-site", onGenerate);
       disposeFrame(activeFrame);
       activeFrame = null;
       const site = document.querySelector<HTMLElement>(".site-preview");
-      if (site) clearPreviewStatus(site);
+      if (site) {
+        clearPreviewStatus(site);
+        site.classList.remove("full-generated-page");
+      }
     };
   }, []);
 
