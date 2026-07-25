@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/generate-site-page/route";
 
+async function readNdjson(response: Response): Promise<Array<Record<string, unknown>>> {
+  const text = await response.text();
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
 describe("POST /api/generate-site-page provider diagnostics", () => {
   beforeEach(() => {
     process.env.OPENAI_API_KEY = "test-openai-key";
@@ -15,7 +24,7 @@ describe("POST /api/generate-site-page provider diagnostics", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns a sanitized stage, provider, status and upstream detail for artwork failures", async () => {
+  it("streams a sanitized stage, provider, status and upstream detail for artwork failures", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -43,19 +52,26 @@ describe("POST /api/generate-site-page provider diagnostics", () => {
         }),
       }),
     );
-    const body = await response.json();
 
-    expect(response.status).toBe(502);
-    expect(body.error).toContain("artwork-analysis service could not complete");
-    expect(body.error).toContain("artwork has not been rejected");
-    expect(body.providerError).toMatchObject({
+    // Validation already passed, so streaming has started: the artwork
+    // failure surfaces as a typed NDJSON error event on a 200 response.
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/x-ndjson");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+
+    const events = await readNdjson(response);
+    expect(events[0]).toMatchObject({ type: "progress", stage: "analysing-artwork" });
+    const errorEvent = events.at(-1) as { type: string; error: string; providerError: Record<string, unknown> };
+    expect(errorEvent.type).toBe("error");
+    expect(errorEvent.error).toContain("artwork-analysis service could not complete");
+    expect(errorEvent.error).toContain("artwork has not been rejected");
+    expect(errorEvent.providerError).toMatchObject({
       stage: "page-artwork-analysis",
       provider: "openai",
       kind: "http",
       status: 400,
     });
-    expect(body.providerError.detail).toContain("Unsupported image request");
-    expect(JSON.stringify(body)).not.toContain("secret-provider-token");
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(errorEvent.providerError.detail).toContain("Unsupported image request");
+    expect(JSON.stringify(events)).not.toContain("secret-provider-token");
   });
 });

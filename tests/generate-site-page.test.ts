@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  FULL_PAGE_GENERATION_TIMEOUT_MS,
+  MAX_STREAMED_GENERATED_TEXT_LENGTH,
   POST,
   maxDuration,
 } from "@/app/api/generate-site-page/route";
@@ -75,6 +75,41 @@ function inspirationResponse() {
   );
 }
 
+function sseEvent(json: unknown): string {
+  return `data: ${JSON.stringify(json)}\n\n`;
+}
+
+function sseResponse(chunks: string[]): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encoder = new TextEncoder();
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      controller.close();
+    },
+  });
+  return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+}
+
+function completedStream(payload: unknown): Response {
+  return sseResponse([
+    sseEvent({ type: "response.output_text.delta", delta: "partial-chunk-should-not-leak-1" }),
+    sseEvent({ type: "response.output_text.delta", delta: "partial-chunk-should-not-leak-2" }),
+    sseEvent({
+      type: "response.completed",
+      response: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(payload) }] }] },
+    }),
+  ]);
+}
+
+async function readNdjson(response: Response): Promise<Array<Record<string, unknown>>> {
+  const text = await response.text();
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
 describe("POST /api/generate-site-page", () => {
   beforeEach(() => {
     process.env.OPENAI_API_KEY = "test-key";
@@ -90,19 +125,93 @@ describe("POST /api/generate-site-page", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses a route and provider timeout large enough for one complete full-page generation", () => {
+  it("uses a route ceiling with no separate application-level stream timeout", () => {
     expect(maxDuration).toBe(120);
-    expect(FULL_PAGE_GENERATION_TIMEOUT_MS).toBe(70_000);
-    expect(FULL_PAGE_GENERATION_TIMEOUT_MS).toBeLessThan(maxDuration * 1_000);
+    expect(MAX_STREAMED_GENERATED_TEXT_LENGTH).toBe(220_000);
   });
 
-  it("analyses artwork and URL separately, then returns a complete original page", async () => {
+  it("streams NDJSON progress then a complete event for a full success", async () => {
     const ids = getFusionBriefIds(ARTWORK, INSPIRATION);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(outputText(ARTWORK))
       .mockResolvedValueOnce(inspirationResponse())
-      .mockResolvedValueOnce(outputText({ html: html(), ...ids }));
+      .mockResolvedValueOnce(completedStream({ html: html(), ...ids }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const req = request({
+      name: "Journey",
+      ticker: "RIDE",
+      description: "A community token inspired by finding your route through London.",
+      imageDataUrl: VALID_IMAGE,
+      inspirationUrl: URL,
+    });
+    const response = await POST(req);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/x-ndjson");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+
+    const events = await readNdjson(response);
+    expect(events).toEqual([
+      { type: "progress", stage: "analysing-artwork", message: expect.any(String) },
+      { type: "progress", stage: "preparing-design", message: expect.any(String) },
+      { type: "progress", stage: "building-page", message: expect.any(String), receivedCharacters: 0 },
+      { type: "progress", stage: "checking-safety", message: expect.any(String) },
+      { type: "complete", html: html(), source: "openai", inspirationUsed: true },
+    ]);
+    expect(JSON.stringify(events)).not.toContain("partial-chunk-should-not-leak");
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const finalInit = fetchMock.mock.calls[2][1] as RequestInit;
+    expect(JSON.parse(String(finalInit.body)).stream).toBe(true);
+    expect(finalInit.signal).toBe(req.signal);
+  });
+
+  it("parses the completed SSE event even when split across arbitrary chunk boundaries", async () => {
+    const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
+    const full = sseEvent({
+      type: "response.completed",
+      response: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ html: html(), ...ids }) }] }] },
+    });
+
+    for (let cut = 1; cut < full.length; cut += 23) {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(outputText(ARTWORK))
+        .mockResolvedValueOnce(sseResponse([full.slice(0, cut), full.slice(cut)]));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(
+        request({
+          name: "Journey",
+          ticker: "RIDE",
+          description: "A community token inspired by finding your route through London.",
+          imageDataUrl: VALID_IMAGE,
+          inspirationUrl: "",
+        }),
+      );
+      const events = await readNdjson(response);
+      expect(events.at(-1)).toEqual({ type: "complete", html: html(), source: "openai", inspirationUsed: false });
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("uses text length from response.output_text.done only when no deltas were received, and reports a final count", async () => {
+    const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
+    const finalText = "x".repeat(1_234);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(
+        sseResponse([
+          sseEvent({ type: "response.output_text.done", text: finalText }),
+          sseEvent({
+            type: "response.completed",
+            response: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ html: html(), ...ids }) }] }] },
+          }),
+        ]),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(
@@ -111,45 +220,165 @@ describe("POST /api/generate-site-page", () => {
         ticker: "RIDE",
         description: "A community token inspired by finding your route through London.",
         imageDataUrl: VALID_IMAGE,
-        inspirationUrl: URL,
+        inspirationUrl: "",
       }),
     );
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body).toEqual({ html: html(), source: "openai", inspirationUsed: true });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-
-    const artworkRequest = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)) as {
-      max_output_tokens: number;
-      reasoning: { effort: string };
-      text: { format: { schema: unknown } };
-    };
-    const finalRequest = JSON.parse(String((fetchMock.mock.calls[2][1] as RequestInit).body)) as {
-      max_output_tokens: number;
-      reasoning: { effort: string };
-      input: Array<{ content: Array<{ type: string; text?: string; image_url?: string; detail?: string }> }>;
-      text: { format: { schema: unknown } };
-    };
-    expect(artworkRequest.max_output_tokens).toBe(1_500);
-    expect(artworkRequest.reasoning).toEqual({ effort: "minimal" });
-    expect(finalRequest.max_output_tokens).toBe(10_000);
-    expect(finalRequest.reasoning).toEqual({ effort: "minimal" });
-    expect(finalRequest.input[0].content[0].text).toContain("Artwork owns the page identity");
-    expect(finalRequest.input[0].content[0].text).toContain("bright, spacious discovery experience");
-    expect(finalRequest.input[0].content[0].text).toContain("concise enough to finish");
-    expect(finalRequest.input[1].content[0].text).toContain(INSPIRATION);
-    expect(finalRequest.input[1].content[1]).toMatchObject({
-      type: "input_image",
-      image_url: VALID_IMAGE,
-      detail: "low",
-    });
-    expect(JSON.stringify(artworkRequest.text.format.schema)).not.toMatch(/minLength|maxLength|pattern/);
-    expect(JSON.stringify(finalRequest.text.format.schema)).not.toMatch(/minLength|maxLength|pattern/);
-    expect(JSON.stringify(finalRequest)).not.toContain("initiate_heist");
+    const events = await readNdjson(response);
+    const buildingPageEvents = events.filter(
+      (event) => event.type === "progress" && event.stage === "building-page",
+    );
+    expect(buildingPageEvents.at(-1)).toMatchObject({ receivedCharacters: 1_234 });
   });
 
-  it("returns a truthful timeout error without automatically spending on another full-page attempt", async () => {
+  it("does not double-count deltas when response.output_text.done also arrives", async () => {
+    const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(
+        sseResponse([
+          sseEvent({ type: "response.output_text.delta", delta: "a".repeat(500) }),
+          sseEvent({ type: "response.output_text.done", text: "should-be-ignored-when-deltas-seen" }),
+          sseEvent({
+            type: "response.completed",
+            response: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ html: html(), ...ids }) }] }] },
+          }),
+        ]),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request({
+        name: "Journey",
+        ticker: "RIDE",
+        description: "A community token inspired by finding your route through London.",
+        imageDataUrl: VALID_IMAGE,
+        inspirationUrl: "",
+      }),
+    );
+    const events = await readNdjson(response);
+    const buildingPageEvents = events.filter(
+      (event) => event.type === "progress" && event.stage === "building-page",
+    );
+    expect(buildingPageEvents.at(-1)).toMatchObject({ receivedCharacters: 500 });
+  });
+
+  it("fails cleanly with no retry when the streamed response exceeds the safe size cap", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(
+        sseResponse([
+          sseEvent({ type: "response.output_text.delta", delta: "a".repeat(MAX_STREAMED_GENERATED_TEXT_LENGTH - 100) }),
+          sseEvent({ type: "response.output_text.delta", delta: "b".repeat(200) }),
+          sseEvent({ type: "response.completed", response: { output: [] } }),
+        ]),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request({
+        name: "Journey",
+        ticker: "RIDE",
+        description: "A community token inspired by finding your route through London.",
+        imageDataUrl: VALID_IMAGE,
+        inspirationUrl: "",
+      }),
+    );
+    const events = await readNdjson(response);
+    const buildingPageProgress = events.filter(
+      (event) => event.type === "progress" && event.stage === "building-page",
+    );
+    expect(buildingPageProgress.some((event) => (event.receivedCharacters as number) >= 2_000)).toBe(true);
+
+    const errorEvent = events.at(-1) as { type: string; providerError: Record<string, unknown> };
+    expect(errorEvent.type).toBe("error");
+    expect(String(errorEvent.providerError.detail)).toContain("safe size limit");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a sanitized streamed provider failure from response.failed with no retry", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(
+        sseResponse([
+          sseEvent({
+            type: "response.failed",
+            response: { error: { message: "Bearer secret-provider-token invalid request" } },
+          }),
+        ]),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request({
+        name: "Journey",
+        ticker: "RIDE",
+        description: "A community token inspired by finding your route through London.",
+        imageDataUrl: VALID_IMAGE,
+        inspirationUrl: "",
+      }),
+    );
+    const events = await readNdjson(response);
+    const errorEvent = events.at(-1) as { type: string; error: string; providerError: Record<string, unknown> };
+    expect(errorEvent.type).toBe("error");
+    expect(errorEvent.providerError).toMatchObject({ stage: "full-page-generation", provider: "openai", kind: "invalid" });
+    expect(JSON.stringify(events)).not.toContain("secret-provider-token");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a streamed response.incomplete failure", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(
+        sseResponse([
+          sseEvent({ type: "response.incomplete", response: { incomplete_details: { reason: "max_output_tokens" } } }),
+        ]),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request({
+        name: "Journey",
+        ticker: "RIDE",
+        description: "A community token inspired by finding your route through London.",
+        imageDataUrl: VALID_IMAGE,
+        inspirationUrl: "",
+      }),
+    );
+    const events = await readNdjson(response);
+    const errorEvent = events.at(-1) as { providerError: Record<string, unknown> };
+    expect(String(errorEvent.providerError.detail)).toContain("incomplete");
+    expect(String(errorEvent.providerError.detail)).toContain("max_output_tokens");
+  });
+
+  it("reports a sanitized generic top-level error SSE event distinctly from response.failed", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(
+        sseResponse([sseEvent({ type: "error", message: "Bearer secret-provider-token rate limited" })]),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request({
+        name: "Journey",
+        ticker: "RIDE",
+        description: "A community token inspired by finding your route through London.",
+        imageDataUrl: VALID_IMAGE,
+        inspirationUrl: "",
+      }),
+    );
+    const events = await readNdjson(response);
+    const errorEvent = events.at(-1) as { providerError: Record<string, unknown> };
+    expect(String(errorEvent.providerError.detail)).toContain("rate limited");
+    expect(JSON.stringify(events)).not.toContain("secret-provider-token");
+  });
+
+  it("reports a network interruption mid-stream without retrying", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(outputText(ARTWORK))
@@ -165,29 +394,21 @@ describe("POST /api/generate-site-page", () => {
         inspirationUrl: "",
       }),
     );
-    const body = await response.json();
-
-    expect(response.status).toBe(502);
-    expect(body.error).toContain("artwork analysis succeeded");
-    expect(body.error).toContain("took too long");
-    expect(body.error).toContain("does not need to be replaced");
-    expect(body.providerError).toMatchObject({
-      stage: "full-page-generation",
-      provider: "openai",
-      kind: "network",
-      status: null,
-    });
-    expect(body.providerError.detail).toContain("aborted due to timeout");
+    const events = await readNdjson(response);
+    const errorEvent = events.at(-1) as { error: string; providerError: Record<string, unknown> };
+    expect(errorEvent.error).toContain("interrupted");
+    expect(errorEvent.providerError).toMatchObject({ stage: "full-page-generation", provider: "openai", kind: "network" });
+    expect(String(errorEvent.providerError.detail)).toContain("aborted due to timeout");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("retries one incomplete artwork response and continues when the retry is valid", async () => {
+  it("retries one incomplete artwork response and continues into the stream when the retry is valid", async () => {
     const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(incompleteResponse())
       .mockResolvedValueOnce(outputText(ARTWORK))
-      .mockResolvedValueOnce(outputText({ html: html(), ...ids }));
+      .mockResolvedValueOnce(completedStream({ html: html(), ...ids }));
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(
@@ -200,8 +421,8 @@ describe("POST /api/generate-site-page", () => {
       }),
     );
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ source: "openai", inspirationUsed: false });
+    const events = await readNdjson(response);
+    expect(events.at(-1)).toMatchObject({ type: "complete", source: "openai", inspirationUsed: false });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(console.warn).toHaveBeenCalledWith(
       "AI artwork identity response was incomplete; retrying once",
@@ -209,7 +430,7 @@ describe("POST /api/generate-site-page", () => {
     );
   });
 
-  it("returns a truthful error after two incomplete artwork analyses", async () => {
+  it("reports a truthful error after two incomplete artwork analyses with no full-page call", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(incompleteResponse("max_output_tokens"))
@@ -225,18 +446,13 @@ describe("POST /api/generate-site-page", () => {
         inspirationUrl: "",
       }),
     );
-    const body = await response.json();
-
-    expect(response.status).toBe(502);
-    expect(body.error).toContain("incomplete artwork analysis twice");
-    expect(body.error).toContain("artwork has not been rejected");
-    expect(body.providerError).toMatchObject({
-      stage: "page-artwork-analysis-parse",
-      kind: "invalid",
-      status: null,
-    });
-    expect(body.providerError.detail).toContain("max_output_tokens");
-    expect(body.providerError.detail).toContain("attempt 2");
+    const events = await readNdjson(response);
+    const errorEvent = events.at(-1) as { error: string; providerError: Record<string, unknown> };
+    expect(errorEvent.error).toContain("incomplete artwork analysis twice");
+    expect(errorEvent.error).toContain("artwork has not been rejected");
+    expect(errorEvent.providerError).toMatchObject({ stage: "page-artwork-analysis-parse", kind: "invalid", status: null });
+    expect(String(errorEvent.providerError.detail)).toContain("max_output_tokens");
+    expect(String(errorEvent.providerError.detail)).toContain("attempt 2");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -246,14 +462,12 @@ describe("POST /api/generate-site-page", () => {
       .fn()
       .mockResolvedValueOnce(outputText(ARTWORK))
       .mockResolvedValueOnce(inspirationResponse())
-      .mockResolvedValueOnce(outputText({ html: html("<p>root@token:~$ tokenomics.sh join the heist</p>"), ...ids }));
+      .mockResolvedValueOnce(completedStream({ html: html("<p>root@token:~$ tokenomics.sh join the heist</p>"), ...ids }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await POST(
-      request({ imageDataUrl: VALID_IMAGE, inspirationUrl: URL }),
-    );
-    expect(response.status).toBe(502);
-    expect((await response.json()).error).toContain("legacy terminal fallback");
+    const response = await POST(request({ imageDataUrl: VALID_IMAGE, inspirationUrl: URL }));
+    const events = await readNdjson(response);
+    expect(String((events.at(-1) as { error: string }).error)).toContain("legacy terminal fallback");
   });
 
   it("rejects a full page that echoes the wrong collaboration evidence", async () => {
@@ -262,7 +476,7 @@ describe("POST /api/generate-site-page", () => {
       .mockResolvedValueOnce(outputText(ARTWORK))
       .mockResolvedValueOnce(inspirationResponse())
       .mockResolvedValueOnce(
-        outputText({
+        completedStream({
           html: html(),
           artworkBriefId: "art-deadbeef",
           inspirationBriefId: "url-deadbeef",
@@ -270,18 +484,17 @@ describe("POST /api/generate-site-page", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await POST(
-      request({ imageDataUrl: VALID_IMAGE, inspirationUrl: URL }),
-    );
-    expect(response.status).toBe(502);
-    expect((await response.json()).error).toContain("incomplete, unsafe");
+    const response = await POST(request({ imageDataUrl: VALID_IMAGE, inspirationUrl: URL }));
+    const events = await readNdjson(response);
+    expect(String((events.at(-1) as { error: string }).error)).toContain("incomplete, unsafe");
   });
 
-  it("keeps uploaded artwork mandatory", async () => {
+  it("keeps uploaded artwork mandatory as a normal pre-stream JSON response", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const response = await POST(request({ inspirationUrl: URL }));
     expect(response.status).toBe(400);
+    expect(response.headers.get("Content-Type")).toBe("application/json");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -301,6 +514,7 @@ describe("full website frontend wiring", () => {
     expect(page).toContain("FullWebsiteGenerator");
     expect(page).not.toContain("ArtworkSiteGenerator");
     expect(generator).toContain('fetch("/api/generate-site-page"');
+    expect(generator).toContain('Accept: "application/x-ndjson"');
     expect(generator).toContain('frame.setAttribute("sandbox", "allow-scripts")');
     expect(generator).toContain("frame.srcdoc = prepared");
     expect(generator).toContain("hoodlums-generated-page-height");

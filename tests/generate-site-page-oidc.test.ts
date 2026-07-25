@@ -29,6 +29,29 @@ function outputText(value: unknown) {
   );
 }
 
+function sseIncompleteStream() {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode(
+          `data: ${JSON.stringify({ type: "response.incomplete", response: { incomplete_details: { reason: "max_output_tokens" } } })}\n\n`,
+        ),
+      );
+      controller.close();
+    },
+  });
+  return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+}
+
+async function readNdjson(response: Response): Promise<Array<Record<string, unknown>>> {
+  const text = await response.text();
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
 describe("POST /api/generate-site-page Vercel runtime authentication", () => {
   beforeEach(() => {
     delete process.env.OPENAI_API_KEY;
@@ -46,7 +69,7 @@ describe("POST /api/generate-site-page Vercel runtime authentication", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(outputText(ARTWORK))
-      .mockResolvedValueOnce(outputText({ invalid: true }));
+      .mockResolvedValueOnce(sseIncompleteStream());
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(
@@ -65,7 +88,15 @@ describe("POST /api/generate-site-page Vercel runtime authentication", () => {
       }),
     );
 
-    expect(response.status).toBe(502);
+    // Streaming has started by this point, so the failure surfaces as a
+    // typed NDJSON error event on a 200 response rather than a 502 status.
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/x-ndjson");
+    const events = await readNdjson(response);
+    const errorEvent = events.at(-1) as { type: string; providerError: Record<string, unknown> };
+    expect(errorEvent.type).toBe("error");
+    expect(String(errorEvent.providerError.detail)).toContain("incomplete");
+
     expect(fetchMock).toHaveBeenCalledTimes(2);
     for (const call of fetchMock.mock.calls) {
       expect(call[0]).toBe(VERCEL_AI_GATEWAY_RESPONSES_URL);

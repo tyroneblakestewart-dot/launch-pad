@@ -11,40 +11,139 @@ type GenerateDetail = {
   inspirationUrl?: string;
 };
 
-type GeneratedPageResponse = {
+type ProgressEvent = {
+  type: "progress";
+  stage?: unknown;
+  message?: unknown;
+  receivedCharacters?: unknown;
+};
+type CompleteEvent = {
+  type: "complete";
   html?: unknown;
-  error?: string;
-  source?: string;
-  inspirationUsed?: boolean;
+  source?: unknown;
+  inspirationUsed?: unknown;
+};
+type ErrorEvent = { type: "error"; error?: unknown; providerError?: unknown };
+type NdjsonEvent = ProgressEvent | CompleteEvent | ErrorEvent | { type?: unknown };
+
+export type GenerationProgress = {
+  stage: string;
+  message: string;
+  receivedCharacters?: number;
 };
 
 type PreviewStatus = "generating" | "failed";
 
-export async function requestGeneratedWebsite(detail: GenerateDetail): Promise<{
-  html: string;
-  inspirationUsed: boolean;
-}> {
+const STAGE_HEADLINES: Record<string, string> = {
+  "analysing-artwork": "Analysing artwork…",
+  "preparing-design": "Preparing design…",
+  "building-page": "Writing website…",
+  "checking-safety": "Checking safety…",
+};
+
+function isAbortError(error: unknown): boolean {
+  return Boolean(error) && typeof error === "object" && (error as { name?: unknown }).name === "AbortError";
+}
+
+async function consumeNdjsonBody(
+  response: Response,
+  onEvent: (event: NdjsonEvent) => void,
+): Promise<void> {
+  if (!response.body) {
+    throw new Error("The website generation stream was empty.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  function drain(finalChunk: string) {
+    buffer += finalChunk;
+    let newlineIndex = buffer.indexOf("\n");
+    while (newlineIndex !== -1) {
+      const line = buffer.slice(0, newlineIndex).trim();
+      buffer = buffer.slice(newlineIndex + 1);
+      if (line) {
+        try {
+          onEvent(JSON.parse(line) as NdjsonEvent);
+        } catch {
+          // Ignore a malformed NDJSON line rather than aborting the whole stream.
+        }
+      }
+      newlineIndex = buffer.indexOf("\n");
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    drain(decoder.decode(value, { stream: true }));
+  }
+
+  drain(decoder.decode());
+  const finalLine = buffer.trim();
+  if (finalLine) {
+    try {
+      onEvent(JSON.parse(finalLine) as NdjsonEvent);
+    } catch {
+      // Ignore a malformed trailing line.
+    }
+  }
+}
+
+export async function requestGeneratedWebsite(
+  detail: GenerateDetail,
+  onProgress: (progress: GenerationProgress) => void,
+  signal: AbortSignal,
+): Promise<{ html: string; inspirationUsed: boolean }> {
   if (!detail.imageDataUrl?.startsWith("data:image/")) {
     throw new Error("Upload artwork before generating the website.");
   }
 
   const response = await fetch("/api/generate-site-page", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
     body: JSON.stringify(detail),
+    signal,
   });
-  const payload = (await response.json().catch(() => ({}))) as GeneratedPageResponse;
+
   if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(payload.error || "The full website could not be generated.");
   }
-  if (typeof payload.html !== "string") {
-    throw new Error("The generated website document was missing.");
-  }
 
-  return {
-    html: payload.html,
-    inspirationUsed: payload.inspirationUsed === true,
-  };
+  let completeResult: { html: string; inspirationUsed: boolean } | null = null;
+  let failureMessage: string | null = null;
+
+  await consumeNdjsonBody(response, (event) => {
+    if (!event || typeof event !== "object") return;
+    if (event.type === "progress") {
+      const progress = event as ProgressEvent;
+      if (typeof progress.stage === "string" && typeof progress.message === "string") {
+        onProgress({
+          stage: progress.stage,
+          message: progress.message,
+          receivedCharacters:
+            typeof progress.receivedCharacters === "number" ? progress.receivedCharacters : undefined,
+        });
+      }
+      return;
+    }
+    if (event.type === "complete") {
+      const complete = event as CompleteEvent;
+      if (typeof complete.html === "string") {
+        completeResult = { html: complete.html, inspirationUsed: complete.inspirationUsed === true };
+      }
+      return;
+    }
+    if (event.type === "error") {
+      const failure = event as ErrorEvent;
+      failureMessage = typeof failure.error === "string" ? failure.error : "The full website could not be generated.";
+    }
+  });
+
+  if (completeResult) return completeResult;
+  throw new Error(failureMessage || "The website generation stream ended before completing.");
 }
 
 function previewElement(): HTMLElement {
@@ -53,22 +152,26 @@ function previewElement(): HTMLElement {
   return site;
 }
 
-function setPreviewStatus(mode: PreviewStatus, message: string) {
+function setPreviewStatus(mode: PreviewStatus, message: string, progress?: GenerationProgress) {
   const site = previewElement();
   let status = site.querySelector<HTMLElement>(".full-generated-page-status");
   if (!status) {
     status = document.createElement("section");
     status.className = "full-generated-page-status";
     status.setAttribute("aria-live", "polite");
-    status.innerHTML = "<span></span><strong></strong><p></p>";
+    status.innerHTML = "<span></span><strong></strong><p></p><em></em>";
     site.appendChild(status);
   }
+
+  const headline = progress ? STAGE_HEADLINES[progress.stage] : undefined;
 
   status.querySelector("span")!.textContent =
     mode === "generating" ? "STANDALONE WEBSITE GENERATOR" : "GENERATION STOPPED";
   status.querySelector("strong")!.textContent =
-    mode === "generating" ? "Building the finished website…" : "No finished website was produced";
+    mode === "generating" ? headline || "Building the finished website…" : "No finished website was produced";
   status.querySelector("p")!.textContent = message;
+  status.querySelector("em")!.textContent =
+    progress?.receivedCharacters ? `${progress.receivedCharacters.toLocaleString()} characters written so far` : "";
 
   site.classList.toggle("full-page-generating", mode === "generating");
   site.classList.toggle("full-page-failed", mode === "failed");
@@ -84,7 +187,10 @@ function renderGeneratedWebsite(html: string, artworkDataUrl: string) {
   const site = previewElement();
   const prepared = prepareGeneratedPageForPreview(html, artworkDataUrl);
   const previous = site.querySelector<HTMLIFrameElement>(".full-generated-page-frame");
-  previous?.remove();
+  if (previous) {
+    previous.srcdoc = "";
+    previous.remove();
+  }
   clearPreviewStatus(site);
 
   const frame = document.createElement("iframe");
@@ -104,6 +210,7 @@ function renderGeneratedWebsite(html: string, artworkDataUrl: string) {
 export function FullWebsiteGenerator() {
   useEffect(() => {
     let activeFrame: HTMLIFrameElement | null = null;
+    let activeController: AbortController | null = null;
     let generationNumber = 0;
 
     function onMessage(event: MessageEvent) {
@@ -117,6 +224,9 @@ export function FullWebsiteGenerator() {
 
     async function onGenerate(event: Event) {
       const detail = (event as CustomEvent<GenerateDetail>).detail;
+      activeController?.abort();
+      const controller = new AbortController();
+      activeController = controller;
       const currentGeneration = ++generationNumber;
       const sourceMessage = detail.inspirationUrl
         ? "Analysing the uploaded artwork and the inspiration website, then combining them into one original standalone page. The old Hoodlums preview is hidden because it is not the result."
@@ -124,7 +234,14 @@ export function FullWebsiteGenerator() {
       setPreviewStatus("generating", sourceMessage);
 
       try {
-        const page = await requestGeneratedWebsite(detail);
+        const page = await requestGeneratedWebsite(
+          detail,
+          (progress) => {
+            if (currentGeneration !== generationNumber) return;
+            setPreviewStatus("generating", sourceMessage, progress);
+          },
+          controller.signal,
+        );
         if (currentGeneration !== generationNumber) return;
         activeFrame = renderGeneratedWebsite(page.html, detail.imageDataUrl || "");
         window.dispatchEvent(
@@ -138,6 +255,7 @@ export function FullWebsiteGenerator() {
         );
       } catch (error) {
         if (currentGeneration !== generationNumber) return;
+        if (isAbortError(error)) return;
         const message =
           error instanceof Error ? error.message : "The full website could not be generated.";
         setPreviewStatus(
@@ -159,10 +277,19 @@ export function FullWebsiteGenerator() {
     window.addEventListener("launchpad:generate-site", onGenerate);
     return () => {
       generationNumber += 1;
+      activeController?.abort();
       window.removeEventListener("message", onMessage);
       window.removeEventListener("launchpad:generate-site", onGenerate);
+      if (activeFrame) {
+        activeFrame.srcdoc = "";
+        activeFrame.remove();
+        activeFrame = null;
+      }
       const site = document.querySelector<HTMLElement>(".site-preview");
-      if (site) clearPreviewStatus(site);
+      if (site) {
+        site.classList.remove("full-generated-page");
+        clearPreviewStatus(site);
+      }
     };
   }, []);
 
@@ -221,6 +348,13 @@ export function FullWebsiteGenerator() {
         margin: 0;
         color: #526878;
         font: 500 16px/1.65 system-ui, sans-serif;
+      }
+      .full-generated-page-status em {
+        max-width: 680px;
+        margin: 0;
+        font: 600 13px/1.5 system-ui, sans-serif;
+        font-style: normal;
+        color: #6d8494;
       }
       .site-preview.full-page-generating .full-generated-page-status::after {
         width: 42px;

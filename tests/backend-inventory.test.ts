@@ -76,6 +76,7 @@ describe("backend test inventory", () => {
       "lib/server/publish-auth.ts",
       "lib/server/publish-store.ts",
       "lib/server/published-site-validation.ts",
+      "lib/server/sse-events.ts",
       "lib/server/telegram.ts",
     ]);
   });
