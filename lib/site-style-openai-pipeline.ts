@@ -115,6 +115,19 @@ function validBriefText(value: unknown, min: number, max: number): value is stri
   return typeof value === "string" && value.trim().length >= min && value.trim().length <= max;
 }
 
+function normaliseBriefText(
+  value: unknown,
+  min: number,
+  max: number,
+  emptyFallback = "",
+): string | null {
+  if (typeof value !== "string") return null;
+  const collapsed = value.replace(/\s+/g, " ").trim() || emptyFallback;
+  if (collapsed.length < min) return null;
+  if (collapsed.length <= max) return collapsed;
+  return `${collapsed.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
+}
+
 function briefId(prefix: "art" | "url", value: string): string {
   let hash = 2_166_136_261;
   for (let index = 0; index < value.length; index += 1) {
@@ -192,26 +205,44 @@ export function parseArtworkIdentityResponse(response: OpenAIResponse): ArtworkI
 
   try {
     const value = JSON.parse(text) as Record<string, unknown>;
-    const candidate: ArtworkIdentity = {
-      dominantColours: typeof value.dominantColours === "string" ? value.dominantColours.trim() : "",
-      memeEnergy: typeof value.memeEnergy === "string" ? value.memeEnergy.trim() : "",
-      subjectAndIcons: typeof value.subjectAndIcons === "string" ? value.subjectAndIcons.trim() : "",
-      visibleText: typeof value.visibleText === "string" ? value.visibleText.trim() : "",
-      typographyPersonality:
-        typeof value.typographyPersonality === "string" ? value.typographyPersonality.trim() : "",
-      copyVoice: typeof value.copyVoice === "string" ? value.copyVoice.trim() : "",
-      nonNegotiables: typeof value.nonNegotiables === "string" ? value.nonNegotiables.trim() : "",
-    };
+    const dominantColours = normaliseBriefText(value.dominantColours, 20, 140);
+    const memeEnergy = normaliseBriefText(value.memeEnergy, 12, 180);
+    const subjectAndIcons = normaliseBriefText(value.subjectAndIcons, 12, 220);
+    const visibleText = normaliseBriefText(
+      value.visibleText,
+      3,
+      180,
+      "No visible text was identified in the artwork.",
+    );
+    const typographyPersonality = normaliseBriefText(
+      value.typographyPersonality,
+      12,
+      180,
+    );
+    const copyVoice = normaliseBriefText(value.copyVoice, 12, 180);
+    const nonNegotiables = normaliseBriefText(value.nonNegotiables, 12, 220);
 
-    return validBriefText(candidate.dominantColours, 20, 140) &&
-      validBriefText(candidate.memeEnergy, 12, 180) &&
-      validBriefText(candidate.subjectAndIcons, 12, 220) &&
-      validBriefText(candidate.visibleText, 3, 180) &&
-      validBriefText(candidate.typographyPersonality, 12, 180) &&
-      validBriefText(candidate.copyVoice, 12, 180) &&
-      validBriefText(candidate.nonNegotiables, 12, 220)
-      ? candidate
-      : null;
+    if (
+      !dominantColours ||
+      !memeEnergy ||
+      !subjectAndIcons ||
+      !visibleText ||
+      !typographyPersonality ||
+      !copyVoice ||
+      !nonNegotiables
+    ) {
+      return null;
+    }
+
+    return {
+      dominantColours,
+      memeEnergy,
+      subjectAndIcons,
+      visibleText,
+      typographyPersonality,
+      copyVoice,
+      nonNegotiables,
+    };
   } catch {
     return null;
   }
