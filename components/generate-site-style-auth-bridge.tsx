@@ -6,6 +6,7 @@ const GENERATE_SITE_STYLE_HEADER = "x-hoodlums-api-key";
 const PROTECTED_GENERATION_ROUTES = [
   "/api/generate-site-style",
   "/api/generate-site-page",
+  "/api/generate-free-site",
 ] as const;
 
 export function GenerateSiteStyleAuthBridge() {

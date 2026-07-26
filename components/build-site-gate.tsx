@@ -13,6 +13,8 @@ import {
 const REQUIRED_DESCRIPTION_LENGTH = 20;
 const MAX_INSPIRATION_URL_LENGTH = 500;
 
+type GenerateMode = "free" | "bespoke";
+
 type GenerateDetail = {
   name: string;
   ticker: string;
@@ -27,6 +29,7 @@ type GenerateDetail = {
   contractAddress: string;
   xHandle: string;
   telegram: string;
+  mode: GenerateMode;
 };
 
 function findControl(panel: Element, labelText: string) {
@@ -113,6 +116,7 @@ export function BuildSiteGate() {
     let gate: HTMLDivElement | null = null;
     let overlay: HTMLDivElement | null = null;
     let button: HTMLButtonElement | null = null;
+    let secondaryButton: HTMLButtonElement | null = null;
     let checklist: HTMLDivElement | null = null;
     let hint: HTMLParagraphElement | null = null;
     let generationTimeout: number | null = null;
@@ -123,7 +127,7 @@ export function BuildSiteGate() {
       generationTimeout = null;
     }
 
-    function currentDetail(panel: Element): GenerateDetail {
+    function currentDetail(panel: Element, mode: GenerateMode): GenerateDetail {
       const chain = panel.querySelector(".chain-option.active .chain-dot.solana")
         ? "solana"
         : "robinhood";
@@ -142,6 +146,7 @@ export function BuildSiteGate() {
         contractAddress: findControl(panel, "Contract / mint address")?.value.trim() || "",
         xHandle: findControl(panel, "X handle")?.value.trim() || "",
         telegram: findControl(panel, "Telegram")?.value.trim() || "",
+        mode,
       };
     }
 
@@ -167,22 +172,29 @@ export function BuildSiteGate() {
           <div class="build-site-checklist" aria-live="polite"></div>
           <button class="build-site-button" type="button">GENERATE SITE FROM ARTWORK</button>
           <p class="build-site-hint">Upload content to define the site. An inspiration website is optional.</p>
+          <button class="build-site-secondary-button" type="button">Generate a bespoke AI site</button>
+          <p class="build-site-secondary-hint">Takes longer and produces a one-off, fully custom AI design.</p>
         `;
         uploadBox.insertAdjacentElement("afterend", gate);
         button = gate.querySelector<HTMLButtonElement>(".build-site-button");
+        secondaryButton = gate.querySelector<HTMLButtonElement>(".build-site-secondary-button");
         checklist = gate.querySelector<HTMLDivElement>(".build-site-checklist");
         hint = gate.querySelector<HTMLParagraphElement>(".build-site-hint");
 
-        button?.addEventListener("click", () => {
+        const resolvedPanel: Element = panel;
+        function startGeneration(mode: GenerateMode) {
           if (button?.disabled || generating) return;
-          const detail = currentDetail(panel);
+          const detail = currentDetail(resolvedPanel, mode);
           const next = startSitePreviewGeneration();
           unlocked = next.unlocked;
           generating = next.generating;
           if (hint) {
-            hint.textContent = detail.inspirationUrl
-              ? "Your website preview is ready below. AI is now applying the inspiration website."
-              : "Your website preview is ready below. AI is now enhancing it from the uploaded artwork.";
+            hint.textContent =
+              mode === "bespoke"
+                ? "Your website preview is ready below. AI is now generating a bespoke, one-off design. This takes longer."
+                : detail.inspirationUrl
+                  ? "Your website preview is ready below. AI is now applying the inspiration website."
+                  : "Your website preview is ready below. AI is now enhancing it from the uploaded artwork.";
           }
           refresh();
           document.querySelector(".preview-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -198,7 +210,10 @@ export function BuildSiteGate() {
           }, SITE_GENERATION_TIMEOUT_MS);
 
           window.dispatchEvent(new CustomEvent("launchpad:generate-site", { detail }));
-        });
+        }
+
+        button?.addEventListener("click", () => startGeneration("free"));
+        secondaryButton?.addEventListener("click", () => startGeneration("bespoke"));
       }
 
       if (!overlay || !overlay.isConnected) {
@@ -221,7 +236,7 @@ export function BuildSiteGate() {
       const elements = ensureElements();
       if (!elements || !button || !checklist || !overlay) return;
 
-      const detail = currentDetail(elements.panel);
+      const detail = currentDetail(elements.panel, "free");
       const checks = [
         { label: "Token name", complete: detail.name.length >= 2 },
         { label: "Ticker", complete: /^[A-Za-z0-9]{2,12}$/.test(detail.ticker) },
@@ -260,6 +275,13 @@ export function BuildSiteGate() {
         : unlocked
           ? "REGENERATE FROM ARTWORK ↻"
           : "GENERATE SITE FROM ARTWORK";
+      if (secondaryButton) {
+        secondaryButton.disabled = !ready || generating;
+        secondaryButton.setAttribute("aria-busy", String(generating));
+        secondaryButton.textContent = generating
+          ? "GENERATING BESPOKE SITE…"
+          : "Generate a bespoke AI site";
+      }
       gate?.classList.toggle("ready", ready);
       gate?.classList.toggle("unlocked", unlocked);
       gate?.classList.toggle("generating", generating);
@@ -284,9 +306,11 @@ export function BuildSiteGate() {
             ? detail.style.inspirationUsed
               ? "AI analysed the uploaded content and inspiration website and applied the finished design."
               : "AI analysed the uploaded artwork and applied the finished design."
-            : hasInspiration
-              ? "Your artwork-based website is visible. AI inspiration enhancement is still required for the URL."
-              : "The browser matched the uploaded artwork's palette, mood and shape.";
+            : detail?.style?.source === "free"
+              ? "Your free site is ready, matched to your uploaded artwork."
+              : hasInspiration
+                ? "Your artwork-based website is visible. AI inspiration enhancement is still required for the URL."
+                : "The browser matched the uploaded artwork's palette, mood and shape.";
       }
       refresh();
       document.querySelector(".preview-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -399,6 +423,18 @@ export function BuildSiteGate() {
         background: #11192a;
       }
       .build-site-hint { margin: 0; color: #68736a; font: 9px/1.5 "IBM Plex Mono", monospace; }
+      .build-site-secondary-button {
+        min-height: 40px;
+        border: 1px solid rgba(131,183,139,.28);
+        border-radius: 7px;
+        color: #b9c4bb;
+        background: transparent;
+        font: 700 9px "IBM Plex Mono", monospace;
+        letter-spacing: .06em;
+      }
+      .build-site-secondary-button:hover:not(:disabled) { border-color: rgba(131,183,139,.5); }
+      .build-site-secondary-button:disabled { cursor: not-allowed; opacity: .55; }
+      .build-site-secondary-hint { margin: 0; color: #68736a; font: 9px/1.5 "IBM Plex Mono", monospace; }
       .build-site-optional-marker {
         float: right;
         margin-left: 8px;
