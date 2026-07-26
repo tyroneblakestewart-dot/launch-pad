@@ -119,6 +119,13 @@ function outputText(value: unknown): Response {
   );
 }
 
+function incompleteResponse(reason = "max_output_tokens"): Response {
+  return new Response(
+    JSON.stringify({ status: "incomplete", incomplete_details: { reason }, output: [] }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
 function providerMock(design: unknown = DESIGN) {
   return vi
     .fn()
@@ -138,6 +145,7 @@ beforeEach(() => {
   delete process.env.AI_GATEWAY_API_KEY;
   delete process.env.VERCEL_OIDC_TOKEN;
   resetGenerateSiteStyleRateLimitForTests();
+  vi.spyOn(console, "warn").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
@@ -292,5 +300,54 @@ describe("POST /api/generate-free-site success", () => {
     expect(designRequest.input[0].content[0].text).toContain("4.5:1");
     expect(designRequest.input[1].content).toHaveLength(1);
     expect(designRequest.input[1].content[0]).not.toHaveProperty("image_url");
+  });
+
+  it("retries once and succeeds when the first artwork response is incomplete and the second is valid", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(incompleteResponse())
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(outputText(DESIGN));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ html: string }>(response);
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(body.html).toContain(VALID_IMAGE);
+    expect(console.warn).toHaveBeenCalledWith(
+      "AI artwork identity response was incomplete; retrying once",
+      expect.stringContaining("max_output_tokens"),
+    );
+  });
+});
+
+describe("POST /api/generate-free-site artwork failures", () => {
+  it("returns an invalid-identity error after two failed artwork parses without a third attempt", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(incompleteResponse("max_output_tokens"))
+      .mockResolvedValueOnce(outputText({ dominantColours: "too short" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ error: string }>(response);
+
+    expect(response.status).toBe(502);
+    expect(body.error).toBe("The AI returned an invalid artwork identity.");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a provider-level artwork failure", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response("", { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ error: string }>(response);
+
+    expect(response.status).toBe(502);
+    expect(body.error).toBe("The AI artwork-analysis service could not complete the request.");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
