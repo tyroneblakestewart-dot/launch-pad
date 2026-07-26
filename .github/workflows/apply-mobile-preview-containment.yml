@@ -1,0 +1,53 @@
+name: Apply mobile preview containment
+
+on:
+  push:
+    branches:
+      - fix/mobile-generated-preview-container
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/mobile-generated-preview-container
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply containment patch
+        run: python3 scripts/apply-generated-preview-containment.py
+
+      - name: Remove branch-only patch files
+        run: |
+          rm scripts/apply-generated-preview-containment.py
+          rm .github/workflows/apply-mobile-preview-containment.yml
+
+      - name: Install dependencies
+        run: npm install --silent
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Commit verified implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/full-website-generator.tsx tests/generated-preview-containment.test.ts scripts/apply-generated-preview-containment.py .github/workflows/apply-mobile-preview-containment.yml
+          git commit -m "Contain generated website preview on mobile"
+          git push origin HEAD:fix/mobile-generated-preview-container
