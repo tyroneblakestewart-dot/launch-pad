@@ -341,7 +341,7 @@ describe("POST /api/generate-free-site artwork failures", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("does not retry a provider-level artwork failure", async () => {
+  it("does not retry a provider-level artwork failure and reports the http status", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response("", { status: 500 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -349,7 +349,75 @@ describe("POST /api/generate-free-site artwork failures", () => {
     const body = await responseJson<{ error: string }>(response);
 
     expect(response.status).toBe(502);
-    expect(body.error).toBe("The AI artwork-analysis service could not complete the request.");
+    expect(body.error).toBe(
+      "The AI artwork-analysis service could not complete the request (http 500).",
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a timed-out artwork call distinctly from a general network error", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new DOMException("The operation was aborted due to timeout", "TimeoutError"),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ error: string }>(response);
+
+    expect(response.status).toBe(502);
+    expect(body.error).toBe(
+      "The AI artwork-analysis service could not complete the request (timeout).",
+    );
+  });
+
+  it("reports a general artwork network error as network, not timeout", async () => {
+    const fetchMock = vi.fn().mockRejectedValueOnce(new Error("getaddrinfo ENOTFOUND"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ error: string }>(response);
+
+    expect(response.status).toBe(502);
+    expect(body.error).toBe(
+      "The AI artwork-analysis service could not complete the request (network).",
+    );
+  });
+});
+
+describe("POST /api/generate-free-site design failures", () => {
+  it("reports the http status when the design request fails", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(new Response("", { status: 429 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ error: string }>(response);
+
+    expect(response.status).toBe(502);
+    expect(body.error).toBe(
+      "The AI free-site design service could not complete the request (http 429).",
+    );
+  });
+
+  it("reports a timed-out design call as timeout", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockRejectedValueOnce(
+        new DOMException("The operation was aborted due to timeout", "TimeoutError"),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ error: string }>(response);
+
+    expect(response.status).toBe(502);
+    expect(body.error).toBe(
+      "The AI free-site design service could not complete the request (timeout).",
+    );
   });
 });

@@ -19,6 +19,7 @@ import {
   getClientIp,
   isGenerateSiteStyleRequestAuthorised,
 } from "@/lib/server/api-protection";
+import { sanitiseProviderDetail } from "@/lib/server/sanitise-provider-detail";
 import {
   isValidImageDataUrl,
   normaliseGenerateSiteStyleRequest,
@@ -36,7 +37,12 @@ const DESIGN_TIMEOUT_MS = 35_000;
 
 type ProviderResult =
   | { ok: true; payload: OpenAIResponse }
-  | { ok: false; kind: "network" | "http" | "invalid"; status?: number };
+  | {
+      ok: false;
+      kind: "network" | "http" | "invalid";
+      status?: number;
+      detail?: string;
+    };
 
 function noStoreHeaders(extra: Record<string, string> = {}) {
   return { "Cache-Control": "no-store", ...extra };
@@ -58,8 +64,8 @@ async function requestProvider(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
-  } catch {
-    return { ok: false, kind: "network" };
+  } catch (error) {
+    return { ok: false, kind: "network", detail: sanitiseProviderDetail(error) };
   }
 
   if (!response.ok) {
@@ -71,6 +77,21 @@ async function requestProvider(
   } catch {
     return { ok: false, kind: "invalid" };
   }
+}
+
+function isTimeoutFailure(failure: { kind: string; detail?: string }): boolean {
+  if (failure.kind !== "network") return false;
+  return /\b(?:abort|aborted|timeout|timed out)\b/i.test(failure.detail || "");
+}
+
+function describeProviderFailure(failure: {
+  kind: "network" | "http" | "invalid";
+  status?: number;
+  detail?: string;
+}): string {
+  if (isTimeoutFailure(failure)) return "timeout";
+  if (failure.kind === "http") return `http ${failure.status}`;
+  return failure.kind;
 }
 
 function escapeHtmlAttribute(value: string): string {
@@ -182,7 +203,7 @@ export async function POST(request: Request) {
       {
         error: parseFailure
           ? "The AI returned an invalid artwork identity."
-          : "The AI artwork-analysis service could not complete the request.",
+          : `The AI artwork-analysis service could not complete the request (${describeProviderFailure(artworkResult.failure)}).`,
       },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
@@ -197,7 +218,9 @@ export async function POST(request: Request) {
   );
   if (!designResult.ok) {
     return NextResponse.json(
-      { error: "The AI free-site design service could not complete the request." },
+      {
+        error: `The AI free-site design service could not complete the request (${describeProviderFailure(designResult)}).`,
+      },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
