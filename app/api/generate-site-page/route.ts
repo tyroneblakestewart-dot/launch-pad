@@ -32,10 +32,23 @@ import {
   resolveAIResponsesRuntime,
   type AIResponsesRuntime,
 } from "@/lib/server/ai-responses-runtime";
+import { sanitiseProviderDetail } from "@/lib/server/sanitise-provider-detail";
+import {
+  requestStreamedFullPageGeneration,
+  type StreamedFullPageOutcome,
+} from "@/lib/server/generate-site-page-stream";
+import type { GenerateSitePageStreamEvent } from "@/lib/generate-site-page-stream-protocol";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
-export const FULL_PAGE_GENERATION_TIMEOUT_MS = 70_000;
+
+// Only the short artwork/inspiration analysis calls need a bounded timeout;
+// the single large full-page-generation call is streamed and relies on the
+// incoming request's own abort signal (client disconnect) instead.
+const ANALYSIS_TIMEOUT_MS = 18_000;
+// Progress heartbeats for the "building-page" stage are throttled to this
+// interval so a long generation doesn't flood the NDJSON stream.
+const BUILDING_PAGE_PROGRESS_INTERVAL_MS = 15_000;
 
 type OpenAIRequestFailure = {
   ok: false;
@@ -55,7 +68,7 @@ type ArtworkIdentityRequestResult =
 type ProviderError = {
   stage: string;
   provider: AIResponsesRuntime["source"];
-  kind: OpenAIRequestFailure["kind"];
+  kind: string;
   status: number | null;
   detail: string | null;
 };
@@ -69,20 +82,10 @@ function noStoreHeaders(extra: Record<string, string> = {}) {
   return { "Cache-Control": "no-store", ...extra };
 }
 
-function sanitiseProviderDetail(value: unknown): string {
-  const text = typeof value === "string" ? value : value instanceof Error ? value.message : String(value || "");
-  return text
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
-    .replace(/(?:api[_-]?key|token)(["'\s:=]+)[A-Za-z0-9._~+/=-]+/gi, "credential$1[redacted]")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 500);
-}
-
 function providerError(
   stage: string,
   ai: AIResponsesRuntime,
-  failure: OpenAIRequestFailure,
+  failure: { kind: string; status?: number; detail?: string },
 ): ProviderError {
   return {
     stage,
@@ -93,7 +96,7 @@ function providerError(
   };
 }
 
-function isTimeoutFailure(failure: OpenAIRequestFailure): boolean {
+function isTimeoutFailure(failure: { kind: string; detail?: string }): boolean {
   if (failure.kind !== "network") return false;
   return /\b(?:abort|aborted|timeout|timed out)\b/i.test(failure.detail || "");
 }
@@ -158,7 +161,7 @@ async function requestArtworkIdentity(
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const stage = attempt === 1 ? "page-artwork-analysis" : "page-artwork-analysis-retry";
-    const result = await requestOpenAI(ai, body, 18_000, stage);
+    const result = await requestOpenAI(ai, body, ANALYSIS_TIMEOUT_MS, stage);
     if (!result.ok) return { ok: false, stage, failure: result };
 
     const identity = parseArtworkIdentityResponse(result.payload);
@@ -180,6 +183,22 @@ async function requestArtworkIdentity(
       detail: sanitiseProviderDetail(parseDetails.join(" ")),
     },
   };
+}
+
+function generationFailureMessage(generation: Extract<StreamedFullPageOutcome, { ok: false }>): string {
+  if (isTimeoutFailure(generation)) {
+    return "The artwork analysis succeeded, but the connection to the AI was interrupted while building the full website. Try generating again once; the artwork does not need to be replaced.";
+  }
+  switch (generation.kind) {
+    case "incomplete":
+      return "The AI stopped before finishing the full website. Try generating again; the artwork does not need to be replaced.";
+    case "failed":
+      return "The artwork and inspiration were analysed, but the standalone website generation failed. Try again.";
+    case "invalid":
+      return "AI returned an invalid website document. Try generating again.";
+    default:
+      return "The artwork and inspiration were analysed, but the standalone website could not be generated. Try again.";
+  }
 }
 
 export async function POST(request: Request) {
@@ -256,117 +275,165 @@ export async function POST(request: Request) {
   }
 
   const model = ai.model;
-  const artworkBody = buildPageArtworkIdentityRequestBody(input, model);
-  const domain = input.inspirationUrl ? getInspirationDomain(input.inspirationUrl) : null;
-  const inspirationBody = input.inspirationUrl
-    ? buildInspirationInspectionRequestBody(input, model)
-    : null;
+  const encoder = new TextEncoder();
 
-  const [artworkResult, inspirationResult] = await Promise.all([
-    requestArtworkIdentity(ai, artworkBody),
-    inspirationBody
-      ? requestOpenAI(ai, inspirationBody, 18_000, "page-inspiration-analysis")
-      : Promise.resolve<OpenAIRequestResult>({ ok: true, payload: {} }),
-  ]);
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let closed = false;
+      const send = (event: GenerateSitePageStreamEvent) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        } catch {
+          closed = true;
+        }
+      };
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          // Already closed by the client disconnecting; nothing more to do.
+        }
+      };
 
-  if (!artworkResult.ok) {
-    const parseFailure = artworkResult.failure.kind === "invalid";
-    return NextResponse.json(
-      {
-        error: parseFailure
-          ? "The AI returned an incomplete artwork analysis twice. Try generating again in a moment. Your artwork has not been rejected."
-          : "The AI artwork-analysis service could not complete the request. Try again later; your artwork has not been rejected.",
-        providerError: providerError(artworkResult.stage, ai, artworkResult.failure),
-      },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
-  }
-  const artworkIdentity = artworkResult.identity;
+      try {
+        send({ type: "progress", stage: "analysing-artwork" });
 
-  let inspirationAnalysis = NO_URL_PRESENTATION_BRIEF;
-  if (input.inspirationUrl) {
-    if (!domain || !inspirationBody) {
-      return NextResponse.json(
-        { error: "Enter a valid public http or https inspiration website URL." },
-        { status: 400, headers: noStoreHeaders(rateHeaders) },
-      );
-    }
-    if (!inspirationResult.ok) {
-      return NextResponse.json(
-        {
-          error: "The inspiration website could not be inspected. Check that it is public and try again.",
-          providerError: providerError("page-inspiration-analysis", ai, inspirationResult),
-        },
-        { status: 502, headers: noStoreHeaders(rateHeaders) },
-      );
-    }
-    const verified = extractVerifiedInspirationAnalysis(inspirationResult.payload, domain);
-    if (!verified) {
-      return NextResponse.json(
-        {
-          error: "The inspiration website was not inspected, so no full website was generated.",
-          providerError: {
-            stage: "page-inspiration-analysis-verify",
-            provider: ai.source,
-            kind: "invalid",
-            status: null,
-            detail: "The provider response did not contain a completed search result from the requested domain.",
-          },
-        },
-        { status: 502, headers: noStoreHeaders(rateHeaders) },
-      );
-    }
-    inspirationAnalysis = verified;
-  }
+        const artworkBody = buildPageArtworkIdentityRequestBody(input, model);
+        const domain = input.inspirationUrl ? getInspirationDomain(input.inspirationUrl) : null;
+        const inspirationBody = input.inspirationUrl
+          ? buildInspirationInspectionRequestBody(input, model)
+          : null;
 
-  const briefIds = getFusionBriefIds(artworkIdentity, inspirationAnalysis);
-  const acceptance = buildGeneratedPageAcceptanceProfile(artworkIdentity, inspirationAnalysis);
-  const generation = await requestOpenAI(
-    ai,
-    buildGeneratedSitePageRequestBody(input, model, artworkIdentity, inspirationAnalysis),
-    FULL_PAGE_GENERATION_TIMEOUT_MS,
-    "full-page-generation",
-  );
+        const [artworkResult, inspirationResult] = await Promise.all([
+          requestArtworkIdentity(ai, artworkBody),
+          inspirationBody
+            ? requestOpenAI(ai, inspirationBody, ANALYSIS_TIMEOUT_MS, "page-inspiration-analysis")
+            : Promise.resolve<OpenAIRequestResult>({ ok: true, payload: {} }),
+        ]);
 
-  if (!generation.ok) {
-    const timedOut = isTimeoutFailure(generation);
-    return NextResponse.json(
-      {
-        error: timedOut
-          ? "The artwork analysis succeeded, but the AI took too long to finish the full website. Try generating again once; the artwork does not need to be replaced."
-          : generation.kind === "invalid"
-            ? "AI returned an invalid website document. Try generating again."
-            : "The artwork and inspiration were analysed, but the standalone website could not be generated. Try again.",
-        providerError: providerError("full-page-generation", ai, generation),
-      },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
-  }
+        if (!artworkResult.ok) {
+          const parseFailure = artworkResult.failure.kind === "invalid";
+          send({
+            type: "error",
+            error: parseFailure
+              ? "The AI returned an incomplete artwork analysis twice. Try generating again in a moment. Your artwork has not been rejected."
+              : "The AI artwork-analysis service could not complete the request. Try again later; your artwork has not been rejected.",
+            providerError: providerError(artworkResult.stage, ai, artworkResult.failure),
+          });
+          close();
+          return;
+        }
+        const artworkIdentity = artworkResult.identity;
 
-  const page = parseGeneratedSitePageResponse(generation.payload, briefIds, acceptance);
-  if (!page) {
-    return NextResponse.json(
-      {
-        error:
-          "AI returned a website that was incomplete, unsafe, still resembled the legacy terminal fallback, or did not apply the inspiration structure. Try again.",
-        providerError: {
-          stage: "full-page-generation-parse",
-          provider: ai.source,
-          kind: "invalid",
-          status: null,
-          detail: "The generated document failed the server-side completeness, safety, evidence, or inspiration acceptance checks.",
-        },
-      },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
-  }
+        let inspirationAnalysis = NO_URL_PRESENTATION_BRIEF;
+        if (input.inspirationUrl) {
+          if (!domain || !inspirationBody) {
+            send({
+              type: "error",
+              error: "Enter a valid public http or https inspiration website URL.",
+            });
+            close();
+            return;
+          }
+          if (!inspirationResult.ok) {
+            send({
+              type: "error",
+              error: "The inspiration website could not be inspected. Check that it is public and try again.",
+              providerError: providerError("page-inspiration-analysis", ai, inspirationResult),
+            });
+            close();
+            return;
+          }
+          const verified = extractVerifiedInspirationAnalysis(inspirationResult.payload, domain);
+          if (!verified) {
+            send({
+              type: "error",
+              error: "The inspiration website was not inspected, so no full website was generated.",
+              providerError: {
+                stage: "page-inspiration-analysis-verify",
+                provider: ai.source,
+                kind: "invalid",
+                status: null,
+                detail: "The provider response did not contain a completed search result from the requested domain.",
+              },
+            });
+            close();
+            return;
+          }
+          inspirationAnalysis = verified;
+        }
 
-  return NextResponse.json(
-    {
-      html: page.html,
-      source: ai.source,
-      inspirationUsed: Boolean(input.inspirationUrl),
+        send({ type: "progress", stage: "preparing-design" });
+
+        const briefIds = getFusionBriefIds(artworkIdentity, inspirationAnalysis);
+        const acceptance = buildGeneratedPageAcceptanceProfile(artworkIdentity, inspirationAnalysis);
+        const generationBody = buildGeneratedSitePageRequestBody(input, model, artworkIdentity, inspirationAnalysis);
+
+        send({ type: "progress", stage: "building-page" });
+
+        let lastProgressAt = Date.now();
+        const generation = await requestStreamedFullPageGeneration(ai, generationBody, request.signal, () => {
+          const now = Date.now();
+          if (now - lastProgressAt >= BUILDING_PAGE_PROGRESS_INTERVAL_MS) {
+            lastProgressAt = now;
+            send({ type: "progress", stage: "building-page" });
+          }
+        });
+
+        if (!generation.ok) {
+          send({
+            type: "error",
+            error: generationFailureMessage(generation),
+            providerError: providerError("full-page-generation", ai, generation),
+          });
+          close();
+          return;
+        }
+
+        send({ type: "progress", stage: "checking-safety" });
+
+        const page = parseGeneratedSitePageResponse(generation.payload, briefIds, acceptance);
+        if (!page) {
+          send({
+            type: "error",
+            error:
+              "AI returned a website that was incomplete, unsafe, still resembled the legacy terminal fallback, or did not apply the inspiration structure. Try again.",
+            providerError: {
+              stage: "full-page-generation-parse",
+              provider: ai.source,
+              kind: "invalid",
+              status: null,
+              detail: "The generated document failed the server-side completeness, safety, evidence, or inspiration acceptance checks.",
+            },
+          });
+          close();
+          return;
+        }
+
+        send({
+          type: "complete",
+          html: page.html,
+          source: ai.source,
+          inspirationUsed: Boolean(input.inspirationUrl),
+        });
+        close();
+      } catch (error) {
+        if (!request.signal.aborted) {
+          console.error("Unexpected error while streaming full page generation", sanitiseProviderDetail(error));
+          send({
+            type: "error",
+            error: "The standalone website could not be generated because of an unexpected server error. Try again.",
+          });
+        }
+        close();
+      }
     },
-    { headers: noStoreHeaders(rateHeaders) },
-  );
+  });
+
+  return new NextResponse(stream, {
+    headers: noStoreHeaders({ ...rateHeaders, "Content-Type": "application/x-ndjson" }),
+  });
 }

@@ -1,17 +1,14 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  FULL_PAGE_GENERATION_TIMEOUT_MS,
-  POST,
-  maxDuration,
-} from "@/app/api/generate-site-page/route";
+import { POST, maxDuration } from "@/app/api/generate-site-page/route";
 import { ARTWORK_PLACEHOLDER } from "@/lib/generated-site-page";
 import { NO_URL_PRESENTATION_BRIEF } from "@/lib/site-page-openai-pipeline";
 import {
   getFusionBriefIds,
   type ArtworkIdentity,
 } from "@/lib/site-style-openai-pipeline";
+import { readNdjsonEvents, sseEventChunk, sseResponse } from "./generate-site-page-test-helpers";
 
 const ROOT = process.cwd();
 const VALID_IMAGE = "data:image/png;base64,aGVsbG8=";
@@ -75,6 +72,17 @@ function inspirationResponse() {
   );
 }
 
+/** A streamed provider response whose single response.completed event carries `value`. */
+function streamedPage(value: unknown) {
+  return sseResponse([
+    sseEventChunk({ type: "response.output_text.delta", delta: "" }),
+    sseEventChunk({
+      type: "response.completed",
+      response: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(value) }] }] },
+    }),
+  ]);
+}
+
 describe("POST /api/generate-site-page", () => {
   beforeEach(() => {
     process.env.OPENAI_API_KEY = "test-key";
@@ -90,19 +98,40 @@ describe("POST /api/generate-site-page", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses a route and provider timeout large enough for one complete full-page generation", () => {
+  it("uses a route timeout large enough for the whole streamed generation", () => {
     expect(maxDuration).toBe(120);
-    expect(FULL_PAGE_GENERATION_TIMEOUT_MS).toBe(70_000);
-    expect(FULL_PAGE_GENERATION_TIMEOUT_MS).toBeLessThan(maxDuration * 1_000);
   });
 
-  it("analyses artwork and URL separately, then returns a complete original page", async () => {
+  it("returns the streamed response as no-store application/x-ndjson", async () => {
+    const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(streamedPage({ html: html(), ...ids }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request({
+        name: "Journey",
+        ticker: "RIDE",
+        description: "A community token inspired by finding your route through London.",
+        imageDataUrl: VALID_IMAGE,
+        inspirationUrl: "",
+      }),
+    );
+
+    expect(response.headers.get("Content-Type")).toBe("application/x-ndjson");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    await readNdjsonEvents(response);
+  });
+
+  it("analyses artwork and URL separately, streams progress, then streams a complete original page", async () => {
     const ids = getFusionBriefIds(ARTWORK, INSPIRATION);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(outputText(ARTWORK))
       .mockResolvedValueOnce(inspirationResponse())
-      .mockResolvedValueOnce(outputText({ html: html(), ...ids }));
+      .mockResolvedValueOnce(streamedPage({ html: html(), ...ids }));
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(
@@ -114,10 +143,15 @@ describe("POST /api/generate-site-page", () => {
         inspirationUrl: URL,
       }),
     );
-    const body = await response.json();
+    const events = await readNdjsonEvents(response);
 
-    expect(response.status).toBe(200);
-    expect(body).toEqual({ html: html(), source: "openai", inspirationUsed: true });
+    expect(events.slice(0, 4)).toEqual([
+      { type: "progress", stage: "analysing-artwork" },
+      { type: "progress", stage: "preparing-design" },
+      { type: "progress", stage: "building-page" },
+      { type: "progress", stage: "checking-safety" },
+    ]);
+    expect(events.at(-1)).toEqual({ type: "complete", html: html(), source: "openai", inspirationUsed: true });
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
     const artworkRequest = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)) as {
@@ -128,11 +162,13 @@ describe("POST /api/generate-site-page", () => {
     const finalRequest = JSON.parse(String((fetchMock.mock.calls[2][1] as RequestInit).body)) as {
       max_output_tokens: number;
       reasoning: { effort: string };
+      stream: boolean;
       input: Array<{ content: Array<{ type: string; text?: string; image_url?: string; detail?: string }> }>;
       text: { format: { schema: unknown } };
     };
     expect(artworkRequest.max_output_tokens).toBe(1_500);
     expect(artworkRequest.reasoning).toEqual({ effort: "minimal" });
+    expect(finalRequest.stream).toBe(true);
     expect(finalRequest.max_output_tokens).toBe(10_000);
     expect(finalRequest.reasoning).toEqual({ effort: "minimal" });
     expect(finalRequest.input[0].content[0].text).toContain("Artwork owns the page identity");
@@ -149,7 +185,7 @@ describe("POST /api/generate-site-page", () => {
     expect(JSON.stringify(finalRequest)).not.toContain("initiate_heist");
   });
 
-  it("returns a truthful timeout error without automatically spending on another full-page attempt", async () => {
+  it("streams a truthful network error without automatically spending on another full-page attempt", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(outputText(ARTWORK))
@@ -165,29 +201,34 @@ describe("POST /api/generate-site-page", () => {
         inspirationUrl: "",
       }),
     );
-    const body = await response.json();
+    const events = await readNdjsonEvents(response);
+    const errorEvent = events.at(-1);
 
-    expect(response.status).toBe(502);
-    expect(body.error).toContain("artwork analysis succeeded");
-    expect(body.error).toContain("took too long");
-    expect(body.error).toContain("does not need to be replaced");
-    expect(body.providerError).toMatchObject({
+    expect(errorEvent?.type).toBe("error");
+    expect((errorEvent as { error: string }).error).toContain("connection to the AI was interrupted");
+    expect((errorEvent as { error: string }).error).toContain("does not need to be replaced");
+    expect((errorEvent as { providerError: unknown }).providerError).toMatchObject({
       stage: "full-page-generation",
       provider: "openai",
       kind: "network",
       status: null,
     });
-    expect(body.providerError.detail).toContain("aborted due to timeout");
+    expect((errorEvent as { providerError: { detail: string } }).providerError.detail).toContain("aborted due to timeout");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("retries one incomplete artwork response and continues when the retry is valid", async () => {
-    const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
+  it("streams a distinct, truthful error when the generation stream is incomplete, and never retries", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(incompleteResponse())
       .mockResolvedValueOnce(outputText(ARTWORK))
-      .mockResolvedValueOnce(outputText({ html: html(), ...ids }));
+      .mockResolvedValueOnce(
+        sseResponse([
+          sseEventChunk({
+            type: "response.incomplete",
+            response: { status: "incomplete", incomplete_details: { reason: "max_output_tokens" } },
+          }),
+        ]),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(
@@ -199,9 +240,37 @@ describe("POST /api/generate-site-page", () => {
         inspirationUrl: "",
       }),
     );
+    const events = await readNdjsonEvents(response);
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ source: "openai", inspirationUsed: false });
+    expect(events.filter((event) => event.type === "complete")).toEqual([]);
+    const errorEvent = events.at(-1) as { type: string; error: string; providerError: { kind: string } };
+    expect(errorEvent.type).toBe("error");
+    expect(errorEvent.error).toContain("stopped before finishing");
+    expect(errorEvent.providerError).toMatchObject({ kind: "incomplete" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries one incomplete artwork response and continues when the retry is valid", async () => {
+    const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(incompleteResponse())
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(streamedPage({ html: html(), ...ids }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request({
+        name: "Journey",
+        ticker: "RIDE",
+        description: "A community token inspired by finding your route through London.",
+        imageDataUrl: VALID_IMAGE,
+        inspirationUrl: "",
+      }),
+    );
+    const events = await readNdjsonEvents(response);
+
+    expect(events.at(-1)).toMatchObject({ type: "complete", source: "openai", inspirationUsed: false });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(console.warn).toHaveBeenCalledWith(
       "AI artwork identity response was incomplete; retrying once",
@@ -209,7 +278,7 @@ describe("POST /api/generate-site-page", () => {
     );
   });
 
-  it("returns a truthful error after two incomplete artwork analyses", async () => {
+  it("streams a truthful error after two incomplete artwork analyses", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(incompleteResponse("max_output_tokens"))
@@ -225,35 +294,45 @@ describe("POST /api/generate-site-page", () => {
         inspirationUrl: "",
       }),
     );
-    const body = await response.json();
+    const events = await readNdjsonEvents(response);
+    const errorEvent = events.at(-1) as {
+      type: string;
+      error: string;
+      providerError: { stage: string; kind: string; status: number | null; detail: string };
+    };
 
-    expect(response.status).toBe(502);
-    expect(body.error).toContain("incomplete artwork analysis twice");
-    expect(body.error).toContain("artwork has not been rejected");
-    expect(body.providerError).toMatchObject({
+    expect(errorEvent.type).toBe("error");
+    expect(errorEvent.error).toContain("incomplete artwork analysis twice");
+    expect(errorEvent.error).toContain("artwork has not been rejected");
+    expect(errorEvent.providerError).toMatchObject({
       stage: "page-artwork-analysis-parse",
       kind: "invalid",
       status: null,
     });
-    expect(body.providerError.detail).toContain("max_output_tokens");
-    expect(body.providerError.detail).toContain("attempt 2");
+    expect(errorEvent.providerError.detail).toContain("max_output_tokens");
+    expect(errorEvent.providerError.detail).toContain("attempt 2");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects a retail-inspired result that falls back to terminal and heist styling", async () => {
+  it("rejects, before completion, a retail-inspired result that falls back to terminal and heist styling", async () => {
     const ids = getFusionBriefIds(ARTWORK, INSPIRATION);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(outputText(ARTWORK))
       .mockResolvedValueOnce(inspirationResponse())
-      .mockResolvedValueOnce(outputText({ html: html("<p>root@token:~$ tokenomics.sh join the heist</p>"), ...ids }));
+      .mockResolvedValueOnce(
+        streamedPage({ html: html("<p>root@token:~$ tokenomics.sh join the heist</p>"), ...ids }),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await POST(
-      request({ imageDataUrl: VALID_IMAGE, inspirationUrl: URL }),
-    );
-    expect(response.status).toBe(502);
-    expect((await response.json()).error).toContain("legacy terminal fallback");
+    const response = await POST(request({ imageDataUrl: VALID_IMAGE, inspirationUrl: URL }));
+    const events = await readNdjsonEvents(response);
+
+    expect(events.some((event) => event.type === "progress" && event.stage === "checking-safety")).toBe(true);
+    expect(events.some((event) => event.type === "complete")).toBe(false);
+    const errorEvent = events.at(-1) as { type: string; error: string };
+    expect(errorEvent.type).toBe("error");
+    expect(errorEvent.error).toContain("legacy terminal fallback");
   });
 
   it("rejects a full page that echoes the wrong collaboration evidence", async () => {
@@ -262,7 +341,7 @@ describe("POST /api/generate-site-page", () => {
       .mockResolvedValueOnce(outputText(ARTWORK))
       .mockResolvedValueOnce(inspirationResponse())
       .mockResolvedValueOnce(
-        outputText({
+        streamedPage({
           html: html(),
           artworkBriefId: "art-deadbeef",
           inspirationBriefId: "url-deadbeef",
@@ -270,11 +349,11 @@ describe("POST /api/generate-site-page", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await POST(
-      request({ imageDataUrl: VALID_IMAGE, inspirationUrl: URL }),
-    );
-    expect(response.status).toBe(502);
-    expect((await response.json()).error).toContain("incomplete, unsafe");
+    const response = await POST(request({ imageDataUrl: VALID_IMAGE, inspirationUrl: URL }));
+    const events = await readNdjsonEvents(response);
+    const errorEvent = events.at(-1) as { type: string; error: string };
+    expect(errorEvent.type).toBe("error");
+    expect(errorEvent.error).toContain("incomplete, unsafe");
   });
 
   it("keeps uploaded artwork mandatory", async () => {
@@ -309,5 +388,39 @@ describe("full website frontend wiring", () => {
     expect(generator).toContain("The terminal-style base preview has not been accepted");
     expect(generator).toContain("previewAvailable: false");
     expect(bridge).toContain('"/api/generate-site-page"');
+  });
+
+  it("streams NDJSON progress, aborts a previous request, and keeps only one iframe", async () => {
+    const generator = await readFile(
+      path.join(ROOT, "components", "full-website-generator.tsx"),
+      "utf8",
+    );
+
+    // NDJSON is parsed incrementally via the shared protocol helpers, not response.json().
+    expect(generator).toContain("splitNdjsonLines");
+    expect(generator).toContain("parseGenerateSitePageStreamLine");
+    expect(generator).toContain("options.onProgress?.(event.stage)");
+
+    // A previous in-flight request is aborted before a new one starts, and on unmount.
+    expect(generator).toContain("activeController?.abort();");
+    const abortCount = (generator.match(/activeController\?\.abort\(\);/g) || []).length;
+    expect(abortCount).toBeGreaterThanOrEqual(2);
+
+    // Only one call site ever creates the preview iframe.
+    const iframeCreationCount = (generator.match(/document\.createElement\("iframe"\)/g) || []).length;
+    expect(iframeCreationCount).toBe(1);
+
+    // The previous frame's srcdoc is cleared before it is removed/replaced (memory safety on iOS Safari).
+    expect(generator).toContain('frame.srcdoc = "";');
+    expect(generator.indexOf('frame.srcdoc = "";')).toBeLessThan(generator.indexOf("frame.remove();"));
+
+    // HTML is only ever assigned to the DOM from renderGeneratedWebsite, which only runs after
+    // requestGeneratedWebsite has resolved (i.e. after the "complete" event, past validation) -
+    // never from inside the onProgress callback used for partial/progress frames.
+    const onProgressStart = generator.indexOf("onProgress: (stage) => {");
+    const onProgressEnd = generator.indexOf("},", onProgressStart);
+    const onProgressBody = generator.slice(onProgressStart, onProgressEnd);
+    expect(onProgressBody).not.toContain("renderGeneratedWebsite");
+    expect(onProgressBody).not.toContain("srcdoc");
   });
 });

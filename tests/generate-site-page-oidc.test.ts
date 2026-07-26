@@ -4,6 +4,7 @@ import {
   VERCEL_AI_GATEWAY_RESPONSES_URL,
   VERCEL_OIDC_HEADER,
 } from "@/lib/server/ai-responses-runtime";
+import { readNdjsonEvents } from "./generate-site-page-test-helpers";
 
 const ARTWORK = {
   dominantColours: "Powder blue, charcoal black, steel grey, white and restrained transit red accents.",
@@ -65,7 +66,9 @@ describe("POST /api/generate-site-page Vercel runtime authentication", () => {
       }),
     );
 
-    expect(response.status).toBe(502);
+    const events = await readNdjsonEvents(response);
+    expect(events.some((event) => event.type === "complete")).toBe(false);
+    expect(events.at(-1)?.type).toBe("error");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     for (const call of fetchMock.mock.calls) {
       expect(call[0]).toBe(VERCEL_AI_GATEWAY_RESPONSES_URL);
