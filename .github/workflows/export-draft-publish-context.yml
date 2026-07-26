@@ -1,0 +1,25 @@
+name: Export draft publishing context
+
+on:
+  push:
+    branches:
+      - feat/draft-site-publishing
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package source context
+        run: |
+          tar -czf draft-publish-context.tar.gz \
+            app components lib db tests package.json tsconfig.json AGENTS.md CLAUDE.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: draft-publish-context
+          path: draft-publish-context.tar.gz
+          retention-days: 1
