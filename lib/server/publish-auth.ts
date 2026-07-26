@@ -50,6 +50,10 @@ export function createPublishNonce(): string {
   return randomBytes(24).toString("base64url");
 }
 
+export function createDraftToken(): string {
+  return randomBytes(32).toString("base64url");
+}
+
 export function hashPublishNonce(nonce: string): string {
   return createHash("sha256").update(nonce, "utf8").digest("hex");
 }

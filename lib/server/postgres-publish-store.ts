@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
-import type { PublicGeneratedSite } from "@/lib/public-site";
+import type { PublicGeneratedSite, PublishedSiteVisibility } from "@/lib/public-site";
 import { getPostgresPool } from "@/lib/server/postgres";
-import type { PublishChallenge } from "@/lib/server/publish-auth";
+import { createDraftToken, type PublishChallenge } from "@/lib/server/publish-auth";
 import {
   sanitisePublishedGeneratedHtml,
   type PublishableSite,
@@ -9,10 +9,12 @@ import {
 import { decodeArtworkDataUrl } from "@/lib/server/public-site-artwork";
 import type {
   CreatePublishChallengeInput,
+  PublishSignatureVerifier,
   PublishStore,
   PublishStoreResult,
+  PublishVisibilityResult,
   PublishWithChallengeInput,
-  PublishSignatureVerifier,
+  SetVisibilityWithChallengeInput,
 } from "@/lib/server/publish-store";
 import type { ProjectStatus, SupportedChain } from "@/lib/types";
 
@@ -44,6 +46,8 @@ type PublishedSiteRow = {
   x_handle: string;
   telegram: string;
   status: string;
+  visibility: string;
+  draft_token: string | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -74,8 +78,16 @@ function isProjectStatus(value: string): value is ProjectStatus {
   return value === "draft" || value === "prepared" || value === "launched";
 }
 
+function isPublishedSiteVisibility(value: string): value is PublishedSiteVisibility {
+  return value === "draft" || value === "live";
+}
+
 function siteFromRow(row: PublishedSiteRow): PublicGeneratedSite | null {
-  if (!isSupportedChain(row.chain) || !isProjectStatus(row.status)) return null;
+  if (
+    !isSupportedChain(row.chain) ||
+    !isProjectStatus(row.status) ||
+    !isPublishedSiteVisibility(row.visibility)
+  ) return null;
   const generatedSiteHtml = sanitisePublishedGeneratedHtml(row.generated_html);
   const heroImage = decodeArtworkDataUrl(row.artwork_reference) ? row.artwork_reference : "";
 
@@ -93,15 +105,22 @@ function siteFromRow(row: PublishedSiteRow): PublicGeneratedSite | null {
     xHandle: row.x_handle,
     telegram: row.telegram,
     status: row.status,
+    visibility: row.visibility,
+    draftToken: row.draft_token,
     createdAt: asDate(row.created_at).toISOString(),
     updatedAt: asDate(row.updated_at).toISOString(),
   };
 }
 
+const NONCE_COLUMNS = `
+  id, nonce_hash, wallet_address, slug, wallet_chain_id,
+  site_payload_hash, issued_at, expires_at, used_at
+`;
+
 const SITE_COLUMNS = `
   slug, token_name, ticker, description, supply, decimals, chain, chain_id,
   contract_address, generated_html, artwork_reference, owner_wallet_address,
-  x_handle, telegram, status, created_at, updated_at
+  x_handle, telegram, status, visibility, draft_token, created_at, updated_at
 `;
 
 async function rollback(client: PoolClient): Promise<void> {
@@ -121,10 +140,10 @@ async function insertPublishedSite(
     `INSERT INTO published_sites (
       slug, token_name, ticker, description, supply, decimals, chain, chain_id,
       contract_address, generated_html, artwork_reference, owner_wallet_address,
-      x_handle, telegram, status
+      x_handle, telegram, status, visibility, draft_token
     ) VALUES (
       $1, $2, $3, $4, $5, $6, $7, $8,
-      $9, $10, $11, $12, $13, $14, $15
+      $9, $10, $11, $12, $13, $14, $15, $16, $17
     )
     ON CONFLICT (slug) DO NOTHING
     RETURNING ${SITE_COLUMNS}`,
@@ -144,9 +163,23 @@ async function insertPublishedSite(
       site.xHandle,
       site.telegram,
       site.status,
+      "draft",
+      createDraftToken(),
     ],
   );
   return result.rows[0] || null;
+}
+
+function challengeFailure(
+  challenge: PublishChallenge,
+  input: { nonceHash: string; slug: string },
+): PublishVisibilityResult | null {
+  if (challenge.usedAt) return { status: "nonce_replayed" };
+  if (challenge.expiresAt.getTime() <= Date.now()) return { status: "nonce_expired" };
+  if (challenge.nonceHash !== input.nonceHash || challenge.slug !== input.slug) {
+    return { status: "nonce_mismatch" };
+  }
+  return null;
 }
 
 export function createPostgresPublishStore(databaseUrl: string): PublishStore {
@@ -159,8 +192,7 @@ export function createPostgresPublishStore(databaseUrl: string): PublishStore {
           nonce_hash, wallet_address, slug, wallet_chain_id, site_payload_hash,
           issued_at, expires_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id, nonce_hash, wallet_address, slug, wallet_chain_id,
-                  site_payload_hash, issued_at, expires_at, used_at`,
+        RETURNING ${NONCE_COLUMNS}`,
         [
           input.nonceHash,
           input.walletAddress,
@@ -182,8 +214,7 @@ export function createPostgresPublishStore(databaseUrl: string): PublishStore {
       try {
         await client.query("BEGIN");
         const nonceResult = await client.query<NonceRow>(
-          `SELECT id, nonce_hash, wallet_address, slug, wallet_chain_id,
-                  site_payload_hash, issued_at, expires_at, used_at
+          `SELECT ${NONCE_COLUMNS}
              FROM wallet_nonces
             WHERE id = $1
             FOR UPDATE`,
@@ -229,6 +260,76 @@ export function createPostgresPublishStore(databaseUrl: string): PublishStore {
           site,
           ownerWalletAddress: challenge.walletAddress,
         };
+      } catch (error) {
+        await rollback(client);
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async setVisibilityWithChallenge(
+      input: SetVisibilityWithChallengeInput,
+      verifySignature: PublishSignatureVerifier,
+    ): Promise<PublishVisibilityResult> {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const nonceResult = await client.query<NonceRow>(
+          `SELECT ${NONCE_COLUMNS}
+             FROM wallet_nonces
+            WHERE id = $1
+            FOR UPDATE`,
+          [input.challengeId],
+        );
+        const nonceRow = nonceResult.rows[0];
+        if (!nonceRow) {
+          await rollback(client);
+          return { status: "nonce_not_found" };
+        }
+
+        const challenge = challengeFromRow(nonceRow);
+        const challengeError = challengeFailure(challenge, input);
+        if (challengeError) {
+          await rollback(client);
+          return challengeError;
+        }
+        if (!(await verifySignature(challenge))) {
+          await rollback(client);
+          return { status: "invalid_signature" };
+        }
+
+        const siteResult = await client.query<PublishedSiteRow>(
+          `SELECT ${SITE_COLUMNS}
+             FROM published_sites
+            WHERE slug = $1
+            FOR UPDATE`,
+          [input.slug],
+        );
+        const siteRow = siteResult.rows[0];
+        if (!siteRow) {
+          await rollback(client);
+          return { status: "site_not_found" };
+        }
+        if (siteRow.owner_wallet_address.toLowerCase() !== challenge.walletAddress.toLowerCase()) {
+          await rollback(client);
+          return { status: "not_owner" };
+        }
+
+        await client.query("UPDATE wallet_nonces SET used_at = NOW() WHERE id = $1", [challenge.id]);
+        const updated = await client.query<PublishedSiteRow>(
+          `UPDATE published_sites
+              SET visibility = $2,
+                  draft_token = CASE WHEN $2 = 'live' THEN NULL ELSE draft_token END
+            WHERE slug = $1
+            RETURNING ${SITE_COLUMNS}`,
+          [input.slug, input.visibility],
+        );
+        await client.query("COMMIT");
+
+        const site = updated.rows[0] ? siteFromRow(updated.rows[0]) : null;
+        if (!site) throw new Error("The updated public site could not be mapped safely.");
+        return { status: "updated", site, ownerWalletAddress: challenge.walletAddress };
       } catch (error) {
         await rollback(client);
         throw error;

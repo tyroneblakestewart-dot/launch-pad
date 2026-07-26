@@ -1,4 +1,4 @@
-import type { PublicGeneratedSite } from "@/lib/public-site";
+import type { PublicGeneratedSite, PublishedSiteVisibility } from "@/lib/public-site";
 import type { PublishChallenge } from "@/lib/server/publish-auth";
 import type { PublishableSite } from "@/lib/server/published-site-validation";
 import { createPostgresPublishStore } from "@/lib/server/postgres-publish-store";
@@ -20,6 +20,13 @@ export type PublishWithChallengeInput = {
   site: PublishableSite;
 };
 
+export type SetVisibilityWithChallengeInput = {
+  challengeId: string;
+  nonceHash: string;
+  slug: string;
+  visibility: Extract<PublishedSiteVisibility, "live">;
+};
+
 export type PublishStoreResult =
   | { status: "published"; site: PublicGeneratedSite; ownerWalletAddress: string }
   | { status: "nonce_not_found" }
@@ -29,6 +36,16 @@ export type PublishStoreResult =
   | { status: "invalid_signature" }
   | { status: "slug_conflict" };
 
+export type PublishVisibilityResult =
+  | { status: "updated"; site: PublicGeneratedSite; ownerWalletAddress: string }
+  | { status: "nonce_not_found" }
+  | { status: "nonce_expired" }
+  | { status: "nonce_replayed" }
+  | { status: "nonce_mismatch" }
+  | { status: "invalid_signature" }
+  | { status: "site_not_found" }
+  | { status: "not_owner" };
+
 export type PublishSignatureVerifier = (challenge: PublishChallenge) => Promise<boolean>;
 
 export interface PublishStore {
@@ -37,6 +54,10 @@ export interface PublishStore {
     input: PublishWithChallengeInput,
     verifySignature: PublishSignatureVerifier,
   ): Promise<PublishStoreResult>;
+  setVisibilityWithChallenge?(
+    input: SetVisibilityWithChallengeInput,
+    verifySignature: PublishSignatureVerifier,
+  ): Promise<PublishVisibilityResult>;
   getBySlug(slug: string): Promise<PublicGeneratedSite | null>;
 }
 
@@ -52,6 +73,9 @@ const unconfiguredStore: PublishStore = {
     throw new PublishStoreUnavailableError();
   },
   async publishWithChallenge() {
+    throw new PublishStoreUnavailableError();
+  },
+  async setVisibilityWithChallenge() {
     throw new PublishStoreUnavailableError();
   },
   async getBySlug() {

@@ -1,5 +1,7 @@
 import type { ProjectStatus, SupportedChain, TokenProject } from "@/lib/types";
 
+export type PublishedSiteVisibility = "draft" | "live";
+
 /**
  * The public record shape a future publish endpoint would write and the
  * `app/[slug]` route reads. Defined once so the (not-yet-built) publish
@@ -22,6 +24,10 @@ export interface PublicGeneratedSite {
   xHandle: string;
   telegram: string;
   status: ProjectStatus;
+  /** Durable publish visibility. Missing legacy/test values are treated as live. */
+  visibility?: PublishedSiteVisibility;
+  /** Server-generated secret used only to authorise a draft preview URL. */
+  draftToken?: string | null;
   createdAt: string;
   updatedAt: string;
 }

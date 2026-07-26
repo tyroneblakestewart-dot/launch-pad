@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
+import { createWalletClient, custom } from "viem";
 import { prepareGeneratedPageForPreview } from "@/lib/generated-site-page";
 import {
   parseGenerateSitePageStreamLine,
   splitNdjsonLines,
   type GenerateSitePageProgressStage,
 } from "@/lib/generate-site-page-stream-protocol";
+import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 
 type GenerateDetail = {
   name: string;
@@ -14,6 +16,47 @@ type GenerateDetail = {
   description: string;
   imageDataUrl?: string;
   inspirationUrl?: string;
+  slug?: string;
+  supply?: string;
+  decimals?: number;
+  chain?: "robinhood" | "solana";
+  chainId?: string;
+  contractAddress?: string;
+  xHandle?: string;
+  telegram?: string;
+};
+
+type PublishableSitePayload = {
+  slug: string;
+  name: string;
+  ticker: string;
+  description: string;
+  supply: string;
+  decimals: number;
+  chain: "robinhood" | "solana";
+  chainId: string;
+  contractAddress: string;
+  generatedSiteHtml: string;
+  artworkReference: string;
+  xHandle: string;
+  telegram: string;
+  status: "prepared";
+};
+
+type PublishChallengeResponse = {
+  challengeId: string;
+  nonce: string;
+  message: string;
+};
+
+type DraftPublishResponse = {
+  slug: string;
+  draftPreviewUrl: string | null;
+};
+
+type GoLiveResponse = {
+  slug: string;
+  publicUrl: string;
 };
 
 type PreviewStatus = "generating" | "failed";
@@ -30,6 +73,7 @@ type RenderedPreview = {
   fullScreenButton: HTMLButtonElement;
   onClose: () => void;
   onToggleFullScreen: () => void;
+  controlCleanups: Array<() => void>;
 };
 
 const MOBILE_PREVIEW_QUERY = "(max-width: 767px)";
@@ -38,6 +82,82 @@ export const MOBILE_PREVIEW_HEIGHT = "70svh";
 export function getGeneratedPreviewFrameHeight(reportedHeight: number, mobile: boolean): string {
   if (mobile) return MOBILE_PREVIEW_HEIGHT;
   return `${Math.min(16_000, Math.max(700, Math.ceil(reportedHeight)))}px`;
+}
+
+
+function publishableSiteFromGeneration(detail: GenerateDetail, html: string): PublishableSitePayload {
+  return {
+    slug: detail.slug?.trim() || "",
+    name: detail.name.trim(),
+    ticker: detail.ticker.trim().toUpperCase(),
+    description: detail.description.trim(),
+    supply: detail.supply?.trim() || "",
+    decimals: Number(detail.decimals ?? 0),
+    chain: detail.chain || "robinhood",
+    chainId: detail.chainId || "46630",
+    contractAddress: detail.contractAddress?.trim() || "",
+    generatedSiteHtml: html,
+    artworkReference: detail.imageDataUrl || "",
+    xHandle: detail.xHandle?.trim() || "",
+    telegram: detail.telegram?.trim() || "",
+    status: "prepared",
+  };
+}
+
+async function readApiResponse<T>(response: Response, fallback: string): Promise<T> {
+  const payload = (await response.json().catch(() => ({}))) as { error?: string } & Partial<T>;
+  if (!response.ok) throw new Error(payload.error || fallback);
+  return payload as T;
+}
+
+async function requestPublishAuthorisation(site: PublishableSitePayload) {
+  if (site.chain !== "robinhood") {
+    throw new Error("Draft publishing currently requires a Robinhood Chain EVM project.");
+  }
+  const provider = getInjectedEvmProvider();
+  if (!provider) throw new Error("Connect an EVM wallet before publishing.");
+
+  const walletClient = createWalletClient({ transport: custom(provider) });
+  const [account] = await walletClient.requestAddresses();
+  if (!account) throw new Error("The wallet returned no account.");
+  const walletChainId = await walletClient.getChainId();
+  if (String(walletChainId) !== site.chainId) {
+    throw new Error(`Switch the wallet to chain ${site.chainId} before publishing.`);
+  }
+
+  const challengeResponse = await fetch("/api/publish/challenge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ walletAddress: account, walletChainId, site }),
+  });
+  const challenge = await readApiResponse<PublishChallengeResponse>(
+    challengeResponse,
+    "The publish challenge could not be created.",
+  );
+  const signature = await walletClient.signMessage({ account, message: challenge.message });
+  return { challengeId: challenge.challengeId, nonce: challenge.nonce, signature };
+}
+
+async function publishDraft(site: PublishableSitePayload): Promise<DraftPublishResponse> {
+  const { challengeId, nonce, signature } = await requestPublishAuthorisation(site);
+  const response = await fetch("/api/publish", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ challengeId, nonce, signature, site }),
+  });
+  const result = await readApiResponse<DraftPublishResponse>(response, "The draft could not be published.");
+  if (!result.draftPreviewUrl) throw new Error("The server did not return a draft preview URL.");
+  return result;
+}
+
+async function makePublishedSiteLive(site: PublishableSitePayload): Promise<GoLiveResponse> {
+  const { challengeId, nonce, signature } = await requestPublishAuthorisation(site);
+  const response = await fetch("/api/publish/visibility", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ challengeId, nonce, signature, slug: site.slug }),
+  });
+  return readApiResponse<GoLiveResponse>(response, "The site could not be made live.");
 }
 
 export async function requestGeneratedWebsite(
@@ -178,6 +298,7 @@ function disposeRenderedPreview(preview: RenderedPreview | null) {
   if (!preview) return;
   preview.closeButton.removeEventListener("click", preview.onClose);
   preview.fullScreenButton.removeEventListener("click", preview.onToggleFullScreen);
+  for (const cleanup of preview.controlCleanups) cleanup();
   preview.container.classList.remove("full-generated-page-fullscreen");
   disposeFrame(preview.frame);
   preview.container.remove();
@@ -198,6 +319,7 @@ function applyGeneratedPreviewHeight(frame: HTMLIFrameElement, reportedHeight: n
 function renderGeneratedWebsite(
   html: string,
   artworkDataUrl: string,
+  publishSite: PublishableSitePayload,
   onClosePreview: () => void,
 ): RenderedPreview {
   const site = previewElement();
@@ -210,6 +332,16 @@ function renderGeneratedWebsite(
 
   const controls = document.createElement("div");
   controls.className = "full-generated-page-controls";
+  const controlCleanups: Array<() => void> = [];
+
+  const publishStatus = document.createElement("span");
+  publishStatus.className = "full-generated-page-publish-status";
+  publishStatus.setAttribute("aria-live", "polite");
+
+  const publishButton = document.createElement("button");
+  publishButton.type = "button";
+  publishButton.className = "full-generated-page-publish-button";
+  publishButton.textContent = "Publish draft";
 
   const fullScreenButton = document.createElement("button");
   fullScreenButton.type = "button";
@@ -235,6 +367,11 @@ function renderGeneratedWebsite(
   applyGeneratedPreviewHeight(frame, 1800);
   frame.srcdoc = prepared;
 
+  const listen = (button: HTMLButtonElement, listener: () => void) => {
+    button.addEventListener("click", listener);
+    controlCleanups.push(() => button.removeEventListener("click", listener));
+  };
+
   const onToggleFullScreen = () => {
     const fullScreen = container.classList.toggle("full-generated-page-fullscreen");
     fullScreenButton.textContent = fullScreen ? "Exit full screen" : "Full screen";
@@ -242,9 +379,57 @@ function renderGeneratedWebsite(
   };
   const onClose = () => onClosePreview();
 
+  const onPublishDraft = async () => {
+    publishButton.disabled = true;
+    publishStatus.textContent = "Requesting wallet signature…";
+    try {
+      const draft = await publishDraft(publishSite);
+      let destinationUrl = draft.draftPreviewUrl as string;
+      publishButton.remove();
+
+      const viewDraftButton = document.createElement("button");
+      viewDraftButton.type = "button";
+      viewDraftButton.className = "full-generated-page-view-button";
+      viewDraftButton.textContent = "View draft";
+
+      const goLiveButton = document.createElement("button");
+      goLiveButton.type = "button";
+      goLiveButton.className = "full-generated-page-live-button";
+      goLiveButton.textContent = "Go live";
+
+      const onViewDraft = () => {
+        window.open(destinationUrl, "_blank", "noopener,noreferrer");
+      };
+      const onGoLive = async () => {
+        goLiveButton.disabled = true;
+        publishStatus.textContent = "Requesting owner signature…";
+        try {
+          const live = await makePublishedSiteLive(publishSite);
+          destinationUrl = live.publicUrl;
+          viewDraftButton.textContent = "View live";
+          goLiveButton.textContent = "Live";
+          publishStatus.textContent = "Site is live.";
+        } catch (error) {
+          goLiveButton.disabled = false;
+          publishStatus.textContent = error instanceof Error ? error.message : "The site could not be made live.";
+        }
+      };
+
+      listen(viewDraftButton, onViewDraft);
+      listen(goLiveButton, () => { void onGoLive(); });
+      controls.insertBefore(viewDraftButton, fullScreenButton);
+      controls.insertBefore(goLiveButton, fullScreenButton);
+      publishStatus.textContent = "Draft published. Review it before going live.";
+    } catch (error) {
+      publishButton.disabled = false;
+      publishStatus.textContent = error instanceof Error ? error.message : "The draft could not be published.";
+    }
+  };
+
+  listen(publishButton, () => { void onPublishDraft(); });
   fullScreenButton.addEventListener("click", onToggleFullScreen);
   closeButton.addEventListener("click", onClose);
-  controls.append(fullScreenButton, closeButton);
+  controls.append(publishStatus, publishButton, fullScreenButton, closeButton);
   viewport.appendChild(frame);
   container.append(controls, viewport);
 
@@ -258,9 +443,9 @@ function renderGeneratedWebsite(
     fullScreenButton,
     onClose,
     onToggleFullScreen,
+    controlCleanups,
   };
 }
-
 
 export function FullWebsiteGenerator() {
   useEffect(() => {
@@ -322,7 +507,8 @@ export function FullWebsiteGenerator() {
           },
         });
         if (currentGeneration !== generationNumber) return;
-        activePreview = renderGeneratedWebsite(page.html, detail.imageDataUrl || "", () => {
+        const publishSite = publishableSiteFromGeneration(detail, page.html);
+        activePreview = renderGeneratedWebsite(page.html, detail.imageDataUrl || "", publishSite, () => {
           generationNumber += 1;
           activeController?.abort();
           activeController = null;
@@ -413,6 +599,19 @@ export function FullWebsiteGenerator() {
       .full-generated-page-controls button:focus-visible {
         outline: 3px solid rgba(49, 95, 123, .28);
         outline-offset: 2px;
+      }
+      .full-generated-page-controls button:disabled { opacity: .55; cursor: wait; }
+      .full-generated-page-publish-status {
+        min-width: 0;
+        margin-right: auto;
+        color: #526878;
+        font: 700 11px/1.35 system-ui, sans-serif;
+      }
+      .full-generated-page-publish-status:empty { display: none; }
+      .full-generated-page-publish-button,
+      .full-generated-page-live-button {
+        background: #315f7b !important;
+        color: #fff !important;
       }
       .full-generated-page-close-button {
         background: #183448 !important;
@@ -518,10 +717,12 @@ export function FullWebsiteGenerator() {
           max-height: calc(70svh + 52px);
         }
         .full-generated-page-controls {
+          flex-wrap: wrap;
           justify-content: stretch;
           padding: 8px;
         }
-        .full-generated-page-controls button { flex: 1 1 0; }
+        .full-generated-page-publish-status { flex: 1 0 100%; }
+        .full-generated-page-controls button { flex: 1 1 120px; }
         .full-generated-page-container:not(.full-generated-page-fullscreen) .full-generated-page-viewport {
           height: 70svh;
           max-height: 70svh;

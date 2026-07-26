@@ -19,6 +19,14 @@ type GenerateDetail = {
   description: string;
   imageDataUrl?: string;
   inspirationUrl?: string;
+  slug: string;
+  supply: string;
+  decimals: number;
+  chain: "robinhood" | "solana";
+  chainId: string;
+  contractAddress: string;
+  xHandle: string;
+  telegram: string;
 };
 
 function findControl(panel: Element, labelText: string) {
@@ -116,6 +124,9 @@ export function BuildSiteGate() {
     }
 
     function currentDetail(panel: Element): GenerateDetail {
+      const chain = panel.querySelector(".chain-option.active .chain-dot.solana")
+        ? "solana"
+        : "robinhood";
       return {
         name: findControl(panel, "Token name")?.value.trim() || "",
         ticker: findControl(panel, "Ticker")?.value.trim() || "",
@@ -123,6 +134,14 @@ export function BuildSiteGate() {
         imageDataUrl: panel.querySelector<HTMLImageElement>(".upload-box img")?.src,
         inspirationUrl:
           panel.querySelector<HTMLInputElement>(".build-site-inspiration-url")?.value.trim() || "",
+        slug: findControl(panel, "Website path")?.value.trim() || "",
+        supply: findControl(panel, "Total supply")?.value.trim() || "",
+        decimals: Number(findControl(panel, "Decimals")?.value || 0),
+        chain,
+        chainId: chain === "robinhood" ? "46630" : "solana-devnet",
+        contractAddress: findControl(panel, "Contract / mint address")?.value.trim() || "",
+        xHandle: findControl(panel, "X handle")?.value.trim() || "",
+        telegram: findControl(panel, "Telegram")?.value.trim() || "",
       };
     }
 
