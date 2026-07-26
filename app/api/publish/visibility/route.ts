@@ -4,19 +4,12 @@ import {
   consumePublishSiteRateLimit,
   getClientIp,
 } from "@/lib/server/api-protection";
-import {
-  hashPublishNonce,
-  verifyPublishSignature,
-} from "@/lib/server/publish-auth";
+import { hashPublishNonce, verifyPublishSignature } from "@/lib/server/publish-auth";
 import {
   getPublishStore,
   PublishStoreUnavailableError,
-  type PublishStoreResult,
+  type PublishVisibilityResult,
 } from "@/lib/server/publish-store";
-import {
-  hashPublishableSite,
-  normalisePublishableSite,
-} from "@/lib/server/published-site-validation";
 import { validateSlug } from "@/lib/slug";
 
 export const runtime = "nodejs";
@@ -39,12 +32,18 @@ function responseHeaders(rate: ReturnType<typeof consumePublishSiteRateLimit>) {
   };
 }
 
-function failureResponse(result: Exclude<PublishStoreResult, { status: "published" }>, headers: Record<string, string>) {
-  if (result.status === "slug_conflict") {
+function failureResponse(
+  result: Exclude<PublishVisibilityResult, { status: "updated" }>,
+  headers: Record<string, string>,
+) {
+  if (result.status === "not_owner") {
     return NextResponse.json(
-      { error: "That website path is already published. Choose another slug." },
-      { status: 409, headers },
+      { error: "The connected wallet is not the owner of this published site." },
+      { status: 403, headers },
     );
+  }
+  if (result.status === "site_not_found") {
+    return NextResponse.json({ error: "The published site was not found." }, { status: 404, headers });
   }
   if (result.status === "nonce_expired") {
     return NextResponse.json(
@@ -59,7 +58,7 @@ function failureResponse(result: Exclude<PublishStoreResult, { status: "publishe
     );
   }
   return NextResponse.json(
-    { error: "Wallet publish authorisation failed." },
+    { error: "Wallet visibility authorisation failed." },
     { status: 401, headers },
   );
 }
@@ -67,7 +66,7 @@ function failureResponse(result: Exclude<PublishStoreResult, { status: "publishe
 export async function POST(request: Request) {
   if (!allowedOrigin(request)) {
     return NextResponse.json(
-      { error: "Publish request origin is not allowed." },
+      { error: "Publish visibility origin is not allowed." },
       { status: 403, headers: { "Cache-Control": "no-store" } },
     );
   }
@@ -88,12 +87,10 @@ export async function POST(request: Request) {
   const challengeId = typeof body?.challengeId === "string" ? body.challengeId.trim() : "";
   const nonce = typeof body?.nonce === "string" ? body.nonce.trim() : "";
   const signature = typeof body?.signature === "string" ? body.signature.trim() : "";
+  const slug = typeof body?.slug === "string" ? body.slug.trim() : "";
 
   if (!/^[0-9a-f-]{36}$/i.test(challengeId) || !/^[A-Za-z0-9_-]{20,128}$/.test(nonce)) {
-    return NextResponse.json(
-      { error: "A valid publish challenge is required." },
-      { status: 400, headers },
-    );
+    return NextResponse.json({ error: "A valid publish challenge is required." }, { status: 400, headers });
   }
   if (!/^0x[0-9a-f]{130}$/i.test(signature)) {
     return NextResponse.json(
@@ -107,50 +104,35 @@ export async function POST(request: Request) {
       { status: 400, headers },
     );
   }
-
-  const validation = normalisePublishableSite(body?.site);
-  if (!validation.valid) {
-    return NextResponse.json(
-      { error: validation.reason },
-      { status: 400, headers },
-    );
-  }
-  const slugValidation = validateSlug(validation.site.slug);
+  const slugValidation = validateSlug(slug);
   if (!slugValidation.valid) {
-    return NextResponse.json(
-      { error: slugValidation.reason },
-      { status: 400, headers },
-    );
+    return NextResponse.json({ error: slugValidation.reason }, { status: 400, headers });
   }
-
-  const sitePayloadHash = hashPublishableSite(validation.site);
 
   try {
-    const result = await getPublishStore().publishWithChallenge(
+    const store = getPublishStore();
+    if (!store.setVisibilityWithChallenge) {
+      throw new PublishStoreUnavailableError();
+    }
+    const result = await store.setVisibilityWithChallenge(
       {
         challengeId,
         nonceHash: hashPublishNonce(nonce),
-        sitePayloadHash,
-        site: validation.site,
+        slug,
+        visibility: "live",
       },
       (challenge) => verifyPublishSignature(challenge, nonce, signature),
     );
 
-    if (result.status !== "published") return failureResponse(result, headers);
-    const publicUrl = `https://hoodlums.dev/${result.site.slug}`;
-    const draftPreviewUrl = result.site.draftToken
-      ? `${publicUrl}?preview=${encodeURIComponent(result.site.draftToken)}`
-      : null;
+    if (result.status !== "updated") return failureResponse(result, headers);
     return NextResponse.json(
       {
-        published: true,
-        visibility: result.site.visibility || "draft",
+        live: true,
+        visibility: "live",
         slug: result.site.slug,
-        publicUrl,
-        draftPreviewUrl,
-        ownerWalletAddress: result.ownerWalletAddress,
+        publicUrl: `https://hoodlums.dev/${result.site.slug}`,
       },
-      { status: 201, headers },
+      { status: 200, headers },
     );
   } catch (error) {
     const unavailable = error instanceof PublishStoreUnavailableError;
@@ -158,7 +140,7 @@ export async function POST(request: Request) {
       {
         error: unavailable
           ? "Public publishing is not configured on this deployment."
-          : "The generated site could not be published.",
+          : "The site visibility could not be changed.",
       },
       { status: unavailable ? 503 : 500, headers },
     );

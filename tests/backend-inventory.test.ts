@@ -34,6 +34,7 @@ describe("backend test inventory", () => {
       "app/api/generation-status/route.ts",
       "app/api/publish/challenge/route.ts",
       "app/api/publish/route.ts",
+      "app/api/publish/visibility/route.ts",
       "app/api/social/telegram/route.ts",
     ]);
 
@@ -54,6 +55,7 @@ describe("backend test inventory", () => {
       "app/api/generation-status/route.ts": ["GET"],
       "app/api/publish/challenge/route.ts": ["POST"],
       "app/api/publish/route.ts": ["POST"],
+      "app/api/publish/visibility/route.ts": ["POST"],
       "app/api/social/telegram/route.ts": ["POST"],
     });
   });

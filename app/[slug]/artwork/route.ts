@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPublicGeneratedSiteBySlug } from "@/lib/server/public-generated-sites";
 import { decodeArtworkDataUrl } from "@/lib/server/public-site-artwork";
 import { validateSlug } from "@/lib/slug";
+import { canAccessPublishedSite } from "../draft-preview";
 
 type RouteParams = { slug: string };
 
@@ -11,7 +12,7 @@ type RouteParams = { slug: string };
  * fails safely (404, no body) for an invalid slug, missing record, or
  * missing/invalid artwork — it never throws.
  */
-export async function GET(_request: Request, { params }: { params: Promise<RouteParams> }) {
+export async function GET(request: Request, { params }: { params: Promise<RouteParams> }) {
   const { slug } = await params;
 
   if (!validateSlug(slug).valid) {
@@ -23,6 +24,11 @@ export async function GET(_request: Request, { params }: { params: Promise<Route
     return new NextResponse(null, { status: 404 });
   }
 
+  const previewToken = new URL(request.url).searchParams.get("preview") || "";
+  if (!canAccessPublishedSite(site, previewToken)) {
+    return new NextResponse(null, { status: 404 });
+  }
+
   const artwork = decodeArtworkDataUrl(site.heroImage);
   if (!artwork) {
     return new NextResponse(null, { status: 404 });
@@ -31,7 +37,7 @@ export async function GET(_request: Request, { params }: { params: Promise<Route
   return new NextResponse(new Uint8Array(artwork.bytes), {
     headers: {
       "Content-Type": artwork.contentType,
-      "Cache-Control": "public, max-age=300",
+      "Cache-Control": site.visibility === "draft" ? "no-store" : "public, max-age=300",
       "X-Content-Type-Options": "nosniff",
     },
   });
