@@ -1,14 +1,13 @@
-import { timingSafeEqual } from "node:crypto";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
 import { PublicSiteFrame } from "@/components/public-site-frame";
 import { PublicTokenFallback } from "@/components/public-token-fallback";
 import { isCompleteGeneratedPageHtml, prepareGeneratedPageForPreview } from "@/lib/generated-site-page";
-import type { PublicGeneratedSite } from "@/lib/public-site";
 import { getPublicGeneratedSiteBySlug } from "@/lib/server/public-generated-sites";
 import { decodeArtworkDataUrl } from "@/lib/server/public-site-artwork";
 import { validateSlug } from "@/lib/slug";
+import { canAccessPublishedSite, draftPreviewTokenMatches } from "./draft-preview";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -27,17 +26,6 @@ async function previewToken(searchParams?: Promise<PublicSiteSearchParams>): Pro
   return typeof value === "string" ? value : "";
 }
 
-function draftTokenMatches(site: PublicGeneratedSite, supplied: string): boolean {
-  if (site.visibility !== "draft" || !site.draftToken || !supplied) return false;
-  const expected = Buffer.from(site.draftToken);
-  const actual = Buffer.from(supplied);
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
-}
-
-function canRenderSite(site: PublicGeneratedSite, suppliedPreviewToken: string): boolean {
-  return site.visibility !== "draft" || draftTokenMatches(site, suppliedPreviewToken);
-}
-
 export async function generateMetadata({ params, searchParams }: PublicSiteRouteProps): Promise<Metadata> {
   const { slug } = await params;
   if (!validateSlug(slug).valid) return {};
@@ -47,7 +35,7 @@ export async function generateMetadata({ params, searchParams }: PublicSiteRoute
 
   const isDraft = site.visibility === "draft";
   const suppliedPreviewToken = await previewToken(searchParams);
-  if (isDraft && !draftTokenMatches(site, suppliedPreviewToken)) {
+  if (isDraft && !draftPreviewTokenMatches(site, suppliedPreviewToken)) {
     return { robots: DRAFT_ROBOTS };
   }
 
@@ -83,7 +71,7 @@ export default async function PublicGeneratedSitePage({ params, searchParams }: 
 
   const site = await getPublicGeneratedSiteBySlug(slug);
   if (!site) notFound();
-  if (!canRenderSite(site, await previewToken(searchParams))) notFound();
+  if (!canAccessPublishedSite(site, await previewToken(searchParams))) notFound();
 
   const hasGeneratedHtml = isCompleteGeneratedPageHtml(site.generatedSiteHtml);
   const hasArtwork = Boolean(decodeArtworkDataUrl(site.heroImage));
