@@ -211,7 +211,7 @@ export function buildGeneratedSitePageRequestBody(
     // reasoning and a low-detail reference reduce Gateway latency while the
     // verified brief remains the authoritative design source.
     reasoning: { effort: "minimal" },
-    max_output_tokens: 10_000,
+    max_output_tokens: 20_000,
     input: [
       {
         role: "developer",

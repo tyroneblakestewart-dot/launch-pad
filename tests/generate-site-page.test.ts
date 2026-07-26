@@ -169,7 +169,7 @@ describe("POST /api/generate-site-page", () => {
     expect(artworkRequest.max_output_tokens).toBe(1_500);
     expect(artworkRequest.reasoning).toEqual({ effort: "minimal" });
     expect(finalRequest.stream).toBe(true);
-    expect(finalRequest.max_output_tokens).toBe(10_000);
+    expect(finalRequest.max_output_tokens).toBe(20_000);
     expect(finalRequest.reasoning).toEqual({ effort: "minimal" });
     expect(finalRequest.input[0].content[0].text).toContain("Artwork owns the page identity");
     expect(finalRequest.input[0].content[0].text).toContain("bright, spacious discovery experience");
