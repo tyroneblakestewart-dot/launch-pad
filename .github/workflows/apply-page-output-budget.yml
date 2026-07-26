@@ -1,0 +1,73 @@
+name: Apply page output budget change
+
+on:
+  push:
+    branches:
+      - chore/increase-page-output-budget
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: chore/increase-page-output-budget
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply exact budget and assertion changes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          pipeline = Path('lib/site-page-openai-pipeline.ts')
+          pipeline_text = pipeline.read_text()
+          target = '    max_output_tokens: 10_000,\n'
+          if pipeline_text.count(target) != 1:
+              raise SystemExit(f'Expected exactly one page-generation 10_000 target, found {pipeline_text.count(target)}')
+          pipeline.write_text(pipeline_text.replace(target, '    max_output_tokens: 20_000,\n', 1))
+
+          test = Path('tests/generate-site-page.test.ts')
+          test_text = test.read_text()
+          assertion = '    expect(finalRequest.max_output_tokens).toBe(10_000);\n'
+          if test_text.count(assertion) != 1:
+              raise SystemExit(f'Expected exactly one 10_000 final-request assertion, found {test_text.count(assertion)}')
+          test.write_text(test_text.replace(assertion, '    expect(finalRequest.max_output_tokens).toBe(20_000);\n', 1))
+
+          # Guard the artwork-analysis budget and all requested settings.
+          updated = pipeline.read_text()
+          if updated.count('max_output_tokens: 1_500') != 1:
+              raise SystemExit('Artwork-analysis 1_500 token budget changed unexpectedly')
+          if updated.count('max_output_tokens: 20_000') != 1:
+              raise SystemExit('Final page 20_000 token budget was not applied exactly once')
+          PY
+
+      - name: Install dependencies
+        run: npm install --silent
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Commit verified change
+        run: |
+          rm .github/workflows/apply-page-output-budget.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/site-page-openai-pipeline.ts tests/generate-site-page.test.ts .github/workflows/apply-page-output-budget.yml
+          git commit -m "Raise full-page generation output budget"
+          git push origin HEAD:chore/increase-page-output-budget
