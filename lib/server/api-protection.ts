@@ -14,6 +14,7 @@ type GenerateSiteProtectionEnvironment = {
   VERCEL_ENV?: string;
   VERCEL_URL?: string;
   VERCEL_BRANCH_URL?: string;
+  [key: string]: string | undefined;
 };
 
 type GlobalWithRateStore = typeof globalThis & {
