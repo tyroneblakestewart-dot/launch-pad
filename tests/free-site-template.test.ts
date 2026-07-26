@@ -94,6 +94,12 @@ function render(theme: FreeSiteTheme = THEME, copy: FreeSiteCopy = COPY): string
   return renderFreeSiteTemplate({ theme, copy });
 }
 
+function getBodyTag(html: string): string {
+  const match = html.match(/<body\b[^>]*>/i);
+  if (!match) throw new Error("Rendered page has no body tag.");
+  return match[0];
+}
+
 describe("renderFreeSiteTemplate", () => {
   it("passes generated-page validation with realistic copy", () => {
     const html = render();
@@ -121,6 +127,45 @@ describe("renderFreeSiteTemplate", () => {
     }
     expect(html.match(/id="hero"/g)).toHaveLength(1);
     expect(html.length).toBeLessThan(90_000);
+  });
+
+  it("omits data-palette from the rendered body tag", () => {
+    expect(getBodyTag(render())).not.toMatch(/\bdata-palette=/i);
+  });
+
+  it("places a distinctive palette in :root without a matching body preset", () => {
+    const html = render({
+      ...THEME,
+      palette: { ...THEME.palette, primary: "#ff00ff" },
+    });
+    expect(html).toContain("--primary: #ff00ff;");
+    expect(getBodyTag(html)).not.toMatch(/\bdata-palette=/i);
+  });
+
+  it("applies all six style attributes exactly once on the body tag", () => {
+    const theme: FreeSiteTheme = {
+      ...THEME,
+      fontPairing: "blocky",
+      backgroundEffect: "gradients",
+      heroStyle: "centred",
+      tokenomicsStyle: "ledger",
+      roadmapStyle: "cards",
+      aboutStyle: "quotes",
+    };
+    const bodyTag = getBodyTag(render(theme));
+    const attributes = {
+      "data-fonts": theme.fontPairing,
+      "data-bg": theme.backgroundEffect,
+      "data-hero": theme.heroStyle,
+      "data-tokenomics": theme.tokenomicsStyle,
+      "data-roadmap": theme.roadmapStyle,
+      "data-about": theme.aboutStyle,
+    } as const;
+
+    for (const [attribute, value] of Object.entries(attributes)) {
+      expect(bodyTag.match(new RegExp(`${attribute}=`, "g"))).toHaveLength(1);
+      expect(bodyTag).toContain(`${attribute}="${value}"`);
+    }
   });
 
   it("escapes untrusted copy including script markup and quotes", () => {

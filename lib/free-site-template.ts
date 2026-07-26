@@ -218,12 +218,12 @@ function prepareSourceTemplate(source: string): string {
   output = replaceOnce(output, "  --primary: #7cff5b;", "  --primary: {{THEME_PRIMARY}};", "primary colour");
   output = replaceOnce(output, "  --secondary: #f5c945;", "  --secondary: {{THEME_SECONDARY}};", "secondary colour");
   output = replaceOnce(output, "  --text: #e8ffe0;", "  --text: {{THEME_TEXT}};", "text colour");
-  output = replaceOnce(output, 'data-fonts="street"', 'data-fonts="{{THEME_FONT_PAIRING}}"', "font attribute");
-  output = replaceOnce(output, 'data-bg="cascade"', 'data-bg="{{THEME_BACKGROUND_EFFECT}}"', "background attribute");
-  output = replaceOnce(output, 'data-hero="split"', 'data-hero="{{THEME_HERO_STYLE}}"', "hero attribute");
-  output = replaceOnce(output, 'data-tokenomics="terminal"', 'data-tokenomics="{{THEME_TOKENOMICS_STYLE}}"', "tokenomics attribute");
-  output = replaceOnce(output, 'data-roadmap="timeline"', 'data-roadmap="{{THEME_ROADMAP_STYLE}}"', "roadmap attribute");
-  output = replaceOnce(output, 'data-about="numbered"', 'data-about="{{THEME_ABOUT_STYLE}}"', "about attribute");
+  output = replaceOnce(
+    output,
+    '<body data-palette="toxic" data-fonts="street" data-bg="cascade" data-hero="split" data-tokenomics="terminal" data-roadmap="timeline" data-about="numbered">',
+    '<body data-fonts="{{THEME_FONT_PAIRING}}" data-bg="{{THEME_BACKGROUND_EFFECT}}" data-hero="{{THEME_HERO_STYLE}}" data-tokenomics="{{THEME_TOKENOMICS_STYLE}}" data-roadmap="{{THEME_ROADMAP_STYLE}}" data-about="{{THEME_ABOUT_STYLE}}">',
+    "body theme attributes",
+  );
   output = replaceOnce(output, "{{ARTWORK}}", "{{FREE_SITE_ARTWORK}}", "artwork placeholder");
   return output;
 }
