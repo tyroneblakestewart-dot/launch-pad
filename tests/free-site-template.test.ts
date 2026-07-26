@@ -95,7 +95,9 @@ function render(theme: FreeSiteTheme = THEME, copy: FreeSiteCopy = COPY): string
 }
 
 function getBodyTag(html: string): string {
-  const match = html.match(/<body\b[^>]*>/i);
+  const headEnd = html.toLowerCase().indexOf("</head>");
+  if (headEnd === -1) throw new Error("Rendered page has no closing head tag.");
+  const match = html.slice(headEnd + "</head>".length).match(/<body\b[^>]*>/i);
   if (!match) throw new Error("Rendered page has no body tag.");
   return match[0];
 }
