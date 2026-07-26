@@ -23,7 +23,10 @@ jobs:
           node-version: 22
 
       - name: Apply implementation
-        run: python3 scripts/apply-draft-site-publishing.py
+        run: |
+          rm -f draft-publish-failure.txt
+          python3 scripts/apply-draft-site-publishing.py
+          python3 scripts/fix-draft-publishing-verification.py
 
       - name: Install dependencies
         run: npm install --silent
@@ -47,12 +50,14 @@ jobs:
             git reset --hard HEAD
             {
               echo "lint=$lint_status test=$test_status build=$build_status"
+              echo "--- TEST SUMMARY ---"
+              grep -E "FAIL|AssertionError|Test Files|Tests |expected|×" draft-publish-test.log | tail -n 120 || true
               echo "--- LINT ---"
-              tail -n 160 draft-publish-lint.log 2>/dev/null || true
+              tail -n 120 draft-publish-lint.log 2>/dev/null || true
               echo "--- TEST ---"
-              tail -n 260 draft-publish-test.log 2>/dev/null || true
+              tail -n 220 draft-publish-test.log 2>/dev/null || true
               echo "--- BUILD ---"
-              tail -n 200 draft-publish-build.log 2>/dev/null || true
+              tail -n 160 draft-publish-build.log 2>/dev/null || true
             } > draft-publish-failure.txt
             git add draft-publish-failure.txt
             git commit -m "Capture draft publishing verification failure"
@@ -62,7 +67,7 @@ jobs:
 
           rm -f draft-publish-lint.log draft-publish-test.log draft-publish-build.log
           rm -f draft-publish-context.txt draft-publish-failure.txt
-          rm -f scripts/apply-draft-site-publishing.py
+          rm -f scripts/apply-draft-site-publishing.py scripts/fix-draft-publishing-verification.py
           rm -f .github/workflows/export-draft-publish-context.yml
           rm -f .github/workflows/apply-draft-site-publishing.yml
           git add -A
