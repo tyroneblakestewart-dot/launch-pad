@@ -23,7 +23,6 @@ import {
   type PublishStore,
   type PublishStoreResult,
   type PublishVisibilityResult,
-  type PublishWithChallengeInput,
   type SetVisibilityWithChallengeInput,
 } from "@/lib/server/publish-store";
 
