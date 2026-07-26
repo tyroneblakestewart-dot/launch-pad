@@ -244,7 +244,7 @@ describe("POST /api/generate-free-site model validation", () => {
 });
 
 describe("POST /api/generate-free-site success", () => {
-  it("uses the existing high-detail identity call and returns validated, substituted HTML", async () => {
+  it("uses the hardened page-pipeline identity call and returns validated, substituted HTML", async () => {
     const fetchMock = providerMock();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -268,6 +268,7 @@ describe("POST /api/generate-free-site success", () => {
     const artworkRequest = JSON.parse(
       String((fetchMock.mock.calls[0][1] as RequestInit).body),
     ) as {
+      reasoning: { effort: string };
       max_output_tokens: number;
       input: Array<{
         content: Array<{ type: string; image_url?: string; detail?: string }>;
@@ -284,7 +285,8 @@ describe("POST /api/generate-free-site success", () => {
       text: { format: { strict: boolean; schema: typeof FREE_SITE_DESIGN_SCHEMA } };
     };
 
-    expect(artworkRequest.max_output_tokens).toBe(850);
+    expect(artworkRequest.max_output_tokens).toBe(1_500);
+    expect(artworkRequest.reasoning).toEqual({ effort: "minimal" });
     expect(artworkRequest.input[1].content[1]).toEqual({
       type: "input_image",
       image_url: VALID_IMAGE,

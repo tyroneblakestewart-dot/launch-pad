@@ -25,7 +25,7 @@ import {
   type GenerateSiteStyleRequest,
   type OpenAIResponse,
 } from "@/lib/server/generate-site-style";
-import { buildArtworkIdentityRequestBody } from "@/lib/site-style-openai-pipeline";
+import { buildPageArtworkIdentityRequestBody } from "@/lib/site-page-openai-pipeline";
 import { requestArtworkIdentity } from "@/lib/server/artwork-identity-request";
 
 export const runtime = "nodejs";
@@ -167,7 +167,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const artworkBody = buildArtworkIdentityRequestBody(input, ai.model);
+  const artworkBody = buildPageArtworkIdentityRequestBody(input, ai.model);
   const artworkResult = await requestArtworkIdentity(
     () => requestProvider(ai, artworkBody, ARTWORK_TIMEOUT_MS),
     {
