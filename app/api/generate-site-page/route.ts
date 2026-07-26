@@ -11,8 +11,6 @@ import {
   buildInspirationInspectionRequestBody,
   extractVerifiedInspirationAnalysis,
   getFusionBriefIds,
-  parseArtworkIdentityResponse,
-  type ArtworkIdentity,
 } from "@/lib/site-style-openai-pipeline";
 import {
   NO_URL_PRESENTATION_BRIEF,
@@ -33,6 +31,7 @@ import {
   type AIResponsesRuntime,
 } from "@/lib/server/ai-responses-runtime";
 import { sanitiseProviderDetail } from "@/lib/server/sanitise-provider-detail";
+import { requestArtworkIdentity } from "@/lib/server/artwork-identity-request";
 import {
   requestStreamedFullPageGeneration,
   type StreamedFullPageOutcome,
@@ -61,21 +60,12 @@ type OpenAIRequestResult =
   | { ok: true; payload: OpenAIResponse }
   | OpenAIRequestFailure;
 
-type ArtworkIdentityRequestResult =
-  | { ok: true; identity: ArtworkIdentity }
-  | { ok: false; stage: string; failure: OpenAIRequestFailure };
-
 type ProviderError = {
   stage: string;
   provider: AIResponsesRuntime["source"];
   kind: string;
   status: number | null;
   detail: string | null;
-};
-
-type OpenAIResponseMetadata = OpenAIResponse & {
-  status?: unknown;
-  incomplete_details?: { reason?: unknown } | null;
 };
 
 function noStoreHeaders(extra: Record<string, string> = {}) {
@@ -99,18 +89,6 @@ function providerError(
 function isTimeoutFailure(failure: { kind: string; detail?: string }): boolean {
   if (failure.kind !== "network") return false;
   return /\b(?:abort|aborted|timeout|timed out)\b/i.test(failure.detail || "");
-}
-
-function artworkParseDetail(payload: OpenAIResponse, attempt: number): string {
-  const metadata = payload as OpenAIResponseMetadata;
-  const reason = metadata.incomplete_details?.reason;
-  if (metadata.status === "incomplete") {
-    const suffix = typeof reason === "string" && reason.trim()
-      ? ` because ${reason.trim()}`
-      : "";
-    return `Artwork analysis attempt ${attempt} returned an incomplete response${suffix}.`;
-  }
-  return `Artwork analysis attempt ${attempt} completed but did not match the required seven-field identity object.`;
 }
 
 async function requestOpenAI(
@@ -151,38 +129,6 @@ async function requestOpenAI(
   } catch (error) {
     return { ok: false, kind: "invalid", detail: sanitiseProviderDetail(error) };
   }
-}
-
-async function requestArtworkIdentity(
-  ai: AIResponsesRuntime,
-  body: unknown,
-): Promise<ArtworkIdentityRequestResult> {
-  const parseDetails: string[] = [];
-
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const stage = attempt === 1 ? "page-artwork-analysis" : "page-artwork-analysis-retry";
-    const result = await requestOpenAI(ai, body, ANALYSIS_TIMEOUT_MS, stage);
-    if (!result.ok) return { ok: false, stage, failure: result };
-
-    const identity = parseArtworkIdentityResponse(result.payload);
-    if (identity) return { ok: true, identity };
-
-    const detail = artworkParseDetail(result.payload, attempt);
-    parseDetails.push(detail);
-    if (attempt === 1) {
-      console.warn("AI artwork identity response was incomplete; retrying once", detail);
-    }
-  }
-
-  return {
-    ok: false,
-    stage: "page-artwork-analysis-parse",
-    failure: {
-      ok: false,
-      kind: "invalid",
-      detail: sanitiseProviderDetail(parseDetails.join(" ")),
-    },
-  };
 }
 
 function generationFailureMessage(generation: Extract<StreamedFullPageOutcome, { ok: false }>): string {
@@ -308,7 +254,14 @@ export async function POST(request: Request) {
           : null;
 
         const [artworkResult, inspirationResult] = await Promise.all([
-          requestArtworkIdentity(ai, artworkBody),
+          requestArtworkIdentity(
+            (stage) => requestOpenAI(ai, artworkBody, ANALYSIS_TIMEOUT_MS, stage),
+            {
+              first: "page-artwork-analysis",
+              retry: "page-artwork-analysis-retry",
+              parseFailure: "page-artwork-analysis-parse",
+            },
+          ),
           inspirationBody
             ? requestOpenAI(ai, inspirationBody, ANALYSIS_TIMEOUT_MS, "page-inspiration-analysis")
             : Promise.resolve<OpenAIRequestResult>({ ok: true, payload: {} }),

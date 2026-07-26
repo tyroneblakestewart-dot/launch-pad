@@ -25,10 +25,8 @@ import {
   type GenerateSiteStyleRequest,
   type OpenAIResponse,
 } from "@/lib/server/generate-site-style";
-import {
-  buildArtworkIdentityRequestBody,
-  parseArtworkIdentityResponse,
-} from "@/lib/site-style-openai-pipeline";
+import { buildArtworkIdentityRequestBody } from "@/lib/site-style-openai-pipeline";
+import { requestArtworkIdentity } from "@/lib/server/artwork-identity-request";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -169,25 +167,28 @@ export async function POST(request: Request) {
     );
   }
 
-  const artworkResult = await requestProvider(
-    ai,
-    buildArtworkIdentityRequestBody(input, ai.model),
-    ARTWORK_TIMEOUT_MS,
+  const artworkBody = buildArtworkIdentityRequestBody(input, ai.model);
+  const artworkResult = await requestArtworkIdentity(
+    () => requestProvider(ai, artworkBody, ARTWORK_TIMEOUT_MS),
+    {
+      first: "artwork-analysis",
+      retry: "artwork-analysis-retry",
+      parseFailure: "artwork-analysis-parse",
+    },
   );
   if (!artworkResult.ok) {
+    const parseFailure = artworkResult.failure.kind === "invalid";
     return NextResponse.json(
-      { error: "The AI artwork-analysis service could not complete the request." },
+      {
+        error: parseFailure
+          ? "The AI returned an invalid artwork identity."
+          : "The AI artwork-analysis service could not complete the request.",
+      },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
-  const artworkIdentity = parseArtworkIdentityResponse(artworkResult.payload);
-  if (!artworkIdentity) {
-    return NextResponse.json(
-      { error: "The AI returned an invalid artwork identity." },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
-  }
+  const artworkIdentity = artworkResult.identity;
 
   const designResult = await requestProvider(
     ai,

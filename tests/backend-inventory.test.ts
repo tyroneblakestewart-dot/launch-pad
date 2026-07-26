@@ -71,6 +71,7 @@ describe("backend test inventory", () => {
     expect(serverFiles).toEqual([
       "lib/server/ai-responses-runtime.ts",
       "lib/server/api-protection.ts",
+      "lib/server/artwork-identity-request.ts",
       "lib/server/dexscreener.ts",
       "lib/server/generate-site-page-stream.ts",
       "lib/server/generate-site-style.ts",
