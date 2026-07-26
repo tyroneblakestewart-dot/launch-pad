@@ -1,0 +1,70 @@
+name: Apply and verify draft publishing
+
+on:
+  push:
+    branches:
+      - feat/draft-site-publishing
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/draft-site-publishing
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply implementation
+        run: python3 scripts/apply-draft-site-publishing.py
+
+      - name: Install dependencies
+        run: npm install --silent
+
+      - name: Verify and commit
+        shell: bash
+        run: |
+          set +e
+          npm run lint 2>&1 | tee draft-publish-lint.log
+          lint_status=${PIPESTATUS[0]}
+          npm test 2>&1 | tee draft-publish-test.log
+          test_status=${PIPESTATUS[0]}
+          npm run build 2>&1 | tee draft-publish-build.log
+          build_status=${PIPESTATUS[0]}
+          set -e
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ "$lint_status" -ne 0 ] || [ "$test_status" -ne 0 ] || [ "$build_status" -ne 0 ]; then
+            git reset --hard HEAD
+            {
+              echo "lint=$lint_status test=$test_status build=$build_status"
+              echo "--- LINT ---"
+              tail -n 160 draft-publish-lint.log 2>/dev/null || true
+              echo "--- TEST ---"
+              tail -n 260 draft-publish-test.log 2>/dev/null || true
+              echo "--- BUILD ---"
+              tail -n 200 draft-publish-build.log 2>/dev/null || true
+            } > draft-publish-failure.txt
+            git add draft-publish-failure.txt
+            git commit -m "Capture draft publishing verification failure"
+            git push origin HEAD:feat/draft-site-publishing
+            exit 1
+          fi
+
+          rm -f draft-publish-lint.log draft-publish-test.log draft-publish-build.log
+          rm -f draft-publish-context.txt draft-publish-failure.txt
+          rm -f scripts/apply-draft-site-publishing.py
+          rm -f .github/workflows/export-draft-publish-context.yml
+          rm -f .github/workflows/apply-draft-site-publishing.yml
+          git add -A
+          git commit -m "Add signed draft publishing and owner go-live flow"
+          git push origin HEAD:feat/draft-site-publishing
