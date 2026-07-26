@@ -6,7 +6,7 @@ on:
       - feat/draft-site-publishing
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   export:
@@ -14,12 +14,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Package source context
-        run: |
-          tar -czf draft-publish-context.tar.gz \
-            app components lib db tests package.json tsconfig.json AGENTS.md CLAUDE.md
-      - uses: actions/upload-artifact@v4
         with:
-          name: draft-publish-context
-          path: draft-publish-context.tar.gz
-          retention-days: 1
+          ref: feat/draft-site-publishing
+      - name: Build readable publishing inventory
+        shell: bash
+        run: |
+          {
+            echo '### MATCHING FILES'
+            find app components lib db tests -type f | sort | grep -Ei 'publish|public-site|public-generated|full-website-generator|backend-inventory|migration' || true
+            echo
+            for file in $(find tests -type f | sort | grep -Ei 'publish|public-site|public-generated|backend-inventory|migration'); do
+              echo "### FILE: $file"
+              cat "$file"
+              echo
+            done
+            for file in lib/types.ts lib/wallet-provider.ts components/full-website-generator.tsx lib/public-site.ts lib/server/public-generated-sites.ts; do
+              echo "### FILE: $file"
+              cat "$file"
+              echo
+            done
+          } > draft-publish-context.txt
+      - name: Commit inventory
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add draft-publish-context.txt
+          git commit -m "Export draft publishing context"
+          git push origin HEAD:feat/draft-site-publishing
