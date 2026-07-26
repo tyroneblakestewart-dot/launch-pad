@@ -1,0 +1,1752 @@
+### MATCHING FILES
+app/api/publish/challenge/route.ts
+app/api/publish/route.ts
+components/full-website-generator.tsx
+components/public-site-frame.tsx
+db/migrations/001_public_publishing.sql
+lib/public-site.ts
+lib/server/postgres-publish-store.ts
+lib/server/public-generated-sites.ts
+lib/server/public-site-artwork.ts
+lib/server/publish-auth.ts
+lib/server/publish-store.ts
+lib/server/published-site-validation.ts
+tests/backend-inventory.test.ts
+tests/full-website-generator-stream-cleanup.test.ts
+tests/public-generated-sites.test.ts
+tests/public-site-artwork-route.test.ts
+tests/public-site-artwork.test.ts
+tests/public-site-page.test.ts
+tests/public-site-review-regressions.test.ts
+tests/public-site.test.ts
+tests/publish-endpoints.test.ts
+tests/published-site-validation.test.ts
+
+### FILE: tests/backend-inventory.test.ts
+import { readFile, readdir } from "node:fs/promises";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+const ROOT = process.cwd();
+
+async function walk(directory: string): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) return walk(absolute);
+      return [absolute];
+    }),
+  );
+  return files.flat();
+}
+
+function relative(file: string): string {
+  return path.relative(ROOT, file).split(path.sep).join("/");
+}
+
+describe("backend test inventory", () => {
+  it("lists every current API route and its exported HTTP method", async () => {
+    const routeFiles = (await walk(path.join(ROOT, "app", "api")))
+      .filter((file) => file.endsWith(`${path.sep}route.ts`))
+      .map(relative)
+      .sort();
+
+    expect(routeFiles).toEqual([
+      "app/api/dexscreener-pair/route.ts",
+      "app/api/generate-site-page/route.ts",
+      "app/api/generate-site-style/route.ts",
+      "app/api/generation-status/route.ts",
+      "app/api/publish/challenge/route.ts",
+      "app/api/publish/route.ts",
+      "app/api/social/telegram/route.ts",
+    ]);
+
+    const methods = await Promise.all(
+      routeFiles.map(async (file) => {
+        const source = await readFile(path.join(ROOT, file), "utf8");
+        const exported = [...source.matchAll(/export async function (GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/g)]
+          .map((match) => match[1])
+          .sort();
+        return [file, exported] as const;
+      }),
+    );
+
+    expect(Object.fromEntries(methods)).toEqual({
+      "app/api/dexscreener-pair/route.ts": ["GET"],
+      "app/api/generate-site-page/route.ts": ["POST"],
+      "app/api/generate-site-style/route.ts": ["POST"],
+      "app/api/generation-status/route.ts": ["GET"],
+      "app/api/publish/challenge/route.ts": ["POST"],
+      "app/api/publish/route.ts": ["POST"],
+      "app/api/social/telegram/route.ts": ["POST"],
+    });
+  });
+
+  it("lists every extracted server module covered by the suite", async () => {
+    const serverFiles = (await walk(path.join(ROOT, "lib", "server")))
+      .filter((file) => file.endsWith(".ts"))
+      .map(relative)
+      .sort();
+
+    expect(serverFiles).toEqual([
+      "lib/server/ai-responses-runtime.ts",
+      "lib/server/api-protection.ts",
+      "lib/server/dexscreener.ts",
+      "lib/server/generate-site-page-stream.ts",
+      "lib/server/generate-site-style.ts",
+      "lib/server/postgres-publish-store.ts",
+      "lib/server/postgres.ts",
+      "lib/server/public-generated-sites.ts",
+      "lib/server/public-site-artwork.ts",
+      "lib/server/publish-auth.ts",
+      "lib/server/publish-store.ts",
+      "lib/server/published-site-validation.ts",
+      "lib/server/sanitise-provider-detail.ts",
+      "lib/server/telegram.ts",
+    ]);
+  });
+});
+
+### FILE: tests/public-generated-sites.test.ts
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  getPublicGeneratedSiteBySlug,
+  resetPublicGeneratedSiteAdapterForTests,
+  setPublicGeneratedSiteAdapter,
+} from "@/lib/server/public-generated-sites";
+import type { PublicGeneratedSite } from "@/lib/public-site";
+
+const FIXTURE: PublicGeneratedSite = {
+  slug: "hoodlums",
+  name: "Hoodlums",
+  ticker: "HOOD",
+  description: "The code-running crew.",
+  supply: "1000000000",
+  decimals: 18,
+  chain: "robinhood",
+  heroImage: "",
+  generatedSiteHtml: null,
+  contractAddress: "",
+  xHandle: "",
+  telegram: "",
+  status: "draft",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+afterEach(() => {
+  resetPublicGeneratedSiteAdapterForTests();
+});
+
+describe("public generated site repository boundary", () => {
+  it("returns no record for any slug by default instead of faking persistence", async () => {
+    expect(await getPublicGeneratedSiteBySlug("hoodlums")).toBeNull();
+    expect(await getPublicGeneratedSiteBySlug("anything-else")).toBeNull();
+  });
+
+  it("still returns null after repeated lookups (no accidental in-memory store)", async () => {
+    await getPublicGeneratedSiteBySlug("hoodlums");
+    await getPublicGeneratedSiteBySlug("hoodlums");
+    expect(await getPublicGeneratedSiteBySlug("hoodlums")).toBeNull();
+  });
+
+  it("uses an injected adapter when tests set one", async () => {
+    setPublicGeneratedSiteAdapter(async (slug) => (slug === FIXTURE.slug ? FIXTURE : null));
+    expect(await getPublicGeneratedSiteBySlug("hoodlums")).toEqual(FIXTURE);
+    expect(await getPublicGeneratedSiteBySlug("unknown")).toBeNull();
+  });
+
+  it("rejects an injected adapter record whose slug does not match the lookup", async () => {
+    setPublicGeneratedSiteAdapter(async () => FIXTURE);
+    expect(await getPublicGeneratedSiteBySlug("different-slug")).toBeNull();
+  });
+
+  it("restores the no-records default after resetPublicGeneratedSiteAdapterForTests", async () => {
+    setPublicGeneratedSiteAdapter(async () => FIXTURE);
+    resetPublicGeneratedSiteAdapterForTests();
+    expect(await getPublicGeneratedSiteBySlug("hoodlums")).toBeNull();
+  });
+});
+
+### FILE: tests/public-site-artwork-route.test.ts
+import { afterEach, describe, expect, it } from "vitest";
+import { GET } from "@/app/[slug]/artwork/route";
+import {
+  resetPublicGeneratedSiteAdapterForTests,
+  setPublicGeneratedSiteAdapter,
+} from "@/lib/server/public-generated-sites";
+import type { PublicGeneratedSite } from "@/lib/public-site";
+
+const PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=";
+
+const BASE_FIXTURE: PublicGeneratedSite = {
+  slug: "hoodlums",
+  name: "Hoodlums",
+  ticker: "HOOD",
+  description: "The code-running crew.",
+  supply: "1000000000",
+  decimals: 18,
+  chain: "robinhood",
+  heroImage: `data:image/png;base64,${PNG_BASE64}`,
+  generatedSiteHtml: null,
+  contractAddress: "",
+  xHandle: "",
+  telegram: "",
+  status: "draft",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+function call(slug: string) {
+  return GET(new Request(`http://localhost/${slug}/artwork`), {
+    params: Promise.resolve({ slug }),
+  });
+}
+
+afterEach(() => {
+  resetPublicGeneratedSiteAdapterForTests();
+});
+
+describe("GET /[slug]/artwork", () => {
+  it("returns the decoded artwork bytes with the correct content type for a valid fixture", async () => {
+    setPublicGeneratedSiteAdapter(async (slug) => (slug === "hoodlums" ? BASE_FIXTURE : null));
+
+    const response = await call("hoodlums");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/png");
+    const buffer = Buffer.from(await response.arrayBuffer());
+    expect(buffer.subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+  });
+
+  it("returns 404 for an invalid path slug without looking up a record", async () => {
+    setPublicGeneratedSiteAdapter(async () => BASE_FIXTURE);
+    const response = await call("Not-A-Valid-Slug!");
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 404 when the adapter returns a record for another slug", async () => {
+    setPublicGeneratedSiteAdapter(async () => ({ ...BASE_FIXTURE, slug: "another-slug" }));
+    const response = await call("hoodlums");
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 404 when no public record exists for the slug", async () => {
+    setPublicGeneratedSiteAdapter(async () => null);
+    const response = await call("hoodlums");
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 404 when the record has no artwork", async () => {
+    setPublicGeneratedSiteAdapter(async () => ({ ...BASE_FIXTURE, heroImage: "" }));
+    const response = await call("hoodlums");
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 404 when the artwork is not a valid image data URL", async () => {
+    setPublicGeneratedSiteAdapter(async () => ({
+      ...BASE_FIXTURE,
+      heroImage: "https://example.com/not-a-data-url.png",
+    }));
+    const response = await call("hoodlums");
+    expect(response.status).toBe(404);
+  });
+});
+
+### FILE: tests/public-site-artwork.test.ts
+import { describe, expect, it } from "vitest";
+import { decodeArtworkDataUrl } from "@/lib/server/public-site-artwork";
+
+const asDataUrl = (mime: string, bytes: Buffer) =>
+  `data:${mime};base64,${bytes.toString("base64")}`;
+
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=",
+  "base64",
+);
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+const GIF = Buffer.from("GIF89a", "ascii");
+const WEBP = Buffer.concat([Buffer.from("RIFF", "ascii"), Buffer.alloc(4), Buffer.from("WEBP", "ascii")]);
+
+describe("decodeArtworkDataUrl", () => {
+  it.each([
+    ["image/png", PNG],
+    ["image/jpeg", JPEG],
+    ["image/gif", GIF],
+    ["image/webp", WEBP],
+  ] as const)("accepts %s only when its magic bytes match", (mime, bytes) => {
+    const result = decodeArtworkDataUrl(asDataUrl(mime, bytes));
+    expect(result?.contentType).toBe(mime);
+    expect(result?.bytes).toEqual(bytes);
+  });
+
+  it("rejects a declared MIME type that does not match the bytes", () => {
+    expect(decodeArtworkDataUrl(asDataUrl("image/jpeg", PNG))).toBeNull();
+    expect(decodeArtworkDataUrl(asDataUrl("image/png", JPEG))).toBeNull();
+  });
+
+  it("returns null for missing, malformed, empty or disallowed artwork", () => {
+    expect(decodeArtworkDataUrl(undefined)).toBeNull();
+    expect(decodeArtworkDataUrl(null)).toBeNull();
+    expect(decodeArtworkDataUrl("")).toBeNull();
+    expect(decodeArtworkDataUrl("not a data url")).toBeNull();
+    expect(decodeArtworkDataUrl("data:image/png;base64,")).toBeNull();
+    expect(decodeArtworkDataUrl(asDataUrl("image/svg+xml", PNG))).toBeNull();
+  });
+
+  it("rejects artwork above the byte limit", () => {
+    const oversized = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.alloc(6_000_000),
+    ]);
+    expect(decodeArtworkDataUrl(asDataUrl("image/png", oversized))).toBeNull();
+  });
+});
+
+### FILE: tests/public-site-page.test.ts
+import { afterEach, describe, expect, it } from "vitest";
+import PublicGeneratedSitePage, { generateMetadata } from "@/app/[slug]/page";
+import { notFound } from "next/navigation";
+import { ARTWORK_PLACEHOLDER } from "@/lib/generated-site-page";
+import {
+  resetPublicGeneratedSiteAdapterForTests,
+  setPublicGeneratedSiteAdapter,
+} from "@/lib/server/public-generated-sites";
+import type { PublicGeneratedSite } from "@/lib/public-site";
+import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
+import { PublicSiteFrame } from "@/components/public-site-frame";
+import { PublicTokenFallback } from "@/components/public-token-fallback";
+
+const PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=";
+const ARTWORK_DATA_URL = `data:image/png;base64,${PNG_BASE64}`;
+
+function validGeneratedHtml(): string {
+  const padding = "Original responsive campaign card content. ".repeat(110);
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Original token page</title>
+<style>body{margin:0}</style>
+</head>
+<body>
+<header><nav>Home</nav></header>
+<section id="hero"><h1>Hero</h1><img src="${ARTWORK_PLACEHOLDER}" alt="Uploaded artwork"></section>
+<section id="about"><p>${padding}</p></section>
+<section id="tokenomics"><h2>Tokenomics</h2></section>
+<section id="roadmap"><h2>Roadmap</h2></section>
+<section id="how-to-buy"><h2>How to buy</h2></section>
+<section id="community"><h2>Community</h2></section>
+<script>1;</script>
+</body>
+</html>`;
+}
+
+const BASE_FIXTURE: PublicGeneratedSite = {
+  slug: "hoodlums",
+  name: "Hoodlums",
+  ticker: "HOOD",
+  description: "The code-running crew taking meme culture to a new chain.",
+  supply: "1000000000",
+  decimals: 18,
+  chain: "robinhood",
+  heroImage: ARTWORK_DATA_URL,
+  generatedSiteHtml: validGeneratedHtml(),
+  contractAddress: "0x3bf7447cd055f1475a8b09090c7b062abc9d3798",
+  xHandle: "@hoodlums",
+  telegram: "t.me/hoodlums",
+  status: "launched",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+function notFoundDigest(): string {
+  try {
+    notFound();
+  } catch (error) {
+    return (error as { digest?: string }).digest || "";
+  }
+  throw new Error("notFound() did not throw");
+}
+
+afterEach(() => {
+  resetPublicGeneratedSiteAdapterForTests();
+});
+
+describe("PublicGeneratedSitePage", () => {
+  it("renders the generated site frame and the Dexscreener section for a known fixture with a contract address", async () => {
+    setPublicGeneratedSiteAdapter(async (slug) => (slug === "hoodlums" ? BASE_FIXTURE : null));
+
+    const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
+    const children = element.props.children as unknown[];
+
+    const frame = children[0] as { type: unknown; props: { html: string } };
+    expect(frame.type).toBe(PublicSiteFrame);
+    expect(frame.props.html).toContain(ARTWORK_DATA_URL);
+    expect(frame.props.html).not.toContain(ARTWORK_PLACEHOLDER);
+
+    const dexscreener = children[1] as { type: unknown; props: { address: string } };
+    expect(dexscreener.type).toBe(PublicDexscreenerSection);
+    expect(dexscreener.props.address).toBe(BASE_FIXTURE.contractAddress);
+  });
+
+  it("omits the Dexscreener section when no contract address is saved", async () => {
+    setPublicGeneratedSiteAdapter(async () => ({ ...BASE_FIXTURE, contractAddress: "" }));
+
+    const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
+    const children = element.props.children as unknown[];
+    expect(children[1]).toBeNull();
+  });
+
+  it("renders the safe fallback when the generated HTML is missing", async () => {
+    setPublicGeneratedSiteAdapter(async () => ({ ...BASE_FIXTURE, generatedSiteHtml: null }));
+
+    const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
+    const children = element.props.children as unknown[];
+    const fallback = children[0] as { type: unknown; props: { site: PublicGeneratedSite } };
+    expect(fallback.type).toBe(PublicTokenFallback);
+    expect(fallback.props.site.name).toBe("Hoodlums");
+  });
+
+  it("renders the safe fallback when the generated HTML is corrupt", async () => {
+    setPublicGeneratedSiteAdapter(async () => ({ ...BASE_FIXTURE, generatedSiteHtml: "<html>not complete</html>" }));
+
+    const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
+    const children = element.props.children as unknown[];
+    const fallback = children[0] as { type: unknown };
+    expect(fallback.type).toBe(PublicTokenFallback);
+  });
+
+  it("renders the safe fallback when artwork is missing even if the HTML is valid", async () => {
+    setPublicGeneratedSiteAdapter(async () => ({ ...BASE_FIXTURE, heroImage: "" }));
+
+    const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
+    const children = element.props.children as unknown[];
+    const fallback = children[0] as { type: unknown };
+    expect(fallback.type).toBe(PublicTokenFallback);
+  });
+
+  it("calls notFound() for an unknown slug", async () => {
+    setPublicGeneratedSiteAdapter(async () => null);
+    const digest = notFoundDigest();
+
+    await expect(
+      PublicGeneratedSitePage({ params: Promise.resolve({ slug: "does-not-exist" }) }),
+    ).rejects.toMatchObject({ digest });
+  });
+
+  it("calls notFound() for an invalid path slug without looking up a record", async () => {
+    setPublicGeneratedSiteAdapter(async () => BASE_FIXTURE);
+    const digest = notFoundDigest();
+
+    await expect(
+      PublicGeneratedSitePage({ params: Promise.resolve({ slug: "Not Valid" }) }),
+    ).rejects.toMatchObject({ digest });
+  });
+});
+
+describe("generateMetadata for the public site route", () => {
+  it("builds a title, description, canonical URL and OG/Twitter image from a fixture", async () => {
+    setPublicGeneratedSiteAdapter(async (slug) => (slug === "hoodlums" ? BASE_FIXTURE : null));
+
+    const metadata = await generateMetadata({ params: Promise.resolve({ slug: "hoodlums" }) });
+
+    expect(metadata.title).toBe("Hoodlums ($HOOD)");
+    expect(metadata.description).toBe(BASE_FIXTURE.description);
+    expect(metadata.alternates?.canonical).toBe("https://hoodlums.dev/hoodlums");
+    expect(metadata.openGraph?.images).toEqual(["/hoodlums/artwork"]);
+    expect(metadata.twitter).toMatchObject({ card: "summary_large_image" });
+  });
+
+  it("omits image metadata when there is no valid artwork", async () => {
+    setPublicGeneratedSiteAdapter(async () => ({ ...BASE_FIXTURE, heroImage: "" }));
+
+    const metadata = await generateMetadata({ params: Promise.resolve({ slug: "hoodlums" }) });
+    expect(metadata.openGraph?.images).toBeUndefined();
+    expect(metadata.twitter).toMatchObject({ card: "summary" });
+  });
+
+  it("returns empty metadata for an unknown slug instead of crashing", async () => {
+    setPublicGeneratedSiteAdapter(async () => null);
+    await expect(generateMetadata({ params: Promise.resolve({ slug: "does-not-exist" }) })).resolves.toEqual({});
+  });
+
+  it("returns empty metadata for an invalid path slug", async () => {
+    setPublicGeneratedSiteAdapter(async () => BASE_FIXTURE);
+    await expect(generateMetadata({ params: Promise.resolve({ slug: "Not Valid" }) })).resolves.toEqual({});
+  });
+});
+
+### FILE: tests/public-site-review-regressions.test.ts
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import PublicGeneratedSitePage, { generateMetadata } from "@/app/[slug]/page";
+import { notFound } from "next/navigation";
+import {
+  resetPublicGeneratedSiteAdapterForTests,
+  setPublicGeneratedSiteAdapter,
+} from "@/lib/server/public-generated-sites";
+import type { PublicGeneratedSite } from "@/lib/public-site";
+
+const ROOT = process.cwd();
+const FIXTURE: PublicGeneratedSite = {
+  slug: "different-slug",
+  name: "Wrong record",
+  ticker: "WRONG",
+  description: "A deliberately mismatched adapter record.",
+  supply: "1",
+  decimals: 18,
+  chain: "robinhood",
+  heroImage: "",
+  generatedSiteHtml: null,
+  contractAddress: "",
+  xHandle: "",
+  telegram: "",
+  status: "draft",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+function notFoundDigest(): string {
+  try {
+    notFound();
+  } catch (error) {
+    return (error as { digest?: string }).digest || "";
+  }
+  throw new Error("notFound() did not throw");
+}
+
+afterEach(() => resetPublicGeneratedSiteAdapterForTests());
+
+describe("public-site review regressions", () => {
+  it("rejects an adapter record whose slug does not match the requested path", async () => {
+    setPublicGeneratedSiteAdapter(async () => FIXTURE);
+    const digest = notFoundDigest();
+    await expect(
+      PublicGeneratedSitePage({ params: Promise.resolve({ slug: "requested-slug" }) }),
+    ).rejects.toMatchObject({ digest });
+    await expect(
+      generateMetadata({ params: Promise.resolve({ slug: "requested-slug" }) }),
+    ).resolves.toEqual({});
+  });
+
+  it("wires explicit save results and stales generated HTML on description changes", async () => {
+    const studio = await readFile(path.join(ROOT, "components/token-studio.tsx"), "utf8");
+    const workspace = await readFile(path.join(ROOT, "components/token-studio-workspace.tsx"), "utf8");
+    expect(studio).toContain("PROJECT_SAVE_RESULT_EVENT");
+    expect(studio).toContain("detail: { success: false }");
+    expect(studio).toContain("detail: { success: true }");
+    expect(studio).toContain('"description",');
+    expect(workspace).toContain("shouldCloseWorkspaceAfterSave(detail)");
+    expect(workspace).toContain("awaitingSaveAndClose.current = true");
+  });
+
+  it("removes private workspace chrome before hydration on public pages", async () => {
+    const css = await readFile(path.join(ROOT, "components/app-navigation.module.css"), "utf8");
+    expect(css).toContain("body:has(.public-generated-site)");
+    expect(css).toContain("padding-left:0 !important");
+    expect(css).toContain(".sidebar");
+    expect(css).toContain(".mobileHeader");
+    expect(css).toContain(".bottomNav");
+  });
+
+  it("uses strict artwork validation, nosniff and the narrow lint fix", async () => {
+    const page = await readFile(path.join(ROOT, "app/[slug]/page.tsx"), "utf8");
+    const artworkRoute = await readFile(path.join(ROOT, "app/[slug]/artwork/route.ts"), "utf8");
+    const liquidity = await readFile(path.join(ROOT, "components/liquidity-lab.tsx"), "utf8");
+    expect(page).toContain("Boolean(decodeArtworkDataUrl(site.heroImage))");
+    expect(artworkRoute).toContain('"X-Content-Type-Options": "nosniff"');
+    expect(liquidity).toContain('import Link from "next/link"');
+    expect(liquidity).toContain('<Link className={styles.back} href="/allocations">');
+  });
+});
+
+### FILE: tests/public-site.test.ts
+import { describe, expect, it } from "vitest";
+import { buildPublicGeneratedSiteFromProject } from "@/lib/public-site";
+import type { TokenProject } from "@/lib/types";
+
+const PROJECT: TokenProject = {
+  id: "project-1",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-02T00:00:00.000Z",
+  status: "prepared",
+  chain: "robinhood",
+  name: "Hoodlums",
+  ticker: "HOOD",
+  description: "The code-running crew.",
+  supply: "1000000000",
+  decimals: 18,
+  websiteSlug: "hoodlums",
+  contractAddress: "0x3bf7447cd055f1475a8b09090c7b062abc9d3798",
+  xHandle: "@hoodlums",
+  telegram: "t.me/hoodlums",
+  heroImage: "data:image/png;base64,AAAA",
+  theme: "hoodlums",
+  generatedSiteHtml: "<!doctype html><html></html>",
+  generatedSiteVersion: 2,
+};
+
+describe("buildPublicGeneratedSiteFromProject", () => {
+  it("maps every field a public record needs from a saved project", () => {
+    expect(buildPublicGeneratedSiteFromProject(PROJECT)).toEqual({
+      slug: "hoodlums",
+      name: "Hoodlums",
+      ticker: "HOOD",
+      description: "The code-running crew.",
+      supply: "1000000000",
+      decimals: 18,
+      chain: "robinhood",
+      heroImage: "data:image/png;base64,AAAA",
+      generatedSiteHtml: "<!doctype html><html></html>",
+      contractAddress: "0x3bf7447cd055f1475a8b09090c7b062abc9d3798",
+      xHandle: "@hoodlums",
+      telegram: "t.me/hoodlums",
+      status: "prepared",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    });
+  });
+
+  it("normalises a missing generatedSiteHtml to null", () => {
+    const result = buildPublicGeneratedSiteFromProject({ ...PROJECT, generatedSiteHtml: undefined });
+    expect(result.generatedSiteHtml).toBeNull();
+
+    const withNull = buildPublicGeneratedSiteFromProject({ ...PROJECT, generatedSiteHtml: null });
+    expect(withNull.generatedSiteHtml).toBeNull();
+  });
+});
+
+### FILE: tests/publish-endpoints.test.ts
+import { randomUUID } from "node:crypto";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { privateKeyToAccount } from "viem/accounts";
+import PublicGeneratedSitePage from "@/app/[slug]/page";
+import { POST as createChallenge } from "@/app/api/publish/challenge/route";
+import { POST as publishSite } from "@/app/api/publish/route";
+import { PublicSiteFrame } from "@/components/public-site-frame";
+import { ARTWORK_PLACEHOLDER } from "@/lib/generated-site-page";
+import type { PublicGeneratedSite } from "@/lib/public-site";
+import { resetPublishRateLimitsForTests } from "@/lib/server/api-protection";
+import type { PublishChallenge } from "@/lib/server/publish-auth";
+import {
+  resetPublicGeneratedSiteAdapterForTests,
+} from "@/lib/server/public-generated-sites";
+import {
+  resetPublishStoreForTests,
+  setPublishStoreForTests,
+  type CreatePublishChallengeInput,
+  type PublishSignatureVerifier,
+  type PublishStore,
+  type PublishStoreResult,
+  type PublishWithChallengeInput,
+} from "@/lib/server/publish-store";
+
+const ACCOUNT = privateKeyToAccount(
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as `0x${string}`,
+);
+const OTHER_ACCOUNT = privateKeyToAccount(
+  "0x8b3a350cf5c34c9194ca3a545d5a8b9c7f8b4f5a33c56c2f4ec1d0e1c7f5b3a2" as `0x${string}`,
+);
+const PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=";
+const ARTWORK_DATA_URL = `data:image/png;base64,${PNG_BASE64}`;
+
+function validGeneratedHtml(): string {
+  const padding = "Original public token campaign content. ".repeat(120);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Public token</title><style>body{margin:0}</style></head><body><section id="hero"><h1>Public token</h1><img src="${ARTWORK_PLACEHOLDER}" alt="Artwork"></section><section id="about"><p>${padding}</p></section><section id="tokenomics"><h2>Tokenomics</h2></section><section id="roadmap"><h2>Roadmap</h2></section><section id="how-to-buy"><h2>How to buy</h2></section><section id="community"><h2>Community</h2></section><script>document.body.dataset.ready="true";</script></body></html>`;
+}
+
+function sitePayload(slug = "published-token") {
+  return {
+    slug,
+    name: "Published Token",
+    ticker: "PUB",
+    description: "A complete public token project created for signed publishing tests.",
+    supply: "1000000000",
+    decimals: 18,
+    chain: "robinhood",
+    chainId: "46630",
+    contractAddress: "0x1111111111111111111111111111111111111111",
+    generatedSiteHtml: validGeneratedHtml(),
+    artworkReference: ARTWORK_DATA_URL,
+    xHandle: "@published",
+    telegram: "t.me/published",
+    status: "launched",
+  };
+}
+
+class MemoryPublishStore implements PublishStore {
+  readonly challenges = new Map<string, PublishChallenge>();
+  readonly sites = new Map<string, PublicGeneratedSite>();
+
+  async createChallenge(input: CreatePublishChallengeInput): Promise<PublishChallenge> {
+    const challenge: PublishChallenge = {
+      id: randomUUID(),
+      ...input,
+      usedAt: null,
+    };
+    this.challenges.set(challenge.id, challenge);
+    return challenge;
+  }
+
+  async publishWithChallenge(
+    input: PublishWithChallengeInput,
+    verifySignature: PublishSignatureVerifier,
+  ): Promise<PublishStoreResult> {
+    const challenge = this.challenges.get(input.challengeId);
+    if (!challenge) return { status: "nonce_not_found" };
+    if (challenge.usedAt) return { status: "nonce_replayed" };
+    if (challenge.expiresAt.getTime() <= Date.now()) return { status: "nonce_expired" };
+    if (
+      challenge.nonceHash !== input.nonceHash ||
+      challenge.slug !== input.site.slug ||
+      challenge.sitePayloadHash !== input.sitePayloadHash
+    ) {
+      return { status: "nonce_mismatch" };
+    }
+    if (!(await verifySignature(challenge))) return { status: "invalid_signature" };
+
+    challenge.usedAt = new Date();
+    if (this.sites.has(input.site.slug)) return { status: "slug_conflict" };
+
+    const now = new Date().toISOString();
+    const site: PublicGeneratedSite = {
+      slug: input.site.slug,
+      name: input.site.name,
+      ticker: input.site.ticker,
+      description: input.site.description,
+      supply: input.site.supply,
+      decimals: input.site.decimals,
+      chain: input.site.chain,
+      heroImage: input.site.artworkReference,
+      generatedSiteHtml: input.site.generatedSiteHtml,
+      contractAddress: input.site.contractAddress,
+      xHandle: input.site.xHandle,
+      telegram: input.site.telegram,
+      status: input.site.status,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.sites.set(site.slug, site);
+    return { status: "published", site, ownerWalletAddress: challenge.walletAddress };
+  }
+
+  async getBySlug(slug: string): Promise<PublicGeneratedSite | null> {
+    return this.sites.get(slug) || null;
+  }
+}
+
+function postRequest(path: string, body: unknown, ip = "203.0.113.10") {
+  return new Request(`http://localhost:3000${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: "http://localhost:3000",
+      "X-Forwarded-For": ip,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+type SitePayload = ReturnType<typeof sitePayload>;
+
+async function requestSignedChallenge(
+  slug: string,
+  signer = ACCOUNT,
+  site: SitePayload = sitePayload(slug),
+) {
+  const challengeResponse = await createChallenge(
+    postRequest("/api/publish/challenge", {
+      walletAddress: signer.address,
+      walletChainId: 46630,
+      site,
+    }),
+  );
+  expect(challengeResponse.status).toBe(201);
+  return challengeResponse.json() as Promise<{
+    challengeId: string;
+    nonce: string;
+    message: string;
+    sitePayloadHash: string;
+  }>;
+}
+
+async function signedPublish(
+  store: MemoryPublishStore,
+  options: {
+    slug?: string;
+    signer?: typeof ACCOUNT;
+    signatureSigner?: typeof ACCOUNT;
+    challengeSite?: SitePayload;
+    publishSite?: SitePayload;
+  } = {},
+) {
+  const slug = options.slug || "published-token";
+  const signer = options.signer || ACCOUNT;
+  const challengeSite = options.challengeSite || sitePayload(slug);
+  const challenge = await requestSignedChallenge(slug, signer, challengeSite);
+  const signature = await (options.signatureSigner || signer).signMessage({ message: challenge.message });
+  const response = await publishSite(
+    postRequest("/api/publish", {
+      challengeId: challenge.challengeId,
+      nonce: challenge.nonce,
+      signature,
+      site: options.publishSite || challengeSite,
+    }),
+  );
+  return { challenge, response, store };
+}
+
+beforeEach(() => {
+  process.env.PUBLISH_ALLOWED_ORIGIN = "http://localhost:3000";
+  resetPublishRateLimitsForTests();
+  resetPublicGeneratedSiteAdapterForTests();
+});
+
+afterEach(() => {
+  delete process.env.PUBLISH_ALLOWED_ORIGIN;
+  resetPublishStoreForTests();
+  resetPublicGeneratedSiteAdapterForTests();
+});
+
+describe("signed public publishing", () => {
+  it("accepts a valid wallet signature, stores the site, and returns its public URL", async () => {
+    const store = new MemoryPublishStore();
+    setPublishStoreForTests(store);
+
+    const { response, challenge } = await signedPublish(store);
+    expect(challenge.message).toContain(`Site Payload Hash: ${challenge.sitePayloadHash}`);
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      published: true,
+      publicUrl: "https://hoodlums.dev/published-token",
+      ownerWalletAddress: ACCOUNT.address,
+    });
+    expect(store.sites.get("published-token")?.generatedSiteHtml).toContain("Public token");
+  });
+
+  it("rejects a signature made by a different wallet", async () => {
+    const store = new MemoryPublishStore();
+    setPublishStoreForTests(store);
+
+    const { response } = await signedPublish(store, { signatureSigner: OTHER_ACCOUNT });
+    expect(response.status).toBe(401);
+    expect(store.sites.size).toBe(0);
+  });
+
+  it("rejects site content altered after the wallet signs the challenge", async () => {
+    const store = new MemoryPublishStore();
+    setPublishStoreForTests(store);
+    const original = sitePayload("payload-bound-token");
+    const changed = {
+      ...original,
+      description: "A different public description substituted after the wallet signed the original payload.",
+    };
+
+    const { response } = await signedPublish(store, {
+      slug: "payload-bound-token",
+      challengeSite: original,
+      publishSite: changed,
+    });
+    expect(response.status).toBe(401);
+    expect(store.sites.size).toBe(0);
+  });
+
+  it("rejects an expired nonce", async () => {
+    const store = new MemoryPublishStore();
+    setPublishStoreForTests(store);
+
+    const challenge = await requestSignedChallenge("expired-token");
+    store.challenges.get(challenge.challengeId)!.expiresAt = new Date(Date.now() - 1);
+    const signature = await ACCOUNT.signMessage({ message: challenge.message });
+
+    const response = await publishSite(
+      postRequest("/api/publish", {
+        challengeId: challenge.challengeId,
+        nonce: challenge.nonce,
+        signature,
+        site: sitePayload("expired-token"),
+      }),
+    );
+    expect(response.status).toBe(410);
+    expect(store.sites.size).toBe(0);
+  });
+
+  it("rejects replay of a successfully consumed nonce", async () => {
+    const store = new MemoryPublishStore();
+    setPublishStoreForTests(store);
+
+    const first = await signedPublish(store, { slug: "one-use-token" });
+    expect(first.response.status).toBe(201);
+    const signature = await ACCOUNT.signMessage({ message: first.challenge.message });
+    const replay = await publishSite(
+      postRequest("/api/publish", {
+        challengeId: first.challenge.challengeId,
+        nonce: first.challenge.nonce,
+        signature,
+        site: sitePayload("one-use-token"),
+      }),
+    );
+    expect(replay.status).toBe(409);
+    await expect(replay.json()).resolves.toMatchObject({
+      error: expect.stringContaining("already been used"),
+    });
+  });
+
+  it("returns a deterministic conflict when the database uniqueness boundary rejects the slug", async () => {
+    const store = new MemoryPublishStore();
+    setPublishStoreForTests(store);
+
+    const first = await signedPublish(store, { slug: "unique-token" });
+    expect(first.response.status).toBe(201);
+    const second = await signedPublish(store, {
+      slug: "unique-token",
+      signer: OTHER_ACCOUNT,
+    });
+    expect(second.response.status).toBe(409);
+    await expect(second.response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("already published"),
+    });
+  });
+
+  it("serves a successfully published site through the existing public slug route", async () => {
+    const store = new MemoryPublishStore();
+    setPublishStoreForTests(store);
+    const { response } = await signedPublish(store, { slug: "public-render" });
+    expect(response.status).toBe(201);
+
+    const element = await PublicGeneratedSitePage({
+      params: Promise.resolve({ slug: "public-render" }),
+    });
+    const children = element.props.children as unknown[];
+    const frame = children[0] as { type: unknown; props: { html: string } };
+    expect(frame.type).toBe(PublicSiteFrame);
+    expect(frame.props.html).toContain(ARTWORK_DATA_URL);
+    expect(frame.props.html).not.toContain(ARTWORK_PLACEHOLDER);
+  });
+});
+
+### FILE: tests/published-site-validation.test.ts
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { ARTWORK_PLACEHOLDER } from "@/lib/generated-site-page";
+import {
+  MAX_ARTWORK_REFERENCE_BYTES,
+  MAX_PUBLISHED_HTML_BYTES,
+  hashPublishableSite,
+  normalisePublishableSite,
+  sanitisePublishedGeneratedHtml,
+} from "@/lib/server/published-site-validation";
+
+const ROOT = process.cwd();
+const PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=";
+
+function page(extra = ""): string {
+  const copy = "Safe generated campaign copy. ".repeat(150);
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width"><title>Safe</title><style>body{margin:0}</style></head><body><section id="hero"><img src="${ARTWORK_PLACEHOLDER}" alt="Artwork"></section><section id="about">${copy}</section><section id="tokenomics">Supply</section><section id="roadmap">Roadmap</section><section id="how-to-buy">Buy</section><section id="community">Community</section>${extra}<script>document.body.dataset.ready="true";</script></body></html>`;
+}
+
+function validSitePayload() {
+  return {
+    slug: "safe-token",
+    name: "Safe Token",
+    ticker: "safe",
+    description: "A complete description long enough for a public token site.",
+    supply: "1000000",
+    decimals: 18,
+    chain: "robinhood",
+    chainId: "46630",
+    contractAddress: "0x1111111111111111111111111111111111111111",
+    generatedSiteHtml: page(),
+    artworkReference: `data:image/png;base64,${PNG_BASE64}`,
+    status: "prepared",
+  };
+}
+
+describe("published generated HTML sanitisation", () => {
+  it("strips event attributes, navigation surfaces, meta refresh, and external resources", () => {
+    const sanitised = sanitisePublishedGeneratedHtml(
+      page('<meta http-equiv="refresh" content="0;url=https://bad.example"><link rel="stylesheet" href="https://bad.example/x.css"><a href="https://bad.example" target="_top" onclick="alert(1)">Open</a>'),
+    );
+    expect(sanitised).toBeTruthy();
+    expect(sanitised).not.toContain("http-equiv");
+    expect(sanitised).not.toContain("bad.example");
+    expect(sanitised).not.toContain("onclick");
+    expect(sanitised).not.toContain("target=");
+  });
+
+  it("removes every model-authored script and leaves only the trusted no-op placeholder", () => {
+    const sanitised = sanitisePublishedGeneratedHtml(
+      page("<script>fetch('https://bad.example');while(true){}</script>"),
+    );
+    expect(sanitised).toBeTruthy();
+    expect(sanitised).not.toContain("fetch(");
+    expect(sanitised).not.toContain("while(true)");
+    expect(sanitised?.match(/<script\b/gi)).toHaveLength(1);
+    expect(sanitised).toContain("<script>void 0;</script>");
+  });
+
+  it("enforces the published HTML and artwork reference size constants", () => {
+    expect(Buffer.byteLength("x".repeat(MAX_PUBLISHED_HTML_BYTES + 1))).toBeGreaterThan(MAX_PUBLISHED_HTML_BYTES);
+    expect(Buffer.byteLength("x".repeat(MAX_ARTWORK_REFERENCE_BYTES + 1))).toBeGreaterThan(
+      MAX_ARTWORK_REFERENCE_BYTES,
+    );
+  });
+});
+
+describe("publishable site payload validation", () => {
+  it("accepts a complete Robinhood site and normalises the ticker", () => {
+    const result = normalisePublishableSite(validSitePayload());
+    expect(result.valid).toBe(true);
+    if (result.valid) expect(result.site.ticker).toBe("SAFE");
+  });
+
+  it("creates a stable hash that changes whenever signed site content changes", () => {
+    const first = normalisePublishableSite(validSitePayload());
+    const repeated = normalisePublishableSite(validSitePayload());
+    const altered = normalisePublishableSite({
+      ...validSitePayload(),
+      description: "A different complete description that must produce a different signed payload hash.",
+    });
+    expect(first.valid && repeated.valid && altered.valid).toBe(true);
+    if (first.valid && repeated.valid && altered.valid) {
+      expect(hashPublishableSite(first.site)).toMatch(/^[0-9a-f]{64}$/);
+      expect(hashPublishableSite(first.site)).toBe(hashPublishableSite(repeated.site));
+      expect(hashPublishableSite(first.site)).not.toBe(hashPublishableSite(altered.site));
+    }
+  });
+
+  it("rejects a mismatched chain identifier and malformed artwork", () => {
+    const base = {
+      ...validSitePayload(),
+      contractAddress: "",
+    };
+    expect(normalisePublishableSite({ ...base, chainId: "1" }).valid).toBe(false);
+    expect(normalisePublishableSite({ ...base, artworkReference: "data:image/png;base64,AAAA" }).valid).toBe(false);
+  });
+});
+
+describe("public publishing migration", () => {
+  it("defines database-level slug uniqueness and single-use expiring nonces", async () => {
+    const migration = await readFile(
+      path.join(ROOT, "db", "migrations", "001_public_publishing.sql"),
+      "utf8",
+    );
+    expect(migration).toContain("CONSTRAINT published_sites_slug_unique UNIQUE (slug)");
+    expect(migration).toContain("nonce_hash CHAR(64) NOT NULL UNIQUE");
+    expect(migration).toContain("site_payload_hash CHAR(64) NOT NULL");
+    expect(migration).toContain("expires_at TIMESTAMPTZ NOT NULL");
+    expect(migration).toContain("used_at TIMESTAMPTZ");
+    expect(migration).toContain("octet_length(generated_html) <= 90000");
+    expect(migration).toContain("octet_length(artwork_reference) <= 8100000");
+  });
+});
+
+### FILE: lib/types.ts
+export type SupportedChain = "solana" | "robinhood";
+export type ProjectStatus = "draft" | "prepared" | "launched";
+
+export interface TokenProject {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  status: ProjectStatus;
+  chain: SupportedChain;
+  name: string;
+  ticker: string;
+  description: string;
+  supply: string;
+  decimals: number;
+  websiteSlug: string;
+  contractAddress: string;
+  xHandle: string;
+  telegram: string;
+  heroImage: string;
+  theme: "hoodlums";
+  /**
+   * The validated standalone HTML produced by the last successful
+   * "Generate site from artwork" run for this exact token identity. Kept
+   * so a future publish adapter has the complete design available; not
+   * used for anything else today. Cleared whenever the name, ticker or
+   * artwork changes so one token's page can never be mistaken for
+   * another's. The same reset applies when the project description changes.
+   */
+  generatedSiteHtml?: string | null;
+  /** Increments each time `generatedSiteHtml` is captured. */
+  generatedSiteVersion?: number | null;
+}
+
+export interface WalletState {
+  chain: SupportedChain;
+  address: string;
+}
+
+### FILE: lib/wallet-provider.ts
+export type Eip1193Provider = {
+  request: (args: {
+    method: string;
+    params?: unknown[] | Record<string, unknown>;
+  }) => Promise<unknown>;
+};
+
+type BrowserWindow = Window & {
+  ethereum?: Eip1193Provider;
+  __launchpadEthereum?: Eip1193Provider;
+};
+
+/**
+ * Returns the single EVM provider every page should use to connect and sign.
+ *
+ * `WalletProviderSelector` records the wallet the user explicitly confirmed
+ * (e.g. Rabby over MetaMask when both are installed) on `window.__launchpadEthereum`.
+ * It also patches `window.ethereum` to point at that same provider where the
+ * browser allows it, but some extensions expose a non-configurable
+ * `window.ethereum` that can't be patched — so `__launchpadEthereum` must be
+ * checked first everywhere a page talks to a wallet, not just `window.ethereum`.
+ */
+export function getInjectedEvmProvider(): Eip1193Provider | undefined {
+  if (typeof window === "undefined") return undefined;
+  const browserWindow = window as BrowserWindow;
+  return browserWindow.__launchpadEthereum || browserWindow.ethereum;
+}
+
+### FILE: components/full-website-generator.tsx
+"use client";
+
+import { useEffect } from "react";
+import { prepareGeneratedPageForPreview } from "@/lib/generated-site-page";
+import {
+  parseGenerateSitePageStreamLine,
+  splitNdjsonLines,
+  type GenerateSitePageProgressStage,
+} from "@/lib/generate-site-page-stream-protocol";
+
+type GenerateDetail = {
+  name: string;
+  ticker: string;
+  description: string;
+  imageDataUrl?: string;
+  inspirationUrl?: string;
+};
+
+type PreviewStatus = "generating" | "failed";
+
+type RequestGeneratedWebsiteOptions = {
+  signal?: AbortSignal;
+  onProgress?: (stage: GenerateSitePageProgressStage) => void;
+};
+
+type RenderedPreview = {
+  container: HTMLElement;
+  frame: HTMLIFrameElement;
+  closeButton: HTMLButtonElement;
+  fullScreenButton: HTMLButtonElement;
+  onClose: () => void;
+  onToggleFullScreen: () => void;
+};
+
+const MOBILE_PREVIEW_QUERY = "(max-width: 767px)";
+export const MOBILE_PREVIEW_HEIGHT = "70svh";
+
+export function getGeneratedPreviewFrameHeight(reportedHeight: number, mobile: boolean): string {
+  if (mobile) return MOBILE_PREVIEW_HEIGHT;
+  return `${Math.min(16_000, Math.max(700, Math.ceil(reportedHeight)))}px`;
+}
+
+export async function requestGeneratedWebsite(
+  detail: GenerateDetail,
+  options: RequestGeneratedWebsiteOptions = {},
+): Promise<{ html: string; inspirationUsed: boolean }> {
+  if (!detail.imageDataUrl?.startsWith("data:image/")) {
+    throw new Error("Upload artwork before generating the website.");
+  }
+
+  const response = await fetch("/api/generate-site-page", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/x-ndjson",
+    },
+    body: JSON.stringify(detail),
+    signal: options.signal,
+  });
+
+  if (!response.ok || !response.body) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(payload.error || "The full website could not be generated.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: { html: string; inspirationUsed: boolean } | null = null;
+
+  const processLine = (line: string) => {
+    if (result) return;
+    const event = parseGenerateSitePageStreamLine(line);
+    if (!event) return;
+    if (event.type === "progress") {
+      options.onProgress?.(event.stage);
+    } else if (event.type === "complete") {
+      result = { html: event.html, inspirationUsed: event.inspirationUsed };
+    } else if (event.type === "error") {
+      throw new Error(event.error);
+    }
+  };
+
+  try {
+    while (!result) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const { lines, remainder } = splitNdjsonLines(buffer);
+      buffer = remainder;
+      for (const line of lines) processLine(line);
+    }
+    buffer += decoder.decode();
+    if (!result) processLine(buffer);
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      // The server may already have completed or the request may be aborted.
+    }
+    try {
+      reader.releaseLock();
+    } catch {
+      // The reader may already have released its lock.
+    }
+  }
+
+  if (!result) {
+    throw new Error("The website generation stream ended before it finished.");
+  }
+  return result;
+}
+
+function previewElement(): HTMLElement {
+  const site = document.querySelector<HTMLElement>(".site-preview");
+  if (!site) throw new Error("Website preview was not found.");
+  return site;
+}
+
+const STAGE_HEADLINES: Record<GenerateSitePageProgressStage, string> = {
+  "analysing-artwork": "Analysing artwork…",
+  "preparing-design": "Preparing design…",
+  "building-page": "Writing website…",
+  "checking-safety": "Checking safety…",
+};
+
+function stageMessage(stage: GenerateSitePageProgressStage, hasInspiration: boolean): string {
+  switch (stage) {
+    case "analysing-artwork":
+      return hasInspiration
+        ? "Analysing the uploaded artwork and the inspiration website, then combining them into one original standalone page. The old Hoodlums preview is hidden because it is not the result."
+        : "Analysing the uploaded artwork and building one original standalone page. The old Hoodlums preview is hidden because it is not the result.";
+    case "preparing-design":
+      return "Combining the verified artwork identity and inspiration brief into one design direction.";
+    case "building-page":
+      return "Building the finished standalone website. Large pages can take a little while to finish.";
+    case "checking-safety":
+      return "Checking the finished page for safety and completeness before showing it to you.";
+    default:
+      return "Building the finished website…";
+  }
+}
+
+function setPreviewStatus(mode: PreviewStatus, message: string, headline?: string) {
+  const site = previewElement();
+  let status = site.querySelector<HTMLElement>(".full-generated-page-status");
+  if (!status) {
+    status = document.createElement("section");
+    status.className = "full-generated-page-status";
+    status.setAttribute("aria-live", "polite");
+    status.innerHTML = "<span></span><strong></strong><p></p>";
+    site.appendChild(status);
+  }
+
+  status.querySelector("span")!.textContent =
+    mode === "generating" ? "STANDALONE WEBSITE GENERATOR" : "GENERATION STOPPED";
+  status.querySelector("strong")!.textContent =
+    mode === "generating" ? headline || "Building the finished website…" : "No finished website was produced";
+  status.querySelector("p")!.textContent = message;
+
+  site.classList.toggle("full-page-generating", mode === "generating");
+  site.classList.toggle("full-page-failed", mode === "failed");
+  return site;
+}
+
+function clearPreviewStatus(site: HTMLElement) {
+  site.classList.remove("full-page-generating", "full-page-failed");
+  site.querySelector(".full-generated-page-status")?.remove();
+}
+
+function disposeFrame(frame: HTMLIFrameElement | null) {
+  if (!frame) return;
+  frame.srcdoc = "";
+  frame.remove();
+}
+
+function disposeRenderedPreview(preview: RenderedPreview | null) {
+  if (!preview) return;
+  preview.closeButton.removeEventListener("click", preview.onClose);
+  preview.fullScreenButton.removeEventListener("click", preview.onToggleFullScreen);
+  preview.container.classList.remove("full-generated-page-fullscreen");
+  disposeFrame(preview.frame);
+  preview.container.remove();
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function isMobilePreviewViewport(): boolean {
+  return window.matchMedia(MOBILE_PREVIEW_QUERY).matches;
+}
+
+function applyGeneratedPreviewHeight(frame: HTMLIFrameElement, reportedHeight: number) {
+  frame.style.height = getGeneratedPreviewFrameHeight(reportedHeight, isMobilePreviewViewport());
+}
+
+function renderGeneratedWebsite(
+  html: string,
+  artworkDataUrl: string,
+  onClosePreview: () => void,
+): RenderedPreview {
+  const site = previewElement();
+  const prepared = prepareGeneratedPageForPreview(html, artworkDataUrl);
+  clearPreviewStatus(site);
+
+  const container = document.createElement("section");
+  container.className = "full-generated-page-container";
+  container.setAttribute("aria-label", "Generated website preview");
+
+  const controls = document.createElement("div");
+  controls.className = "full-generated-page-controls";
+
+  const fullScreenButton = document.createElement("button");
+  fullScreenButton.type = "button";
+  fullScreenButton.className = "full-generated-page-fullscreen-button";
+  fullScreenButton.textContent = "Full screen";
+  fullScreenButton.setAttribute("aria-pressed", "false");
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "full-generated-page-close-button";
+  closeButton.textContent = "Close preview";
+
+  const viewport = document.createElement("div");
+  viewport.className = "full-generated-page-viewport";
+
+  const frame = document.createElement("iframe");
+  frame.className = "full-generated-page-frame";
+  frame.title = "Generated token landing page";
+  frame.setAttribute("sandbox", "allow-scripts");
+  frame.setAttribute("referrerpolicy", "no-referrer");
+  frame.setAttribute("loading", "eager");
+  frame.setAttribute("scrolling", "yes");
+  applyGeneratedPreviewHeight(frame, 1800);
+  frame.srcdoc = prepared;
+
+  const onToggleFullScreen = () => {
+    const fullScreen = container.classList.toggle("full-generated-page-fullscreen");
+    fullScreenButton.textContent = fullScreen ? "Exit full screen" : "Full screen";
+    fullScreenButton.setAttribute("aria-pressed", String(fullScreen));
+  };
+  const onClose = () => onClosePreview();
+
+  fullScreenButton.addEventListener("click", onToggleFullScreen);
+  closeButton.addEventListener("click", onClose);
+  controls.append(fullScreenButton, closeButton);
+  viewport.appendChild(frame);
+  container.append(controls, viewport);
+
+  site.classList.add("full-generated-page");
+  site.appendChild(container);
+
+  return {
+    container,
+    frame,
+    closeButton,
+    fullScreenButton,
+    onClose,
+    onToggleFullScreen,
+  };
+}
+
+
+export function FullWebsiteGenerator() {
+  useEffect(() => {
+    let activePreview: RenderedPreview | null = null;
+    let activeController: AbortController | null = null;
+    let generationNumber = 0;
+    let lastReportedHeight = 1800;
+
+    function restoreStudioControls() {
+      const site = document.querySelector<HTMLElement>(".site-preview");
+      disposeRenderedPreview(activePreview);
+      activePreview = null;
+      if (site) {
+        clearPreviewStatus(site);
+        site.classList.remove("full-generated-page");
+      }
+    }
+
+    function applyActiveFrameHeight() {
+      if (!activePreview) return;
+      applyGeneratedPreviewHeight(activePreview.frame, lastReportedHeight);
+    }
+
+    function onMessage(event: MessageEvent) {
+      if (!activePreview || event.source !== activePreview.frame.contentWindow) return;
+      const data = event.data as { type?: unknown; height?: unknown };
+      if (data?.type !== "hoodlums-generated-page-height") return;
+      const height = typeof data.height === "number" ? data.height : Number(data.height);
+      if (!Number.isFinite(height)) return;
+      lastReportedHeight = height;
+      applyActiveFrameHeight();
+    }
+
+    function onViewportResize() {
+      applyActiveFrameHeight();
+    }
+
+    async function onGenerate(event: Event) {
+      const detail = (event as CustomEvent<GenerateDetail>).detail;
+      const currentGeneration = ++generationNumber;
+      activeController?.abort();
+      restoreStudioControls();
+      lastReportedHeight = 1800;
+      const controller = new AbortController();
+      activeController = controller;
+      const hasInspiration = Boolean(detail.inspirationUrl);
+      setPreviewStatus(
+        "generating",
+        stageMessage("analysing-artwork", hasInspiration),
+        STAGE_HEADLINES["analysing-artwork"],
+      );
+
+      try {
+        const page = await requestGeneratedWebsite(detail, {
+          signal: controller.signal,
+          onProgress: (stage) => {
+            if (currentGeneration !== generationNumber) return;
+            setPreviewStatus("generating", stageMessage(stage, hasInspiration), STAGE_HEADLINES[stage]);
+          },
+        });
+        if (currentGeneration !== generationNumber) return;
+        activePreview = renderGeneratedWebsite(page.html, detail.imageDataUrl || "", () => {
+          generationNumber += 1;
+          activeController?.abort();
+          activeController = null;
+          restoreStudioControls();
+        });
+        applyActiveFrameHeight();
+        window.dispatchEvent(
+          new CustomEvent("launchpad:site-generated", {
+            detail: {
+              style: { source: "openai", inspirationUsed: page.inspirationUsed },
+              fullPage: true,
+              html: page.html,
+            },
+          }),
+        );
+      } catch (error) {
+        if (currentGeneration !== generationNumber || isAbortError(error)) return;
+        const message =
+          error instanceof Error ? error.message : "The full website could not be generated.";
+        setPreviewStatus(
+          "failed",
+          `${message} The terminal-style base preview has not been accepted as your generated website.`,
+        );
+        window.dispatchEvent(
+          new CustomEvent("launchpad:site-generation-failed", {
+            detail: {
+              message,
+              previewAvailable: false,
+            },
+          }),
+        );
+      } finally {
+        if (activeController === controller) activeController = null;
+      }
+    }
+
+    window.addEventListener("message", onMessage);
+    window.addEventListener("resize", onViewportResize);
+    window.addEventListener("launchpad:generate-site", onGenerate);
+    return () => {
+      generationNumber += 1;
+      activeController?.abort();
+      activeController = null;
+      window.removeEventListener("message", onMessage);
+      window.removeEventListener("resize", onViewportResize);
+      window.removeEventListener("launchpad:generate-site", onGenerate);
+      restoreStudioControls();
+    };
+  }, []);
+
+  return (
+    <style>{`
+      .site-preview.full-generated-page {
+        min-height: 760px;
+        overflow: hidden;
+        border-radius: 12px;
+        background: #fff;
+      }
+      .site-preview.full-generated-page::after { display: none; }
+      .site-preview.full-generated-page > :not(.full-generated-page-container):not(.full-generated-page-status) { display: none !important; }
+      .full-generated-page-container {
+        width: 100%;
+        overflow: hidden;
+        background: #fff;
+      }
+      .full-generated-page-controls {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        min-height: 52px;
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(19, 37, 54, .14);
+        background: rgba(248, 251, 253, .96);
+        backdrop-filter: blur(12px);
+      }
+      .full-generated-page-controls button {
+        min-height: 36px;
+        padding: 0 14px;
+        border: 1px solid rgba(49, 95, 123, .28);
+        border-radius: 8px;
+        background: #fff;
+        color: #183448;
+        font: 800 12px/1 system-ui, sans-serif;
+      }
+      .full-generated-page-controls button:focus-visible {
+        outline: 3px solid rgba(49, 95, 123, .28);
+        outline-offset: 2px;
+      }
+      .full-generated-page-close-button {
+        background: #183448 !important;
+        color: #fff !important;
+      }
+      .full-generated-page-viewport {
+        width: 100%;
+        overflow: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        background: #fff;
+      }
+      .full-generated-page-frame {
+        display: block;
+        width: 100%;
+        min-height: 760px;
+        border: 0;
+        background: #fff;
+        overflow: auto;
+        touch-action: pan-x pan-y;
+      }
+      .full-generated-page-container.full-generated-page-fullscreen {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483000;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        width: 100vw;
+        height: 100svh;
+        max-width: none;
+        border-radius: 0;
+        background: #fff;
+      }
+      .full-generated-page-fullscreen .full-generated-page-controls { position: relative; }
+      .full-generated-page-fullscreen .full-generated-page-viewport {
+        min-height: 0;
+        height: 100%;
+      }
+      .full-generated-page-fullscreen .full-generated-page-frame {
+        height: 100% !important;
+        min-height: 0;
+        max-height: none;
+      }
+      .site-preview.full-page-generating,
+      .site-preview.full-page-failed {
+        position: relative;
+        min-height: 700px;
+        overflow: hidden;
+        background: #f4f6f8;
+      }
+      .site-preview.full-page-generating > :not(.full-generated-page-status),
+      .site-preview.full-page-failed > :not(.full-generated-page-status) {
+        display: none !important;
+      }
+      .full-generated-page-status {
+        min-height: 700px;
+        display: grid;
+        align-content: center;
+        justify-items: center;
+        gap: 14px;
+        padding: 48px 24px;
+        text-align: center;
+        color: #132536;
+        background:
+          radial-gradient(circle at 20% 15%, rgba(91, 177, 214, .22), transparent 34%),
+          linear-gradient(155deg, #f8fbfd, #edf3f6);
+      }
+      .full-generated-page-status span {
+        color: #315f7b;
+        font: 800 11px/1.2 system-ui, sans-serif;
+        letter-spacing: .14em;
+      }
+      .full-generated-page-status strong {
+        max-width: 680px;
+        font: 800 clamp(28px, 6vw, 52px)/1.02 system-ui, sans-serif;
+      }
+      .full-generated-page-status p {
+        max-width: 680px;
+        margin: 0;
+        color: #526878;
+        font: 500 16px/1.65 system-ui, sans-serif;
+      }
+      .site-preview.full-page-generating .full-generated-page-status::after {
+        width: 42px;
+        height: 42px;
+        content: "";
+        border: 4px solid rgba(49, 95, 123, .18);
+        border-top-color: #315f7b;
+        border-radius: 50%;
+        animation: hoodlums-page-spin .8s linear infinite;
+      }
+      .site-preview.full-page-failed .full-generated-page-status {
+        background: linear-gradient(155deg, #fff8f6, #f7ece8);
+      }
+      .site-preview.full-page-failed .full-generated-page-status span { color: #a13b29; }
+      @keyframes hoodlums-page-spin { to { transform: rotate(360deg); } }
+      @media (max-width: 767px) {
+        .site-preview.full-generated-page {
+          min-height: 0;
+          overflow: visible;
+        }
+        .full-generated-page-container:not(.full-generated-page-fullscreen) {
+          max-height: calc(70svh + 52px);
+        }
+        .full-generated-page-controls {
+          justify-content: stretch;
+          padding: 8px;
+        }
+        .full-generated-page-controls button { flex: 1 1 0; }
+        .full-generated-page-container:not(.full-generated-page-fullscreen) .full-generated-page-viewport {
+          height: 70svh;
+          max-height: 70svh;
+        }
+        .full-generated-page-container:not(.full-generated-page-fullscreen) .full-generated-page-frame {
+          height: 70svh !important;
+          min-height: 0;
+          max-height: 70svh;
+        }
+        .site-preview.full-page-generating,
+        .site-preview.full-page-failed,
+        .full-generated-page-status { min-height: 700px; }
+      }
+    `}</style>
+  );
+}
+
+### FILE: lib/public-site.ts
+import type { ProjectStatus, SupportedChain, TokenProject } from "@/lib/types";
+
+/**
+ * The public record shape a future publish endpoint would write and the
+ * `app/[slug]` route reads. Defined once so the (not-yet-built) publish
+ * write path, the repository boundary and the public route all agree on
+ * the same contract.
+ */
+export interface PublicGeneratedSite {
+  slug: string;
+  name: string;
+  ticker: string;
+  description: string;
+  supply: string;
+  decimals: number;
+  chain: SupportedChain;
+  /** Data URL for the saved token artwork, or "" if none was uploaded. */
+  heroImage: string;
+  /** Validated standalone generated page HTML, or null if none exists yet. */
+  generatedSiteHtml: string | null;
+  contractAddress: string;
+  xHandle: string;
+  telegram: string;
+  status: ProjectStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Pure mapping from a locally saved `TokenProject` to the public record
+ * shape. This does not publish or persist anything by itself — it exists
+ * so the future publish write path (and tests, via fixtures) have one
+ * shared, tested place that defines "what a publish payload looks like".
+ */
+export function buildPublicGeneratedSiteFromProject(project: TokenProject): PublicGeneratedSite {
+  return {
+    slug: project.websiteSlug,
+    name: project.name,
+    ticker: project.ticker,
+    description: project.description,
+    supply: project.supply,
+    decimals: project.decimals,
+    chain: project.chain,
+    heroImage: project.heroImage,
+    generatedSiteHtml: project.generatedSiteHtml || null,
+    contractAddress: project.contractAddress,
+    xHandle: project.xHandle,
+    telegram: project.telegram,
+    status: project.status,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+  };
+}
+
+### FILE: lib/server/public-generated-sites.ts
+import type { PublicGeneratedSite } from "@/lib/public-site";
+import { getPublishStore } from "@/lib/server/publish-store";
+
+/**
+ * Server-only repository boundary for public generated sites.
+ *
+ * Production reads use the durable Postgres publish store configured through
+ * DATABASE_URL. When DATABASE_URL is absent, the default store returns no
+ * records so unknown slugs keep the existing honest 404 behaviour instead of
+ * falling back to process memory or browser storage.
+ *
+ * Tests may inject a fixture adapter with `setPublicGeneratedSiteAdapter`.
+ */
+export type PublicGeneratedSiteAdapter = (slug: string) => Promise<PublicGeneratedSite | null>;
+
+let testAdapter: PublicGeneratedSiteAdapter | null = null;
+
+export function setPublicGeneratedSiteAdapter(adapter: PublicGeneratedSiteAdapter): void {
+  testAdapter = adapter;
+}
+
+export function resetPublicGeneratedSiteAdapterForTests(): void {
+  testAdapter = null;
+}
+
+export async function getPublicGeneratedSiteBySlug(slug: string): Promise<PublicGeneratedSite | null> {
+  const site = testAdapter
+    ? await testAdapter(slug)
+    : await getPublishStore().getBySlug(slug);
+  return site?.slug === slug ? site : null;
+}
+
