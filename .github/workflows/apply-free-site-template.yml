@@ -1,0 +1,413 @@
+name: Apply free site template port
+
+on:
+  push:
+    branches:
+      - feat/free-site-template
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/free-site-template
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Port the source template exactly
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import re
+
+          source_path = Path('hoodlums-template(1).html')
+          if not source_path.exists():
+              raise SystemExit('The committed source template was not found at hoodlums-template(1).html')
+
+          source = source_path.read_text()
+          placeholder_matches = re.findall(r'\{\{([A-Z0-9_]+)\}\}', source)
+          placeholders = list(dict.fromkeys(placeholder_matches))
+          if len(placeholders) != 56:
+              raise SystemExit(f'Expected 56 unique placeholders, found {len(placeholders)}: {placeholders}')
+          if placeholders.count('ARTWORK') != 1:
+              raise SystemExit('Expected the ARTWORK placeholder exactly once in the unique placeholder set')
+
+          docs_path = Path('docs/free-site-template-source.html')
+          docs_path.parent.mkdir(parents=True, exist_ok=True)
+          docs_path.write_text(source)
+          source_path.unlink()
+
+          def remove_between(value: str, start: str, end: str, label: str) -> str:
+              if value.count(start) != 1 or value.count(end) != 1:
+                  raise SystemExit(f'Could not identify the exact {label} boundaries')
+              start_index = value.index(start)
+              end_index = value.index(end, start_index)
+              return value[:start_index] + value[end_index:]
+
+          output = source
+          output = remove_between(
+              output,
+              '/* ============================================================\n   DEMO CONTROL PANEL — remove before ship',
+              '/* ============================================================\n   HERO VARIANTS — body[data-hero]',
+              'demo CSS',
+          )
+          output = remove_between(
+              output,
+              '<!-- ============ DEMO PANEL (remove before ship) ============ -->',
+              '<script>',
+              'demo markup',
+          )
+          output = remove_between(
+              output,
+              '  /* -------- demo panel -------- */',
+              '  /* -------- CANVAS EFFECTS -------- */',
+              'demo JavaScript',
+          )
+
+          def replace_once(value: str, old: str, new: str, label: str) -> str:
+              count = value.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one {label}, found {count}')
+              return value.replace(old, new, 1)
+
+          palette_replacements = {
+              '  --background: #06110a;': '  --background: {{THEME_BACKGROUND}};',
+              '  --surface: #0f1f14;': '  --surface: {{THEME_SURFACE}};',
+              '  --primary: #7cff5b;': '  --primary: {{THEME_PRIMARY}};',
+              '  --secondary: #f5c945;': '  --secondary: {{THEME_SECONDARY}};',
+              '  --text: #e8ffe0;': '  --text: {{THEME_TEXT}};',
+          }
+          for old, new in palette_replacements.items():
+              output = replace_once(output, old, new, old.strip())
+
+          attribute_replacements = {
+              'data-fonts="street"': 'data-fonts="{{THEME_FONT_PAIRING}}"',
+              'data-bg="cascade"': 'data-bg="{{THEME_BACKGROUND_EFFECT}}"',
+              'data-hero="split"': 'data-hero="{{THEME_HERO_STYLE}}"',
+              'data-tokenomics="terminal"': 'data-tokenomics="{{THEME_TOKENOMICS_STYLE}}"',
+              'data-roadmap="timeline"': 'data-roadmap="{{THEME_ROADMAP_STYLE}}"',
+              'data-about="numbered"': 'data-about="{{THEME_ABOUT_STYLE}}"',
+          }
+          for old, new in attribute_replacements.items():
+              output = replace_once(output, old, new, old)
+
+          output = replace_once(output, '{{ARTWORK}}', '{{FREE_SITE_ARTWORK}}', 'artwork placeholder')
+
+          for marker in ('demo-panel', 'demo-toggle', 'demo-close', 'DEMO CONTROL PANEL', 'demo panel'):
+              if marker.lower() in output.lower():
+                  raise SystemExit(f'Demo marker remains in rendered template: {marker}')
+          if output.count('id="hero"') != 1:
+              raise SystemExit(f'Expected one id="hero" after demo removal, found {output.count("id=\"hero\"")}')
+          for section in ('hero', 'about', 'tokenomics', 'roadmap', 'how-to-buy', 'community'):
+              if output.count(f'id="{section}"') != 1:
+                  raise SystemExit(f'Missing or duplicate required section id: {section}')
+          if len(output) >= 90_000:
+              raise SystemExit(f'Render template is already too large: {len(output)} characters')
+
+          copy_placeholders = [name for name in placeholders if name != 'ARTWORK']
+          if len(copy_placeholders) != 55:
+              raise SystemExit(f'Expected 55 copy placeholders after excluding ARTWORK, found {len(copy_placeholders)}')
+
+          def field_name(placeholder: str) -> str:
+              parts = placeholder.split('_')
+              first = 'howToBuy' if parts[0] == 'HOWTOBUY' else parts[0].lower()
+              result = first
+              for part in parts[1:]:
+                  if part.isdigit():
+                      result += part
+                  elif part in ('Q', 'A'):
+                      result += part
+                  else:
+                      result += part.lower().capitalize()
+              return result
+
+          field_map = {placeholder: field_name(placeholder) for placeholder in copy_placeholders}
+          if len(set(field_map.values())) != len(field_map):
+              raise SystemExit(f'Copy field-name collision: {field_map}')
+
+          template_lines = output.splitlines()
+          template_array = '\n'.join(f'  {json.dumps(line, ensure_ascii=False)},' for line in template_lines)
+          copy_interface = '\n'.join(f'  {field_map[name]}: string;' for name in copy_placeholders)
+          copy_map = '\n'.join(f'  {name}: "{field_map[name]}",' for name in copy_placeholders)
+
+          renderer = f'''import {{ ARTWORK_PLACEHOLDER }} from "@/lib/generated-site-page";
+
+export type FreeSitePalette = {{
+  background: string;
+  surface: string;
+  primary: string;
+  secondary: string;
+  text: string;
+}};
+
+export type FreeSiteFontPairing = "street" | "blocky" | "arcade" | "rounded" | "cyber" | "editorial";
+export type FreeSiteBackgroundEffect = "cascade" | "gradients" | "particles" | "grid" | "none";
+export type FreeSiteHeroStyle = "split" | "centred" | "stacked";
+export type FreeSiteTokenomicsStyle = "terminal" | "grid" | "ledger";
+export type FreeSiteRoadmapStyle = "timeline" | "cards" | "path";
+export type FreeSiteAboutStyle = "numbered" | "icons" | "quotes";
+
+export type FreeSiteTheme = {{
+  palette: FreeSitePalette;
+  fontPairing: FreeSiteFontPairing;
+  backgroundEffect: FreeSiteBackgroundEffect;
+  heroStyle: FreeSiteHeroStyle;
+  tokenomicsStyle: FreeSiteTokenomicsStyle;
+  roadmapStyle: FreeSiteRoadmapStyle;
+  aboutStyle: FreeSiteAboutStyle;
+}};
+
+export type FreeSiteCopy = {{
+{copy_interface}
+}};
+
+export type FreeSiteTemplateInput = {{
+  theme: FreeSiteTheme;
+  copy: FreeSiteCopy;
+}};
+
+const FONT_PAIRINGS = ["street", "blocky", "arcade", "rounded", "cyber", "editorial"] as const;
+const BACKGROUND_EFFECTS = ["cascade", "gradients", "particles", "grid", "none"] as const;
+const HERO_STYLES = ["split", "centred", "stacked"] as const;
+const TOKENOMICS_STYLES = ["terminal", "grid", "ledger"] as const;
+const ROADMAP_STYLES = ["timeline", "cards", "path"] as const;
+const ABOUT_STYLES = ["numbered", "icons", "quotes"] as const;
+const HEX_COLOUR = /^#[0-9a-fA-F]{{6}}$/;
+
+const COPY_PLACEHOLDERS = {{
+{copy_map}
+}} as const satisfies Record<string, keyof FreeSiteCopy>;
+
+const FREE_SITE_TEMPLATE = [
+{template_array}
+].join("\\n");
+
+function escapeHtml(value: string): string {{
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}}
+
+function validatePalette(palette: FreeSitePalette): FreeSitePalette {{
+  for (const [name, value] of Object.entries(palette)) {{
+    if (typeof value !== "string" || !HEX_COLOUR.test(value)) {{
+      throw new Error(`Invalid palette colour for ${{name}}. Use a six-digit hexadecimal value.`);
+    }}
+  }}
+  return palette;
+}}
+
+function validateStyle(value: string, allowed: readonly string[], name: string): void {{
+  if (!allowed.includes(value)) {{
+    throw new Error(`Invalid ${{name}} value.`);
+  }}
+}}
+
+export function renderFreeSiteTemplate({{ theme, copy }}: FreeSiteTemplateInput): string {{
+  const palette = validatePalette(theme.palette);
+  validateStyle(theme.fontPairing, FONT_PAIRINGS, "fontPairing");
+  validateStyle(theme.backgroundEffect, BACKGROUND_EFFECTS, "backgroundEffect");
+  validateStyle(theme.heroStyle, HERO_STYLES, "heroStyle");
+  validateStyle(theme.tokenomicsStyle, TOKENOMICS_STYLES, "tokenomicsStyle");
+  validateStyle(theme.roadmapStyle, ROADMAP_STYLES, "roadmapStyle");
+  validateStyle(theme.aboutStyle, ABOUT_STYLES, "aboutStyle");
+
+  let html = FREE_SITE_TEMPLATE
+    .replaceAll("{{{{THEME_BACKGROUND}}}}", palette.background)
+    .replaceAll("{{{{THEME_SURFACE}}}}", palette.surface)
+    .replaceAll("{{{{THEME_PRIMARY}}}}", palette.primary)
+    .replaceAll("{{{{THEME_SECONDARY}}}}", palette.secondary)
+    .replaceAll("{{{{THEME_TEXT}}}}", palette.text)
+    .replaceAll("{{{{THEME_FONT_PAIRING}}}}", theme.fontPairing)
+    .replaceAll("{{{{THEME_BACKGROUND_EFFECT}}}}", theme.backgroundEffect)
+    .replaceAll("{{{{THEME_HERO_STYLE}}}}", theme.heroStyle)
+    .replaceAll("{{{{THEME_TOKENOMICS_STYLE}}}}", theme.tokenomicsStyle)
+    .replaceAll("{{{{THEME_ROADMAP_STYLE}}}}", theme.roadmapStyle)
+    .replaceAll("{{{{THEME_ABOUT_STYLE}}}}", theme.aboutStyle)
+    .replaceAll("{{{{FREE_SITE_ARTWORK}}}}", ARTWORK_PLACEHOLDER);
+
+  for (const [placeholder, copyKey] of Object.entries(COPY_PLACEHOLDERS) as Array<
+    [string, keyof FreeSiteCopy]
+  >) {{
+    const value = copy[copyKey];
+    if (typeof value !== "string") {{
+      throw new Error(`Invalid copy value for ${{copyKey}}.`);
+    }}
+    html = html.replaceAll(`{{{{${{placeholder}}}}}}`, escapeHtml(value));
+  }}
+
+  return html;
+}}
+'''
+          Path('lib/free-site-template.ts').write_text(renderer)
+
+          fixture_values = {
+              'tokenName': 'Hoodlums',
+              'ticker': 'HOOD',
+              'kicker': 'The community takes the crown',
+              'tagline': 'A community-first token built for the next chapter of New Sherwood.',
+              'contract': '0x1111111111111111111111111111111111111111',
+              'supply': '1,000,000,000',
+              'buyTax': '0%',
+              'sellTax': '0%',
+              'lpStatus': 'Locked',
+              'mintAuth': 'Revoked',
+              'ownership': 'Renounced',
+              'xHandle': 'hoodlumsdev',
+              'telegram': 'hoodlumsdev',
+          }
+          for key in field_map.values():
+              if key not in fixture_values:
+                  label = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', key).replace('Q', 'Question').replace('A', 'Answer')
+                  fixture_values[key] = f'{label.title()} copy for the Hoodlums community.'
+
+          fixture_lines = '\n'.join(
+              f'  {key}: {json.dumps(fixture_values[key])},' for key in field_map.values()
+          )
+
+          tests = f'''import {{ describe, expect, it }} from "vitest";
+import {{ ARTWORK_PLACEHOLDER, REQUIRED_PAGE_SECTIONS, isCompleteGeneratedPageHtml }} from "@/lib/generated-site-page";
+import {{
+  renderFreeSiteTemplate,
+  type FreeSiteAboutStyle,
+  type FreeSiteBackgroundEffect,
+  type FreeSiteCopy,
+  type FreeSiteFontPairing,
+  type FreeSiteHeroStyle,
+  type FreeSiteRoadmapStyle,
+  type FreeSiteTheme,
+  type FreeSiteTokenomicsStyle,
+}} from "@/lib/free-site-template";
+
+const THEME: FreeSiteTheme = {{
+  palette: {{
+    background: "#06110a",
+    surface: "#0f1f14",
+    primary: "#7cff5b",
+    secondary: "#f5c945",
+    text: "#e8ffe0",
+  }},
+  fontPairing: "street",
+  backgroundEffect: "cascade",
+  heroStyle: "split",
+  tokenomicsStyle: "terminal",
+  roadmapStyle: "timeline",
+  aboutStyle: "numbered",
+}};
+
+const COPY: FreeSiteCopy = {{
+{fixture_lines}
+}};
+
+function render(theme: FreeSiteTheme = THEME, copy: FreeSiteCopy = COPY): string {{
+  return renderFreeSiteTemplate({{ theme, copy }});
+}}
+
+describe("renderFreeSiteTemplate", () => {{
+  it("renders a complete generated page at baseline and when terminal aesthetics are forbidden", () => {{
+    const html = render();
+    expect(isCompleteGeneratedPageHtml(html)).toBe(true);
+    expect(isCompleteGeneratedPageHtml(html, {{ forbidTerminalAesthetic: true }})).toBe(true);
+    expect(html).toContain("--background: #06110a;");
+    expect(html).toContain('data-fonts="street"');
+    expect(html).toContain('data-bg="cascade"');
+  }});
+
+  it("uses the artwork placeholder exactly once and keeps each required section unique", () => {{
+    const html = render();
+    expect(html.split(ARTWORK_PLACEHOLDER)).toHaveLength(2);
+    for (const section of REQUIRED_PAGE_SECTIONS) {{
+      expect(html).toContain(`id="${{section}}"`);
+    }}
+    expect(html.match(/id="hero"/g)).toHaveLength(1);
+    expect(html.length).toBeLessThan(90_000);
+  }});
+
+  it("escapes untrusted copy including script markup and quotes", () => {{
+    const dangerous = `<script>alert("owned")</script> "double" 'single'`;
+    const html = render(THEME, {{ ...COPY, tokenName: dangerous }});
+    expect(html).not.toContain(dangerous);
+    expect(html).not.toContain('<script>alert("owned")</script>');
+    expect(html).toContain(
+      "&lt;script&gt;alert(&quot;owned&quot;)&lt;/script&gt; &quot;double&quot; &#39;single&#39;",
+    );
+  }});
+
+  it("rejects invalid palette values before interpolating CSS", () => {{
+    expect(() =>
+      render({{
+        ...THEME,
+        palette: {{ ...THEME.palette, primary: "#fff; background:url(javascript:alert(1))" }},
+      }}),
+    ).toThrow(/Invalid palette colour/);
+  }});
+
+  it("validates style values at runtime", () => {{
+    expect(() => render({{ ...THEME, heroStyle: "unsafe" as FreeSiteHeroStyle }})).toThrow(
+      /Invalid heroStyle/,
+    );
+  }});
+
+  it("renders every supported value in all six style unions", () => {{
+    const fontPairings: FreeSiteFontPairing[] = ["street", "blocky", "arcade", "rounded", "cyber", "editorial"];
+    const backgrounds: FreeSiteBackgroundEffect[] = ["cascade", "gradients", "particles", "grid", "none"];
+    const heroes: FreeSiteHeroStyle[] = ["split", "centred", "stacked"];
+    const tokenomics: FreeSiteTokenomicsStyle[] = ["terminal", "grid", "ledger"];
+    const roadmaps: FreeSiteRoadmapStyle[] = ["timeline", "cards", "path"];
+    const about: FreeSiteAboutStyle[] = ["numbered", "icons", "quotes"];
+
+    for (const fontPairing of fontPairings) expect(() => render({{ ...THEME, fontPairing }})).not.toThrow();
+    for (const backgroundEffect of backgrounds) expect(() => render({{ ...THEME, backgroundEffect }})).not.toThrow();
+    for (const heroStyle of heroes) expect(() => render({{ ...THEME, heroStyle }})).not.toThrow();
+    for (const tokenomicsStyle of tokenomics) expect(() => render({{ ...THEME, tokenomicsStyle }})).not.toThrow();
+    for (const roadmapStyle of roadmaps) expect(() => render({{ ...THEME, roadmapStyle }})).not.toThrow();
+    for (const aboutStyle of about) expect(() => render({{ ...THEME, aboutStyle }})).not.toThrow();
+  }});
+
+  it("contains no demo panel or unsafe embedded resources", () => {{
+    const html = render();
+    expect(html).not.toMatch(/demo-(?:panel|toggle|close)/i);
+    expect(html).not.toMatch(/demo control panel|design controls/i);
+    expect(html).not.toMatch(/<script\\b[^>]*\\bsrc\\s*=/i);
+    expect(html).not.toMatch(/<iframe\\b/i);
+    expect(html).not.toMatch(/javascript\\s*:/i);
+  }});
+}});
+'''
+          Path('tests/free-site-template.test.ts').write_text(tests)
+          PY
+
+      - name: Install dependencies
+        run: npm install --silent
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Commit verified implementation
+        run: |
+          rm .github/workflows/apply-free-site-template.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Port the free site template into a typed renderer"
+          git push origin HEAD:feat/free-site-template
