@@ -24,6 +24,7 @@ type GenerateDetail = {
   contractAddress?: string;
   xHandle?: string;
   telegram?: string;
+  mode?: "free" | "bespoke";
 };
 
 type PublishableSitePayload = {
@@ -229,6 +230,28 @@ export async function requestGeneratedWebsite(
     throw new Error("The website generation stream ended before it finished.");
   }
   return result;
+}
+
+export async function requestFreeGeneratedWebsite(
+  detail: GenerateDetail,
+  options: { signal?: AbortSignal } = {},
+): Promise<{ html: string }> {
+  if (!detail.imageDataUrl?.startsWith("data:image/")) {
+    throw new Error("Upload artwork before generating the website.");
+  }
+
+  const response = await fetch("/api/generate-free-site", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(detail),
+    signal: options.signal,
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as { error?: string; html?: string };
+  if (!response.ok || typeof payload.html !== "string") {
+    throw new Error(payload.error || "The free website could not be generated.");
+  }
+  return { html: payload.html };
 }
 
 function previewElement(): HTMLElement {
@@ -485,6 +508,7 @@ export function FullWebsiteGenerator() {
 
     async function onGenerate(event: Event) {
       const detail = (event as CustomEvent<GenerateDetail>).detail;
+      const mode = detail.mode === "bespoke" ? "bespoke" : "free";
       const currentGeneration = ++generationNumber;
       activeController?.abort();
       restoreStudioControls();
@@ -492,20 +516,30 @@ export function FullWebsiteGenerator() {
       const controller = new AbortController();
       activeController = controller;
       const hasInspiration = Boolean(detail.inspirationUrl);
-      setPreviewStatus(
-        "generating",
-        stageMessage("analysing-artwork", hasInspiration),
-        STAGE_HEADLINES["analysing-artwork"],
-      );
+      if (mode === "bespoke") {
+        setPreviewStatus(
+          "generating",
+          stageMessage("analysing-artwork", hasInspiration),
+          STAGE_HEADLINES["analysing-artwork"],
+        );
+      } else {
+        setPreviewStatus("generating", "Building your site…", "Building your site");
+      }
 
       try {
-        const page = await requestGeneratedWebsite(detail, {
-          signal: controller.signal,
-          onProgress: (stage) => {
-            if (currentGeneration !== generationNumber) return;
-            setPreviewStatus("generating", stageMessage(stage, hasInspiration), STAGE_HEADLINES[stage]);
-          },
-        });
+        const page =
+          mode === "bespoke"
+            ? await requestGeneratedWebsite(detail, {
+                signal: controller.signal,
+                onProgress: (stage) => {
+                  if (currentGeneration !== generationNumber) return;
+                  setPreviewStatus("generating", stageMessage(stage, hasInspiration), STAGE_HEADLINES[stage]);
+                },
+              })
+            : await requestFreeGeneratedWebsite(detail, { signal: controller.signal }).then((result) => ({
+                html: result.html,
+                inspirationUsed: false,
+              }));
         if (currentGeneration !== generationNumber) return;
         const publishSite = publishableSiteFromGeneration(detail, page.html);
         activePreview = renderGeneratedWebsite(page.html, detail.imageDataUrl || "", publishSite, () => {
@@ -518,7 +552,7 @@ export function FullWebsiteGenerator() {
         window.dispatchEvent(
           new CustomEvent("launchpad:site-generated", {
             detail: {
-              style: { source: "openai", inspirationUsed: page.inspirationUsed },
+              style: { source: mode === "bespoke" ? "openai" : "free", inspirationUsed: page.inspirationUsed },
               fullPage: true,
               html: page.html,
             },
