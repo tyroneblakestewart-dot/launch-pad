@@ -244,4 +244,29 @@ describe("renderFreeSiteTemplate", () => {
     expect(html).not.toMatch(/<iframe\b/i);
     expect(html).not.toMatch(/javascript\s*:/i);
   });
+
+  it("never hides .reveal content outside a .js scope", () => {
+    const html = render();
+    const styleMatch = html.match(/<style>([\s\S]*?)<\/style>/);
+    expect(styleMatch).not.toBeNull();
+    const css = styleMatch![1];
+    expect(css).not.toMatch(/(?<!\.js )\.reveal\b/);
+    expect(css).toContain(".js .reveal { opacity: 0;");
+    expect(css).toContain(".js .reveal.in { opacity: 1;");
+  });
+
+  it("adds the js class from the inline script before any other statement", () => {
+    const html = render();
+    const scriptMatch = html.match(/<script>\s*\(\(\) => \{([\s\S]*?)\n {2}const reduce/);
+    expect(scriptMatch).not.toBeNull();
+    const firstStatement = scriptMatch![1].trim();
+    expect(firstStatement).toBe("document.documentElement.classList.add('js');");
+  });
+
+  it("falls back to revealing every .reveal element after a timeout", () => {
+    const html = render();
+    expect(html).toMatch(
+      /addEventListener\('DOMContentLoaded',\s*\(\)\s*=>\s*\{\s*setTimeout\(\(\)\s*=>\s*\{\s*document\.querySelectorAll\('\.reveal:not\(\.in\)'\)\.forEach\(el => el\.classList\.add\('in'\)\);\s*\}, 1500\);/,
+    );
+  });
 });
