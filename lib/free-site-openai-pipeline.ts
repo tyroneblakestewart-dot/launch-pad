@@ -173,7 +173,9 @@ export function buildFreeSiteDesignRequestBody(
   return {
     model,
     store: false,
-    reasoning: { effort: "medium" },
+    // This is a large but strict structured object. Minimal reasoning preserves
+    // the output budget for the ~60-field JSON object instead of hidden reasoning.
+    reasoning: { effort: "minimal" },
     max_output_tokens: 6_000,
     input: [
       {
