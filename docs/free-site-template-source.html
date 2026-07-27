@@ -302,8 +302,8 @@ footer { border-top: 1px solid var(--border); padding: 48px 0 32px; margin-top: 
 /* ============================================================
    REVEAL
    ============================================================ */
-.reveal { opacity: 0; transform: translateY(20px); transition: opacity .7s ease, transform .7s ease; }
-.reveal.in { opacity: 1; transform: none; }
+.js .reveal { opacity: 0; transform: translateY(20px); transition: opacity .7s ease, transform .7s ease; }
+.js .reveal.in { opacity: 1; transform: none; }
 
 /* ============================================================
    DEMO CONTROL PANEL — remove before ship
@@ -459,7 +459,7 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
    ============================================================ */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
-  .reveal { opacity: 1; transform: none; }
+  .js .reveal { opacity: 1; transform: none; }
   .bg-fx { display: none; }
 }
 </style>
@@ -785,6 +785,8 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
 
 <script>
 (() => {
+  document.documentElement.classList.add('js');
+
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* -------- copy CA -------- */
@@ -807,6 +809,11 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
   } else {
     document.querySelectorAll('.reveal').forEach(el => el.classList.add('in'));
   }
+  window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+      document.querySelectorAll('.reveal:not(.in)').forEach(el => el.classList.add('in'));
+    }, 1500);
+  });
 
   /* -------- demo panel -------- */
   const panel = document.getElementById('demo-panel');
