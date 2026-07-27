@@ -8,6 +8,7 @@ import type { FreeSiteCopy, FreeSiteTemplateInput } from "@/lib/free-site-templa
 import {
   ARTWORK_PLACEHOLDER,
   isCompleteGeneratedPageHtml,
+  prepareGeneratedPageForPreview,
 } from "@/lib/generated-site-page";
 import {
   GENERATE_SITE_STYLE_HEADER,
@@ -244,7 +245,7 @@ describe("POST /api/generate-free-site model validation", () => {
 });
 
 describe("POST /api/generate-free-site success", () => {
-  it("uses the hardened page-pipeline identity call and returns validated, substituted HTML", async () => {
+  it("uses the hardened page-pipeline identity call and returns placeholder-bearing HTML for the client to substitute", async () => {
     const fetchMock = providerMock();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -254,16 +255,19 @@ describe("POST /api/generate-free-site success", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(body.html).toContain(VALID_IMAGE);
-    expect(body.html).not.toContain(ARTWORK_PLACEHOLDER);
+    expect(body.html).toContain(ARTWORK_PLACEHOLDER);
+    expect(body.html).not.toContain(VALID_IMAGE);
 
-    const validationHtml = body.html.replaceAll(VALID_IMAGE, ARTWORK_PLACEHOLDER);
-    expect(isCompleteGeneratedPageHtml(validationHtml)).toBe(true);
+    expect(isCompleteGeneratedPageHtml(body.html)).toBe(true);
     expect(
-      isCompleteGeneratedPageHtml(validationHtml, {
+      isCompleteGeneratedPageHtml(body.html, {
         forbidTerminalAesthetic: true,
       }),
     ).toBe(true);
+
+    const prepared = prepareGeneratedPageForPreview(body.html, VALID_IMAGE);
+    expect(prepared).toContain(VALID_IMAGE);
+    expect(prepared).not.toContain(ARTWORK_PLACEHOLDER);
 
     const artworkRequest = JSON.parse(
       String((fetchMock.mock.calls[0][1] as RequestInit).body),
@@ -317,7 +321,7 @@ describe("POST /api/generate-free-site success", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(body.html).toContain(VALID_IMAGE);
+    expect(body.html).toContain(ARTWORK_PLACEHOLDER);
     expect(console.warn).toHaveBeenCalledWith(
       "AI artwork identity response was incomplete; retrying once",
       expect.stringContaining("max_output_tokens"),

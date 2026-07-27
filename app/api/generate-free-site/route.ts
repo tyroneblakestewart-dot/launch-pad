@@ -4,10 +4,7 @@ import {
   parseFreeSiteDesignResponse,
 } from "@/lib/free-site-openai-pipeline";
 import { renderFreeSiteTemplate } from "@/lib/free-site-template";
-import {
-  ARTWORK_PLACEHOLDER,
-  isCompleteGeneratedPageHtml,
-} from "@/lib/generated-site-page";
+import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
 import {
   getVercelOidcToken,
   resolveAIResponsesRuntime,
@@ -92,26 +89,6 @@ function describeProviderFailure(failure: {
   if (isTimeoutFailure(failure)) return "timeout";
   if (failure.kind === "http") return `http ${failure.status}`;
   return failure.kind;
-}
-
-function escapeHtmlAttribute(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function substituteArtwork(html: string, artworkDataUrl: string): string {
-  const substituted = html.replaceAll(
-    ARTWORK_PLACEHOLDER,
-    escapeHtmlAttribute(artworkDataUrl),
-  );
-  if (substituted.includes(ARTWORK_PLACEHOLDER)) {
-    throw new Error("The free-site artwork could not be inserted.");
-  }
-  return substituted;
 }
 
 export async function POST(request: Request) {
@@ -261,18 +238,8 @@ export async function POST(request: Request) {
     );
   }
 
-  let html: string;
-  try {
-    html = substituteArtwork(templateHtml, input.imageDataUrl);
-  } catch {
-    return NextResponse.json(
-      { error: "The free-site artwork could not be inserted." },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
-  }
-
   return NextResponse.json(
-    { html },
+    { html: templateHtml },
     { headers: noStoreHeaders(rateHeaders) },
   );
 }
