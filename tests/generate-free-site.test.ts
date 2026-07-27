@@ -292,7 +292,7 @@ describe("POST /api/generate-free-site success", () => {
       image_url: VALID_IMAGE,
       detail: "high",
     });
-    expect(designRequest.reasoning).toEqual({ effort: "medium" });
+    expect(designRequest.reasoning).toEqual({ effort: "minimal" });
     expect(designRequest.max_output_tokens).toBe(6_000);
     expect(designRequest.text.format.strict).toBe(true);
     expect(designRequest.text.format.schema.properties.copy.required).toHaveLength(55);
