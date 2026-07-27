@@ -170,6 +170,53 @@ async function insertPublishedSite(
   return result.rows[0] || null;
 }
 
+/**
+ * Overwrites an existing row's content on republish. Visibility and
+ * draft_token are intentionally left untouched: republishing must not turn a
+ * live site back into a draft, nor invalidate an existing draft preview link.
+ */
+async function updatePublishedSite(
+  client: PoolClient,
+  site: PublishableSite,
+): Promise<PublishedSiteRow | null> {
+  const result = await client.query<PublishedSiteRow>(
+    `UPDATE published_sites
+        SET token_name = $2,
+            ticker = $3,
+            description = $4,
+            supply = $5,
+            decimals = $6,
+            chain = $7,
+            chain_id = $8,
+            contract_address = $9,
+            generated_html = $10,
+            artwork_reference = $11,
+            x_handle = $12,
+            telegram = $13,
+            status = $14,
+            updated_at = NOW()
+      WHERE slug = $1
+      RETURNING ${SITE_COLUMNS}`,
+    [
+      site.slug,
+      site.name,
+      site.ticker,
+      site.description,
+      site.supply,
+      site.decimals,
+      site.chain,
+      site.chainId,
+      site.contractAddress,
+      site.generatedSiteHtml,
+      site.artworkReference,
+      site.xHandle,
+      site.telegram,
+      site.status,
+    ],
+  );
+  return result.rows[0] || null;
+}
+
 function challengeFailure(
   challenge: PublishChallenge,
   input: { nonceHash: string; slug: string },
@@ -249,11 +296,29 @@ export function createPostgresPublishStore(databaseUrl: string): PublishStore {
         }
 
         await client.query("UPDATE wallet_nonces SET used_at = NOW() WHERE id = $1", [challenge.id]);
-        const inserted = await insertPublishedSite(client, input.site, challenge.walletAddress);
+
+        const existingResult = await client.query<PublishedSiteRow>(
+          `SELECT ${SITE_COLUMNS}
+             FROM published_sites
+            WHERE slug = $1
+            FOR UPDATE`,
+          [input.site.slug],
+        );
+        const existingRow = existingResult.rows[0];
+
+        let resultRow: PublishedSiteRow | null;
+        if (!existingRow) {
+          resultRow = await insertPublishedSite(client, input.site, challenge.walletAddress);
+        } else if (existingRow.owner_wallet_address.toLowerCase() === challenge.walletAddress.toLowerCase()) {
+          resultRow = await updatePublishedSite(client, input.site);
+        } else {
+          resultRow = null;
+        }
+
         await client.query("COMMIT");
 
-        if (!inserted) return { status: "slug_conflict" };
-        const site = siteFromRow(inserted);
+        if (!resultRow) return { status: "slug_conflict" };
+        const site = siteFromRow(resultRow);
         if (!site) throw new Error("The inserted public site could not be mapped safely.");
         return {
           status: "published",
