@@ -44,8 +44,8 @@ describe("desktop launch and bonding form layout", () => {
   });
 
   it("shows a truthful desktop bonding form and preserves the legacy mobile page", async () => {
-    const page = await source("app", "bonding-curve", "page.tsx");
-    const css = await source("app", "bonding-curve", "bonding-curve.module.css");
+    const page = await source("app", "(app)", "bonding-curve", "page.tsx");
+    const css = await source("app", "(app)", "bonding-curve", "bonding-curve.module.css");
 
     expect(page).toContain("desktopWorkspace");
     expect(page).toContain("legacyLayout");

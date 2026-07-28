@@ -10,7 +10,7 @@ async function source(file: string) {
 
 describe("/testnet route factory routing", () => {
   it("wires components/testnet-launcher.tsx (the page actually rendered by app/testnet/page.tsx) through the factory", async () => {
-    const page = await source("app/testnet/page.tsx");
+    const page = await source("app/(app)/testnet/page.tsx");
     expect(page).toContain("TestnetLauncher");
 
     const launcher = await source("components/testnet-launcher.tsx");

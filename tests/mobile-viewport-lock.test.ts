@@ -6,12 +6,12 @@ const ROOT = process.cwd();
 
 describe("mobile viewport lock", () => {
   it("loads the overflow guard after the existing global styles", async () => {
-    const layout = await readFile(path.join(ROOT, "app", "layout.tsx"), "utf8");
-    const lockImport = 'import "./mobile-viewport-lock.css";';
+    const layout = await readFile(path.join(ROOT, "app", "(app)", "layout.tsx"), "utf8");
+    const lockImport = 'import "../mobile-viewport-lock.css";';
 
     expect(layout).toContain(lockImport);
     expect(layout.indexOf(lockImport)).toBeGreaterThan(
-      layout.indexOf('import "./allocation-mobile-tabs.css";'),
+      layout.indexOf('import "../allocation-mobile-tabs.css";'),
     );
   });
 
