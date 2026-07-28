@@ -13,7 +13,7 @@ describe("create token flow", () => {
   });
 
   it("opens the native blank-token form without reloading or showing the projects modal", async () => {
-    const page = await readFile(path.join(ROOT, "app", "page.tsx"), "utf8");
+    const page = await readFile(path.join(ROOT, "app", "(app)", "page.tsx"), "utf8");
     const workspace = await readFile(
       path.join(ROOT, "components", "token-studio-workspace.tsx"),
       "utf8",

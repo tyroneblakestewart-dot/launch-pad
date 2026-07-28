@@ -367,7 +367,7 @@ describe("POST /api/generate-site-page", () => {
 
 describe("full website frontend wiring", () => {
   it("uses the full page endpoint and never presents the fixed fallback as a finished result", async () => {
-    const page = await readFile(path.join(ROOT, "app", "page.tsx"), "utf8");
+    const page = await readFile(path.join(ROOT, "app", "(app)", "page.tsx"), "utf8");
     const generator = await readFile(
       path.join(ROOT, "components", "full-website-generator.tsx"),
       "utf8",

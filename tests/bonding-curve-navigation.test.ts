@@ -26,7 +26,7 @@ describe("bonding curve workflow page", () => {
   });
 
   it("keeps the new page truthful about its testnet status", async () => {
-    const page = await source("app/bonding-curve/page.tsx");
+    const page = await source("app/(app)/bonding-curve/page.tsx");
 
     expect(page).toContain("ROBINHOOD CHAIN TESTNET · STEP 5");
     expect(page).toContain("FOUNDATION MERGED");
