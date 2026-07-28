@@ -9,6 +9,7 @@ import {
   type FreeSiteAboutStyle,
   type FreeSiteBackgroundEffect,
   type FreeSiteCopy,
+  type FreeSiteFacts,
   type FreeSiteFontPairing,
   type FreeSiteHeroStyle,
   type FreeSiteRoadmapStyle,
@@ -37,7 +38,6 @@ const COPY: FreeSiteCopy = {
   ticker: "HOOD",
   kicker: "The community takes the crown",
   tagline: "A community-first token built for the next chapter of New Sherwood.",
-  contract: "0x1111111111111111111111111111111111111111",
   aboutTitle: "A token with a mission",
   about1Title: "Community first",
   about1Body: "Every step is built around the people holding the line.",
@@ -46,12 +46,6 @@ const COPY: FreeSiteCopy = {
   about3Title: "Built to last",
   about3Body: "The roadmap focuses on steady community-led growth.",
   tokenomicsTitle: "Simple tokenomics",
-  supply: "1,000,000,000",
-  buyTax: "0%",
-  sellTax: "0%",
-  lpStatus: "Locked",
-  mintAuth: "Revoked",
-  ownership: "Renounced",
   roadmapTitle: "The road ahead",
   roadmap1Phase: "Phase 01",
   roadmap1Title: "Launch",
@@ -75,8 +69,6 @@ const COPY: FreeSiteCopy = {
   howToBuy4Title: "Swap",
   howToBuy4Body: "Confirm the token address and complete the swap in the wallet.",
   communityTitle: "Find the crew",
-  xHandle: "hoodlumsdev",
-  telegram: "hoodlumsdev",
   faqTitle: "Questions answered",
   faq1Q: "What is Hoodlums?",
   faq1A: "A community-led meme token project with a New Sherwood story.",
@@ -90,8 +82,24 @@ const COPY: FreeSiteCopy = {
   faq5A: "No. Always research independently before making a decision.",
 };
 
-function render(theme: FreeSiteTheme = THEME, copy: FreeSiteCopy = COPY): string {
-  return renderFreeSiteTemplate({ theme, copy });
+const FACTS: FreeSiteFacts = {
+  supply: "1,000,000,000",
+  decimals: 18,
+  buyTax: "0%",
+  sellTax: "0%",
+  mintAuthority: "None",
+  ownership: "No owner",
+  contractAddress: "0x1111111111111111111111111111111111111111",
+  xHandle: "hoodlumsdev",
+  telegram: "hoodlumsdev",
+};
+
+function render(
+  theme: FreeSiteTheme = THEME,
+  copy: FreeSiteCopy = COPY,
+  facts: FreeSiteFacts = FACTS,
+): string {
+  return renderFreeSiteTemplate({ theme, copy, facts });
 }
 
 function getBodyTag(html: string): string {
@@ -268,5 +276,156 @@ describe("renderFreeSiteTemplate", () => {
     expect(html).toMatch(
       /addEventListener\('DOMContentLoaded',\s*\(\)\s*=>\s*\{\s*setTimeout\(\(\)\s*=>\s*\{\s*document\.querySelectorAll\('\.reveal:not\(\.in\)'\)\.forEach\(el => el\.classList\.add\('in'\)\);\s*\}, 1500\);/,
     );
+  });
+
+  describe("facts-driven tokenomics", () => {
+    it("never renders the invented placeholder text 'not announced yet'", () => {
+      expect(render().toLowerCase()).not.toContain("not announced yet");
+    });
+
+    it("renders supply and decimals from facts, not from copy", () => {
+      const html = render(THEME, COPY, { ...FACTS, supply: "42,000,000", decimals: 9 });
+      expect(html).toContain("42,000,000");
+      expect(html).toContain(">9<");
+    });
+
+    it("renders the fixed contract guarantees as the six tokenomics stat cells", () => {
+      const html = render();
+      expect(html).toContain("Total Supply");
+      expect(html).toContain("Decimals");
+      expect(html).toContain("Buy Tax");
+      expect(html).toContain("Sell Tax");
+      expect(html).toContain("Mint Authority");
+      expect(html).toContain("Ownership");
+      expect(html).not.toContain("Liquidity");
+      expect((html.match(/>0%</g) || []).length).toBeGreaterThanOrEqual(2);
+      expect(html).toContain(">None<");
+      expect(html).toContain(">No owner<");
+    });
+
+    it("never mentions the bonding-curve trading fee", () => {
+      const html = render();
+      const lower = html.toLowerCase();
+      expect(lower).not.toContain("1%");
+      expect(lower).not.toContain("bonding curve");
+      expect(lower).not.toContain("trading fee");
+    });
+  });
+
+  describe("conditional facts-driven blocks", () => {
+    it("omits the X card when xHandle is blank but keeps the Telegram card", () => {
+      const html = render(THEME, COPY, { ...FACTS, xHandle: "" });
+      expect(html).not.toContain("Follow the mission");
+      expect(html).not.toContain('aria-label="X"');
+      expect(html).toContain("Join the horde");
+      expect(html).toContain('id="community"');
+      expect(html).toContain("#community");
+    });
+
+    it("omits the Telegram card when telegram is blank but keeps the X card", () => {
+      const html = render(THEME, COPY, { ...FACTS, telegram: "" });
+      expect(html).toContain("Follow the mission");
+      expect(html).not.toContain("Join the horde");
+      expect(html).not.toContain('aria-label="Telegram"');
+    });
+
+    it("omits the whole community section and its nav link when both handles are blank", () => {
+      const html = render(THEME, COPY, { ...FACTS, xHandle: "", telegram: "" });
+      expect(html).not.toContain("Follow the mission");
+      expect(html).not.toContain("Join the horde");
+      expect(html).not.toContain(">Community<");
+      expect(html).not.toContain("#community");
+      // isCompleteGeneratedPageHtml requires id="community" to remain present
+      // (see tests/generated-site-page.test.ts), so an empty hidden section
+      // stands in for the omitted content instead of dropping the id.
+      expect(html).toContain('id="community"');
+      expect(isCompleteGeneratedPageHtml(html)).toBe(true);
+    });
+
+    it("omits the hero contract bar, footer contract line and Buy CTA when contractAddress is empty", () => {
+      const html = render(THEME, COPY, { ...FACTS, contractAddress: "" });
+      expect(html).not.toContain('aria-label="Contract address"');
+      expect(html).not.toContain("CA:");
+      expect(html).not.toContain(`Buy ${COPY.ticker}`);
+      expect(html).toContain("Learn More");
+      expect(html).toContain('href="#about"');
+    });
+
+    it("keeps the contract bar, footer contract line and Buy CTA when contractAddress is present", () => {
+      const html = render();
+      expect(html).toContain('aria-label="Contract address"');
+      expect(html).toContain(`CA: ${FACTS.contractAddress}`);
+      expect(html).toContain(`Buy ${COPY.ticker}`);
+    });
+  });
+
+  describe("handle normalisation and links", () => {
+    it.each(["@BLTKK", "BLTKK", "x.com/BLTKK"])(
+      "normalises xHandle %s to href=https://x.com/BLTKK and display @BLTKK",
+      (rawHandle) => {
+        const html = render(THEME, COPY, { ...FACTS, xHandle: rawHandle });
+        expect(html).toContain('href="https://x.com/BLTKK"');
+        expect(html).toContain(">@BLTKK<");
+        expect(html).not.toContain("@@BLTKK");
+      },
+    );
+
+    it.each(["@hoodlumsdev", "hoodlumsdev", "t.me/hoodlumsdev"])(
+      "normalises telegram %s to href=https://t.me/hoodlumsdev",
+      (rawHandle) => {
+        const html = render(THEME, COPY, { ...FACTS, telegram: rawHandle });
+        expect(html).toContain('href="https://t.me/hoodlumsdev"');
+        expect(html).toContain(">t.me/hoodlumsdev<");
+      },
+    );
+
+    it("gives every external link target=_blank and rel=noopener noreferrer", () => {
+      const html = render();
+      const externalLinks = [...html.matchAll(/<a\b[^>]*\btarget="_blank"[^>]*>/g)].map((m) => m[0]);
+      expect(externalLinks.length).toBeGreaterThan(0);
+      for (const link of externalLinks) {
+        expect(link).toContain('rel="noopener noreferrer"');
+      }
+    });
+
+    it("keeps nav anchors matching the sections actually rendered", () => {
+      const html = render();
+      for (const id of ["about", "tokenomics", "roadmap", "how-to-buy", "community"]) {
+        expect(html).toContain(`href="#${id}"`);
+      }
+    });
+
+    it("drops the community nav anchor when the community section is omitted", () => {
+      const html = render(THEME, COPY, { ...FACTS, xHandle: "", telegram: "" });
+      for (const id of ["about", "tokenomics", "roadmap", "how-to-buy"]) {
+        expect(html).toContain(`href="#${id}"`);
+      }
+      expect(html).not.toContain('href="#community"');
+    });
+  });
+
+  describe("marquee", () => {
+    it("contains no unproven claim and only the approved fixed facts", () => {
+      const html = render();
+      const marqueeMatch = html.match(/<div class="marquee-track">([\s\S]*?)<\/div>/);
+      expect(marqueeMatch).not.toBeNull();
+      const marquee = marqueeMatch![1];
+      expect(marquee).not.toMatch(/lp locked/i);
+      expect(marquee).not.toMatch(/contract renounced/i);
+      expect(marquee).not.toMatch(/no dev wallet/i);
+      expect(marquee).toContain("0% TAX");
+      expect(marquee).toContain("NO MINT FUNCTION");
+      expect(marquee).toContain("NO OWNER");
+    });
+  });
+
+  it("throws when a facts value has the wrong type", () => {
+    expect(() =>
+      renderFreeSiteTemplate({
+        theme: THEME,
+        copy: COPY,
+        facts: { ...FACTS, decimals: Number.NaN },
+      }),
+    ).toThrow(/Invalid facts value for decimals/);
   });
 });

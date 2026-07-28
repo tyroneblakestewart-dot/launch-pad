@@ -33,12 +33,15 @@ export type FreeSiteTheme = {
   aboutStyle: FreeSiteAboutStyle;
 };
 
+// Only copy the AI can safely invent: personality, narrative and voice.
+// Every provable fact (supply, taxes, mint/ownership status, contract
+// address, socials) is supplied separately as FreeSiteFacts and never
+// asked of the model. See FreeSiteFacts below.
 export type FreeSiteCopy = {
   tokenName: string;
   ticker: string;
   kicker: string;
   tagline: string;
-  contract: string;
   aboutTitle: string;
   about1Title: string;
   about1Body: string;
@@ -47,12 +50,6 @@ export type FreeSiteCopy = {
   about3Title: string;
   about3Body: string;
   tokenomicsTitle: string;
-  supply: string;
-  buyTax: string;
-  sellTax: string;
-  lpStatus: string;
-  mintAuth: string;
-  ownership: string;
   roadmapTitle: string;
   roadmap1Phase: string;
   roadmap1Title: string;
@@ -76,8 +73,6 @@ export type FreeSiteCopy = {
   howToBuy4Title: string;
   howToBuy4Body: string;
   communityTitle: string;
-  xHandle: string;
-  telegram: string;
   faqTitle: string;
   faq1Q: string;
   faq1A: string;
@@ -91,9 +86,28 @@ export type FreeSiteCopy = {
   faq5A: string;
 };
 
+// Facts come from the studio form or from the fixed guarantees of
+// contracts/FixedSupplyMemeToken.sol. The model never sees or writes these;
+// the server builds them (see app/api/generate-free-site/route.ts).
+export type FreeSiteFacts = {
+  supply: string;
+  decimals: number;
+  buyTax: string;
+  sellTax: string;
+  mintAuthority: string;
+  ownership: string;
+  contractAddress: string;
+  xHandle: string;
+  telegram: string;
+};
+
 export type FreeSiteTemplateInput = {
   theme: FreeSiteTheme;
   copy: FreeSiteCopy;
+};
+
+export type FreeSiteRenderInput = FreeSiteTemplateInput & {
+  facts: FreeSiteFacts;
 };
 
 const FONT_PAIRINGS = ["street", "blocky", "arcade", "rounded", "cyber", "editorial"] as const;
@@ -109,7 +123,6 @@ const COPY_PLACEHOLDERS = {
   TICKER: "ticker",
   KICKER: "kicker",
   TAGLINE: "tagline",
-  CONTRACT: "contract",
   ABOUT_TITLE: "aboutTitle",
   ABOUT_1_TITLE: "about1Title",
   ABOUT_1_BODY: "about1Body",
@@ -118,12 +131,6 @@ const COPY_PLACEHOLDERS = {
   ABOUT_3_TITLE: "about3Title",
   ABOUT_3_BODY: "about3Body",
   TOKENOMICS_TITLE: "tokenomicsTitle",
-  SUPPLY: "supply",
-  BUY_TAX: "buyTax",
-  SELL_TAX: "sellTax",
-  LP_STATUS: "lpStatus",
-  MINT_AUTH: "mintAuth",
-  OWNERSHIP: "ownership",
   ROADMAP_TITLE: "roadmapTitle",
   ROADMAP_1_PHASE: "roadmap1Phase",
   ROADMAP_1_TITLE: "roadmap1Title",
@@ -147,8 +154,6 @@ const COPY_PLACEHOLDERS = {
   HOWTOBUY_4_TITLE: "howToBuy4Title",
   HOWTOBUY_4_BODY: "howToBuy4Body",
   COMMUNITY_TITLE: "communityTitle",
-  X_HANDLE: "xHandle",
-  TELEGRAM: "telegram",
   FAQ_TITLE: "faqTitle",
   FAQ_1_Q: "faq1Q",
   FAQ_1_A: "faq1A",
@@ -161,6 +166,28 @@ const COPY_PLACEHOLDERS = {
   FAQ_5_Q: "faq5Q",
   FAQ_5_A: "faq5A",
 } as const satisfies Record<string, keyof FreeSiteCopy>;
+
+// Facts placeholders that are a direct 1:1 substitution (no href composition
+// or handle normalisation needed).
+const FACTS_PLACEHOLDERS = {
+  SUPPLY: "supply",
+  DECIMALS: "decimals",
+  BUY_TAX: "buyTax",
+  SELL_TAX: "sellTax",
+  MINT_AUTH: "mintAuthority",
+  OWNERSHIP: "ownership",
+  CONTRACT: "contractAddress",
+} as const satisfies Record<string, keyof FreeSiteFacts>;
+
+// Placeholders derived from facts but not a plain 1:1 field copy: the
+// stripped handle text and the composed hrefs built from it.
+const DERIVED_FACTS_PLACEHOLDER_NAMES = ["X_HANDLE", "TELEGRAM", "X_HREF", "TELEGRAM_HREF"] as const;
+
+const TOTAL_TEMPLATE_PLACEHOLDERS =
+  Object.keys(COPY_PLACEHOLDERS).length +
+  Object.keys(FACTS_PLACEHOLDERS).length +
+  DERIVED_FACTS_PLACEHOLDER_NAMES.length +
+  1; // ARTWORK
 
 const SOURCE_PATH = path.join(process.cwd(), "docs", "free-site-template-source.html");
 const SOURCE_TEMPLATE = readFileSync(SOURCE_PATH, "utf8");
@@ -182,14 +209,43 @@ function replaceOnce(value: string, search: string, replacement: string, label: 
   return value.slice(0, first) + replacement + value.slice(first + search.length);
 }
 
+// A named block is wrapped in `<!--NAME_START-->` / `<!--NAME_END-->`
+// comment markers in the source template. When kept, only the markers are
+// stripped; when omitted, the markers and everything between them go too.
+// This is how facts-driven content (contract bar, buy CTA, socials,
+// community section) is shown or hidden without ever padding with
+// placeholder text.
+function applyBlock(html: string, name: string, keep: boolean): string {
+  const start = `<!--${name}_START-->`;
+  const end = `<!--${name}_END-->`;
+  const startIndex = html.indexOf(start);
+  const endIndex = html.indexOf(end, startIndex);
+  if (startIndex === -1 || endIndex === -1) {
+    throw new Error(`The free-site source is missing the ${name} block markers.`);
+  }
+  if (keep) {
+    return (
+      html.slice(0, startIndex) +
+      html.slice(startIndex + start.length, endIndex) +
+      html.slice(endIndex + end.length)
+    );
+  }
+  return html.slice(0, startIndex) + html.slice(endIndex + end.length);
+}
+
 function prepareSourceTemplate(source: string): string {
   const placeholders = [...source.matchAll(/\{\{([A-Z0-9_]+)\}\}/g)].map((match) => match[1]);
   const uniquePlaceholders = new Set(placeholders);
-  if (uniquePlaceholders.size !== 56 || !uniquePlaceholders.has("ARTWORK")) {
+  if (uniquePlaceholders.size !== TOTAL_TEMPLATE_PLACEHOLDERS || !uniquePlaceholders.has("ARTWORK")) {
     throw new Error("The free-site source placeholder contract has changed.");
   }
   for (const placeholder of uniquePlaceholders) {
-    if (placeholder !== "ARTWORK" && !(placeholder in COPY_PLACEHOLDERS)) {
+    if (
+      placeholder !== "ARTWORK" &&
+      !(placeholder in COPY_PLACEHOLDERS) &&
+      !(placeholder in FACTS_PLACEHOLDERS) &&
+      !(DERIVED_FACTS_PLACEHOLDER_NAMES as readonly string[]).includes(placeholder)
+    ) {
       throw new Error(`The free-site source has an unmapped copy placeholder: ${placeholder}.`);
     }
   }
@@ -252,7 +308,44 @@ function validateStyle(value: string, allowed: readonly string[], name: string):
   if (!allowed.includes(value)) throw new Error(`Invalid ${name} value.`);
 }
 
-export function renderFreeSiteTemplate({ theme, copy }: FreeSiteTemplateInput): string {
+const FACTS_STRING_KEYS = [
+  "supply",
+  "buyTax",
+  "sellTax",
+  "mintAuthority",
+  "ownership",
+  "contractAddress",
+  "xHandle",
+  "telegram",
+] as const satisfies readonly (keyof FreeSiteFacts)[];
+
+function validateFacts(facts: FreeSiteFacts): FreeSiteFacts {
+  for (const key of FACTS_STRING_KEYS) {
+    if (typeof facts[key] !== "string") throw new Error(`Invalid facts value for ${key}.`);
+  }
+  if (typeof facts.decimals !== "number" || !Number.isFinite(facts.decimals)) {
+    throw new Error("Invalid facts value for decimals.");
+  }
+  return facts;
+}
+
+// Strips a leading "@" and, when present, a leading domain prefix such as
+// "x.com/" or "t.me/" (case-insensitively) so "@BLTKK", "BLTKK" and
+// "x.com/BLTKK" all normalise to the same bare handle "BLTKK".
+function normaliseHandle(raw: string, domainPrefixes: readonly string[]): string {
+  let value = raw.trim();
+  if (value.startsWith("@")) value = value.slice(1);
+  for (const prefix of domainPrefixes) {
+    if (value.toLowerCase().startsWith(prefix)) {
+      value = value.slice(prefix.length);
+      break;
+    }
+  }
+  if (value.startsWith("@")) value = value.slice(1);
+  return value.trim();
+}
+
+export function renderFreeSiteTemplate({ theme, copy, facts }: FreeSiteRenderInput): string {
   const palette = validatePalette(theme.palette);
   validateStyle(theme.fontPairing, FONT_PAIRINGS, "fontPairing");
   validateStyle(theme.backgroundEffect, BACKGROUND_EFFECTS, "backgroundEffect");
@@ -260,6 +353,14 @@ export function renderFreeSiteTemplate({ theme, copy }: FreeSiteTemplateInput): 
   validateStyle(theme.tokenomicsStyle, TOKENOMICS_STYLES, "tokenomicsStyle");
   validateStyle(theme.roadmapStyle, ROADMAP_STYLES, "roadmapStyle");
   validateStyle(theme.aboutStyle, ABOUT_STYLES, "aboutStyle");
+  const validatedFacts = validateFacts(facts);
+
+  const xHandle = normaliseHandle(validatedFacts.xHandle, ["x.com/", "twitter.com/"]);
+  const telegram = normaliseHandle(validatedFacts.telegram, ["t.me/"]);
+  const hasX = xHandle !== "";
+  const hasTelegram = telegram !== "";
+  const hasCommunity = hasX || hasTelegram;
+  const hasContract = validatedFacts.contractAddress.trim() !== "";
 
   let html = FREE_SITE_TEMPLATE
     .replaceAll("{{THEME_BACKGROUND}}", palette.background)
@@ -282,6 +383,33 @@ export function renderFreeSiteTemplate({ theme, copy }: FreeSiteTemplateInput): 
     if (typeof value !== "string") throw new Error(`Invalid copy value for ${copyKey}.`);
     html = html.replaceAll(`{{${placeholder}}}`, escapeHtml(value));
   }
+
+  for (const [placeholder, factsKey] of Object.entries(FACTS_PLACEHOLDERS) as Array<
+    [string, keyof FreeSiteFacts]
+  >) {
+    const value = validatedFacts[factsKey];
+    const text = typeof value === "number" ? String(value) : value;
+    html = html.replaceAll(`{{${placeholder}}}`, escapeHtml(text));
+  }
+
+  html = html.replaceAll("{{X_HANDLE}}", escapeHtml(xHandle));
+  html = html.replaceAll("{{TELEGRAM}}", escapeHtml(telegram));
+  html = html.replaceAll("{{X_HREF}}", escapeHtml(hasX ? `https://x.com/${xHandle}` : ""));
+  html = html.replaceAll(
+    "{{TELEGRAM_HREF}}",
+    escapeHtml(hasTelegram ? `https://t.me/${telegram}` : ""),
+  );
+
+  html = applyBlock(html, "X_CARD", hasX);
+  html = applyBlock(html, "FOOTER_X", hasX);
+  html = applyBlock(html, "TELEGRAM_CARD", hasTelegram);
+  html = applyBlock(html, "FOOTER_TELEGRAM", hasTelegram);
+  html = applyBlock(html, "COMMUNITY_FULL", hasCommunity);
+  html = applyBlock(html, "COMMUNITY_EMPTY", !hasCommunity);
+  html = applyBlock(html, "NAV_COMMUNITY", hasCommunity);
+  html = applyBlock(html, "CONTRACT_BAR", hasContract);
+  html = applyBlock(html, "FOOTER_CONTRACT", hasContract);
+  html = applyBlock(html, "BUY_CTA", hasContract);
 
   return html;
 }

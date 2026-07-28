@@ -3,7 +3,7 @@ import {
   buildFreeSiteDesignRequestBody,
   parseFreeSiteDesignResponse,
 } from "@/lib/free-site-openai-pipeline";
-import { renderFreeSiteTemplate } from "@/lib/free-site-template";
+import { renderFreeSiteTemplate, type FreeSiteFacts } from "@/lib/free-site-template";
 import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
 import {
   getVercelOidcToken,
@@ -25,6 +25,41 @@ import {
 } from "@/lib/server/generate-site-style";
 import { buildPageArtworkIdentityRequestBody } from "@/lib/site-page-openai-pipeline";
 import { requestArtworkIdentity } from "@/lib/server/artwork-identity-request";
+
+// The studio form already collects these alongside name/ticker/description;
+// the free-site template renders them as verified facts and never asks the
+// model to write them. See lib/free-site-template.ts (FreeSiteFacts) and
+// issue #163.
+type GenerateFreeSiteRequest = GenerateSiteStyleRequest & {
+  supply?: unknown;
+  decimals?: unknown;
+  contractAddress?: unknown;
+  xHandle?: unknown;
+  telegram?: unknown;
+};
+
+function stringFact(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+// Buy tax, sell tax, mint authority and ownership are fixed by
+// contracts/FixedSupplyMemeToken.sol (a plain ERC20 + ERC20Burnable with no
+// transfer hook, no owner and no external mint function) and never vary
+// per launch, so they are hard-coded here rather than read from the request.
+function buildFreeSiteFacts(body: GenerateFreeSiteRequest): FreeSiteFacts {
+  const decimals = Number(body.decimals);
+  return {
+    supply: stringFact(body.supply),
+    decimals: Number.isFinite(decimals) ? decimals : 0,
+    buyTax: "0%",
+    sellTax: "0%",
+    mintAuthority: "None",
+    ownership: "No owner",
+    contractAddress: stringFact(body.contractAddress),
+    xHandle: stringFact(body.xHandle),
+    telegram: stringFact(body.telegram),
+  };
+}
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -147,9 +182,9 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: GenerateSiteStyleRequest;
+  let body: GenerateFreeSiteRequest;
   try {
-    body = (await request.json()) as GenerateSiteStyleRequest;
+    body = (await request.json()) as GenerateFreeSiteRequest;
   } catch {
     return NextResponse.json(
       { error: "Invalid request body." },
@@ -217,9 +252,11 @@ export async function POST(request: Request) {
     );
   }
 
+  const facts = buildFreeSiteFacts(body);
+
   let templateHtml: string;
   try {
-    templateHtml = renderFreeSiteTemplate(design);
+    templateHtml = renderFreeSiteTemplate({ ...design, facts });
   } catch {
     return NextResponse.json(
       { error: "The generated free-site theme or copy could not be rendered." },
