@@ -31,21 +31,20 @@ declare global {
 const STORAGE_KEY = "private-meme-token-studio-projects-v1";
 
 const DEFAULT_PROJECT: TokenProject = {
-  id: "hoodlums-demo",
+  id: "",
   createdAt: "",
   updatedAt: "",
   status: "draft",
   chain: "robinhood",
-  name: "Hoodlums",
-  ticker: "HOODLUMS",
-  description:
-    "The code-running crew taking meme culture to a new chain. No masters. No middlemen. Just the heist.",
+  name: "",
+  ticker: "",
+  description: "",
   supply: "1000000000",
   decimals: 18,
-  websiteSlug: "hoodlums",
+  websiteSlug: "",
   contractAddress: "",
-  xHandle: "@hoodlums",
-  telegram: "t.me/hoodlums",
+  xHandle: "",
+  telegram: "",
   heroImage: "",
   theme: "hoodlums",
 };
@@ -65,14 +64,6 @@ function makeProject(): TokenProject {
     id: crypto.randomUUID(),
     createdAt: now,
     updatedAt: now,
-    name: "",
-    ticker: "",
-    description: "",
-    websiteSlug: "",
-    contractAddress: "",
-    xHandle: "",
-    telegram: "",
-    heroImage: "",
   };
 }
 
@@ -406,9 +397,10 @@ export function TokenStudio() {
             <label>
               <span className="field-label">Token name</span>
               <input
+                id="token-name-input"
                 value={project.name}
                 onChange={(event) => updateName(event.target.value)}
-                placeholder="Hoodlums"
+                placeholder="Token name"
                 maxLength={32}
               />
             </label>
@@ -424,7 +416,7 @@ export function TokenStudio() {
                       event.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12),
                     )
                   }
-                  placeholder="HOOD"
+                  placeholder="TICKER"
                 />
               </div>
             </label>
@@ -477,7 +469,7 @@ export function TokenStudio() {
                 onChange={(event) =>
                   updateProject("websiteSlug", slugify(event.target.value))
                 }
-                placeholder="hoodlums"
+                placeholder="your-token-name"
               />
             </div>
           </label>

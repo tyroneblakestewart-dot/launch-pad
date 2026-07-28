@@ -38,9 +38,7 @@ type PendingAction = "new" | "saved" | null;
 function isHoodlumsRecord(project: TokenProject) {
   return (
     project.id === HOODLUMS_LAUNCH.id ||
-    project.contractAddress.toLowerCase() === HOODLUMS_CONTRACT ||
-    (project.name.toLowerCase() === "hoodlums" &&
-      project.ticker.toUpperCase() === "HOODLUMS")
+    project.contractAddress.toLowerCase() === HOODLUMS_CONTRACT
   );
 }
 
@@ -110,7 +108,7 @@ function focusNewProjectEditor() {
 
   window.setTimeout(() => {
     panel
-      ?.querySelector<HTMLInputElement>('input[placeholder="Hoodlums"]')
+      ?.querySelector<HTMLInputElement>("#token-name-input")
       ?.focus({ preventScroll: true });
   }, 180);
 }

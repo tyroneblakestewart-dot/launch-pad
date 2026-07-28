@@ -42,7 +42,7 @@ describe("create token flow", () => {
 
     expect(workspace).toContain('document.getElementById("launch-studio")');
     expect(workspace).toContain('a[aria-label="HOODLUMS home"]');
-    expect(workspace).toContain('input[placeholder="Hoodlums"]');
+    expect(workspace).toContain('"#token-name-input"');
     expect(workspace).toContain("focus({ preventScroll: true })");
     expect(workspace).not.toContain('panel?.scrollIntoView({ behavior: "smooth", block: "start" })');
   });
