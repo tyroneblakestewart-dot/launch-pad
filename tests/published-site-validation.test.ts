@@ -59,6 +59,39 @@ describe("published generated HTML sanitisation", () => {
     expect(sanitised).toContain("<script>void 0;</script>");
   });
 
+  it("preserves href on a Google Fonts stylesheet link while stripping href everywhere else", () => {
+    const sanitised = sanitisePublishedGeneratedHtml(
+      page(
+        '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">' +
+          '<a href="https://elsewhere.example">Elsewhere</a>',
+      ),
+    );
+    expect(sanitised).toBeTruthy();
+    expect(sanitised).toContain('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">');
+    expect(sanitised).not.toContain("elsewhere.example");
+    expect(sanitised).toMatch(/<a>Elsewhere<\/a>/);
+  });
+
+  it("preserves a Google Fonts stylesheet link whose href attribute is written before rel", () => {
+    const sanitised = sanitisePublishedGeneratedHtml(
+      page('<link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet" />'),
+    );
+    expect(sanitised).toBeTruthy();
+    expect(sanitised).toContain("https://fonts.googleapis.com/css2?family=Inter");
+  });
+
+  it("still strips a non-stylesheet link to the fonts origin and any stylesheet link to another origin", () => {
+    const sanitised = sanitisePublishedGeneratedHtml(
+      page(
+        '<link rel="preconnect" href="https://fonts.googleapis.com">' +
+          '<link rel="stylesheet" href="https://bad.example/x.css">',
+      ),
+    );
+    expect(sanitised).toBeTruthy();
+    expect(sanitised).not.toContain("fonts.googleapis.com");
+    expect(sanitised).not.toContain("bad.example");
+  });
+
   it("enforces the published HTML and artwork reference size constants", () => {
     expect(Buffer.byteLength("x".repeat(MAX_PUBLISHED_HTML_BYTES + 1))).toBeGreaterThan(MAX_PUBLISHED_HTML_BYTES);
     expect(Buffer.byteLength("x".repeat(MAX_ARTWORK_REFERENCE_BYTES + 1))).toBeGreaterThan(
