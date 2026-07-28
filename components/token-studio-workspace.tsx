@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { removeSeededHoodlumsLaunch } from "@/lib/hoodlums-seed-cleanup";
 import {
   PROJECT_SAVE_RESULT_EVENT,
   shouldCloseWorkspaceAfterSave,
@@ -11,67 +12,22 @@ import { TokenStudio } from "./token-studio";
 import styles from "./token-studio-workspace.module.css";
 
 const STORAGE_KEY = "private-meme-token-studio-projects-v1";
-const HOODLUMS_CONTRACT = "0x3bf7447cd055f1475a8b09090c7b062abc9d3798";
-
-const HOODLUMS_LAUNCH: TokenProject = {
-  id: "hoodlums-robinhood-testnet-46630",
-  createdAt: "2026-07-16T00:00:00.000Z",
-  updatedAt: "2026-07-16T00:00:00.000Z",
-  status: "launched",
-  chain: "robinhood",
-  name: "Hoodlums",
-  ticker: "HOODLUMS",
-  description:
-    "The code-running crew taking meme culture to a new chain. No masters. No middlemen. Just the heist.",
-  supply: "1000000000",
-  decimals: 18,
-  websiteSlug: "hoodlums",
-  contractAddress: HOODLUMS_CONTRACT,
-  xHandle: "@hoodlums",
-  telegram: "t.me/hoodlums",
-  heroImage: "",
-  theme: "hoodlums",
-};
 
 type PendingAction = "new" | "saved" | null;
 
-function isHoodlumsRecord(project: TokenProject) {
-  return (
-    project.id === HOODLUMS_LAUNCH.id ||
-    project.contractAddress.toLowerCase() === HOODLUMS_CONTRACT
-  );
-}
-
-function seedHoodlumsLaunch() {
+function cleanUpSeededHoodlumsLaunch() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as TokenProject[]) : [];
-    const projects = Array.isArray(parsed) ? parsed : [];
-    const existing = projects.find(isHoodlumsRecord);
-    const protectedRecord: TokenProject = {
-      ...HOODLUMS_LAUNCH,
-      ...existing,
-      id: HOODLUMS_LAUNCH.id,
-      status: "launched",
-      chain: "robinhood",
-      name: "Hoodlums",
-      ticker: "HOODLUMS",
-      supply: "1000000000",
-      decimals: 18,
-      websiteSlug: "hoodlums",
-      contractAddress: HOODLUMS_CONTRACT,
-      updatedAt: existing?.updatedAt || HOODLUMS_LAUNCH.updatedAt,
-    };
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as TokenProject[];
+    if (!Array.isArray(parsed)) return;
 
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify([
-        protectedRecord,
-        ...projects.filter((project) => !isHoodlumsRecord(project)),
-      ]),
-    );
+    const cleaned = removeSeededHoodlumsLaunch(parsed);
+    if (cleaned.length !== parsed.length) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+    }
   } catch {
-    // The deployed contract remains safely recorded on-chain even if browser storage is unavailable.
+    // If storage can't be read there is nothing to clean up.
   }
 }
 
@@ -119,7 +75,7 @@ export function TokenStudioWorkspace() {
   const awaitingSaveAndClose = useRef(false);
 
   useEffect(() => {
-    seedHoodlumsLaunch();
+    cleanUpSeededHoodlumsLaunch();
   }, []);
 
   useEffect(() => {
@@ -161,13 +117,11 @@ export function TokenStudioWorkspace() {
   }, [isOpen, pendingAction]);
 
   function openWorkspace(action: Exclude<PendingAction, null>) {
-    seedHoodlumsLaunch();
     setPendingAction(action);
     setIsOpen(true);
   }
 
   function openSavedLaunches() {
-    seedHoodlumsLaunch();
     if (!isOpen) {
       openWorkspace("saved");
       return;
