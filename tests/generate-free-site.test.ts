@@ -42,15 +42,6 @@ const COPY = Object.fromEntries(
 ) as FreeSiteCopy;
 COPY.tokenName = "Cloud Club";
 COPY.ticker = "CLOUD";
-COPY.contract = "Contract details have not been announced yet.";
-COPY.supply = "Supply details have not been announced yet.";
-COPY.buyTax = "Buy-tax details have not been announced yet.";
-COPY.sellTax = "Sell-tax details have not been announced yet.";
-COPY.lpStatus = "Liquidity details have not been announced yet.";
-COPY.mintAuth = "Mint-authority details have not been announced yet.";
-COPY.ownership = "Ownership details have not been announced yet.";
-COPY.xHandle = "The official X handle has not been provided yet.";
-COPY.telegram = "The official Telegram has not been provided yet.";
 
 const DESIGN: FreeSiteTemplateInput = {
   theme: {
@@ -103,6 +94,11 @@ function input() {
       "A gentle mascot-led community token about making the internet feel friendlier.",
     imageDataUrl: VALID_IMAGE,
     inspirationUrl: "",
+    supply: "1,000,000,000",
+    decimals: 18,
+    contractAddress: "0x2222222222222222222222222222222222222222",
+    xHandle: "cloudclub",
+    telegram: "cloudclub",
   };
 }
 
@@ -299,7 +295,7 @@ describe("POST /api/generate-free-site success", () => {
     expect(designRequest.reasoning).toEqual({ effort: "minimal" });
     expect(designRequest.max_output_tokens).toBe(6_000);
     expect(designRequest.text.format.strict).toBe(true);
-    expect(designRequest.text.format.schema.properties.copy.required).toHaveLength(55);
+    expect(designRequest.text.format.schema.properties.copy.required).toHaveLength(46);
     expect(designRequest.input[0].content[0].text).toContain(
       "soft, cute, wholesome or gentle artwork must NOT use terminal tokenomics",
     );
@@ -326,6 +322,52 @@ describe("POST /api/generate-free-site success", () => {
       "AI artwork identity response was incomplete; retrying once",
       expect.stringContaining("max_output_tokens"),
     );
+  });
+});
+
+describe("POST /api/generate-free-site facts", () => {
+  it("renders supply, decimals, contract and socials from the request body rather than the model", async () => {
+    vi.stubGlobal("fetch", providerMock());
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ html: string }>(response);
+
+    expect(response.status).toBe(200);
+    expect(body.html).toContain("1,000,000,000");
+    expect(body.html).toContain(">18<");
+    expect(body.html).toContain("0x2222222222222222222222222222222222222222");
+    expect(body.html).toContain('href="https://x.com/cloudclub"');
+    expect(body.html).toContain('href="https://t.me/cloudclub"');
+    expect(body.html.toLowerCase()).not.toContain("not announced yet");
+  });
+
+  it("renders the fixed contract guarantees regardless of what the request supplies", async () => {
+    vi.stubGlobal("fetch", providerMock());
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ html: string }>(response);
+
+    expect(body.html).toContain(">0%<");
+    expect(body.html).toContain(">None<");
+    expect(body.html).toContain(">No owner<");
+  });
+
+  it("omits the community section, contract bar and Buy CTA when socials and contract are blank", async () => {
+    vi.stubGlobal("fetch", providerMock());
+
+    const blank = {
+      ...input(),
+      contractAddress: "",
+      xHandle: "",
+      telegram: "",
+    };
+    const response = await POST(request(blank));
+    const body = await responseJson<{ html: string }>(response);
+
+    expect(response.status).toBe(200);
+    expect(body.html).not.toContain("CA:");
+    expect(body.html).not.toContain('href="#community"');
+    expect(isCompleteGeneratedPageHtml(body.html)).toBe(true);
   });
 });
 

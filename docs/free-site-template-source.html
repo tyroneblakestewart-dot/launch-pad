@@ -483,7 +483,7 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
       <a href="#tokenomics">Tokenomics</a>
       <a href="#roadmap">Roadmap</a>
       <a href="#how-to-buy">Buy</a>
-      <a href="#community">Community</a>
+      <!--NAV_COMMUNITY_START--><a href="#community">Community</a><!--NAV_COMMUNITY_END-->
     </nav>
     <a href="#how-to-buy" class="btn btn-primary">Ape In</a>
   </div>
@@ -500,17 +500,17 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
       </h1>
       <p class="tagline">{{TAGLINE}}</p>
       <div class="cta-row">
-        <a href="#how-to-buy" class="btn btn-primary">
+        <!--BUY_CTA_START--><a href="#how-to-buy" class="btn btn-primary">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
           Buy {{TICKER}}
-        </a>
+        </a><!--BUY_CTA_END-->
         <a href="#about" class="btn btn-ghost">Learn More</a>
       </div>
-      <div class="contract" role="group" aria-label="Contract address">
+      <!--CONTRACT_BAR_START--><div class="contract" role="group" aria-label="Contract address">
         <span class="contract-label">CA</span>
         <span class="contract-value" id="ca-value">{{CONTRACT}}</span>
         <button class="copy-btn" id="copy-btn" type="button" aria-label="Copy contract address">Copy</button>
-      </div>
+      </div><!--CONTRACT_BAR_END-->
     </div>
     <div class="hero-art">
       <img src="{{ARTWORK}}" alt="{{TOKEN_NAME}} artwork" loading="eager" />
@@ -523,16 +523,16 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
   <div class="marquee-track">
     <span>{{TICKER}} TO THE MOON</span>
     <span>DIAMOND HANDS ONLY</span>
-    <span>LP LOCKED</span>
-    <span>CONTRACT RENOUNCED</span>
+    <span>0% TAX</span>
+    <span>NO MINT FUNCTION</span>
     <span>{{TICKER}} ARMY</span>
-    <span>NO DEV WALLET</span>
+    <span>NO OWNER</span>
     <span>{{TICKER}} TO THE MOON</span>
     <span>DIAMOND HANDS ONLY</span>
-    <span>LP LOCKED</span>
-    <span>CONTRACT RENOUNCED</span>
+    <span>0% TAX</span>
+    <span>NO MINT FUNCTION</span>
     <span>{{TICKER}} ARMY</span>
-    <span>NO DEV WALLET</span>
+    <span>NO OWNER</span>
   </div>
 </div>
 
@@ -582,9 +582,9 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
         <div class="prompt"><b>$</b> cat ./config.json <em>--verified</em></div>
         <div class="stat-grid">
           <div class="stat"><div class="stat-k">Total Supply</div><div class="stat-v">{{SUPPLY}}</div></div>
+          <div class="stat"><div class="stat-k">Decimals</div><div class="stat-v">{{DECIMALS}}</div></div>
           <div class="stat"><div class="stat-k">Buy Tax</div><div class="stat-v">{{BUY_TAX}}</div></div>
           <div class="stat"><div class="stat-k">Sell Tax</div><div class="stat-v">{{SELL_TAX}}</div></div>
-          <div class="stat"><div class="stat-k">Liquidity</div><div class="stat-v">{{LP_STATUS}}</div></div>
           <div class="stat"><div class="stat-k">Mint Authority</div><div class="stat-v">{{MINT_AUTH}}</div></div>
           <div class="stat"><div class="stat-k">Ownership</div><div class="stat-v">{{OWNERSHIP}}</div></div>
         </div>
@@ -655,6 +655,7 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
 </section>
 
 <!-- ============ COMMUNITY ============ -->
+<!--COMMUNITY_FULL_START-->
 <section id="community" class="section">
   <div class="container">
     <div class="reveal">
@@ -662,17 +663,19 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
       <h2 class="h2">{{COMMUNITY_TITLE}}</h2>
     </div>
     <div class="social-grid">
-      <a class="social reveal" href="https://x.com/{{X_HANDLE}}" target="_blank" rel="noopener">
+      <!--X_CARD_START--><a class="social reveal" href="{{X_HREF}}" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
         <div><h3>@{{X_HANDLE}}</h3><p>Follow the mission. Alpha, memes, and shitposts.</p></div>
-      </a>
-      <a class="social reveal" href="https://t.me/{{TELEGRAM}}" target="_blank" rel="noopener">
+      </a><!--X_CARD_END-->
+      <!--TELEGRAM_CARD_START--><a class="social reveal" href="{{TELEGRAM_HREF}}" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.14-.26.26-.53.26l.192-2.72 4.94-4.462c.215-.19-.047-.297-.332-.106l-6.107 3.845-2.63-.822c-.573-.18-.586-.573.121-.848l10.263-3.96c.478-.174.897.107.744.845z"/></svg>
         <div><h3>t.me/{{TELEGRAM}}</h3><p>Join the horde. Trenches open 24/7.</p></div>
-      </a>
+      </a><!--TELEGRAM_CARD_END-->
     </div>
   </div>
 </section>
+<!--COMMUNITY_FULL_END-->
+<!--COMMUNITY_EMPTY_START--><section id="community" aria-hidden="true" style="display:none"></section><!--COMMUNITY_EMPTY_END-->
 
 <!-- ============ FAQ ============ -->
 <section id="faq" class="section">
@@ -696,7 +699,7 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
   <div class="container foot-grid">
     <div>
       <div class="wordmark" style="margin-bottom:8px">{{TOKEN_NAME}}</div>
-      <div class="foot-ca">CA: {{CONTRACT}}</div>
+      <!--FOOTER_CONTRACT_START--><div class="foot-ca">CA: {{CONTRACT}}</div><!--FOOTER_CONTRACT_END-->
     </div>
     <div>
       <div class="eyebrow" style="margin-bottom:10px">Links</div>
@@ -705,12 +708,12 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
       <div><a href="#roadmap">Roadmap</a></div>
     </div>
     <div class="foot-socials">
-      <a href="https://x.com/{{X_HANDLE}}" target="_blank" rel="noopener" aria-label="X">
+      <!--FOOTER_X_START--><a href="{{X_HREF}}" target="_blank" rel="noopener noreferrer" aria-label="X">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-      </a>
-      <a href="https://t.me/{{TELEGRAM}}" target="_blank" rel="noopener" aria-label="Telegram">
+      </a><!--FOOTER_X_END-->
+      <!--FOOTER_TELEGRAM_START--><a href="{{TELEGRAM_HREF}}" target="_blank" rel="noopener noreferrer" aria-label="Telegram">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.14-.26.26-.53.26l.192-2.72 4.94-4.462c.215-.19-.047-.297-.332-.106l-6.107 3.845-2.63-.822c-.573-.18-.586-.573.121-.848l10.263-3.96c.478-.174.897.107.744.845z"/></svg>
-      </a>
+      </a><!--FOOTER_TELEGRAM_END-->
     </div>
   </div>
   <div class="container">
