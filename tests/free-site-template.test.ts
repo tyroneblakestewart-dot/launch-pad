@@ -419,6 +419,49 @@ describe("renderFreeSiteTemplate", () => {
     });
   });
 
+  describe("hero artwork", () => {
+    function getStyleCss(html: string): string {
+      const styleMatch = html.match(/<style>([\s\S]*?)<\/style>/);
+      if (!styleMatch) throw new Error("Rendered page has no <style> block.");
+      return styleMatch[1];
+    }
+
+    it("never applies object-fit: cover to the artwork on any hero variant", () => {
+      const css = getStyleCss(render());
+      const heroArtImgRules = css.match(/\.hero-art img[^{]*\{[^}]*\}/g) ?? [];
+      expect(heroArtImgRules.length).toBeGreaterThanOrEqual(3);
+      for (const rule of heroArtImgRules) {
+        expect(rule).not.toMatch(/object-fit:\s*cover/);
+      }
+    });
+
+    it("does not force a 16/9 aspect ratio on the stacked variant's artwork", () => {
+      const css = getStyleCss(render());
+      const stackedArtRules = css.match(/body\[data-hero="stacked"\] \.hero-art[^{]*\{[^}]*\}/g) ?? [];
+      expect(stackedArtRules.length).toBeGreaterThanOrEqual(2);
+      for (const rule of stackedArtRules) {
+        expect(rule).not.toMatch(/aspect-ratio:\s*16\s*\/\s*9/);
+      }
+    });
+
+    it("raises the centred variant's artwork opacity to at least .7", () => {
+      const css = getStyleCss(render());
+      const centredArtRule = css.match(/body\[data-hero="centred"\] \.hero-art \{[^}]*\}/);
+      expect(centredArtRule).not.toBeNull();
+      const opacityMatch = centredArtRule![0].match(/opacity:\s*([\d.]+)/);
+      expect(opacityMatch).not.toBeNull();
+      expect(Number(opacityMatch![1])).toBeGreaterThanOrEqual(0.7);
+    });
+
+    it("renders every hero variant as complete, valid page HTML", () => {
+      const heroStyles: FreeSiteHeroStyle[] = ["split", "centred", "stacked"];
+      for (const heroStyle of heroStyles) {
+        const html = render({ ...THEME, heroStyle });
+        expect(isCompleteGeneratedPageHtml(html)).toBe(true);
+      }
+    });
+  });
+
   it("throws when a facts value has the wrong type", () => {
     expect(() =>
       renderFreeSiteTemplate({
