@@ -51,7 +51,7 @@ describe("new project identity is never pre-filled with the Hoodlums brand", () 
     expect(workspace).not.toMatch(/input\[placeholder=/);
   });
 
-  it("never gates identity on a ticker === HOODLUMS comparison", async () => {
+  it("never gates identity on a ticker === HOODLUMS comparison, and no longer seeds the operator's launch", async () => {
     const workspace = await readFile(
       path.join(ROOT, "components", "token-studio-workspace.tsx"),
       "utf8",
@@ -59,16 +59,13 @@ describe("new project identity is never pre-filled with the Hoodlums brand", () 
 
     expect(workspace).not.toMatch(/ticker\.toUpperCase\(\)\s*===\s*"HOODLUMS"/);
     expect(workspace).not.toMatch(/ticker\s*===\s*"HOODLUMS"/);
+    expect(workspace).not.toContain("project.name.toLowerCase()");
 
-    const isHoodlumsRecordBlock = workspace.slice(
-      workspace.indexOf("function isHoodlumsRecord"),
-      workspace.indexOf("function seedHoodlumsLaunch"),
-    );
-    expect(isHoodlumsRecordBlock).toContain("project.id === HOODLUMS_LAUNCH.id");
-    expect(isHoodlumsRecordBlock).toContain(
-      "project.contractAddress.toLowerCase() === HOODLUMS_CONTRACT",
-    );
-    expect(isHoodlumsRecordBlock).not.toContain("project.name.toLowerCase()");
+    // The operator's Hoodlums launch is no longer force-written into every
+    // visitor's storage; see tests/hoodlums-seed-cleanup.test.ts and
+    // tests/token-studio-workspace-seed-cleanup.test.ts.
+    expect(workspace).not.toContain("seedHoodlumsLaunch");
+    expect(workspace).not.toContain("isHoodlumsRecord");
   });
 
   it("still requires name, ticker, description and artwork before unlocking site generation", async () => {
