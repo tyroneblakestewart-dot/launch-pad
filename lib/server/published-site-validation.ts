@@ -9,6 +9,21 @@ export const MAX_ARTWORK_REFERENCE_BYTES = 8_100_000;
 const CONTROL_CHARACTERS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const STATUS_VALUES = new Set<ProjectStatus>(["draft", "prepared", "launched"]);
 const SAFE_NOOP_SCRIPT = "<script>void 0;</script>";
+const GOOGLE_FONTS_STYLESHEET_ORIGIN = "https://fonts.googleapis.com/";
+const FONT_LINK_PLACEHOLDER_PATTERN = /\{\{HOODLUMS_FONT_LINK_(\d+)\}\}/g;
+
+function attributeValue(tag: string, name: string): string {
+  const match = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|(\\S+))`, "i").exec(tag);
+  return match ? match[1] ?? match[2] ?? match[3] ?? "" : "";
+}
+
+/** A `<link>` permitted to keep its `href`: a stylesheet from the one external origin the CSP allows. */
+function isGoogleFontsStylesheetLink(tag: string): boolean {
+  return (
+    attributeValue(tag, "rel").toLowerCase() === "stylesheet" &&
+    attributeValue(tag, "href").startsWith(GOOGLE_FONTS_STYLESHEET_ORIGIN)
+  );
+}
 
 export type PublishableSite = {
   slug: string;
@@ -55,11 +70,18 @@ export function sanitisePublishedGeneratedHtml(value: unknown): string | null {
   if (Buffer.byteLength(value, "utf8") > MAX_PUBLISHED_HTML_BYTES) return null;
   if (!isCompleteGeneratedPageHtml(value)) return null;
 
-  let output = value
+  const preservedFontLinks: string[] = [];
+  const withFontLinksPlaceheld = value.replace(/<link\b[^>]*>/gi, (tag) => {
+    if (!isGoogleFontsStylesheetLink(tag)) return tag;
+    const index = preservedFontLinks.push(tag) - 1;
+    return `{{HOODLUMS_FONT_LINK_${index}}}`;
+  });
+
+  let output = withFontLinksPlaceheld
     .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "")
     .replace(/<base\b[^>]*>/gi, "")
     .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?(?:refresh|content-security-policy)["']?[^>]*>/gi, "")
-    .replace(/<link\b(?![^>]*href\s*=\s*["']https:\/\/fonts\.googleapis\.com\/)[^>]*>/gi, "")
+    .replace(/<link\b[^>]*>/gi, "")
     .replace(quotedAttribute("on[a-z]+"), "")
     .replace(quotedAttribute("srcdoc"), "")
     .replace(quotedAttribute("formaction"), "")
@@ -72,6 +94,10 @@ export function sanitisePublishedGeneratedHtml(value: unknown): string | null {
     .replace(/url\(\s*["']?https?:\/\/[^)]*\)/gi, "url()")
     .replace(/(?:javascript|vbscript)\s*:/gi, "");
 
+  output = output.replace(
+    FONT_LINK_PLACEHOLDER_PATTERN,
+    (_match, index) => preservedFontLinks[Number(index)] ?? "",
+  );
   output = output.replace(/<\/body\s*>/i, `${SAFE_NOOP_SCRIPT}</body>`).trim();
   if (Buffer.byteLength(output, "utf8") > MAX_PUBLISHED_HTML_BYTES) return null;
   return isCompleteGeneratedPageHtml(output) ? output : null;
