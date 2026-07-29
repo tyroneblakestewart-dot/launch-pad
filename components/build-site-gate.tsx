@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { FREE_SITE_SECTION_KEYS, type FreeSiteSections } from "@/lib/free-site-sections";
 import {
   SITE_GENERATION_TIMEOUT_MS,
   failSitePreviewGeneration,
@@ -29,18 +30,44 @@ type GenerateDetail = {
   contractAddress: string;
   xHandle: string;
   telegram: string;
+  sections: FreeSiteSections;
   mode: GenerateMode;
 };
 
-function findControl(panel: Element, labelText: string) {
+function findLabel(panel: Element, labelText: string): Element | undefined {
   const labels = Array.from(panel.querySelectorAll("label"));
-  const label = labels.find(
+  return labels.find(
     (item) => item.querySelector(".field-label")?.textContent?.replace("OPTIONAL", "").trim() === labelText,
   );
-  return label?.querySelector("input, textarea") as
+}
+
+function findControl(panel: Element, labelText: string) {
+  return findLabel(panel, labelText)?.querySelector("input, textarea") as
     | HTMLInputElement
     | HTMLTextAreaElement
     | null;
+}
+
+function findCheckbox(panel: Element, labelText: string): HTMLInputElement | null {
+  const input = findLabel(panel, labelText)?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+  return input || null;
+}
+
+const SECTION_TOGGLE_LABELS: Record<keyof FreeSiteSections, string> = {
+  about: "About",
+  tokenomics: "Tokenomics",
+  roadmap: "Roadmap",
+  howToBuy: "How to buy",
+  faq: "FAQ",
+};
+
+function currentSections(panel: Element): FreeSiteSections {
+  const sections = {} as FreeSiteSections;
+  for (const key of FREE_SITE_SECTION_KEYS) {
+    const checkbox = findCheckbox(panel, SECTION_TOGGLE_LABELS[key]);
+    sections[key] = checkbox ? checkbox.checked : false;
+  }
+  return sections;
 }
 
 function addOptionalMarker(panel: Element, labelText: string) {
@@ -146,6 +173,7 @@ export function BuildSiteGate() {
         contractAddress: findControl(panel, "Contract / mint address")?.value.trim() || "",
         xHandle: findControl(panel, "X handle")?.value.trim() || "",
         telegram: findControl(panel, "Telegram")?.value.trim() || "",
+        sections: currentSections(panel),
         mode,
       };
     }

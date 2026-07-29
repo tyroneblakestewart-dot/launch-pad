@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/generate-free-site/route";
+import { type FreeSiteDesignSchema } from "@/lib/free-site-openai-pipeline";
 import {
-  FREE_SITE_COPY_KEYS,
-  type FREE_SITE_DESIGN_SCHEMA,
-} from "@/lib/free-site-openai-pipeline";
-import type { FreeSiteCopy, FreeSiteTemplateInput } from "@/lib/free-site-template";
+  FREE_SITE_SECTION_DEFAULTS,
+  freeSiteCopyKeysForSections,
+  type FreeSiteCopy,
+  type FreeSiteSections,
+  type FreeSiteTemplateInput,
+} from "@/lib/free-site-template";
 import {
   ARTWORK_PLACEHOLDER,
   isCompleteGeneratedPageHtml,
@@ -37,28 +40,48 @@ const ARTWORK: ArtworkIdentity = {
     "Keep the mascot, warm palette and gentle personality central; avoid hacker, terminal or code-rain styling.",
 };
 
-const COPY = Object.fromEntries(
-  FREE_SITE_COPY_KEYS.map((key) => [key, `${key} written in the mascot's friendly voice.`]),
-) as FreeSiteCopy;
-COPY.tokenName = "Cloud Club";
-COPY.ticker = "CLOUD";
+// Builds a copy object containing exactly the keys the model is allowed to
+// return for a given set of section toggles — mirrors the shrunk schema
+// (issue #171).
+function copyForSections(sections: FreeSiteSections): FreeSiteCopy {
+  const copy = Object.fromEntries(
+    freeSiteCopyKeysForSections(sections).map((key) => [
+      key,
+      `${key} written in the mascot's friendly voice.`,
+    ]),
+  ) as FreeSiteCopy;
+  copy.tokenName = "Cloud Club";
+  copy.ticker = "CLOUD";
+  return copy;
+}
 
-const DESIGN: FreeSiteTemplateInput = {
-  theme: {
-    palette: {
-      background: "#181116",
-      surface: "#241a21",
-      primary: "#f2a7a0",
-      secondary: "#b9d8c2",
-      text: "#fff5ef",
-    },
-    fontPairing: "rounded",
-    backgroundEffect: "gradients",
-    heroStyle: "centred",
-    tokenomicsStyle: "grid",
-    roadmapStyle: "cards",
-    aboutStyle: "icons",
+const THEME: FreeSiteTemplateInput["theme"] = {
+  palette: {
+    background: "#181116",
+    surface: "#241a21",
+    primary: "#f2a7a0",
+    secondary: "#b9d8c2",
+    text: "#fff5ef",
   },
+  fontPairing: "rounded",
+  backgroundEffect: "gradients",
+  heroStyle: "centred",
+  tokenomicsStyle: "grid",
+  roadmapStyle: "cards",
+  aboutStyle: "icons",
+};
+
+// The request in input() below sends no `sections`, so the route falls
+// back to the studio default (about + tokenomics on, the rest off).
+const COPY = copyForSections(FREE_SITE_SECTION_DEFAULTS);
+
+// The raw shape the provider returns over the wire: theme + copy only.
+// `sections` is never part of the model's response — the server attaches
+// it separately from the request (see parseFreeSiteDesignResponse).
+type FreeSiteDesignResponseBody = Pick<FreeSiteTemplateInput, "theme" | "copy">;
+
+const DESIGN: FreeSiteDesignResponseBody = {
+  theme: THEME,
   copy: COPY,
 };
 
@@ -282,7 +305,7 @@ describe("POST /api/generate-free-site success", () => {
       input: Array<{
         content: Array<{ type: string; text?: string; image_url?: string }>;
       }>;
-      text: { format: { strict: boolean; schema: typeof FREE_SITE_DESIGN_SCHEMA } };
+      text: { format: { strict: boolean; schema: FreeSiteDesignSchema } };
     };
 
     expect(artworkRequest.max_output_tokens).toBe(1_500);
@@ -295,7 +318,20 @@ describe("POST /api/generate-free-site success", () => {
     expect(designRequest.reasoning).toEqual({ effort: "minimal" });
     expect(designRequest.max_output_tokens).toBe(6_000);
     expect(designRequest.text.format.strict).toBe(true);
-    expect(designRequest.text.format.schema.properties.copy.required).toHaveLength(46);
+    // input() sends no `sections`, so the route falls back to the studio
+    // default (about + tokenomics on, the rest off) and the schema only
+    // asks the model for those sections' copy plus hero/community.
+    expect(designRequest.text.format.schema.properties.copy.required).toHaveLength(
+      freeSiteCopyKeysForSections(FREE_SITE_SECTION_DEFAULTS).length,
+    );
+    expect(designRequest.text.format.schema.properties.copy.required).not.toContain("roadmapTitle");
+    expect(designRequest.text.format.schema.properties.copy.required).not.toContain("faqTitle");
+    expect(designRequest.input[0].content[0].text).toContain(
+      "Only write copy for these enabled sections: about, tokenomics.",
+    );
+    expect(designRequest.input[0].content[0].text).toContain(
+      "Do not mention or imply the existence of these disabled sections: roadmap, howToBuy, faq.",
+    );
     expect(designRequest.input[0].content[0].text).toContain(
       "soft, cute, wholesome or gentle artwork must NOT use terminal tokenomics",
     );
@@ -465,5 +501,132 @@ describe("POST /api/generate-free-site design failures", () => {
     expect(body.error).toBe(
       "The AI free-site design service could not complete the request (timeout).",
     );
+  });
+});
+
+describe("POST /api/generate-free-site sections", () => {
+  const ALL_SECTIONS: FreeSiteSections = {
+    about: true,
+    tokenomics: true,
+    roadmap: true,
+    howToBuy: true,
+    faq: true,
+  };
+  const NONE_SECTIONS: FreeSiteSections = {
+    about: false,
+    tokenomics: false,
+    roadmap: false,
+    howToBuy: false,
+    faq: false,
+  };
+
+  it("shrinks the copy schema to hero + community only when every optional section is disabled", async () => {
+    const design: FreeSiteDesignResponseBody = { theme: THEME, copy: copyForSections(NONE_SECTIONS) };
+    const fetchMock = providerMock(design);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request({ ...input(), sections: NONE_SECTIONS }));
+    expect(response.status).toBe(200);
+
+    const designRequest = JSON.parse(
+      String((fetchMock.mock.calls[1][1] as RequestInit).body),
+    ) as { text: { format: { schema: FreeSiteDesignSchema } } };
+    expect(designRequest.text.format.schema.properties.copy.required).toHaveLength(5);
+    expect(designRequest.text.format.schema.properties.copy.required).toEqual(
+      expect.arrayContaining(["tokenName", "ticker", "kicker", "tagline", "communityTitle"]),
+    );
+  });
+
+  it("grows the copy schema back to all 46 fields when every optional section is enabled", async () => {
+    const design: FreeSiteDesignResponseBody = { theme: THEME, copy: copyForSections(ALL_SECTIONS) };
+    const fetchMock = providerMock(design);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request({ ...input(), sections: ALL_SECTIONS }));
+    expect(response.status).toBe(200);
+
+    const designRequest = JSON.parse(
+      String((fetchMock.mock.calls[1][1] as RequestInit).body),
+    ) as { text: { format: { schema: FreeSiteDesignSchema } } };
+    expect(designRequest.text.format.schema.properties.copy.required).toHaveLength(46);
+  });
+
+  it("renders only the requested sections end to end", async () => {
+    const sections: FreeSiteSections = {
+      about: true,
+      tokenomics: false,
+      roadmap: false,
+      howToBuy: false,
+      faq: false,
+    };
+    const design: FreeSiteDesignResponseBody = { theme: THEME, copy: copyForSections(sections) };
+    vi.stubGlobal("fetch", providerMock(design));
+
+    const response = await POST(request({ ...input(), sections }));
+    const body = await responseJson<{ html: string }>(response);
+
+    expect(response.status).toBe(200);
+    expect(isCompleteGeneratedPageHtml(body.html)).toBe(true);
+    expect(body.html).toContain('<section id="roadmap" aria-hidden="true" style="display:none"></section>');
+    expect(body.html).not.toContain('href="#roadmap"');
+  });
+
+  it("falls back to the studio default (about + tokenomics) when sections is omitted", async () => {
+    const fetchMock = providerMock();
+    vi.stubGlobal("fetch", fetchMock);
+
+    // input() sends no `sections` field at all.
+    const response = await POST(request(input()));
+    expect(response.status).toBe(200);
+
+    const designRequest = JSON.parse(
+      String((fetchMock.mock.calls[1][1] as RequestInit).body),
+    ) as { text: { format: { schema: FreeSiteDesignSchema } } };
+    expect(designRequest.text.format.schema.properties.copy.required).toHaveLength(
+      freeSiteCopyKeysForSections(FREE_SITE_SECTION_DEFAULTS).length,
+    );
+  });
+
+  it("falls back to the default for a malformed sections value instead of rejecting the request", async () => {
+    const fetchMock = providerMock();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request({ ...input(), sections: { about: "yes", roadmap: 1 } }));
+    expect(response.status).toBe(200);
+
+    const designRequest = JSON.parse(
+      String((fetchMock.mock.calls[1][1] as RequestInit).body),
+    ) as { text: { format: { schema: FreeSiteDesignSchema } } };
+    expect(designRequest.text.format.schema.properties.copy.required).toHaveLength(
+      freeSiteCopyKeysForSections(FREE_SITE_SECTION_DEFAULTS).length,
+    );
+  });
+
+  it("rejects a model response that writes copy for a section that was not requested", async () => {
+    // roadmapTitle was not asked for (roadmap disabled by default here), but
+    // the model wrote it anyway.
+    const overreaching = {
+      theme: THEME,
+      copy: { ...copyForSections(FREE_SITE_SECTION_DEFAULTS), roadmapTitle: "Uninvited roadmap" },
+    };
+    vi.stubGlobal("fetch", providerMock(overreaching));
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ error: string }>(response);
+
+    expect(response.status).toBe(502);
+    expect(body.error).toContain("copy fields do not match the required schema");
+  });
+
+  it("rejects a model response missing copy for a requested section", async () => {
+    const incomplete = copyForSections(FREE_SITE_SECTION_DEFAULTS);
+    delete incomplete.tokenomicsTitle;
+    vi.stubGlobal("fetch", providerMock({ theme: THEME, copy: incomplete }));
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ error: string }>(response);
+
+    expect(response.status).toBe(502);
+    expect(body.error).toContain("copy fields do not match the required schema");
   });
 });

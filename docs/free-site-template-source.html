@@ -483,10 +483,10 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
   <div class="container nav-inner">
     <a href="#hero" class="wordmark">{{TICKER}}</a>
     <nav class="nav-links">
-      <a href="#about">About</a>
-      <a href="#tokenomics">Tokenomics</a>
-      <a href="#roadmap">Roadmap</a>
-      <a href="#how-to-buy">Buy</a>
+      <!--NAV_ABOUT_START--><a href="#about">About</a><!--NAV_ABOUT_END-->
+      <!--NAV_TOKENOMICS_START--><a href="#tokenomics">Tokenomics</a><!--NAV_TOKENOMICS_END-->
+      <!--NAV_ROADMAP_START--><a href="#roadmap">Roadmap</a><!--NAV_ROADMAP_END-->
+      <!--NAV_HOWTOBUY_START--><a href="#how-to-buy">Buy</a><!--NAV_HOWTOBUY_END-->
       <!--NAV_COMMUNITY_START--><a href="#community">Community</a><!--NAV_COMMUNITY_END-->
     </nav>
     <a href="#how-to-buy" class="btn btn-primary">Ape In</a>
@@ -541,6 +541,7 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
 </div>
 
 <!-- ============ ABOUT ============ -->
+<!--ABOUT_FULL_START-->
 <section id="about" class="section">
   <div class="container">
     <div class="reveal">
@@ -569,8 +570,11 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
     </div>
   </div>
 </section>
+<!--ABOUT_FULL_END-->
+<!--ABOUT_EMPTY_START--><section id="about" aria-hidden="true" style="display:none"></section><!--ABOUT_EMPTY_END-->
 
 <!-- ============ TOKENOMICS ============ -->
+<!--TOKENOMICS_FULL_START-->
 <section id="tokenomics" class="section">
   <div class="container">
     <div class="reveal">
@@ -597,8 +601,11 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
     </div>
   </div>
 </section>
+<!--TOKENOMICS_FULL_END-->
+<!--TOKENOMICS_EMPTY_START--><section id="tokenomics" aria-hidden="true" style="display:none"></section><!--TOKENOMICS_EMPTY_END-->
 
 <!-- ============ ROADMAP ============ -->
+<!--ROADMAP_FULL_START-->
 <section id="roadmap" class="section">
   <div class="container">
     <div class="reveal">
@@ -641,8 +648,11 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
     </div>
   </div>
 </section>
+<!--ROADMAP_FULL_END-->
+<!--ROADMAP_EMPTY_START--><section id="roadmap" aria-hidden="true" style="display:none"></section><!--ROADMAP_EMPTY_END-->
 
 <!-- ============ HOW TO BUY ============ -->
+<!--HOWTOBUY_FULL_START-->
 <section id="how-to-buy" class="section">
   <div class="container">
     <div class="reveal">
@@ -657,6 +667,8 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
     </div>
   </div>
 </section>
+<!--HOWTOBUY_FULL_END-->
+<!--HOWTOBUY_EMPTY_START--><section id="how-to-buy" aria-hidden="true" style="display:none"></section><!--HOWTOBUY_EMPTY_END-->
 
 <!-- ============ COMMUNITY ============ -->
 <!--COMMUNITY_FULL_START-->
@@ -682,6 +694,7 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
 <!--COMMUNITY_EMPTY_START--><section id="community" aria-hidden="true" style="display:none"></section><!--COMMUNITY_EMPTY_END-->
 
 <!-- ============ FAQ ============ -->
+<!--FAQ_FULL_START-->
 <section id="faq" class="section">
   <div class="container">
     <div class="reveal">
@@ -697,6 +710,8 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
     </div>
   </div>
 </section>
+<!--FAQ_FULL_END-->
+<!--FAQ_EMPTY_START--><section id="faq" aria-hidden="true" style="display:none"></section><!--FAQ_EMPTY_END-->
 
 <!-- ============ FOOTER ============ -->
 <footer>
@@ -707,9 +722,9 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
     </div>
     <div>
       <div class="eyebrow" style="margin-bottom:10px">Links</div>
-      <div><a href="#about">About</a></div>
-      <div><a href="#tokenomics">Tokenomics</a></div>
-      <div><a href="#roadmap">Roadmap</a></div>
+      <!--FOOTER_NAV_ABOUT_START--><div><a href="#about">About</a></div><!--FOOTER_NAV_ABOUT_END-->
+      <!--FOOTER_NAV_TOKENOMICS_START--><div><a href="#tokenomics">Tokenomics</a></div><!--FOOTER_NAV_TOKENOMICS_END-->
+      <!--FOOTER_NAV_ROADMAP_START--><div><a href="#roadmap">Roadmap</a></div><!--FOOTER_NAV_ROADMAP_END-->
     </div>
     <div class="foot-socials">
       <!--FOOTER_X_START--><a href="{{X_HREF}}" target="_blank" rel="noopener noreferrer" aria-label="X">

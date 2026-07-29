@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { createWalletClient, custom } from "viem";
+import type { FreeSiteSections } from "@/lib/free-site-sections";
 import { prepareGeneratedPageForPreview } from "@/lib/generated-site-page";
 import {
   parseGenerateSitePageStreamLine,
@@ -24,6 +25,7 @@ type GenerateDetail = {
   contractAddress?: string;
   xHandle?: string;
   telegram?: string;
+  sections?: FreeSiteSections;
   mode?: "free" | "bespoke";
 };
 

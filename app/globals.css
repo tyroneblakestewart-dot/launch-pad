@@ -217,6 +217,20 @@ label small { display: block; margin-top: 5px; color: #5f6a61; font: 10px var(--
 .ticker-input, .url-input { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 6px; background: #0a0f0c; overflow: hidden; }
 .ticker-input:focus-within, .url-input:focus-within { border-color: rgba(85,255,120,.6); }
 .ticker-input span { padding-left: 12px; color: var(--green); font: 700 13px var(--mono); }
+.section-toggle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  min-height: 43px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #0a0f0c;
+  cursor: pointer;
+}
+.section-toggle input[type="checkbox"] { width: 15px; height: 15px; flex: none; accent-color: var(--green); }
+.section-toggle .field-label { margin: 0; }
 .ticker-input input, .url-input input { border: 0; background: transparent; box-shadow: none; }
 .url-input > span { padding-left: 11px; color: #5f6a61; font: 10px var(--mono); white-space: nowrap; }
 .upload-box {
