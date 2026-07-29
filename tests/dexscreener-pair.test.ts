@@ -5,11 +5,13 @@ import {
   buildDexscreenerPairResult,
   isValidDexAddress,
   lookupDexscreenerPair,
+  resetDexscreenerPairCacheForTests,
   selectBestPair,
   type DexPair,
 } from "@/lib/server/dexscreener";
 
 const ADDRESS = "0x3bf7447cd055f1475a8b09090c7b062abc9d3798";
+const OTHER_ADDRESS = "0x4cf7447cd055f1475a8b09090c7b062abc9d3799";
 
 function makeRequest(address?: string): NextRequest {
   const url = new URL("http://localhost/api/dexscreener-pair");
@@ -23,6 +25,7 @@ async function responseJson<T>(response: Response): Promise<T> {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  resetDexscreenerPairCacheForTests();
 });
 
 describe("Dexscreener server functions", () => {
@@ -271,13 +274,67 @@ describe("lookupDexscreenerPair", () => {
   });
 
   it("resolves to not found instead of throwing on a non-success status, network error or bad JSON", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("down", { status: 503 })));
+    // Distinct addresses per scenario: the lookup now caches per address, so
+    // reusing one address across these three fetch mocks would only ever
+    // exercise the first mock and return its cached result for the rest.
+    const nonSuccessFetch = vi.fn().mockResolvedValue(new Response("down", { status: 503 }));
+    vi.stubGlobal("fetch", nonSuccessFetch);
     expect(await lookupDexscreenerPair(ADDRESS)).toEqual({ found: false });
+    expect(nonSuccessFetch).toHaveBeenCalledTimes(1);
 
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
-    expect(await lookupDexscreenerPair(ADDRESS)).toEqual({ found: false });
+    const networkErrorFetch = vi.fn().mockRejectedValue(new Error("network down"));
+    vi.stubGlobal("fetch", networkErrorFetch);
+    expect(await lookupDexscreenerPair(OTHER_ADDRESS)).toEqual({ found: false });
+    expect(networkErrorFetch).toHaveBeenCalledTimes(1);
 
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not-json", { status: 200 })));
+    const badJsonAddress = "0x5df7447cd055f1475a8b09090c7b062abc9d300";
+    const badJsonFetch = vi.fn().mockResolvedValue(new Response("not-json", { status: 200 }));
+    vi.stubGlobal("fetch", badJsonFetch);
+    expect(await lookupDexscreenerPair(badJsonAddress)).toEqual({ found: false });
+    expect(badJsonFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-fetch Dexscreener for the same address within the cache window", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          pairs: [{ chainId: "rh", dexId: "dex-a", pairAddress: "pair-a", liquidity: { usd: 500 } }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = await lookupDexscreenerPair(ADDRESS);
+    const second = await lookupDexscreenerPair(ADDRESS);
+
+    expect(second).toEqual(first);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("caches a failed lookup as not found and does not retry within the window", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("network down"));
+    vi.stubGlobal("fetch", fetchMock);
+
     expect(await lookupDexscreenerPair(ADDRESS)).toEqual({ found: false });
+    expect(await lookupDexscreenerPair(ADDRESS)).toEqual({ found: false });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-fetches once the cache window has elapsed", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ pairs: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await lookupDexscreenerPair(ADDRESS);
+    now.mockReturnValue(1_000_000 + 45_001);
+    await lookupDexscreenerPair(ADDRESS);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
