@@ -7,6 +7,7 @@ import {
   resetPublicGeneratedSiteAdapterForTests,
   setPublicGeneratedSiteAdapter,
 } from "@/lib/server/public-generated-sites";
+import { resetDexscreenerPairCacheForTests } from "@/lib/server/dexscreener";
 import type { PublicGeneratedSite } from "@/lib/public-site";
 import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
 import { PublicSiteFrame } from "@/components/public-site-frame";
@@ -110,6 +111,7 @@ function notFoundDigest(): string {
 
 afterEach(() => {
   resetPublicGeneratedSiteAdapterForTests();
+  resetDexscreenerPairCacheForTests();
   vi.unstubAllGlobals();
 });
 
