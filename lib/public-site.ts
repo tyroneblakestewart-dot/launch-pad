@@ -28,6 +28,13 @@ export interface PublicGeneratedSite {
   visibility?: PublishedSiteVisibility;
   /** Server-generated secret used only to authorise a draft preview URL. */
   draftToken?: string | null;
+  /**
+   * ISO timestamp once LP is locked at bonding-curve graduation, otherwise
+   * null/absent. Nothing writes this yet (issue #173); it exists so
+   * `/[slug]` can substitute the free-site LP-locked fact from the
+   * durable row once a future change starts setting it.
+   */
+  lpLockedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

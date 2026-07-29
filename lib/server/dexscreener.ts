@@ -50,3 +50,42 @@ export function buildDexscreenerPairResult(pair: DexPair | null): DexscreenerPai
     liquidityUsd: Number(pair.liquidity?.usd || 0),
   };
 }
+
+const LOOKUP_TIMEOUT_MS = 6_000;
+
+/**
+ * Direct server-side Dexscreener lookup used by `app/[slug]/page.tsx` to
+ * substitute the free-site chart section at request time (issue #173).
+ * Distinct from `/api/dexscreener-pair` (used by client components that
+ * poll while a creator is typing an address): this is a one-shot call made
+ * once per page render, so it talks to Dexscreener directly instead of
+ * round-tripping through this app's own API. Any failure — invalid
+ * address, network error, timeout, bad response — resolves to `not found`
+ * so the page falls back to the coming-soon panel instead of failing the
+ * whole request.
+ */
+export async function lookupDexscreenerPair(address: string): Promise<DexscreenerPairResult> {
+  if (!isValidDexAddress(address)) return { found: false };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
+  try {
+    const response = await fetch(
+      `https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(address)}`,
+      {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+        signal: controller.signal,
+      },
+    );
+    if (!response.ok) return { found: false };
+
+    const payload = (await response.json()) as { pairs?: DexPair[] | null };
+    const pairs = Array.isArray(payload.pairs) ? payload.pairs : [];
+    return buildDexscreenerPairResult(selectBestPair(pairs));
+  } catch {
+    return { found: false };
+  } finally {
+    clearTimeout(timeout);
+  }
+}

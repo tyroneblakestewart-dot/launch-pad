@@ -48,6 +48,7 @@ type PublishedSiteRow = {
   status: string;
   visibility: string;
   draft_token: string | null;
+  lp_locked_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -107,6 +108,7 @@ function siteFromRow(row: PublishedSiteRow): PublicGeneratedSite | null {
     status: row.status,
     visibility: row.visibility,
     draftToken: row.draft_token,
+    lpLockedAt: row.lp_locked_at ? asDate(row.lp_locked_at).toISOString() : null,
     createdAt: asDate(row.created_at).toISOString(),
     updatedAt: asDate(row.updated_at).toISOString(),
   };
@@ -120,7 +122,8 @@ const NONCE_COLUMNS = `
 const SITE_COLUMNS = `
   slug, token_name, ticker, description, supply, decimals, chain, chain_id,
   contract_address, generated_html, artwork_reference, owner_wallet_address,
-  x_handle, telegram, status, visibility, draft_token, created_at, updated_at
+  x_handle, telegram, status, visibility, draft_token, lp_locked_at,
+  created_at, updated_at
 `;
 
 async function rollback(client: PoolClient): Promise<void> {

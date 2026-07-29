@@ -36,10 +36,13 @@ import { requestArtworkIdentity } from "@/lib/server/artwork-identity-request";
 // the free-site template renders them as verified facts and never asks the
 // model to write them. See lib/free-site-template.ts (FreeSiteFacts) and
 // issue #163.
+// contractAddress is intentionally not read here: it is a platform fact
+// resolved at request time from the published_sites row, not baked into
+// the generated HTML at generation time (issue #173). The studio may still
+// send it as part of the shared request payload; it is simply ignored.
 type GenerateFreeSiteRequest = GenerateSiteStyleRequest & {
   supply?: unknown;
   decimals?: unknown;
-  contractAddress?: unknown;
   xHandle?: unknown;
   telegram?: unknown;
   sections?: unknown;
@@ -62,7 +65,6 @@ function buildFreeSiteFacts(body: GenerateFreeSiteRequest): FreeSiteFacts {
     sellTax: "0%",
     mintAuthority: "None",
     ownership: "No owner",
-    contractAddress: stringFact(body.contractAddress),
     xHandle: stringFact(body.xHandle),
     telegram: stringFact(body.telegram),
   };
