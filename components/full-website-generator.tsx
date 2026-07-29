@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { createWalletClient, custom } from "viem";
 import type { FreeSiteSections } from "@/lib/free-site-sections";
+import { isFreeSiteTemplateHtml, substituteFreeSitePlatformFacts } from "@/lib/free-site-platform-facts";
 import { prepareGeneratedPageForPreview } from "@/lib/generated-site-page";
 import {
   parseGenerateSitePageStreamLine,
@@ -544,7 +545,25 @@ export function FullWebsiteGenerator() {
               }));
         if (currentGeneration !== generationNumber) return;
         const publishSite = publishableSiteFromGeneration(detail, page.html);
-        activePreview = renderGeneratedWebsite(page.html, detail.imageDataUrl || "", publishSite, () => {
+        // The free-site template stores placeholder-bearing HTML (see
+        // lib/free-site-platform-facts.ts and issue #173): publishSite above
+        // keeps that raw html so a draft/publish payload never bakes in a
+        // contract address, but the preview below substitutes the same
+        // platform facts the served page would use today, so what the
+        // creator sees matches what /[slug] serves. The bespoke (paid AI)
+        // pipeline never writes the free-site marker, so its preview is
+        // unaffected. The chart lookup itself is skipped in this preview
+        // (kept "coming soon") to avoid an extra network dependency here;
+        // /[slug] always does the authoritative live lookup.
+        const previewHtml =
+          mode === "free" && isFreeSiteTemplateHtml(page.html)
+            ? substituteFreeSitePlatformFacts(page.html, {
+                contractAddress: detail.contractAddress?.trim() || "",
+                chart: { found: false },
+                lpLockedAt: null,
+              })
+            : page.html;
+        activePreview = renderGeneratedWebsite(previewHtml, detail.imageDataUrl || "", publishSite, () => {
           generationNumber += 1;
           activeController?.abort();
           activeController = null;

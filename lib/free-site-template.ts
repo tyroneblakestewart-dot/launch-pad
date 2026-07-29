@@ -45,6 +45,15 @@ export type FreeSiteTheme = {
 // Facts come from the studio form or from the fixed guarantees of
 // contracts/FixedSupplyMemeToken.sol. The model never sees or writes these;
 // the server builds them (see app/api/generate-free-site/route.ts).
+//
+// Platform facts that arrive automatically after generation (contract
+// address, Dexscreener chart, LP locked status) are NOT part of this type:
+// the template writes a placeholder and a themed coming-soon state for
+// those instead of a value, and the actual value is substituted at request
+// time from the durable database row (see lib/free-site-platform-facts.ts
+// and issue #173). Only user-supplied facts that are resolved once and
+// never change automatically (or the fixed contract guarantees) belong
+// here.
 export type FreeSiteFacts = {
   supply: string;
   decimals: number;
@@ -52,7 +61,6 @@ export type FreeSiteFacts = {
   sellTax: string;
   mintAuthority: string;
   ownership: string;
-  contractAddress: string;
   xHandle: string;
   telegram: string;
 };
@@ -133,17 +141,33 @@ const FACTS_PLACEHOLDERS = {
   SELL_TAX: "sellTax",
   MINT_AUTH: "mintAuthority",
   OWNERSHIP: "ownership",
-  CONTRACT: "contractAddress",
 } as const satisfies Record<string, keyof FreeSiteFacts>;
 
 // Placeholders derived from facts but not a plain 1:1 field copy: the
 // stripped handle text and the composed hrefs built from it.
 const DERIVED_FACTS_PLACEHOLDER_NAMES = ["X_HANDLE", "TELEGRAM", "X_HREF", "TELEGRAM_HREF"] as const;
 
+// Platform-fact placeholders left untouched by renderFreeSiteTemplate on
+// purpose: the contract address, chart and LP-locked date are not known
+// (or not final) at generation time, so the template keeps writing these
+// literal tokens into the stored HTML. lib/free-site-platform-facts.ts
+// substitutes them at request time from the durable database row instead
+// (issue #173).
+const PLATFORM_FACT_PLACEHOLDER_NAMES = [
+  "CONTRACT_ADDRESS",
+  "BUY_HREF",
+  "CHART_URL",
+  "CHART_DEX_ID",
+  "CHART_LIQUIDITY",
+  "CHART_SEARCH_URL",
+  "LP_LOCKED_DATE",
+] as const;
+
 const TOTAL_TEMPLATE_PLACEHOLDERS =
   Object.keys(COPY_PLACEHOLDERS).length +
   Object.keys(FACTS_PLACEHOLDERS).length +
   DERIVED_FACTS_PLACEHOLDER_NAMES.length +
+  PLATFORM_FACT_PLACEHOLDER_NAMES.length +
   1; // ARTWORK
 
 const SOURCE_PATH = path.join(process.cwd(), "docs", "free-site-template-source.html");
@@ -201,7 +225,8 @@ function prepareSourceTemplate(source: string): string {
       placeholder !== "ARTWORK" &&
       !(placeholder in COPY_PLACEHOLDERS) &&
       !(placeholder in FACTS_PLACEHOLDERS) &&
-      !(DERIVED_FACTS_PLACEHOLDER_NAMES as readonly string[]).includes(placeholder)
+      !(DERIVED_FACTS_PLACEHOLDER_NAMES as readonly string[]).includes(placeholder) &&
+      !(PLATFORM_FACT_PLACEHOLDER_NAMES as readonly string[]).includes(placeholder)
     ) {
       throw new Error(`The free-site source has an unmapped copy placeholder: ${placeholder}.`);
     }
@@ -271,7 +296,6 @@ const FACTS_STRING_KEYS = [
   "sellTax",
   "mintAuthority",
   "ownership",
-  "contractAddress",
   "xHandle",
   "telegram",
 ] as const satisfies readonly (keyof FreeSiteFacts)[];
@@ -332,7 +356,6 @@ export function renderFreeSiteTemplate({
   const hasX = xHandle !== "";
   const hasTelegram = telegram !== "";
   const hasCommunity = hasX || hasTelegram;
-  const hasContract = validatedFacts.contractAddress.trim() !== "";
 
   let html = FREE_SITE_TEMPLATE
     .replaceAll("{{THEME_BACKGROUND}}", palette.background)
@@ -388,9 +411,14 @@ export function renderFreeSiteTemplate({
   html = applyBlock(html, "COMMUNITY_FULL", hasCommunity);
   html = applyBlock(html, "COMMUNITY_EMPTY", !hasCommunity);
   html = applyBlock(html, "NAV_COMMUNITY", hasCommunity);
-  html = applyBlock(html, "CONTRACT_BAR", hasContract);
-  html = applyBlock(html, "FOOTER_CONTRACT", hasContract);
-  html = applyBlock(html, "BUY_CTA", hasContract);
+
+  // The contract bar, footer contract line, Buy CTA and Dexscreener chart
+  // are platform facts, not generation-time facts: the template keeps both
+  // their "known" and "coming soon" markup (and the platform-fact
+  // placeholders above) untouched here. lib/free-site-platform-facts.ts
+  // picks one side and fills in the placeholders at request time, from the
+  // durable database row, so a stored page updates when the token launches
+  // instead of freezing "coming soon" forever (issue #173).
 
   // Every other optional section follows the same full/empty pattern as
   // community above: the required `id="..."` stays present either way (see

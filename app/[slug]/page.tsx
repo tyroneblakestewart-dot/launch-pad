@@ -3,7 +3,14 @@ import { notFound } from "next/navigation";
 import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
 import { PublicSiteFrame } from "@/components/public-site-frame";
 import { PublicTokenFallback } from "@/components/public-token-fallback";
+import {
+  formatLiquidityLabel,
+  isFreeSiteTemplateHtml,
+  substituteFreeSitePlatformFacts,
+  type FreeSiteChartFact,
+} from "@/lib/free-site-platform-facts";
 import { isCompleteGeneratedPageHtml, prepareGeneratedPageForPreview } from "@/lib/generated-site-page";
+import { lookupDexscreenerPair } from "@/lib/server/dexscreener";
 import { getPublicGeneratedSiteBySlug } from "@/lib/server/public-generated-sites";
 import { decodeArtworkDataUrl } from "@/lib/server/public-site-artwork";
 import { validateSlug } from "@/lib/slug";
@@ -24,6 +31,23 @@ type PublicSiteRouteProps = {
 async function previewToken(searchParams?: Promise<PublicSiteSearchParams>): Promise<string> {
   const value = searchParams ? (await searchParams).preview : undefined;
   return typeof value === "string" ? value : "";
+}
+
+// Resolves the free-site chart fact fresh on every request instead of at
+// generation time, so a stored page reflects trading the moment a pair
+// exists, with no regeneration or republish (issue #173). Any lookup
+// failure falls back to "not found" so the page still renders.
+async function resolveChartFact(contractAddress: string): Promise<FreeSiteChartFact> {
+  const trimmed = contractAddress.trim();
+  if (!trimmed) return { found: false };
+  const result = await lookupDexscreenerPair(trimmed);
+  if (!result.found) return { found: false };
+  return {
+    found: true,
+    url: result.pairUrl,
+    dexId: result.dexId,
+    liquidityLabel: formatLiquidityLabel(result.liquidityUsd),
+  };
 }
 
 export async function generateMetadata({ params, searchParams }: PublicSiteRouteProps): Promise<Metadata> {
@@ -75,15 +99,32 @@ export default async function PublicGeneratedSitePage({ params, searchParams }: 
 
   const hasGeneratedHtml = isCompleteGeneratedPageHtml(site.generatedSiteHtml);
   const hasArtwork = Boolean(decodeArtworkDataUrl(site.heroImage));
+  const isFreeSiteTemplate = hasGeneratedHtml && isFreeSiteTemplateHtml(site.generatedSiteHtml as string);
+
+  let html = site.generatedSiteHtml;
+  if (isFreeSiteTemplate) {
+    const chart = await resolveChartFact(site.contractAddress);
+    html = substituteFreeSitePlatformFacts(site.generatedSiteHtml as string, {
+      contractAddress: site.contractAddress,
+      chart,
+      lpLockedAt: site.lpLockedAt ?? null,
+    });
+  }
 
   return (
     <main className="public-generated-site">
       {hasGeneratedHtml && hasArtwork ? (
-        <PublicSiteFrame html={prepareGeneratedPageForPreview(site.generatedSiteHtml as string, site.heroImage)} />
+        <PublicSiteFrame html={prepareGeneratedPageForPreview(html as string, site.heroImage)} />
       ) : (
         <PublicTokenFallback site={site} />
       )}
-      {site.contractAddress ? <PublicDexscreenerSection address={site.contractAddress} /> : null}
+      {/* The free-site template renders its own themed chart section
+          in-document (see docs/free-site-template-source.html); this
+          separate, unthemed section only backs the bespoke (paid AI)
+          pipeline, which has no chart section of its own. */}
+      {!isFreeSiteTemplate && site.contractAddress ? (
+        <PublicDexscreenerSection address={site.contractAddress} />
+      ) : null}
     </main>
   );
 }

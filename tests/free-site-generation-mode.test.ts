@@ -96,7 +96,7 @@ describe("free-site vs bespoke generation mode wiring", () => {
     expect(firstAbortIndex).toBeLessThan(tryIndex);
 
     // Both modes converge on a single render/iframe call site (exactly one live iframe at all times).
-    const renderCallCount = (onGenerateBody.match(/renderGeneratedWebsite\(page\.html/g) || [])
+    const renderCallCount = (onGenerateBody.match(/renderGeneratedWebsite\(previewHtml/g) || [])
       .length;
     expect(renderCallCount).toBe(1);
     const iframeCreationCount = (source.match(/document\.createElement\("iframe"\)/g) || [])

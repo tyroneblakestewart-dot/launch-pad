@@ -4,6 +4,7 @@ import { GET } from "@/app/api/dexscreener-pair/route";
 import {
   buildDexscreenerPairResult,
   isValidDexAddress,
+  lookupDexscreenerPair,
   selectBestPair,
   type DexPair,
 } from "@/lib/server/dexscreener";
@@ -238,5 +239,45 @@ describe("GET /api/dexscreener-pair", () => {
     expect(await responseJson(jsonFailure)).toEqual({
       error: "Dexscreener pair lookup failed.",
     });
+  });
+});
+
+describe("lookupDexscreenerPair", () => {
+  it("returns not found for an invalid address without calling Dexscreener", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await lookupDexscreenerPair("short")).toEqual({ found: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns the most liquid pair directly, without going through the app's own API route", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          pairs: [
+            { chainId: "rh", dexId: "dex-a", pairAddress: "pair-a", liquidity: { usd: 50 } },
+            { chainId: "rh", dexId: "dex-b", pairAddress: "pair-b", liquidity: { usd: 500 } },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await lookupDexscreenerPair(ADDRESS);
+    expect(result).toMatchObject({ found: true, dexId: "dex-b", liquidityUsd: 500 });
+    expect(String(fetchMock.mock.calls[0][0])).toContain("api.dexscreener.com");
+  });
+
+  it("resolves to not found instead of throwing on a non-success status, network error or bad JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("down", { status: 503 })));
+    expect(await lookupDexscreenerPair(ADDRESS)).toEqual({ found: false });
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+    expect(await lookupDexscreenerPair(ADDRESS)).toEqual({ found: false });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not-json", { status: 200 })));
+    expect(await lookupDexscreenerPair(ADDRESS)).toEqual({ found: false });
   });
 });

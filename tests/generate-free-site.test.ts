@@ -362,7 +362,7 @@ describe("POST /api/generate-free-site success", () => {
 });
 
 describe("POST /api/generate-free-site facts", () => {
-  it("renders supply, decimals, contract and socials from the request body rather than the model", async () => {
+  it("renders supply, decimals and socials from the request body rather than the model", async () => {
     vi.stubGlobal("fetch", providerMock());
 
     const response = await POST(request(input()));
@@ -371,10 +371,25 @@ describe("POST /api/generate-free-site facts", () => {
     expect(response.status).toBe(200);
     expect(body.html).toContain("1,000,000,000");
     expect(body.html).toContain(">18<");
-    expect(body.html).toContain("0x2222222222222222222222222222222222222222");
     expect(body.html).toContain('href="https://x.com/cloudclub"');
     expect(body.html).toContain('href="https://t.me/cloudclub"');
     expect(body.html.toLowerCase()).not.toContain("not announced yet");
+  });
+
+  // The contract address is a platform fact resolved at request time from
+  // the published_sites row, never baked into the generated HTML — even
+  // when the request supplies one — so a stored page can update when the
+  // token launches with no regeneration or republish (issue #173).
+  it("never bakes any request-supplied contract address into the generated HTML", async () => {
+    vi.stubGlobal("fetch", providerMock());
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ html: string }>(response);
+
+    expect(response.status).toBe(200);
+    expect(body.html).not.toContain("0x2222222222222222222222222222222222222222");
+    expect(body.html).toContain("{{CONTRACT_ADDRESS}}");
+    expect(body.html).toContain("{{BUY_HREF}}");
   });
 
   it("renders the fixed contract guarantees regardless of what the request supplies", async () => {
@@ -388,12 +403,11 @@ describe("POST /api/generate-free-site facts", () => {
     expect(body.html).toContain(">No owner<");
   });
 
-  it("omits the community section, contract bar and Buy CTA when socials and contract are blank", async () => {
+  it("omits the community section when socials are blank, but always keeps the contract bar and Buy CTA markup", async () => {
     vi.stubGlobal("fetch", providerMock());
 
     const blank = {
       ...input(),
-      contractAddress: "",
       xHandle: "",
       telegram: "",
     };
@@ -401,8 +415,9 @@ describe("POST /api/generate-free-site facts", () => {
     const body = await responseJson<{ html: string }>(response);
 
     expect(response.status).toBe(200);
-    expect(body.html).not.toContain("CA:");
     expect(body.html).not.toContain('href="#community"');
+    expect(body.html).toContain('aria-label="Contract address"');
+    expect(body.html).toContain("{{CONTRACT_ADDRESS}}");
     expect(isCompleteGeneratedPageHtml(body.html)).toBe(true);
   });
 });

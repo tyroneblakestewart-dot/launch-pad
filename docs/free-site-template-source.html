@@ -170,6 +170,21 @@ body[data-bg="particles"] .fx-particles { display: block; }
 .contract-value { font-family: var(--font-mono); font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .copy-btn { flex-shrink: 0; padding: 10px 14px; min-height: 36px; border-radius: 999px; background: var(--primary); color: var(--background); font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; transition: background .2s; }
 .copy-btn.copied { background: var(--secondary); }
+.contract-value.contract-pending { color: var(--muted); font-style: italic; }
+.btn-pending { opacity: .5; cursor: default; pointer-events: none; border: 1px solid var(--border); }
+.foot-ca.foot-ca-pending { color: var(--muted); font-style: italic; }
+
+/* ============================================================
+   CHART — coming-soon or link-out card, themed with the site's
+   own CSS variables so it always matches the chosen palette
+   ============================================================ */
+.chart-panel { margin-top: 48px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 32px; }
+.chart-panel-pending { border-style: dashed; }
+.chart-panel-pending strong { display: block; font-family: var(--font-display); font-size: 22px; margin-bottom: 10px; }
+.chart-panel-pending p { color: var(--muted); font-size: 14px; margin-bottom: 20px; max-width: 560px; }
+.chart-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.chart-status span { color: var(--primary); text-transform: uppercase; letter-spacing: .1em; }
+.chart-status b { color: var(--text); }
 
 .hero-art { position: relative; aspect-ratio: 1/1; width: 100%; max-width: 520px; margin: 0 auto; }
 .hero-art::before {
@@ -469,6 +484,7 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
 </style>
 </head>
 <body data-palette="toxic" data-fonts="street" data-bg="cascade" data-hero="split" data-tokenomics="terminal" data-roadmap="timeline" data-about="numbered">
+<!--HOODLUMS_FREE_SITE_TEMPLATE-->
 
 <!-- ============ BACKGROUND EFFECTS ============ -->
 <div class="bg-fx" aria-hidden="true">
@@ -485,6 +501,7 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
     <nav class="nav-links">
       <!--NAV_ABOUT_START--><a href="#about">About</a><!--NAV_ABOUT_END-->
       <!--NAV_TOKENOMICS_START--><a href="#tokenomics">Tokenomics</a><!--NAV_TOKENOMICS_END-->
+      <a href="#chart">Chart</a>
       <!--NAV_ROADMAP_START--><a href="#roadmap">Roadmap</a><!--NAV_ROADMAP_END-->
       <!--NAV_HOWTOBUY_START--><a href="#how-to-buy">Buy</a><!--NAV_HOWTOBUY_END-->
       <!--NAV_COMMUNITY_START--><a href="#community">Community</a><!--NAV_COMMUNITY_END-->
@@ -504,17 +521,19 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
       </h1>
       <p class="tagline">{{TAGLINE}}</p>
       <div class="cta-row">
-        <!--BUY_CTA_START--><a href="#how-to-buy" class="btn btn-primary">
+        <!--BUY_KNOWN_START--><a href="{{BUY_HREF}}" class="btn btn-primary" target="_blank" rel="noopener noreferrer">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
           Buy {{TICKER}}
-        </a><!--BUY_CTA_END-->
+        </a><!--BUY_KNOWN_END-->
+        <!--BUY_PENDING_START--><span class="btn btn-ghost btn-pending" aria-disabled="true">Coming soon</span><!--BUY_PENDING_END-->
         <a href="#about" class="btn btn-ghost">Learn More</a>
       </div>
-      <!--CONTRACT_BAR_START--><div class="contract" role="group" aria-label="Contract address">
+      <div class="contract" role="group" aria-label="Contract address">
         <span class="contract-label">CA</span>
-        <span class="contract-value" id="ca-value">{{CONTRACT}}</span>
-        <button class="copy-btn" id="copy-btn" type="button" aria-label="Copy contract address">Copy</button>
-      </div><!--CONTRACT_BAR_END-->
+        <!--CONTRACT_KNOWN_START--><span class="contract-value" id="ca-value">{{CONTRACT_ADDRESS}}</span>
+        <button class="copy-btn" id="copy-btn" type="button" aria-label="Copy contract address">Copy</button><!--CONTRACT_KNOWN_END-->
+        <!--CONTRACT_PENDING_START--><span class="contract-value contract-pending">Coming soon</span><!--CONTRACT_PENDING_END-->
+      </div>
     </div>
     <div class="hero-art">
       <img src="{{ARTWORK}}" alt="{{TOKEN_NAME}} artwork" loading="eager" />
@@ -595,6 +614,7 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
           <div class="stat"><div class="stat-k">Sell Tax</div><div class="stat-v">{{SELL_TAX}}</div></div>
           <div class="stat"><div class="stat-k">Mint Authority</div><div class="stat-v">{{MINT_AUTH}}</div></div>
           <div class="stat"><div class="stat-k">Ownership</div><div class="stat-v">{{OWNERSHIP}}</div></div>
+          <!--LP_LOCKED_START--><div class="stat"><div class="stat-k">LP Locked</div><div class="stat-v">{{LP_LOCKED_DATE}}</div></div><!--LP_LOCKED_END-->
         </div>
         <div class="prompt" style="margin-top:20px"><b>$</b> _<span class="cursor"></span></div>
       </div>
@@ -603,6 +623,28 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
 </section>
 <!--TOKENOMICS_FULL_END-->
 <!--TOKENOMICS_EMPTY_START--><section id="tokenomics" aria-hidden="true" style="display:none"></section><!--TOKENOMICS_EMPTY_END-->
+
+<!-- ============ CHART ============ -->
+<section id="chart" class="section">
+  <div class="container">
+    <div class="reveal">
+      <div class="eyebrow">// Live Market</div>
+      <h2 class="h2">Chart</h2>
+    </div>
+    <!--CHART_FOUND_START--><div class="chart-panel chart-panel-live reveal">
+      <div class="chart-status">
+        <span>Live pair</span>
+        <b>{{CHART_DEX_ID}} · {{CHART_LIQUIDITY}}</b>
+      </div>
+      <a class="btn btn-primary" href="{{CHART_URL}}" target="_blank" rel="noopener noreferrer">Open Chart ↗</a>
+    </div><!--CHART_FOUND_END-->
+    <!--CHART_UNKNOWN_START--><div class="chart-panel chart-panel-pending reveal">
+      <strong>Chart — coming soon</strong>
+      <p>Once liquidity creates a trading pair, the live chart link appears here automatically.</p>
+      <!--CHART_SEARCH_LINK_START--><a class="btn btn-ghost" href="{{CHART_SEARCH_URL}}" target="_blank" rel="noopener noreferrer">Check Dexscreener ↗</a><!--CHART_SEARCH_LINK_END-->
+    </div><!--CHART_UNKNOWN_END-->
+  </div>
+</section>
 
 <!-- ============ ROADMAP ============ -->
 <!--ROADMAP_FULL_START-->
@@ -718,7 +760,8 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
   <div class="container foot-grid">
     <div>
       <div class="wordmark" style="margin-bottom:8px">{{TOKEN_NAME}}</div>
-      <!--FOOTER_CONTRACT_START--><div class="foot-ca">CA: {{CONTRACT}}</div><!--FOOTER_CONTRACT_END-->
+      <!--FOOTER_CONTRACT_KNOWN_START--><div class="foot-ca">CA: {{CONTRACT_ADDRESS}}</div><!--FOOTER_CONTRACT_KNOWN_END-->
+      <!--FOOTER_CONTRACT_PENDING_START--><div class="foot-ca foot-ca-pending">CA: Coming soon</div><!--FOOTER_CONTRACT_PENDING_END-->
     </div>
     <div>
       <div class="eyebrow" style="margin-bottom:10px">Links</div>

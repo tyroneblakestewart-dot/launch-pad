@@ -102,7 +102,6 @@ const FACTS: FreeSiteFacts = {
   sellTax: "0%",
   mintAuthority: "None",
   ownership: "No owner",
-  contractAddress: "0x1111111111111111111111111111111111111111",
   xHandle: "hoodlumsdev",
   telegram: "hoodlumsdev",
 };
@@ -374,20 +373,29 @@ describe("renderFreeSiteTemplate", () => {
       expect(isCompleteGeneratedPageHtml(html)).toBe(true);
     });
 
-    it("omits the hero contract bar, footer contract line and Buy CTA when contractAddress is empty", () => {
-      const html = render(THEME, COPY, { ...FACTS, contractAddress: "" });
-      expect(html).not.toContain('aria-label="Contract address"');
-      expect(html).not.toContain("CA:");
-      expect(html).not.toContain(`Buy ${COPY.ticker}`);
-      expect(html).toContain("Learn More");
-      expect(html).toContain('href="#about"');
-    });
-
-    it("keeps the contract bar, footer contract line and Buy CTA when contractAddress is present", () => {
+    // Contract address, the Buy CTA link and the Dexscreener chart are
+    // platform facts that arrive automatically after generation, so
+    // renderFreeSiteTemplate no longer takes a contractAddress at all: it
+    // always writes both the "known" and "coming soon" markup plus
+    // unresolved platform placeholders, and lib/free-site-platform-facts.ts
+    // picks one side and fills them in at request time (issue #173).
+    it("always emits the contract bar, footer contract line, Buy CTA and chart with unresolved platform placeholders", () => {
       const html = render();
       expect(html).toContain('aria-label="Contract address"');
-      expect(html).toContain(`CA: ${FACTS.contractAddress}`);
+      expect(html).toContain("{{CONTRACT_ADDRESS}}");
+      expect(html).toContain("{{BUY_HREF}}");
       expect(html).toContain(`Buy ${COPY.ticker}`);
+      expect(html).toContain("Coming soon");
+      expect(html).toContain('id="chart"');
+      expect(html).toContain("{{CHART_URL}}");
+      expect(html).toContain("{{CHART_SEARCH_URL}}");
+      expect(html).toContain("{{LP_LOCKED_DATE}}");
+      expect(html).toContain('href="#chart"');
+    });
+
+    it("passes generated-page validation with the platform-fact markers left in place", () => {
+      const html = render();
+      expect(isCompleteGeneratedPageHtml(html)).toBe(true);
     });
   });
 
