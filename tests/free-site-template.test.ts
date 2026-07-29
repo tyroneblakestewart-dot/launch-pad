@@ -5,6 +5,7 @@ import {
   isCompleteGeneratedPageHtml,
 } from "@/lib/generated-site-page";
 import {
+  FREE_SITE_SECTION_DEFAULTS,
   renderFreeSiteTemplate,
   type FreeSiteAboutStyle,
   type FreeSiteBackgroundEffect,
@@ -13,9 +14,21 @@ import {
   type FreeSiteFontPairing,
   type FreeSiteHeroStyle,
   type FreeSiteRoadmapStyle,
+  type FreeSiteSections,
   type FreeSiteTheme,
   type FreeSiteTokenomicsStyle,
 } from "@/lib/free-site-template";
+
+// Every existing test in this file predates the optional-section toggles
+// and asserts against copy that fills every section, so it renders with
+// every optional section enabled unless a test overrides `sections`.
+const ALL_SECTIONS: FreeSiteSections = {
+  about: true,
+  tokenomics: true,
+  roadmap: true,
+  howToBuy: true,
+  faq: true,
+};
 
 const THEME: FreeSiteTheme = {
   palette: {
@@ -98,8 +111,9 @@ function render(
   theme: FreeSiteTheme = THEME,
   copy: FreeSiteCopy = COPY,
   facts: FreeSiteFacts = FACTS,
+  sections: FreeSiteSections = ALL_SECTIONS,
 ): string {
-  return renderFreeSiteTemplate({ theme, copy, facts });
+  return renderFreeSiteTemplate({ theme, copy, facts, sections });
 }
 
 function getBodyTag(html: string): string {
@@ -108,6 +122,24 @@ function getBodyTag(html: string): string {
   const match = html.slice(headEnd + "</head>".length).match(/<body\b[^>]*>/i);
   if (!match) throw new Error("Rendered page has no body tag.");
   return match[0];
+}
+
+// Scoped to the actual navigation, unlike a whole-page href search: the
+// hero's "Buy {{TICKER}}" CTA always links to #how-to-buy whenever a
+// contract address is supplied (see BUY_CTA/hasContract), independently of
+// whether the how-to-buy section itself is enabled — same as "Learn More"
+// always linking to #about. Only the header nav and footer links list are
+// expected to drop a link when its section is disabled.
+function getHeaderNavLinks(html: string): string {
+  const match = html.match(/<nav class="nav-links">([\s\S]*?)<\/nav>/);
+  if (!match) throw new Error("Rendered page has no header nav-links block.");
+  return match[1];
+}
+
+function getFooterLinks(html: string): string {
+  const match = html.match(/<div class="eyebrow" style="margin-bottom:10px">Links<\/div>([\s\S]*?)<\/div>\s*<div class="foot-socials">/);
+  if (!match) throw new Error("Rendered page has no footer links block.");
+  return match[1];
 }
 
 describe("renderFreeSiteTemplate", () => {
@@ -468,7 +500,139 @@ describe("renderFreeSiteTemplate", () => {
         theme: THEME,
         copy: COPY,
         facts: { ...FACTS, decimals: Number.NaN },
+        sections: ALL_SECTIONS,
       }),
     ).toThrow(/Invalid facts value for decimals/);
+  });
+
+  describe("optional sections", () => {
+    const ABOUT_ONLY: FreeSiteSections = {
+      about: true,
+      tokenomics: false,
+      roadmap: false,
+      howToBuy: false,
+      faq: false,
+    };
+
+    it("renders only hero and about when the rest are disabled, with hidden empty placeholders for the others", () => {
+      const html = render(THEME, COPY, FACTS, ABOUT_ONLY);
+
+      expect(html).toContain(COPY.aboutTitle);
+      expect(html).toContain(COPY.about1Body);
+
+      for (const [id, disabledCopy] of [
+        ["tokenomics", COPY.tokenomicsTitle],
+        ["roadmap", COPY.roadmapTitle],
+        ["how-to-buy", COPY.howToBuyTitle],
+        ["faq", COPY.faqTitle],
+      ] as const) {
+        expect(html).toContain(`<section id="${id}" aria-hidden="true" style="display:none"></section>`);
+        expect(html).not.toContain(disabledCopy as string);
+      }
+
+      // Every required id from lib/generated-site-page.ts stays present.
+      expect(isCompleteGeneratedPageHtml(html)).toBe(true);
+      for (const section of REQUIRED_PAGE_SECTIONS) {
+        expect(html).toContain(`id="${section}"`);
+      }
+    });
+
+    it("keeps only the enabled sections' links in the header nav and footer", () => {
+      const html = render(THEME, COPY, FACTS, ABOUT_ONLY);
+      const nav = getHeaderNavLinks(html);
+      const footer = getFooterLinks(html);
+
+      expect(nav).toContain('href="#about"');
+      expect(footer).toContain('href="#about"');
+      for (const id of ["tokenomics", "roadmap", "how-to-buy"]) {
+        expect(nav).not.toContain(`href="#${id}"`);
+      }
+      for (const id of ["tokenomics", "roadmap"]) {
+        expect(footer).not.toContain(`href="#${id}"`);
+      }
+    });
+
+    it("drops the facts-driven tokenomics stats along with the rest of the section when tokenomics is disabled", () => {
+      const html = render(THEME, COPY, FACTS, ABOUT_ONLY);
+      expect(html).not.toContain("Total Supply");
+      expect(html).not.toContain(FACTS.supply);
+    });
+
+    it("renders every section when all toggles are enabled, matching the pre-toggle behaviour", () => {
+      const html = render();
+      expect(html).toContain(COPY.roadmapTitle as string);
+      expect(html).toContain(COPY.howToBuyTitle as string);
+      expect(html).toContain(COPY.faqTitle as string);
+      const nav = getHeaderNavLinks(html);
+      for (const id of ["about", "tokenomics", "roadmap", "how-to-buy"]) {
+        expect(nav).toContain(`href="#${id}"`);
+      }
+    });
+
+    it("does not require copy for a disabled section", () => {
+      const sparseCopy: FreeSiteCopy = {
+        tokenName: COPY.tokenName,
+        ticker: COPY.ticker,
+        kicker: COPY.kicker,
+        tagline: COPY.tagline,
+        aboutTitle: COPY.aboutTitle,
+        about1Title: COPY.about1Title,
+        about1Body: COPY.about1Body,
+        about2Title: COPY.about2Title,
+        about2Body: COPY.about2Body,
+        about3Title: COPY.about3Title,
+        about3Body: COPY.about3Body,
+        communityTitle: COPY.communityTitle,
+      };
+      expect(() => render(THEME, sparseCopy, FACTS, ABOUT_ONLY)).not.toThrow();
+    });
+
+    it("throws when copy for an enabled section is missing", () => {
+      const withoutTokenomicsTitle = { ...COPY };
+      delete withoutTokenomicsTitle.tokenomicsTitle;
+      expect(() =>
+        render(THEME, withoutTokenomicsTitle, FACTS, ALL_SECTIONS),
+      ).toThrow(/Invalid copy value for tokenomicsTitle/);
+    });
+
+    it("throws when a sections value is not a boolean", () => {
+      expect(() =>
+        render(THEME, COPY, FACTS, { ...ALL_SECTIONS, roadmap: "yes" as unknown as boolean }),
+      ).toThrow(/Invalid sections value for roadmap/);
+    });
+
+    it("defaults to about and tokenomics on, the rest off (issue #171)", () => {
+      expect(FREE_SITE_SECTION_DEFAULTS).toEqual({
+        about: true,
+        tokenomics: true,
+        roadmap: false,
+        howToBuy: false,
+        faq: false,
+      });
+    });
+
+    it("hides every optional section and its nav links when all toggles are off", () => {
+      const allOff: FreeSiteSections = {
+        about: false,
+        tokenomics: false,
+        roadmap: false,
+        howToBuy: false,
+        faq: false,
+      };
+      const html = render(THEME, COPY, FACTS, allOff);
+
+      for (const id of ["about", "tokenomics", "roadmap", "how-to-buy", "faq"]) {
+        expect(html).toContain(`<section id="${id}" aria-hidden="true" style="display:none"></section>`);
+      }
+      const nav = getHeaderNavLinks(html);
+      const footer = getFooterLinks(html);
+      for (const id of ["about", "tokenomics", "roadmap", "how-to-buy"]) {
+        expect(nav).not.toContain(`href="#${id}"`);
+      }
+      for (const id of ["about", "tokenomics", "roadmap"]) {
+        expect(footer).not.toContain(`href="#${id}"`);
+      }
+      expect(isCompleteGeneratedPageHtml(html)).toBe(true);
+    });
   });
 });

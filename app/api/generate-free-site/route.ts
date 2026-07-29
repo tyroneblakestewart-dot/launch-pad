@@ -3,7 +3,13 @@ import {
   buildFreeSiteDesignRequestBody,
   parseFreeSiteDesignResponse,
 } from "@/lib/free-site-openai-pipeline";
-import { renderFreeSiteTemplate, type FreeSiteFacts } from "@/lib/free-site-template";
+import {
+  FREE_SITE_SECTION_DEFAULTS,
+  FREE_SITE_SECTION_KEYS,
+  renderFreeSiteTemplate,
+  type FreeSiteFacts,
+  type FreeSiteSections,
+} from "@/lib/free-site-template";
 import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
 import {
   getVercelOidcToken,
@@ -36,6 +42,7 @@ type GenerateFreeSiteRequest = GenerateSiteStyleRequest & {
   contractAddress?: unknown;
   xHandle?: unknown;
   telegram?: unknown;
+  sections?: unknown;
 };
 
 function stringFact(value: unknown): string {
@@ -59,6 +66,22 @@ function buildFreeSiteFacts(body: GenerateFreeSiteRequest): FreeSiteFacts {
     xHandle: stringFact(body.xHandle),
     telegram: stringFact(body.telegram),
   };
+}
+
+// The studio sends a toggle per optional section; hero is always on and is
+// never part of this set. Missing or malformed values fall back to the
+// studio's own default (about + tokenomics on, the rest off — issue #171)
+// so older clients that predate this field keep working unchanged.
+function buildFreeSiteSections(body: GenerateFreeSiteRequest): FreeSiteSections {
+  const raw =
+    body.sections && typeof body.sections === "object" && !Array.isArray(body.sections)
+      ? (body.sections as Record<string, unknown>)
+      : {};
+  const sections = {} as FreeSiteSections;
+  for (const key of FREE_SITE_SECTION_KEYS) {
+    sections[key] = typeof raw[key] === "boolean" ? (raw[key] as boolean) : FREE_SITE_SECTION_DEFAULTS[key];
+  }
+  return sections;
 }
 
 export const runtime = "nodejs";
@@ -222,10 +245,11 @@ export async function POST(request: Request) {
   }
 
   const artworkIdentity = artworkResult.identity;
+  const sections = buildFreeSiteSections(body);
 
   const designResult = await requestProvider(
     ai,
-    buildFreeSiteDesignRequestBody(input, ai.model, artworkIdentity),
+    buildFreeSiteDesignRequestBody(input, ai.model, artworkIdentity, sections),
     DESIGN_TIMEOUT_MS,
   );
   if (!designResult.ok) {
@@ -239,7 +263,7 @@ export async function POST(request: Request) {
 
   let design;
   try {
-    design = parseFreeSiteDesignResponse(designResult.payload);
+    design = parseFreeSiteDesignResponse(designResult.payload, sections);
   } catch (error) {
     return NextResponse.json(
       {

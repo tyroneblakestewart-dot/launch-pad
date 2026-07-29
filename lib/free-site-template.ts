@@ -1,6 +1,15 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ARTWORK_PLACEHOLDER } from "@/lib/generated-site-page";
+import {
+  FREE_SITE_SECTION_KEYS,
+  isFreeSiteCopyKeyRequired,
+  type FreeSiteCopy,
+  type FreeSiteSectionKey,
+  type FreeSiteSections,
+} from "@/lib/free-site-sections";
+
+export * from "@/lib/free-site-sections";
 
 export type FreeSitePalette = {
   background: string;
@@ -33,59 +42,6 @@ export type FreeSiteTheme = {
   aboutStyle: FreeSiteAboutStyle;
 };
 
-// Only copy the AI can safely invent: personality, narrative and voice.
-// Every provable fact (supply, taxes, mint/ownership status, contract
-// address, socials) is supplied separately as FreeSiteFacts and never
-// asked of the model. See FreeSiteFacts below.
-export type FreeSiteCopy = {
-  tokenName: string;
-  ticker: string;
-  kicker: string;
-  tagline: string;
-  aboutTitle: string;
-  about1Title: string;
-  about1Body: string;
-  about2Title: string;
-  about2Body: string;
-  about3Title: string;
-  about3Body: string;
-  tokenomicsTitle: string;
-  roadmapTitle: string;
-  roadmap1Phase: string;
-  roadmap1Title: string;
-  roadmap1Body: string;
-  roadmap2Phase: string;
-  roadmap2Title: string;
-  roadmap2Body: string;
-  roadmap3Phase: string;
-  roadmap3Title: string;
-  roadmap3Body: string;
-  roadmap4Phase: string;
-  roadmap4Title: string;
-  roadmap4Body: string;
-  howToBuyTitle: string;
-  howToBuy1Title: string;
-  howToBuy1Body: string;
-  howToBuy2Title: string;
-  howToBuy2Body: string;
-  howToBuy3Title: string;
-  howToBuy3Body: string;
-  howToBuy4Title: string;
-  howToBuy4Body: string;
-  communityTitle: string;
-  faqTitle: string;
-  faq1Q: string;
-  faq1A: string;
-  faq2Q: string;
-  faq2A: string;
-  faq3Q: string;
-  faq3A: string;
-  faq4Q: string;
-  faq4A: string;
-  faq5Q: string;
-  faq5A: string;
-};
-
 // Facts come from the studio form or from the fixed guarantees of
 // contracts/FixedSupplyMemeToken.sol. The model never sees or writes these;
 // the server builds them (see app/api/generate-free-site/route.ts).
@@ -104,6 +60,7 @@ export type FreeSiteFacts = {
 export type FreeSiteTemplateInput = {
   theme: FreeSiteTheme;
   copy: FreeSiteCopy;
+  sections: FreeSiteSections;
 };
 
 export type FreeSiteRenderInput = FreeSiteTemplateInput & {
@@ -329,6 +286,15 @@ function validateFacts(facts: FreeSiteFacts): FreeSiteFacts {
   return facts;
 }
 
+function validateSections(sections: FreeSiteSections): FreeSiteSections {
+  for (const key of FREE_SITE_SECTION_KEYS) {
+    if (typeof sections[key] !== "boolean") {
+      throw new Error(`Invalid sections value for ${key}.`);
+    }
+  }
+  return sections;
+}
+
 // Strips a leading "@" and, when present, a leading domain prefix such as
 // "x.com/" or "t.me/" (case-insensitively) so "@BLTKK", "BLTKK" and
 // "x.com/BLTKK" all normalise to the same bare handle "BLTKK".
@@ -345,7 +311,12 @@ function normaliseHandle(raw: string, domainPrefixes: readonly string[]): string
   return value.trim();
 }
 
-export function renderFreeSiteTemplate({ theme, copy, facts }: FreeSiteRenderInput): string {
+export function renderFreeSiteTemplate({
+  theme,
+  copy,
+  facts,
+  sections,
+}: FreeSiteRenderInput): string {
   const palette = validatePalette(theme.palette);
   validateStyle(theme.fontPairing, FONT_PAIRINGS, "fontPairing");
   validateStyle(theme.backgroundEffect, BACKGROUND_EFFECTS, "backgroundEffect");
@@ -354,6 +325,7 @@ export function renderFreeSiteTemplate({ theme, copy, facts }: FreeSiteRenderInp
   validateStyle(theme.roadmapStyle, ROADMAP_STYLES, "roadmapStyle");
   validateStyle(theme.aboutStyle, ABOUT_STYLES, "aboutStyle");
   const validatedFacts = validateFacts(facts);
+  const validatedSections = validateSections(sections);
 
   const xHandle = normaliseHandle(validatedFacts.xHandle, ["x.com/", "twitter.com/"]);
   const telegram = normaliseHandle(validatedFacts.telegram, ["t.me/"]);
@@ -380,8 +352,17 @@ export function renderFreeSiteTemplate({ theme, copy, facts }: FreeSiteRenderInp
     [string, keyof FreeSiteCopy]
   >) {
     const value = copy[copyKey];
-    if (typeof value !== "string") throw new Error(`Invalid copy value for ${copyKey}.`);
-    html = html.replaceAll(`{{${placeholder}}}`, escapeHtml(value));
+    if (typeof value === "string") {
+      html = html.replaceAll(`{{${placeholder}}}`, escapeHtml(value));
+      continue;
+    }
+    // A field belonging to a disabled section is allowed to be absent: its
+    // placeholder is never substituted, but the whole block it lives in is
+    // stripped below by applyBlock, so no unmatched placeholder can leak
+    // into the rendered document.
+    if (isFreeSiteCopyKeyRequired(copyKey, validatedSections)) {
+      throw new Error(`Invalid copy value for ${copyKey}.`);
+    }
   }
 
   for (const [placeholder, factsKey] of Object.entries(FACTS_PLACEHOLDERS) as Array<
@@ -410,6 +391,31 @@ export function renderFreeSiteTemplate({ theme, copy, facts }: FreeSiteRenderInp
   html = applyBlock(html, "CONTRACT_BAR", hasContract);
   html = applyBlock(html, "FOOTER_CONTRACT", hasContract);
   html = applyBlock(html, "BUY_CTA", hasContract);
+
+  // Every other optional section follows the same full/empty pattern as
+  // community above: the required `id="..."` stays present either way (see
+  // REQUIRED_PAGE_SECTIONS in lib/generated-site-page.ts), but a disabled
+  // section renders as an empty, hidden, zero-height placeholder and drops
+  // its nav/footer link instead of padding the page with invented copy.
+  const TOGGLE_BLOCKS: ReadonlyArray<[string, FreeSiteSectionKey]> = [
+    ["ABOUT", "about"],
+    ["TOKENOMICS", "tokenomics"],
+    ["ROADMAP", "roadmap"],
+    ["HOWTOBUY", "howToBuy"],
+    ["FAQ", "faq"],
+  ];
+  for (const [blockName, sectionKey] of TOGGLE_BLOCKS) {
+    const enabled = validatedSections[sectionKey];
+    html = applyBlock(html, `${blockName}_FULL`, enabled);
+    html = applyBlock(html, `${blockName}_EMPTY`, !enabled);
+  }
+  html = applyBlock(html, "NAV_ABOUT", validatedSections.about);
+  html = applyBlock(html, "NAV_TOKENOMICS", validatedSections.tokenomics);
+  html = applyBlock(html, "NAV_ROADMAP", validatedSections.roadmap);
+  html = applyBlock(html, "NAV_HOWTOBUY", validatedSections.howToBuy);
+  html = applyBlock(html, "FOOTER_NAV_ABOUT", validatedSections.about);
+  html = applyBlock(html, "FOOTER_NAV_TOKENOMICS", validatedSections.tokenomics);
+  html = applyBlock(html, "FOOTER_NAV_ROADMAP", validatedSections.roadmap);
 
   return html;
 }

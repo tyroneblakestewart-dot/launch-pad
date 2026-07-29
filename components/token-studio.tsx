@@ -2,10 +2,19 @@
 
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { CHAIN_CONFIG, ROBINHOOD_MAINNET } from "@/lib/chains";
+import { FREE_SITE_SECTION_DEFAULTS, type FreeSiteSectionKey } from "@/lib/free-site-sections";
 import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
 import { PROJECT_SAVE_RESULT_EVENT } from "@/lib/project-save-result";
 import { findSlugCollision, slugify, validateSlug } from "@/lib/slug";
 import type { SupportedChain, TokenProject, WalletState } from "@/lib/types";
+
+const SECTION_TOGGLE_FIELDS: ReadonlyArray<{ key: FreeSiteSectionKey; label: string }> = [
+  { key: "about", label: "About" },
+  { key: "tokenomics", label: "Tokenomics" },
+  { key: "roadmap", label: "Roadmap" },
+  { key: "howToBuy", label: "How to buy" },
+  { key: "faq", label: "FAQ" },
+];
 
 type EthereumProvider = {
   request: (args: {
@@ -47,6 +56,7 @@ const DEFAULT_PROJECT: TokenProject = {
   telegram: "",
   heroImage: "",
   theme: "hoodlums",
+  siteSections: FREE_SITE_SECTION_DEFAULTS,
 };
 
 function getErrorMessage(error: unknown): string {
@@ -126,6 +136,9 @@ export function TokenStudio() {
   }, []);
 
   const chain = CHAIN_CONFIG[project.chain];
+  // Projects saved before this field existed have none; fall back to the
+  // studio default (about + tokenomics on, the rest off — issue #171).
+  const siteSections = project.siteSections ?? FREE_SITE_SECTION_DEFAULTS;
   const displayTicker = project.ticker.trim().toUpperCase() || "TOKEN";
   const displayName = project.name.trim() || "Untitled Meme";
   const displaySlug = project.websiteSlug || slugify(project.name) || "new-token";
@@ -514,6 +527,28 @@ export function TokenStudio() {
               placeholder="Filled automatically after launch"
             />
           </label>
+
+          <div className="field-group">
+            <span className="field-label">Free site sections</span>
+            <div className="section-toggle-grid">
+              {SECTION_TOGGLE_FIELDS.map(({ key, label }) => (
+                <label key={key} className="section-toggle">
+                  <input
+                    type="checkbox"
+                    checked={siteSections[key]}
+                    onChange={(event) =>
+                      updateProject("siteSections", { ...siteSections, [key]: event.target.checked })
+                    }
+                  />
+                  <span className="field-label">{label}</span>
+                </label>
+              ))}
+            </div>
+            <small>
+              Hero always shows. Pick which other sections the free site generator writes — the
+              rest are skipped instead of filled with invented copy.
+            </small>
+          </div>
 
           <div className="readiness-card">
             <div className="readiness-title">
