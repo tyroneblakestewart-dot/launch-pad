@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import PublicGeneratedSitePage, { generateMetadata } from "@/app/[slug]/page";
 import { notFound } from "next/navigation";
 import { FREE_SITE_TEMPLATE_MARKER } from "@/lib/free-site-platform-facts";
-import { ARTWORK_PLACEHOLDER } from "@/lib/generated-site-page";
+import { ARTWORK_PLACEHOLDER, CHART_EMBED_PLACEHOLDER } from "@/lib/generated-site-page";
 import {
   resetPublicGeneratedSiteAdapterForTests,
   setPublicGeneratedSiteAdapter,
@@ -67,7 +67,7 @@ ${FREE_SITE_TEMPLATE_MARKER}
   <!--LP_LOCKED_START--><div class="stat">LP Locked {{LP_LOCKED_DATE}}</div><!--LP_LOCKED_END-->
 </section>
 <section id="chart">
-  <!--CHART_FOUND_START--><div>{{CHART_DEX_ID}} · {{CHART_LIQUIDITY}} <a href="{{CHART_URL}}">Open</a></div><!--CHART_FOUND_END-->
+  <!--CHART_FOUND_START--><div>{{CHART_DEX_ID}} · {{CHART_LIQUIDITY}} <iframe src="${CHART_EMBED_PLACEHOLDER}"></iframe> <a href="{{CHART_URL}}">Open</a></div><!--CHART_FOUND_END-->
   <!--CHART_UNKNOWN_START--><div>Chart coming soon<!--CHART_SEARCH_LINK_START--><a href="{{CHART_SEARCH_URL}}">Search</a><!--CHART_SEARCH_LINK_END--></div><!--CHART_UNKNOWN_END-->
 </section>
 <section id="roadmap"><h2>Roadmap</h2></section>
@@ -214,6 +214,7 @@ describe("PublicGeneratedSitePage free-site platform-fact substitution", () => {
     expect(FREE_SITE_FIXTURE.generatedSiteHtml).toContain("{{CONTRACT_ADDRESS}}");
     expect(FREE_SITE_FIXTURE.generatedSiteHtml).toContain("{{BUY_HREF}}");
     expect(FREE_SITE_FIXTURE.generatedSiteHtml).toContain("{{CHART_URL}}");
+    expect(FREE_SITE_FIXTURE.generatedSiteHtml).toContain(CHART_EMBED_PLACEHOLDER);
     expect(FREE_SITE_FIXTURE.generatedSiteHtml).toContain("{{LP_LOCKED_DATE}}");
   });
 
@@ -271,6 +272,24 @@ describe("PublicGeneratedSitePage free-site platform-fact substitution", () => {
 
     expect(frame.props.html).toContain("uniswap");
     expect(frame.props.html).toContain('href="https://dexscreener.com/robinhood/pair-1"');
+    expect(frame.props.html).toContain(
+      '<iframe src="https://dexscreener.com/robinhood/pair-1?embed=1&amp;theme=dark&amp;trades=0&amp;info=0"></iframe>',
+    );
+    expect(frame.props.html).not.toContain(CHART_EMBED_PLACEHOLDER);
+  });
+
+  it("keeps the coming-soon chart panel (no iframe) when no pair is found", async () => {
+    stubDexscreenerFetch([]);
+    const address = "0x3bf7447cd055f1475a8b09090c7b062abc9d3798";
+    setPublicGeneratedSiteAdapter(async () => ({ ...FREE_SITE_FIXTURE, contractAddress: address }));
+
+    const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
+    const children = element.props.children as unknown[];
+    const frame = children[0] as { type: unknown; props: { html: string } };
+
+    expect(frame.props.html).toContain("Chart coming soon");
+    expect(frame.props.html).not.toContain("<iframe");
+    expect(frame.props.html).not.toContain(CHART_EMBED_PLACEHOLDER);
   });
 
   it("changes what /[slug] serves when contractAddress differs between requests, with the exact same stored HTML", async () => {

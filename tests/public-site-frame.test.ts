@@ -28,11 +28,19 @@ describe("PublicSiteFrame render", () => {
     const element = PublicSiteFrame({ html });
 
     expect(element.type).toBe("iframe");
-    expect(element.props.sandbox).toBe("allow-scripts");
+    expect(element.props.sandbox).toBe("allow-scripts allow-popups");
     expect(element.props.referrerPolicy).toBe("no-referrer");
     expect(element.props.loading).toBe("eager");
     expect(element.props.srcDoc).toBe(html);
     expect(element.props.style).toMatchObject({ width: "100%", height: "100svh" });
+  });
+
+  it("grants allow-popups (so link-outs work) but never allow-same-origin (the generated page stays opaque-origin)", () => {
+    const element = PublicSiteFrame({ html: "<!doctype html><html><body>hi</body></html>" });
+    const tokens = (element.props.sandbox as string).split(/\s+/);
+
+    expect(tokens).toContain("allow-popups");
+    expect(tokens).not.toContain("allow-same-origin");
   });
 });
 

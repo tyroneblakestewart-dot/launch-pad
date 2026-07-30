@@ -9,8 +9,10 @@
 // it is resolved once at generation time by lib/free-site-template.ts and
 // omitted entirely when blank, never shown as "coming soon".
 
+import { CHART_EMBED_PLACEHOLDER } from "@/lib/generated-site-page";
+
 export type FreeSiteChartFact =
-  | { found: true; url: string; dexId: string; liquidityLabel: string }
+  | { found: true; url: string; embedUrl: string; dexId: string; liquidityLabel: string }
   | { found: false };
 
 export type FreeSitePlatformFacts = {
@@ -107,6 +109,10 @@ export function substituteFreeSitePlatformFacts(html: string, facts: FreeSitePla
   output = selectBlock(output, "CHART_UNKNOWN", !facts.chart.found);
   output = selectBlock(output, "CHART_SEARCH_LINK", hasContract);
   output = output.replaceAll("{{CHART_URL}}", escapeHtml(facts.chart.found ? facts.chart.url : ""));
+  output = output.replaceAll(
+    CHART_EMBED_PLACEHOLDER,
+    escapeHtml(facts.chart.found ? facts.chart.embedUrl : ""),
+  );
   output = output.replaceAll("{{CHART_DEX_ID}}", escapeHtml(facts.chart.found ? facts.chart.dexId : ""));
   output = output.replaceAll(
     "{{CHART_LIQUIDITY}}",

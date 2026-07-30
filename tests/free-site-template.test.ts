@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ARTWORK_PLACEHOLDER,
+  CHART_EMBED_PLACEHOLDER,
   REQUIRED_PAGE_SECTIONS,
   isCompleteGeneratedPageHtml,
 } from "@/lib/generated-site-page";
@@ -280,8 +281,15 @@ describe("renderFreeSiteTemplate", () => {
     expect(html).not.toMatch(/demo-(?:panel|toggle|close)/i);
     expect(html).not.toMatch(/demo control panel|design controls/i);
     expect(html).not.toMatch(/<script\b[^>]*\bsrc\s*=/i);
-    expect(html).not.toMatch(/<iframe\b/i);
+    expect(html).not.toMatch(/<(?:object|embed)\b/i);
     expect(html).not.toMatch(/javascript\s*:/i);
+  });
+
+  it("emits exactly one iframe: the unresolved Dexscreener chart embed placeholder", () => {
+    const html = render();
+    const iframeTags = html.match(/<iframe\b[^>]*>/gi) || [];
+    expect(iframeTags).toHaveLength(1);
+    expect(iframeTags[0]).toContain(`src="${CHART_EMBED_PLACEHOLDER}"`);
   });
 
   it("never hides .reveal content outside a .js scope", () => {
@@ -388,6 +396,7 @@ describe("renderFreeSiteTemplate", () => {
       expect(html).toContain("Coming soon");
       expect(html).toContain('id="chart"');
       expect(html).toContain("{{CHART_URL}}");
+      expect(html).toContain(CHART_EMBED_PLACEHOLDER);
       expect(html).toContain("{{CHART_SEARCH_URL}}");
       expect(html).toContain("{{LP_LOCKED_DATE}}");
       expect(html).toContain('href="#chart"');
