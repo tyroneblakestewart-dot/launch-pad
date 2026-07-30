@@ -1,0 +1,224 @@
+.marketPanel {
+  width: min(1160px, calc(100% - 36px));
+  margin: 18px auto 0;
+  padding: 28px;
+  border: 1px solid rgba(131, 183, 139, .22);
+  border-radius: 17px;
+  background: rgba(10, 15, 11, .94);
+  color: #f5f7f2;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .24);
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+
+.header p {
+  margin: 0;
+  color: #bce759;
+  font: 800 10px "IBM Plex Mono", monospace;
+  letter-spacing: .14em;
+}
+
+.header h2 {
+  margin: 8px 0 7px;
+  font-size: clamp(28px, 4vw, 40px);
+  letter-spacing: -.04em;
+}
+
+.header span {
+  display: block;
+  max-width: 680px;
+  color: #95a098;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.tabs {
+  display: flex;
+  padding: 3px;
+  border: 1px solid rgba(131, 183, 139, .2);
+  border-radius: 10px;
+  background: #070b08;
+}
+
+.tabs button,
+.refresh {
+  min-height: 38px;
+  border: 0;
+  border-radius: 7px;
+  font: 800 11px "IBM Plex Mono", monospace;
+  cursor: pointer;
+}
+
+.tabs button {
+  min-width: 48px;
+  padding: 0 12px;
+  background: transparent;
+  color: #89968c;
+}
+
+.tabs button.active {
+  background: #bce759;
+  color: #071006;
+}
+
+.refresh {
+  padding: 0 14px;
+  border: 1px solid rgba(185, 239, 77, .5);
+  background: transparent;
+  color: #bce759;
+}
+
+.refresh:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+.tokenGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tokenCard {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(131, 183, 139, .17);
+  border-radius: 12px;
+  background: #070b08;
+}
+
+.tokenHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid rgba(131, 183, 139, .12);
+}
+
+.tokenHeading > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tokenHeading strong {
+  color: #f1f5f1;
+  font-size: 17px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tokenHeading span {
+  color: #78857a;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tokenHeading b {
+  flex: 0 0 auto;
+  color: #9aa59d;
+  font: 800 11px "IBM Plex Mono", monospace;
+}
+
+.tokenHeading b.positive { color: #bce759; }
+.tokenHeading b.negative { color: #ff8f8f; }
+
+.tokenCard dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin: 14px 0;
+}
+
+.tokenCard dl div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tokenCard dt {
+  color: #6f7b71;
+  font: 700 9px "IBM Plex Mono", monospace;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.tokenCard dd {
+  margin: 0;
+  color: #dce3dd;
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tokenFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(131, 183, 139, .12);
+}
+
+.tokenFooter code {
+  color: #738078;
+  font-size: 10px;
+}
+
+.tokenFooter a {
+  color: #bce759;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.message {
+  display: grid;
+  place-items: center;
+  min-height: 150px;
+  padding: 24px;
+  border: 1px dashed rgba(131, 183, 139, .24);
+  border-radius: 12px;
+  color: #95a098;
+  text-align: center;
+}
+
+.disclaimer {
+  margin-top: 18px;
+  color: #68746b;
+  font: 500 10px/1.55 "IBM Plex Mono", monospace;
+}
+
+@media (max-width: 1040px) {
+  .tokenGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 700px) {
+  .marketPanel {
+    width: calc(100% - 36px);
+    padding: 20px;
+  }
+  .header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .controls { justify-content: space-between; }
+  .tokenGrid { grid-template-columns: 1fr; }
+}
