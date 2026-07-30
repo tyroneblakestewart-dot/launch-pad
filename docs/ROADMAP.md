@@ -34,20 +34,36 @@ Legend: 🟢 Shipped · 🟡 Specced, ready to build · ⚪ Idea / future
   merged PR #149).
 - Isolated preview iframe with automatic Dexscreener chart detection for a
   saved contract address.
+- **Dexscreener chart embedded in the page** instead of a link-out card
+  (issue #179 → merged PR #180): `frame-src` scoped to exactly
+  `https://dexscreener.com`, the page-sanitiser allows only an iframe
+  pointing at that one origin, the outer sandbox gained `allow-popups`
+  (not `allow-same-origin`) so the fallback "Open Chart ↗" link works, and
+  the embed URL is a new platform-facts placeholder. The bespoke pipeline
+  gained nothing from this change.
 
 🟡 **Specced, ready to build**
-- **#179 / #178 — Embed the Dexscreener chart instead of link-out** (two
-  duplicate issues, same detailed spec): swap the "Open Chart ↗" link-out
-  card for a real embedded iframe scoped to exactly `https://dexscreener.com`
-  in CSP `frame-src`, allow only that one iframe origin through the existing
-  page-sanitiser, add `allow-popups` (not `allow-same-origin`) to the outer
-  sandbox so the fallback link works, and add the embed URL as a new
-  platform-facts placeholder. Fully specced with exact file/line targets and
-  a test list — just needs one of the two duplicate issues implemented and
-  the other closed.
+- Nothing currently open in this sub-theme (chart embed above is done).
+
+### AI generation quality
+
+🟡 **Specced, ready to build**
+- **Generated copy reads generic and clichéd** (e.g. "neon-hearted mischief
+  in the metaverse"). A prompt-only fix has been proposed but not yet
+  confirmed/tested. Two further levers are identified but untried:
+  - Raise the free-site copy call's `reasoning.effort` from `"minimal"` to
+    `"medium"` (`lib/free-site-openai-pipeline.ts:202`) — it was dropped to
+    minimal for latency (#152); that may be trading away copy quality.
+  - Fix `lib/site-page-openai-pipeline.ts:224`, where the bespoke page's
+    artwork call passes `detail: "low"` while every other artwork call in
+    the codebase uses `detail: "high"` — an inconsistency, not a deliberate
+    choice, and a plausible contributor to generic output.
+  None of the three (prompt fix, reasoning effort, image detail) has been
+  tested in isolation yet, so it's not yet known which lever(s) actually
+  move the clichéd-copy problem.
 
 ⚪ **Idea / future**
-- Nothing further queued here beyond the chart-embed spec above.
+- Nothing further queued here beyond the quality levers above.
 
 ---
 
@@ -276,8 +292,8 @@ issue tracker matching reality:
   produced `003_lp_locked_at.sql`.
 - **#93** (update README) — README already looks current; worth a quick
   read-through to confirm, then close.
-- **#178 vs #179** — identical duplicate issues for the Dexscreener embed;
-  only one should stay open once picked up.
+- **#178** — duplicate of #179; #179 was closed out by merged PR #180, but
+  #178 is still open and should be closed as a duplicate.
 
 ---
 
