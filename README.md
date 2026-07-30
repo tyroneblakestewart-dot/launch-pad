@@ -143,10 +143,11 @@ Published generated sites are stored in Postgres through the server-only `DATABA
 - **Wallet proof:** `POST /api/publish/challenge` creates a cryptographically random nonce, stores only its SHA-256 hash, and returns a five-minute message challenge bound to the exact wallet, slug, wallet chain ID, domain, URI, request ID, expiry, and `publish_generated_site` purpose. The signature is a message signature only—no transaction and no gas.
 - **Publish write:** `POST /api/publish` accepts the challenge ID, raw nonce, signature, and site payload. The server locks the nonce row, verifies the EVM signature, rejects expired or replayed challenges, consumes a valid nonce once, sanitises and validates the generated page/artwork, then inserts the site. The owner wallet address comes only from the verified challenge; a client-supplied owner address is rejected.
 - **Public read:** `app/[slug]/page.tsx` reads the durable record on every request. Known slugs render in the existing sandboxed iframe with strict CSP and a second sanitisation pass; unknown or invalid slugs keep returning a proper 404. `app/[slug]/artwork/route.ts` serves the validated artwork for Open Graph/Twitter metadata.
+- **Draft-first publishing and owner go-live control:** the generated-site preview has a "Publish draft" button that requests a wallet-signed challenge and submits it to `/api/publish`, landing the site as a private draft reachable only with its `draft_token`. A second, separately signed "Go live" action calls `POST /api/publish/visibility` to flip the same slug to public. Draft artwork is served with the same auth as the draft page itself. Nothing is published or made public without the owner's wallet signing that specific step.
 - **Platform facts filled at request time:** for free-site pages, the contract address, Dexscreener chart and LP-locked status are never baked into `generated_html`. The free-site template (`docs/free-site-template-source.html`) stores both a themed coming-soon state and a placeholder for each; `lib/free-site-platform-facts.ts` substitutes the current value from the database row (and a live Dexscreener lookup) on every request, so a stored page reflects launch/trading/graduation automatically, with no regeneration and no republish. `db/migrations/003_lp_locked_at.sql` adds the nullable `lp_locked_at` column this reads from; nothing writes to it yet. User-supplied facts (X, Telegram, website) are unaffected: they are resolved once at generation time and omitted entirely when blank.
 - **Rate limiting:** challenge creation and publishing have separate per-IP fixed-window limits in addition to signature verification. These are friction controls, not proof that one wallet or IP equals one person.
 
-Publishing is currently an API workflow; no new publish button or account screen is added by this backend milestone. A client should request a challenge, ask the selected wallet to sign the returned exact `message`, then submit the resulting signature and site payload to `/api/publish`.
+Publishing itself is a wallet-signed API workflow, exposed today through the "Publish draft" / "Go live" buttons in the generated-site preview rather than a dedicated account screen. A client requests a challenge, asks the selected wallet to sign the returned exact `message`, then submits the resulting signature and site payload to `/api/publish` (or `/api/publish/visibility` for the go-live step).
 
 #### Database setup
 
@@ -189,7 +190,8 @@ The browser-local collision check remains a convenience, while the authoritative
 | `/social` | X handoff and Telegram publishing workspace | Available |
 | `/account` | Account-provider interface preview | Coming later |
 | `/api/publish/challenge` | Create a short-lived single-use wallet message challenge | Available after `DATABASE_URL` and migration setup |
-| `/api/publish` | Verify the signature and atomically publish a generated site | Available after `DATABASE_URL` and migration setup |
+| `/api/publish` | Verify the signature and atomically publish a generated site as a private draft | Available after `DATABASE_URL` and migration setup |
+| `/api/publish/visibility` | Verify a separate owner signature and flip a draft to live | Available after `DATABASE_URL` and migration setup |
 | `/[slug]` | Public generated token site, metadata, artwork and Dexscreener section | Reads durable published records; unknown slugs 404 |
 
 ## Safety model and limitations
