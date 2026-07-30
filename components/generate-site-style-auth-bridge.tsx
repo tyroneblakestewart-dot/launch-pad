@@ -7,6 +7,7 @@ const PROTECTED_GENERATION_ROUTES = [
   "/api/generate-site-style",
   "/api/generate-site-page",
   "/api/generate-free-site",
+  "/api/market/robinhood-trending",
 ] as const;
 
 export function GenerateSiteStyleAuthBridge() {

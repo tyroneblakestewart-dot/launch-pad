@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { RobinhoodTrendingFeed } from "@/components/robinhood-trending-feed";
 import styles from "./bonding-curve.module.css";
 
 export const metadata: Metadata = {
   title: "Bonding Curve | HOODLUMS",
   description:
-    "Review the HOODLUMS testnet bonding-curve launch model and automatic liquidity-pool graduation flow.",
+    "Review the HOODLUMS testnet bonding-curve launch model, automatic liquidity-pool graduation flow and live Robinhood Chain activity.",
 };
 
 const FLOW_STEPS = [
@@ -39,6 +40,8 @@ const FLOW_STEPS = [
 export default function BondingCurvePage() {
   return (
     <main className={styles.page}>
+      <RobinhoodTrendingFeed />
+
       <section className={styles.desktopWorkspace} aria-labelledby="desktop-bonding-title">
         <div className={styles.desktopFormPanel}>
           <div className={styles.desktopHeading}>

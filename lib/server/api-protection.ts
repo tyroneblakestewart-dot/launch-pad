@@ -3,6 +3,8 @@ import { timingSafeEqual } from "node:crypto";
 export const GENERATE_SITE_STYLE_HEADER = "x-hoodlums-api-key";
 export const GENERATE_SITE_STYLE_LIMIT = 10;
 export const GENERATE_SITE_STYLE_WINDOW_MS = 60 * 60 * 1000;
+export const ROBINHOOD_TRENDING_LIMIT = 120;
+export const ROBINHOOD_TRENDING_WINDOW_MS = 60 * 60 * 1000;
 export const PUBLISH_CHALLENGE_LIMIT = 20;
 export const PUBLISH_SITE_LIMIT = 10;
 export const PUBLISH_WINDOW_MS = 60 * 60 * 1000;
@@ -19,6 +21,7 @@ type GenerateSiteProtectionEnvironment = {
 
 type GlobalWithRateStore = typeof globalThis & {
   __hoodlumsGenerateSiteStyleRateStore?: RateStore;
+  __hoodlumsRobinhoodTrendingRateStore?: RateStore;
   __hoodlumsPublishChallengeRateStore?: RateStore;
   __hoodlumsPublishSiteRateStore?: RateStore;
 };
@@ -29,6 +32,14 @@ function generateRateStore(): RateStore {
     globalScope.__hoodlumsGenerateSiteStyleRateStore = new Map();
   }
   return globalScope.__hoodlumsGenerateSiteStyleRateStore;
+}
+
+function robinhoodTrendingRateStore(): RateStore {
+  const globalScope = globalThis as GlobalWithRateStore;
+  if (!globalScope.__hoodlumsRobinhoodTrendingRateStore) {
+    globalScope.__hoodlumsRobinhoodTrendingRateStore = new Map();
+  }
+  return globalScope.__hoodlumsRobinhoodTrendingRateStore;
 }
 
 function publishChallengeRateStore(): RateStore {
@@ -150,6 +161,16 @@ export function consumeGenerateSiteStyleRateLimit(ip: string, now = Date.now()) 
   );
 }
 
+export function consumeRobinhoodTrendingRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(
+    robinhoodTrendingRateStore(),
+    ip,
+    ROBINHOOD_TRENDING_LIMIT,
+    ROBINHOOD_TRENDING_WINDOW_MS,
+    now,
+  );
+}
+
 export function consumePublishChallengeRateLimit(ip: string, now = Date.now()) {
   return consumeRateLimit(
     publishChallengeRateStore(),
@@ -172,6 +193,10 @@ export function consumePublishSiteRateLimit(ip: string, now = Date.now()) {
 
 export function resetGenerateSiteStyleRateLimitForTests() {
   generateRateStore().clear();
+}
+
+export function resetRobinhoodTrendingRateLimitForTests() {
+  robinhoodTrendingRateStore().clear();
 }
 
 export function resetPublishRateLimitsForTests() {
