@@ -41,9 +41,8 @@ export function AppNavigation() {
   return (
     <>
       <aside className={styles.sidebar} aria-label="Launch workflow navigation">
-        <Link href="/" className={styles.brand}>
-          <span>H</span>
-          <div><b>HOODLUMS</b><small>Launch workspace</small></div>
+        <Link href="/" className={styles.brand} aria-label="HOODLUMS home">
+          <img src={HOODLUMS_WORDMARK_IMAGE} alt="HOODLUMS" width={1200} height={438} />
         </Link>
         <p className={styles.eyebrow}>LAUNCH FLOW</p>
         <nav className={styles.sideNav}>
