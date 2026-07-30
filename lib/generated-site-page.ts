@@ -1,4 +1,12 @@
 export const ARTWORK_PLACEHOLDER = "{{ARTWORK_DATA_URL}}";
+// The only iframe a generated page may ever contain: the free-site
+// template's own Dexscreener chart embed. `lib/free-site-platform-facts.ts`
+// substitutes this token with a `https://dexscreener.com/` URL at request
+// time; until then, the stored template still carries this literal
+// placeholder and must keep validating. The bespoke (AI) pipeline is never
+// told about this token, so it has no way to produce it deliberately.
+export const CHART_EMBED_PLACEHOLDER = "{{CHART_EMBED_URL}}";
+const DEXSCREENER_EMBED_ORIGIN = "https://dexscreener.com/";
 export const REQUIRED_PAGE_SECTIONS = [
   "hero",
   "about",
@@ -89,7 +97,15 @@ export function isCompleteGeneratedPageHtml(
   }
 
   if (/<script\b[^>]*\bsrc\s*=/i.test(html)) return false;
-  if (/<(?:iframe|object|embed)\b/i.test(html)) return false;
+  if (/<(?:object|embed)\b/i.test(html)) return false;
+  const iframeTags = html.match(/<iframe\b[^>]*>/gi) || [];
+  for (const tag of iframeTags) {
+    const srcMatch = tag.match(/\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    const src = srcMatch ? srcMatch[1] ?? srcMatch[2] ?? "" : "";
+    const isAllowedDexscreenerEmbed =
+      src === CHART_EMBED_PLACEHOLDER || src.startsWith(DEXSCREENER_EMBED_ORIGIN);
+    if (!isAllowedDexscreenerEmbed) return false;
+  }
   if (/javascript\s*:/i.test(html)) return false;
   if (FORBIDDEN_TEMPLATE_MARKERS.some((marker) => lower.includes(marker))) return false;
   if (
@@ -148,7 +164,7 @@ export function prepareGeneratedPageForPreview(html: string, artworkDataUrl: str
     "media-src data:",
     "form-action 'none'",
     "base-uri 'none'",
-    "frame-src 'none'",
+    "frame-src https://dexscreener.com",
   ].join("; ");
   const bridge = `<script>(function(){var send=function(){var h=Math.max(document.body?document.body.scrollHeight:0,document.documentElement?document.documentElement.scrollHeight:0);parent.postMessage({type:'hoodlums-generated-page-height',height:h},'*')};addEventListener('load',send);addEventListener('resize',send);new MutationObserver(send).observe(document.documentElement,{subtree:true,childList:true,attributes:true});setTimeout(send,60);setTimeout(send,500);setTimeout(send,1500)})();<\/script>`;
 

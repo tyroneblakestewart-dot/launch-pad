@@ -45,6 +45,7 @@ async function resolveChartFact(contractAddress: string): Promise<FreeSiteChartF
   return {
     found: true,
     url: result.pairUrl,
+    embedUrl: result.embedUrl,
     dexId: result.dexId,
     liquidityLabel: formatLiquidityLabel(result.liquidityUsd),
   };

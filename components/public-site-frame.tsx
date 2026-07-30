@@ -9,7 +9,7 @@ export function PublicSiteFrame({ html }: { html: string }) {
   return (
     <iframe
       title="Generated token landing page"
-      sandbox="allow-scripts"
+      sandbox="allow-scripts allow-popups"
       referrerPolicy="no-referrer"
       loading="eager"
       srcDoc={html}

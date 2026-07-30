@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ARTWORK_PLACEHOLDER,
+  CHART_EMBED_PLACEHOLDER,
   isCompleteGeneratedPageHtml,
   parseGeneratedPagePayload,
   prepareGeneratedPageForPreview,
@@ -60,6 +61,42 @@ describe("generated full website document", () => {
     expect(isCompleteGeneratedPageHtml(validHtml().replace(ARTWORK_PLACEHOLDER, "image.png"))).toBe(false);
   });
 
+  it("rejects <object> and <embed> even when a valid Dexscreener iframe is also present", () => {
+    expect(
+      isCompleteGeneratedPageHtml(validHtml('<object data="https://example.com"></object>')),
+    ).toBe(false);
+    expect(
+      isCompleteGeneratedPageHtml(validHtml('<embed src="https://example.com">')),
+    ).toBe(false);
+    expect(
+      isCompleteGeneratedPageHtml(
+        validHtml(`<iframe src="https://dexscreener.com/robinhood/pair-1?embed=1"></iframe><object data="https://example.com"></object>`),
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts an iframe whose src is the https://dexscreener.com/ origin", () => {
+    expect(
+      isCompleteGeneratedPageHtml(
+        validHtml(`<iframe src="https://dexscreener.com/robinhood/pair-1?embed=1&theme=dark"></iframe>`),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects an iframe pointing anywhere other than https://dexscreener.com/", () => {
+    expect(
+      isCompleteGeneratedPageHtml(validHtml('<iframe src="https://dexscreener.com.evil.example/x"></iframe>')),
+    ).toBe(false);
+    expect(isCompleteGeneratedPageHtml(validHtml("<iframe></iframe>"))).toBe(false);
+    expect(isCompleteGeneratedPageHtml(validHtml('<iframe src=""></iframe>'))).toBe(false);
+  });
+
+  it("accepts the unresolved free-site chart embed placeholder as an iframe src", () => {
+    expect(
+      isCompleteGeneratedPageHtml(validHtml(`<iframe src="${CHART_EMBED_PLACEHOLDER}"></iframe>`)),
+    ).toBe(true);
+  });
+
   it("requires retail discovery structure and rejects terminal styling when the briefs demand it", () => {
     expect(isCompleteGeneratedPageHtml(retailHtml(), RETAIL_PROFILE)).toBe(true);
     expect(isCompleteGeneratedPageHtml(validHtml(), RETAIL_PROFILE)).toBe(false);
@@ -97,5 +134,22 @@ describe("generated full website document", () => {
     expect(prepared).toContain("Content-Security-Policy");
     expect(prepared).toContain("hoodlums-generated-page-height");
     expect(prepared).toContain("connect-src 'none'");
+  });
+
+  it("scopes frame-src to exactly the Dexscreener origin and leaves every other directive untouched", () => {
+    const prepared = prepareGeneratedPageForPreview(
+      validHtml(),
+      "data:image/webp;base64,aGVsbG8=",
+    );
+    const cspMatch = prepared.match(/content="([^"]*)"/);
+    expect(cspMatch).not.toBeNull();
+    const csp = cspMatch![1];
+
+    expect(csp).toContain("frame-src https://dexscreener.com");
+    expect((csp.match(/frame-src/g) || [])).toHaveLength(1);
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("img-src data:");
+    expect(csp).toContain("script-src 'unsafe-inline'");
+    expect(csp).toContain("connect-src 'none'");
   });
 });

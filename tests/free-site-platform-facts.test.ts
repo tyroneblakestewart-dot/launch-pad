@@ -6,6 +6,7 @@ import {
   substituteFreeSitePlatformFacts,
   type FreeSitePlatformFacts,
 } from "@/lib/free-site-platform-facts";
+import { CHART_EMBED_PLACEHOLDER } from "@/lib/generated-site-page";
 
 function page(inner: string): string {
   return `<!doctype html><html><body>${inner}</body></html>`;
@@ -15,6 +16,7 @@ const NOT_FOUND: FreeSitePlatformFacts["chart"] = { found: false };
 const FOUND: FreeSitePlatformFacts["chart"] = {
   found: true,
   url: "https://dexscreener.com/robinhood/pair-1",
+  embedUrl: "https://dexscreener.com/robinhood/pair-1?embed=1&theme=dark&trades=0&info=0",
   dexId: "uniswap",
   liquidityLabel: "£12K liquidity",
 };
@@ -58,7 +60,7 @@ describe("substituteFreeSitePlatformFacts", () => {
         '<!--BUY_PENDING_START--><span class="btn-pending">Coming soon</span><!--BUY_PENDING_END-->',
         '<!--FOOTER_CONTRACT_KNOWN_START--><div>CA: {{CONTRACT_ADDRESS}}</div><!--FOOTER_CONTRACT_KNOWN_END-->',
         '<!--FOOTER_CONTRACT_PENDING_START--><div>CA: Coming soon</div><!--FOOTER_CONTRACT_PENDING_END-->',
-        '<!--CHART_FOUND_START--><div>{{CHART_DEX_ID}} · {{CHART_LIQUIDITY}} <a href="{{CHART_URL}}">Open</a></div><!--CHART_FOUND_END-->',
+        `<!--CHART_FOUND_START--><div>{{CHART_DEX_ID}} · {{CHART_LIQUIDITY}} <iframe src="${CHART_EMBED_PLACEHOLDER}"></iframe> <a href="{{CHART_URL}}">Open</a></div><!--CHART_FOUND_END-->`,
         '<!--CHART_UNKNOWN_START--><div>Coming soon<!--CHART_SEARCH_LINK_START--><a href="{{CHART_SEARCH_URL}}">Search</a><!--CHART_SEARCH_LINK_END--></div><!--CHART_UNKNOWN_END-->',
         '<!--LP_LOCKED_START--><div class="stat">LP Locked {{LP_LOCKED_DATE}}</div><!--LP_LOCKED_END-->',
       ].join(""),
@@ -82,6 +84,10 @@ describe("substituteFreeSitePlatformFacts", () => {
     expect(html).not.toContain("Search</a>");
     expect(html).not.toContain("{{LP_LOCKED_DATE}}");
     expect(html).not.toContain("LP Locked");
+    // No pair found means the whole CHART_FOUND block, including its
+    // iframe and the unresolved embed placeholder, is dropped entirely.
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toContain(CHART_EMBED_PLACEHOLDER);
   });
 
   it("selects the known contract, buy and footer states and fills the address once a contract exists", () => {
@@ -111,6 +117,10 @@ describe("substituteFreeSitePlatformFacts", () => {
 
     expect(html).toContain("uniswap");
     expect(html).toContain("£12K liquidity");
+    expect(html).toContain(
+      '<iframe src="https://dexscreener.com/robinhood/pair-1?embed=1&amp;theme=dark&amp;trades=0&amp;info=0"></iframe>',
+    );
+    expect(html).not.toContain(CHART_EMBED_PLACEHOLDER);
     expect(html).toContain('<a href="https://dexscreener.com/robinhood/pair-1">Open</a>');
     expect(html).toContain('<a href="https://dexscreener.com/robinhood/pair-1">Buy</a>');
     expect(html).not.toContain("Search</a>");
