@@ -123,7 +123,7 @@ describe("POST /api/market/robinhood-trending", () => {
 
     for (let index = 0; index < ROBINHOOD_TRENDING_LIMIT; index += 1) {
       const response = await POST(request(authenticated));
-      expect(response.stattus).toBe(503);
+      expect(response.status).toBe(503);
     }
 
     const blocked = await POST(request(authenticated));
