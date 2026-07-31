@@ -91,11 +91,11 @@ async function main() {
     throw new Error("Deployment receipt did not include a contract address.");
   }
 
-  const minimumCurveFunding = await publicClient.readContract({
+  const minimumCurveFunding = (await publicClient.readContract({
     address: receipt.contractAddress,
     abi: artifact.abi,
     functionName: "minimumCurveFunding",
-  });
+  })) as bigint;
 
   console.log("");
   console.log("HoodlumsTestBondingCurve deployed:");
