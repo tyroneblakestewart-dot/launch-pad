@@ -5,6 +5,11 @@ export type DexPair = {
   url?: string;
   liquidity?: { usd?: number | null };
   volume?: { h24?: number | null };
+  baseToken?: { name?: string; symbol?: string; address?: string };
+  priceChange?: { h24?: number | null };
+  marketCap?: number | null;
+  fdv?: number | null;
+  info?: { imageUrl?: string | null };
 };
 
 export type DexscreenerPairResult =
@@ -71,7 +76,13 @@ export function resetDexscreenerPairCacheForTests(): void {
   pairCache.clear();
 }
 
-async function fetchDexscreenerPair(address: string): Promise<DexscreenerPairResult> {
+/**
+ * Raw pairs for a single token/contract address, shared by the cached
+ * single-pair lookup below and by `lib/server/robinhood-trending.ts`'s
+ * Solana feed, which enriches each boosted address with the same call.
+ * Resolves to an empty array instead of throwing on any failure.
+ */
+export async function fetchDexPairsForAddress(address: string): Promise<DexPair[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
   try {
@@ -83,16 +94,20 @@ async function fetchDexscreenerPair(address: string): Promise<DexscreenerPairRes
         signal: controller.signal,
       },
     );
-    if (!response.ok) return { found: false };
+    if (!response.ok) return [];
 
     const payload = (await response.json()) as { pairs?: DexPair[] | null };
-    const pairs = Array.isArray(payload.pairs) ? payload.pairs : [];
-    return buildDexscreenerPairResult(selectBestPair(pairs));
+    return Array.isArray(payload.pairs) ? payload.pairs : [];
   } catch {
-    return { found: false };
+    return [];
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function fetchDexscreenerPair(address: string): Promise<DexscreenerPairResult> {
+  const pairs = await fetchDexPairsForAddress(address);
+  return buildDexscreenerPairResult(selectBestPair(pairs));
 }
 
 /**
