@@ -82,6 +82,7 @@ export async function fetchRobinhoodTrendingTokens(): Promise<TrendingFeedResult
     if (!response.ok) return { tokens: [], error: true };
 
     const payload = (await response.json()) as GmgnPayload;
+    console.log("[robinhood-trending] raw GMGN payload:", JSON.stringify(payload));
     return { tokens: mapGmgnPayloadToTrendingTokens(payload), error: false };
   } catch {
     return { tokens: [], error: true };
