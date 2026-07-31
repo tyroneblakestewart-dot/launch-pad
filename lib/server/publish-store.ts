@@ -59,6 +59,7 @@ export interface PublishStore {
     verifySignature: PublishSignatureVerifier,
   ): Promise<PublishVisibilityResult>;
   getBySlug(slug: string): Promise<PublicGeneratedSite | null>;
+  listLive(): Promise<PublicGeneratedSite[]>;
 }
 
 export class PublishStoreUnavailableError extends Error {
@@ -80,6 +81,9 @@ const unconfiguredStore: PublishStore = {
   },
   async getBySlug() {
     return null;
+  },
+  async listLive() {
+    return [];
   },
 };
 

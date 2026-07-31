@@ -128,6 +128,10 @@ class VisibilityStore implements PublishStore {
   async getBySlug(slug: string): Promise<PublicGeneratedSite | null> {
     return slug === this.site.slug ? this.site : null;
   }
+
+  async listLive(): Promise<PublicGeneratedSite[]> {
+    return this.site.visibility === "draft" ? [] : [this.site];
+  }
 }
 
 function post(pathname: string, body: unknown) {
