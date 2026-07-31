@@ -7,6 +7,12 @@ import { fetchRobinhoodTrendingTokens } from "@/lib/server/robinhood-trending";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  console.log("[trending-route] env check:", {
+    hasKey: !!process.env.GMGN_API_KEY,
+    keyLength: process.env.GMGN_API_KEY?.length ?? 0,
+    nodeEnv: process.env.NODE_ENV,
+  });
+
   const result = await fetchRobinhoodTrendingTokens();
   return NextResponse.json(result, {
     headers: {
