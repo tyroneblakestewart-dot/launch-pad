@@ -60,7 +60,7 @@ export function RobinhoodTrendingPanel() {
             <span className={styles.dot} /> Robinhood Chain
           </span>
         </div>
-        <span className={styles.window}>5-min window · via GMGN</span>
+        <span className={styles.window}>via Dexscreener</span>
       </div>
 
       <div className={styles.feed}>
@@ -102,8 +102,8 @@ export function RobinhoodTrendingPanel() {
       </div>
 
       <p className={styles.footer}>
-        External market data via GMGN. Not Hoodlums launches. Not financial advice. Refreshes every
-        60s.
+        External market data via Dexscreener. Not Hoodlums launches. Not financial advice. Refreshes
+        every 60s.
       </p>
     </aside>
   );
