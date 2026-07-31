@@ -182,8 +182,8 @@ The browser-local collision check remains a convenience, while the authoritative
 | `/` | Project studio, artwork upload, site generation, and Dexscreener preview | Available |
 | `/providers` | Robinhood provider handoff, contract verification, and creator-buy tracking | Available; external actions require a provider and wallet |
 | `/allocations` | Allocation planning and wallet-approved testnet distribution | Available |
-| `/liquidity-lab` | Register and fund a separately deployed test AMM | Test-only |
-| `/bonding-curve` | Review the full-supply curve and automatic pool-graduation lifecycle | Foundation page; live trading not active |
+| `/liquidity-lab` | Register and fund a separately deployed test AMM | Test-only; nav tab hidden unless `NEXT_PUBLIC_SHOW_TESTNET_TOOLS=true` |
+| `/bonding-curve` | Review the full-supply curve and automatic pool-graduation lifecycle | Foundation page; live trading not active; nav tab hidden unless `NEXT_PUBLIC_SHOW_TESTNET_TOOLS=true` |
 | `/testnet` | Robinhood Chain Testnet and Solana devnet token creation | Test-only |
 | `/monad` | Monad Testnet ERC-20 deployment | Test-only |
 | `/social` | X handoff and Telegram publishing workspace | Available |

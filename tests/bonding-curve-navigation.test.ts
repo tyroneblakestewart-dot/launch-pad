@@ -20,9 +20,9 @@ describe("bonding curve workflow page", () => {
     expect(navigation).toContain('icon: "curve", step: "5"');
   });
 
-  it("lays out five mobile workflow controls", async () => {
+  it("lays out the mobile workflow controls with a dynamic column count", async () => {
     const navigationStyles = await source("components/app-navigation.module.css");
-    expect(navigationStyles).toContain("grid-template-columns:repeat(5,minmax(0,1fr))");
+    expect(navigationStyles).toContain("grid-template-columns:repeat(var(--nav-count,5),minmax(0,1fr))");
   });
 
   it("keeps the new page truthful about its testnet status", async () => {

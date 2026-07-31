@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { CSSProperties } from "react";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./app-navigation.module.css";
 
@@ -10,9 +11,17 @@ const NAV_ITEMS = [
   { href: "/", label: "Create & Bond", icon: "studio", step: "1", description: "Create a token, open its market" },
   { href: "/providers", label: "Providers", icon: "wallet", step: "2", description: "Choose the launch provider" },
   { href: "/allocations", label: "Allocations", icon: "allocate", step: "3", description: "Plan token distribution" },
-  { href: "/liquidity-lab", label: "Liquidity Lab", icon: "liquidity", step: "4", description: "Test the token pool" },
-  { href: "/bonding-curve", label: "Bonding Curve", icon: "curve", step: "5", description: "Track token graduation" },
+  { href: "/liquidity-lab", label: "Liquidity Lab", icon: "liquidity", step: "4", description: "Test the token pool", testnetOnly: true },
+  { href: "/bonding-curve", label: "Bonding Curve", icon: "curve", step: "5", description: "Track token graduation", testnetOnly: true },
 ] as const;
+
+// Testnet-only workflow steps (Liquidity Lab, Bonding Curve) stay reachable at
+// their routes but are hidden from the public nav unless this flag is on.
+const SHOW_TESTNET_TOOLS = process.env.NEXT_PUBLIC_SHOW_TESTNET_TOOLS === "true";
+
+const VISIBLE_NAV_ITEMS = SHOW_TESTNET_TOOLS
+  ? NAV_ITEMS
+  : NAV_ITEMS.filter((item) => !("testnetOnly" in item && item.testnetOnly));
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -46,7 +55,7 @@ export function AppNavigation() {
         </Link>
         <p className={styles.eyebrow}>LAUNCH FLOW</p>
         <nav className={styles.sideNav}>
-          {NAV_ITEMS.map((item) => {
+          {VISIBLE_NAV_ITEMS.map((item) => {
             const active = isActive(pathname, item.href);
             return (
               <Link key={item.href} href={item.href} className={active ? styles.active : ""}>
@@ -60,7 +69,9 @@ export function AppNavigation() {
           <span>◉</span>
           <span><b>Account</b><small>Sign in and connect accounts</small></span>
         </Link>
-        <div className={styles.sidebarNote}><b>Testnet mode</b><span>Robinhood Chain · 46630</span></div>
+        {SHOW_TESTNET_TOOLS && (
+          <div className={styles.sidebarNote}><b>Testnet mode</b><span>Robinhood Chain · 46630</span></div>
+        )}
       </aside>
 
       <header className={styles.mobileHeader}>
@@ -79,8 +90,12 @@ export function MobileBottomNavigation() {
   const pathname = usePathname();
 
   return (
-    <nav className={styles.bottomNav} aria-label="Mobile launch workflow">
-      {NAV_ITEMS.map((item) => (
+    <nav
+      className={styles.bottomNav}
+      aria-label="Mobile launch workflow"
+      style={{ "--nav-count": VISIBLE_NAV_ITEMS.length } as CSSProperties}
+    >
+      {VISIBLE_NAV_ITEMS.map((item) => (
         <Link key={item.href} href={item.href} aria-label={item.label} title={item.label} className={isActive(pathname, item.href) ? styles.active : ""}>
           <NavIcon name={item.icon} />
         </Link>
