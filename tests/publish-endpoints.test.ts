@@ -115,6 +115,10 @@ class MemoryPublishStore implements PublishStore {
   async getBySlug(slug: string): Promise<PublicGeneratedSite | null> {
     return this.sites.get(slug) || null;
   }
+
+  async listLive(): Promise<PublicGeneratedSite[]> {
+    return [...this.sites.values()].filter((site) => site.visibility !== "draft");
+  }
 }
 
 function postRequest(path: string, body: unknown, ip = "203.0.113.10") {

@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getPublicGeneratedSiteBySlug,
+  listLiveGeneratedSites,
+  resetLiveGeneratedSitesAdapterForTests,
   resetPublicGeneratedSiteAdapterForTests,
+  setLiveGeneratedSitesAdapter,
   setPublicGeneratedSiteAdapter,
 } from "@/lib/server/public-generated-sites";
 import type { PublicGeneratedSite } from "@/lib/public-site";
@@ -26,6 +29,7 @@ const FIXTURE: PublicGeneratedSite = {
 
 afterEach(() => {
   resetPublicGeneratedSiteAdapterForTests();
+  resetLiveGeneratedSitesAdapterForTests();
 });
 
 describe("public generated site repository boundary", () => {
@@ -55,5 +59,22 @@ describe("public generated site repository boundary", () => {
     setPublicGeneratedSiteAdapter(async () => FIXTURE);
     resetPublicGeneratedSiteAdapterForTests();
     expect(await getPublicGeneratedSiteBySlug("hoodlums")).toBeNull();
+  });
+});
+
+describe("listLiveGeneratedSites", () => {
+  it("returns no sites by default instead of faking persistence", async () => {
+    expect(await listLiveGeneratedSites()).toEqual([]);
+  });
+
+  it("uses an injected adapter when tests set one", async () => {
+    setLiveGeneratedSitesAdapter(async () => [FIXTURE]);
+    expect(await listLiveGeneratedSites()).toEqual([FIXTURE]);
+  });
+
+  it("restores the no-records default after resetLiveGeneratedSitesAdapterForTests", async () => {
+    setLiveGeneratedSitesAdapter(async () => [FIXTURE]);
+    resetLiveGeneratedSitesAdapterForTests();
+    expect(await listLiveGeneratedSites()).toEqual([]);
   });
 });

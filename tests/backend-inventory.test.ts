@@ -37,6 +37,7 @@ describe("backend test inventory", () => {
       "app/api/publish/route.ts",
       "app/api/publish/visibility/route.ts",
       "app/api/social/telegram/route.ts",
+      "app/api/trending-robinhood/route.ts",
     ]);
 
     const methods = await Promise.all(
@@ -59,6 +60,7 @@ describe("backend test inventory", () => {
       "app/api/publish/route.ts": ["POST"],
       "app/api/publish/visibility/route.ts": ["POST"],
       "app/api/social/telegram/route.ts": ["POST"],
+      "app/api/trending-robinhood/route.ts": ["GET"],
     });
   });
 
@@ -82,6 +84,7 @@ describe("backend test inventory", () => {
       "lib/server/publish-auth.ts",
       "lib/server/publish-store.ts",
       "lib/server/published-site-validation.ts",
+      "lib/server/robinhood-trending.ts",
       "lib/server/sanitise-provider-detail.ts",
       "lib/server/telegram.ts",
     ]);
