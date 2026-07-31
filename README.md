@@ -116,6 +116,82 @@ does not touch the `/testnet` UI or update
 `NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES`, and is never run automatically —
 running it is a deliberate, owner-initiated action.
 
+### Bonding curve deployment (drill)
+
+Two Hardhat scripts prepare (and, run deliberately, perform) a manual proof
+that `contracts/HoodlumsTestBondingCurve.sol` graduates correctly on
+Robinhood Chain Testnet. Neither script is run automatically, wired into the
+`/bonding-curve` UI, or invoked by CI — they exist for an owner-initiated
+deployment drill: deploy a curve for a real token, drive it to its
+graduation target by hand, and watch `_graduate()` fire and seed the locked
+pool.
+
+**1. Deploy the curve** for a token you've already launched (e.g. via the
+live factory above or the direct `/testnet` deploy flow):
+
+```bash
+npm run contracts:compile
+npm run deploy:bonding-curve:robinhood
+```
+
+Required environment variables (set locally, e.g. in `.env.local`; never
+commit real values):
+
+| Variable | Purpose |
+| --- | --- |
+| `ROBINHOOD_TESTNET_RPC_URL` | RPC endpoint used by the Hardhat network. |
+| `HOODLUMS_BONDING_CURVE_DEPLOYER_PRIVATE_KEY` | Private key of the funded testnet-only account that sends the deployment transaction. Read only by Hardhat at deploy time; never logged, stored, or committed. |
+| `HOODLUMS_BONDING_CURVE_TOKEN_ADDRESS` | The already-deployed ERC-20 this curve will trade. |
+| `HOODLUMS_BONDING_CURVE_CREATOR_ADDRESS` | Constructor `creator_` — must be the wallet holding the token's complete current supply; only it can call `fundCurve()` and receives the 40% creator fee share. |
+| `HOODLUMS_BONDING_CURVE_TREASURY_ADDRESS` | Constructor `treasury_` — receives the 60% protocol fee share. |
+
+Optional overrides (documented defaults below are used when unset):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `HOODLUMS_BONDING_CURVE_TOKEN_DECIMALS` | `18` | Must match the token's actual `decimals()` — the script reads it on-chain and aborts on a mismatch. |
+| `HOODLUMS_BONDING_CURVE_GRADUATION_TARGET_ETHER` | `4` | Constructor `graduationTarget_`, in native testnet currency. |
+| `HOODLUMS_BONDING_CURVE_VIRTUAL_ETH_RESERVE_ETHER` | `1` | Constructor `virtualEthReserve_`, in native testnet currency. |
+| `HOODLUMS_BONDING_CURVE_VIRTUAL_TOKEN_RESERVE_WHOLE` | `1000000` | Constructor `virtualTokenReserve_`, in whole tokens (scaled by the token's decimals). |
+
+The 1% trading fee and its 60/40 treasury/creator split are contract
+constants (`TRADING_FEE_BPS`, `PROTOCOL_FEE_SHARE_BPS`,
+`CREATOR_FEE_SHARE_BPS`), not constructor arguments — this script cannot
+change them. The script prints the deployed address, the exact constructor
+arguments for explorer verification, and `minimumCurveFunding()` so you know
+whether the token's total supply is enough to fund the curve.
+
+**2. Drive the curve to graduation.** Once the creator wallet holds the
+token's complete current supply, run:
+
+```bash
+npm run graduate:bonding-curve:robinhood
+```
+
+Required/optional environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `HOODLUMS_BONDING_CURVE_CREATOR_PRIVATE_KEY` | Private key of the `creator` wallet from step 1. Read only by Hardhat at run time; never logged, stored, or committed. |
+| `HOODLUMS_BONDING_CURVE_ADDRESS` | The curve address printed by step 1. |
+| `HOODLUMS_BONDING_CURVE_BUY_STEP_ETHER` (optional, default `1`) | Size of each intermediate buy while driving toward the graduation target. |
+
+This script approves the curve for the complete token supply and calls
+`fundCurve()` if it hasn't been funded yet, then repeatedly calls `buy()` in
+`HOODLUMS_BONDING_CURVE_BUY_STEP_ETHER`-sized steps. The final step computes
+the exact gross native input whose post-fee net lands exactly on the
+remaining amount to graduate — `buy()` only calls `_graduate()` when
+`realNativeReserve` equals `graduationTarget` exactly, so an approximate
+last buy would leave the curve permanently short. Once graduated, it prints
+the locked pool address created by `_graduate()`.
+
+If you'd rather drive individual steps by hand instead of running this
+script, the same effect can be reproduced with `cast send` (Foundry) or a
+short ethers/viem snippet: `approve(curveAddress, totalSupply)` and
+`fundCurve()` on the token, then repeated `buy(minTokensOut, deadline)` calls
+sending native value, ending with one calling `quoteBuyFee()`/`buy()` at the
+exact remaining amount from `remainingNativeToGraduate()`.
+
 ### Wallet-signed token test lab
 
 The `/testnet` route supports two proof-of-launch flows:

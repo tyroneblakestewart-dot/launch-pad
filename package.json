@@ -14,6 +14,8 @@
     "test:watch": "vitest",
     "contracts:compile": "hardhat compile",
     "deploy:factory:robinhood": "hardhat run scripts/deploy-hoodlums-factory.ts --network robinhoodTestnet",
+    "deploy:bonding-curve:robinhood": "hardhat run scripts/deploy-hoodlums-bonding-curve.ts --network robinhoodTestnetBondingCurveDeploy",
+    "graduate:bonding-curve:robinhood": "hardhat run scripts/graduate-hoodlums-bonding-curve.ts --network robinhoodTestnetBondingCurveCreator",
     "db:migrate": "node scripts/migrate-database.mjs"
   },
   "dependencies": {
