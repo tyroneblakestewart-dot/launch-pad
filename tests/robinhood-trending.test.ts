@@ -120,7 +120,9 @@ describe("fetchRobinhoodTrendingTokens", () => {
     expect(String(url)).toBe(
       "https://gmgn.ai/defi/quotation/v1/rank/robinhood/swaps/5m?orderby=swaps&direction=desc",
     );
-    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer test-key");
+    const headers = init?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer test-key");
+    expect(headers["User-Agent"]).toContain("Mozilla/5.0");
   });
 
   it("returns an error result when GMGN responds with a non-success status", async () => {

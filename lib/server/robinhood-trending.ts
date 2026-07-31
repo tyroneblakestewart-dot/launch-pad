@@ -76,7 +76,17 @@ export async function fetchRobinhoodTrendingTokens(): Promise<TrendingFeedResult
   const timeout = setTimeout(() => controller.abort(), FEED_TIMEOUT_MS);
   try {
     const response = await fetch(GMGN_ENDPOINT, {
-      headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        // Vercel's serverless fetch sends no User-Agent by default, which is
+        // a common trigger for Cloudflare bot-management 403s independent of
+        // IP reputation. A standard browser UA is a low-risk mitigation to
+        // try before changing the (owner-confirmed, see issue #185) endpoint.
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
       cache: "no-store",
       signal: controller.signal,
     });
