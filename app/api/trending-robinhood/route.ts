@@ -9,6 +9,9 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const result = await fetchRobinhoodTrendingTokens();
   return NextResponse.json(result, {
-    headers: { "Cache-Control": result.error ? "no-store" : "public, max-age=60" },
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+      "CDN-Cache-Control": "no-store",
+    },
   });
 }
