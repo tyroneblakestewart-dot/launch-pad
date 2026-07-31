@@ -9,6 +9,66 @@
   overflow: hidden;
 }
 
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 10px 0;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: #566054;
+  font: 700 10px var(--mono);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: #f4f7ef;
+}
+
+.tabActive {
+  background: rgba(188, 231, 89, 0.1);
+  color: #bce759;
+}
+
+.tabMuted {
+  color: #3a4238;
+}
+
+.tabMuted:hover {
+  color: #566054;
+}
+
+.tabMuted.tabActive {
+  background: rgba(86, 96, 84, 0.12);
+  color: #566054;
+}
+
+.badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(86, 96, 84, 0.25);
+  color: #8a9488;
+  font: 700 8px var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.comingSoon {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin: 18px 10px;
+  text-align: center;
+}
+
 .header {
   display: flex;
   align-items: flex-start;

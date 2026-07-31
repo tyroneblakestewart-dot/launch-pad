@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchRobinhoodTrendingTokens,
+  fetchSolanaTrendingTokens,
   mapGmgnPayloadToTrendingTokens,
+  resetSolanaTrendingCacheForTests,
 } from "@/lib/server/robinhood-trending";
 
 const ORIGINAL_API_KEY = process.env.GMGN_API_KEY;
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  resetSolanaTrendingCacheForTests();
   if (ORIGINAL_API_KEY === undefined) delete process.env.GMGN_API_KEY;
   else process.env.GMGN_API_KEY = ORIGINAL_API_KEY;
 });
@@ -139,5 +142,171 @@ describe("fetchRobinhoodTrendingTokens", () => {
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not-json", { status: 200 })));
     expect(await fetchRobinhoodTrendingTokens()).toEqual({ tokens: [], error: true });
+  });
+});
+
+describe("fetchSolanaTrendingTokens", () => {
+  function makeFetchMock(options: {
+    boosts?: Array<{ chainId?: string; tokenAddress?: string }> | null;
+    boostsStatus?: number;
+    pairsByAddress?: Record<string, unknown[]>;
+  }) {
+    const { boosts = [], boostsStatus = 200, pairsByAddress = {} } = options;
+    return vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("token-boosts/top/v1")) {
+        return new Response(JSON.stringify(boosts), {
+          status: boostsStatus,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const match = url.match(/tokens\/([^/?]+)/);
+      const address = match ? decodeURIComponent(match[1]) : "";
+      return new Response(JSON.stringify({ pairs: pairsByAddress[address] || [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+  }
+
+  it("discovers boosted Solana addresses, filters out other chains, and enriches each with Dexscreener pair data", async () => {
+    const fetchMock = makeFetchMock({
+      boosts: [
+        { chainId: "solana", tokenAddress: "SoL111" },
+        { chainId: "ethereum", tokenAddress: "0xignored" },
+        { chainId: "solana", tokenAddress: "SoL222" },
+      ],
+      pairsByAddress: {
+        SoL111: [
+          {
+            chainId: "solana",
+            pairAddress: "pair-1",
+            url: "https://dexscreener.com/solana/pair-1",
+            liquidity: { usd: 500 },
+            baseToken: { name: "Sol One", symbol: "SOL1", address: "SoL111" },
+            priceChange: { h24: 12.5 },
+            marketCap: 1_500_000,
+            info: { imageUrl: "https://example.com/sol1.png" },
+          },
+        ],
+        SoL222: [
+          {
+            chainId: "solana",
+            pairAddress: "pair-2",
+            liquidity: { usd: 900 },
+            baseToken: { symbol: "SOL2", address: "SoL222" },
+            priceChange: { h24: -4 },
+            fdv: 400_000,
+          },
+        ],
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchSolanaTrendingTokens();
+
+    expect(result.error).toBe(false);
+    expect(result.tokens).toEqual([
+      {
+        rank: 1,
+        name: "Sol One",
+        ticker: "SOL1",
+        address: "SoL111",
+        artworkUrl: "https://example.com/sol1.png",
+        marketCapUsd: 1_500_000,
+        priceChangePercent: 12.5,
+        url: "https://dexscreener.com/solana/pair-1",
+      },
+      {
+        rank: 2,
+        name: "SOL2",
+        ticker: "SOL2",
+        address: "SoL222",
+        artworkUrl: "",
+        marketCapUsd: 400_000,
+        priceChangePercent: -4,
+        url: "https://dexscreener.com/solana/SoL222",
+      },
+    ]);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("token-boosts/top/v1");
+  });
+
+  it("caps enrichment at 10 boosted Solana addresses", async () => {
+    const boosts = Array.from({ length: 15 }, (_, index) => ({
+      chainId: "solana",
+      tokenAddress: `Addr${index}`,
+    }));
+    const pairsByAddress = Object.fromEntries(
+      boosts.map((item) => [
+        item.tokenAddress,
+        [{ chainId: "solana", pairAddress: item.tokenAddress, baseToken: { symbol: "T", address: item.tokenAddress } }],
+      ]),
+    );
+    const fetchMock = makeFetchMock({ boosts, pairsByAddress });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchSolanaTrendingTokens();
+
+    expect(result.tokens).toHaveLength(10);
+    expect(fetchMock).toHaveBeenCalledTimes(11); // 1 boosts request + 10 enrichment requests
+  });
+
+  it("returns an empty, non-error result when no Solana tokens are currently boosted", async () => {
+    const fetchMock = makeFetchMock({ boosts: [{ chainId: "ethereum", tokenAddress: "0xabc" }] });
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await fetchSolanaTrendingTokens()).toEqual({ tokens: [], error: false });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips addresses with no matching Dexscreener pair data, without failing the whole feed", async () => {
+    const fetchMock = makeFetchMock({
+      boosts: [
+        { chainId: "solana", tokenAddress: "Good1" },
+        { chainId: "solana", tokenAddress: "Empty1" },
+      ],
+      pairsByAddress: {
+        Good1: [{ chainId: "solana", pairAddress: "p1", baseToken: { symbol: "G", address: "Good1" } }],
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchSolanaTrendingTokens();
+    expect(result.error).toBe(false);
+    expect(result.tokens).toHaveLength(1);
+    expect(result.tokens[0].ticker).toBe("G");
+  });
+
+  it("returns an error result when the boosts feed responds with a non-success status", async () => {
+    const fetchMock = makeFetchMock({ boosts: [], boostsStatus: 503 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await fetchSolanaTrendingTokens()).toEqual({ tokens: [], error: true });
+  });
+
+  it("returns an error result on network failure instead of throwing", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+    expect(await fetchSolanaTrendingTokens()).toEqual({ tokens: [], error: true });
+  });
+
+  it("caches the combined result for the TTL window instead of re-fetching on every call", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const fetchMock = makeFetchMock({
+      boosts: [{ chainId: "solana", tokenAddress: "Cache1" }],
+      pairsByAddress: {
+        Cache1: [{ chainId: "solana", pairAddress: "p1", baseToken: { symbol: "C", address: "Cache1" } }],
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchSolanaTrendingTokens();
+    await fetchSolanaTrendingTokens();
+    expect(fetchMock).toHaveBeenCalledTimes(2); // 1 boosts + 1 enrichment, cached on the second call
+
+    now.mockReturnValue(1_000_000 + 30_001);
+    await fetchSolanaTrendingTokens();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    now.mockRestore();
   });
 });

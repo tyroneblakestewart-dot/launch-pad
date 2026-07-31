@@ -60,6 +60,17 @@ describe("Hoodlums bonding-market studio home (issue #185)", () => {
     expect(component).toContain("Not financial advice");
   });
 
+  it("shows a live Solana tab (default) and a Robinhood Chain coming-soon tab", async () => {
+    const component = await source("components", "robinhood-trending-panel.tsx");
+
+    expect(component).toContain('useState<TrendingTab>("solana")');
+    expect(component).toContain("feed=solana");
+    expect(component).toContain("TRENDING · SOLANA");
+    expect(component).toContain("Coming soon");
+    expect(component).toContain("Robinhood Chain trending is coming soon.");
+    expect(component).toContain("via Dexscreener");
+  });
+
   it("relabels sidebar step 1 as Create & Bond", async () => {
     const nav = await source("components", "app-navigation.tsx");
 

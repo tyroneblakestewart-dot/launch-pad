@@ -1,3 +1,5 @@
+import { fetchDexPairsForAddress, selectBestPair, type DexPair } from "./dexscreener";
+
 export type TrendingToken = {
   rank: number;
   name: string;
@@ -107,4 +109,110 @@ export async function fetchRobinhoodTrendingTokens(): Promise<TrendingFeedResult
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/**
+ * Dexscreener's public "top boosts" feed (no API key). It lists currently
+ * boosted (paid-promotion) tokens across all chains, not an organic
+ * swap-volume ranking — the closest thing to a live "trending" signal
+ * Dexscreener's public API offers per issue #185's follow-up discussion.
+ */
+const DEX_BOOSTS_ENDPOINT = "https://api.dexscreener.com/token-boosts/top/v1";
+const SOLANA_CHAIN_ID = "solana";
+const BOOSTS_TIMEOUT_MS = 6_000;
+
+// A single panel refresh already fans out to 1 + up to MAX_TOKENS requests
+// against Dexscreener; caching the combined result keeps repeat 60s polls
+// across multiple open tabs from multiplying that against Dexscreener's
+// stated 60 req/min limit.
+const SOLANA_FEED_CACHE_TTL_MS = 30_000;
+
+type DexBoostItem = { chainId?: string; tokenAddress?: string };
+
+let solanaFeedCache: { expiresAt: number; result: Promise<TrendingFeedResult> } | null = null;
+
+export function resetSolanaTrendingCacheForTests(): void {
+  solanaFeedCache = null;
+}
+
+async function fetchSolanaBoostAddresses(): Promise<string[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BOOSTS_TIMEOUT_MS);
+  try {
+    const response = await fetch(DEX_BOOSTS_ENDPOINT, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Dexscreener boosts request failed with status ${response.status}`);
+    }
+
+    const payload = (await response.json()) as DexBoostItem[] | null;
+    if (!Array.isArray(payload)) return [];
+
+    const seen = new Set<string>();
+    const addresses: string[] = [];
+    for (const item of payload) {
+      const address = item?.tokenAddress;
+      if (item?.chainId !== SOLANA_CHAIN_ID || !address || seen.has(address)) continue;
+      seen.add(address);
+      addresses.push(address);
+      if (addresses.length >= MAX_TOKENS) break;
+    }
+    return addresses;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function pairToTrendingToken(pair: DexPair, rank: number): TrendingToken | null {
+  const address = pair.baseToken?.address;
+  const ticker = pair.baseToken?.symbol;
+  if (!address || !ticker) return null;
+
+  return {
+    rank,
+    name: pair.baseToken?.name || ticker,
+    ticker,
+    address,
+    artworkUrl: pair.info?.imageUrl || "",
+    marketCapUsd: toNumber(pair.marketCap ?? pair.fdv ?? undefined),
+    priceChangePercent: toNumber(pair.priceChange?.h24 ?? undefined),
+    url: pair.url || `https://dexscreener.com/solana/${address}`,
+  };
+}
+
+async function fetchSolanaTrendingTokensUncached(): Promise<TrendingFeedResult> {
+  try {
+    const addresses = await fetchSolanaBoostAddresses();
+    if (addresses.length === 0) return { tokens: [], error: false };
+
+    const pairsByAddress = await Promise.all(addresses.map((address) => fetchDexPairsForAddress(address)));
+    const tokens = pairsByAddress
+      .map((pairs) => selectBestPair(pairs))
+      .map((pair, index) => (pair ? pairToTrendingToken(pair, index + 1) : null))
+      .filter((token): token is TrendingToken => token !== null);
+
+    return { tokens, error: false };
+  } catch (err) {
+    console.error("[solana-trending] Dexscreener request threw:", err);
+    return { tokens: [], error: true };
+  }
+}
+
+/**
+ * Server-only fetch of live Solana trending tokens: discovers currently
+ * boosted Solana addresses via Dexscreener's public boosts feed, then
+ * enriches each with the same `/latest/dex/tokens` lookup already used by
+ * `lib/server/dexscreener.ts` to get a name, ticker, price change and
+ * market cap. No API key required. Any failure resolves to an empty,
+ * error-flagged result instead of throwing.
+ */
+export function fetchSolanaTrendingTokens(): Promise<TrendingFeedResult> {
+  if (solanaFeedCache && solanaFeedCache.expiresAt > Date.now()) return solanaFeedCache.result;
+
+  const result = fetchSolanaTrendingTokensUncached();
+  solanaFeedCache = { expiresAt: Date.now() + SOLANA_FEED_CACHE_TTL_MS, result };
+  return result;
 }
