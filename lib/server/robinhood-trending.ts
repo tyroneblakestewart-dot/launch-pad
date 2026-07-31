@@ -69,6 +69,7 @@ export function mapGmgnPayloadToTrendingTokens(payload: GmgnPayload | null | und
  */
 export async function fetchRobinhoodTrendingTokens(): Promise<TrendingFeedResult> {
   const apiKey = process.env.GMGN_API_KEY?.trim();
+  console.log("[robinhood-trending] key present:", !!apiKey);
   if (!apiKey) return { tokens: [], error: true };
 
   const controller = new AbortController();
@@ -90,7 +91,8 @@ export async function fetchRobinhoodTrendingTokens(): Promise<TrendingFeedResult
 
     const payload = (await response.json()) as GmgnPayload;
     return { tokens: mapGmgnPayloadToTrendingTokens(payload), error: false };
-  } catch {
+  } catch (err) {
+    console.error("[robinhood-trending] GMGN request threw:", err);
     return { tokens: [], error: true };
   } finally {
     clearTimeout(timeout);
