@@ -21,5 +21,24 @@ export default defineConfig({
       url: configVariable("ROBINHOOD_TESTNET_RPC_URL"),
       accounts: [configVariable("HOODLUMS_FACTORY_DEPLOYER_PRIVATE_KEY")],
     },
+    // Deployment target for scripts/deploy-hoodlums-bonding-curve.ts. Never
+    // deployed automatically — see README.md "Bonding curve deployment
+    // (drill)" for the exact command and required env vars.
+    robinhoodTestnetBondingCurveDeploy: {
+      type: "http",
+      chainId: 46630,
+      url: configVariable("ROBINHOOD_TESTNET_RPC_URL"),
+      accounts: [configVariable("HOODLUMS_BONDING_CURVE_DEPLOYER_PRIVATE_KEY")],
+    },
+    // Run target for scripts/graduate-hoodlums-bonding-curve.ts. The
+    // connected account must be the curve's `creator` and must already hold
+    // the token's complete current supply. Never run automatically — see
+    // README.md "Bonding curve deployment (drill)".
+    robinhoodTestnetBondingCurveCreator: {
+      type: "http",
+      chainId: 46630,
+      url: configVariable("ROBINHOOD_TESTNET_RPC_URL"),
+      accounts: [configVariable("HOODLUMS_BONDING_CURVE_CREATOR_PRIVATE_KEY")],
+    },
   },
 });
