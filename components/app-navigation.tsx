@@ -7,7 +7,7 @@ import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./app-navigation.module.css";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Studio", icon: "studio", step: "1", description: "Create or open a token" },
+  { href: "/", label: "Create & Bond", icon: "studio", step: "1", description: "Create a token and open its market" },
   { href: "/providers", label: "Providers", icon: "wallet", step: "2", description: "Choose the launch provider" },
   { href: "/allocations", label: "Allocations", icon: "allocate", step: "3", description: "Plan token distribution" },
   { href: "/liquidity-lab", label: "Liquidity Lab", icon: "liquidity", step: "4", description: "Test the token pool" },
