@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { fetchRobinhoodTrendingTokens } from "@/lib/server/robinhood-trending";
 
-export const revalidate = 60;
+// Temporarily forcing every request to run the function instead of serving
+// from the ISR cache, to confirm live GMGN responses while debugging the
+// "Feed unavailable" issue reported in PR #186.
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const result = await fetchRobinhoodTrendingTokens();

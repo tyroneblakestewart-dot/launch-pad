@@ -79,7 +79,14 @@ export async function fetchRobinhoodTrendingTokens(): Promise<TrendingFeedResult
       cache: "no-store",
       signal: controller.signal,
     });
-    if (!response.ok) return { tokens: [], error: true };
+    if (!response.ok) {
+      const body = await response.text().catch(() => "<unreadable body>");
+      console.error(
+        `[robinhood-trending] GMGN request failed with status ${response.status}:`,
+        body,
+      );
+      return { tokens: [], error: true };
+    }
 
     const payload = (await response.json()) as GmgnPayload;
     return { tokens: mapGmgnPayloadToTrendingTokens(payload), error: false };
