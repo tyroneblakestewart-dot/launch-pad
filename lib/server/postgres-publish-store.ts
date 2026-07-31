@@ -351,5 +351,19 @@ export function createPostgresPublishStore(databaseUrl: string): PublishStore {
       );
       return result.rows[0] ? siteFromRow(result.rows[0]) : null;
     },
+
+    async listLive(limit: number): Promise<PublicGeneratedSite[]> {
+      const result = await pool.query<PublishedSiteRow>(
+        `SELECT ${SITE_COLUMNS}
+           FROM published_sites
+          WHERE visibility = 'live'
+          ORDER BY created_at DESC
+          LIMIT $1`,
+        [limit],
+      );
+      return result.rows
+        .map(siteFromRow)
+        .filter((site): site is PublicGeneratedSite => site !== null);
+    },
   };
 }

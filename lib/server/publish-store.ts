@@ -59,6 +59,8 @@ export interface PublishStore {
     verifySignature: PublishSignatureVerifier,
   ): Promise<PublishVisibilityResult>;
   getBySlug(slug: string): Promise<PublicGeneratedSite | null>;
+  /** Most recently published live sites, newest first. Used by the studio home token grid. */
+  listLive?(limit: number): Promise<PublicGeneratedSite[]>;
 }
 
 export class PublishStoreUnavailableError extends Error {

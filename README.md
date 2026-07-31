@@ -179,7 +179,7 @@ The browser-local collision check remains a convenience, while the authoritative
 
 | Route | Purpose | Status |
 | --- | --- | --- |
-| `/` | Project studio, artwork upload, site generation, and Dexscreener preview | Available |
+| `/` | Bonding-market home (hero, live-token grid, GMGN trending panel) plus project studio, artwork upload, site generation, and Dexscreener preview | Available; trending panel needs `GMGN_API_KEY` configured or shows "Feed unavailable" |
 | `/providers` | Robinhood provider handoff, contract verification, and creator-buy tracking | Available; external actions require a provider and wallet |
 | `/allocations` | Allocation planning and wallet-approved testnet distribution | Available |
 | `/liquidity-lab` | Register and fund a separately deployed test AMM | Test-only |

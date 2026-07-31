@@ -37,8 +37,10 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   See README route table for status of each.
 - `app/api/` — server routes: `generate-site-style` / `generate-site-page`
   (OpenAI-backed), `publish/challenge` and `publish` (single-use wallet-signed
-  public publishing), `dexscreener-pair`, `generation-status`, and
-  `social/telegram`.
+  public publishing), `dexscreener-pair`, `generation-status`,
+  `social/telegram`, and `trending-robinhood` (GMGN-backed Robinhood Chain
+  trending feed for the studio home; degrades to "Feed unavailable" without
+  `GMGN_API_KEY`).
 - `app/[slug]/artwork/route.ts` — HTTP-fetchable OG/artwork image for a
   public generated site; not under `app/api`, so it is not part of
   `backend-inventory.test.ts`'s API route inventory.
@@ -135,3 +137,11 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   user accounts were added. Production migration and first write enablement
   must remain deliberate and owner-reviewed; this first write-endpoint PR
   must not be auto-merged.
+- Studio home redesign (issue #185) is UI-only: the studio home at `/` now
+  leads with a bonding-market hero, a live-token grid read from
+  `published_sites` (`visibility = 'live'`), and a right-hand GMGN Robinhood
+  Chain trending panel. The token grid's market cap and graduation figures
+  are honest placeholders (`—` / 0%) until the bonding curve is deployed and
+  connected — nothing here fabricates curve data. The existing entry-point
+  components under `#launch-studio` (`TokenStudioWorkspace` etc.) are
+  untouched; the redesign is only the shell around them.
