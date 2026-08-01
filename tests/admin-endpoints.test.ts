@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 import { POST as challenge } from "@/app/api/admin/challenge/route";
 import { GET as health } from "@/app/api/admin/health/route";
@@ -6,6 +6,7 @@ import { POST as login } from "@/app/api/admin/login/route";
 import { POST as logout } from "@/app/api/admin/logout/route";
 import { ADMIN_SESSION_COOKIE } from "@/lib/server/admin-auth";
 import { resetAdminRateLimitsForTests } from "@/lib/server/api-protection";
+import * as adminSessionStore from "@/lib/server/admin-session-store";
 import { resetAdminStoresForTests } from "@/lib/server/admin-session-store";
 
 const ADMIN_ACCOUNT = privateKeyToAccount(
@@ -182,5 +183,95 @@ describe("admin login rate limiting", () => {
 
     const blocked = await loginWithPassword(ADMIN_PASSWORD);
     expect(blocked.status).toBe(429);
+  });
+});
+
+describe("admin login always returns a response, never crashes", () => {
+  it("returns a well-formed response for a valid wallet login", async () => {
+    const response = await loginWithWallet();
+    expect(response).toBeInstanceOf(Response);
+    expect(typeof response.status).toBe("number");
+    expect(response.status).toBe(200);
+  });
+
+  it("returns a well-formed response for an invalid wallet login", async () => {
+    const response = await loginWithWallet(OTHER_ACCOUNT);
+    expect(response).toBeInstanceOf(Response);
+    expect(typeof response.status).toBe("number");
+    expect(response.status).toBe(403);
+  });
+
+  it("returns a well-formed response for a valid password login", async () => {
+    const response = await loginWithPassword(ADMIN_PASSWORD);
+    expect(response).toBeInstanceOf(Response);
+    expect(typeof response.status).toBe("number");
+    expect(response.status).toBe(200);
+  });
+
+  it("returns a well-formed response for an invalid password login", async () => {
+    const response = await loginWithPassword("wrong password");
+    expect(response).toBeInstanceOf(Response);
+    expect(typeof response.status).toBe("number");
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 500 instead of throwing when session creation fails unexpectedly during wallet login", async () => {
+    const createAdminSessionSpy = vi
+      .spyOn(adminSessionStore, "createAdminSession")
+      .mockImplementation(() => {
+        throw new Error("simulated session store failure");
+      });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const response = await loginWithWallet();
+      expect(response).toBeInstanceOf(Response);
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toEqual({
+        error: "Admin login failed unexpectedly. Try again.",
+      });
+    } finally {
+      createAdminSessionSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it("returns 500 instead of throwing when session creation fails unexpectedly during password login", async () => {
+    const createAdminSessionSpy = vi
+      .spyOn(adminSessionStore, "createAdminSession")
+      .mockImplementation(() => {
+        throw new Error("simulated session store failure");
+      });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const response = await loginWithPassword(ADMIN_PASSWORD);
+      expect(response).toBeInstanceOf(Response);
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toEqual({
+        error: "Admin login failed unexpectedly. Try again.",
+      });
+    } finally {
+      createAdminSessionSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it("never logs the submitted password when a login attempt fails unexpectedly", async () => {
+    const createAdminSessionSpy = vi
+      .spyOn(adminSessionStore, "createAdminSession")
+      .mockImplementation(() => {
+        throw new Error("simulated session store failure");
+      });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      await loginWithPassword(ADMIN_PASSWORD);
+      const loggedOutput = consoleErrorSpy.mock.calls.flat().join(" ");
+      expect(loggedOutput).not.toContain(ADMIN_PASSWORD);
+    } finally {
+      createAdminSessionSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
+    }
   });
 });

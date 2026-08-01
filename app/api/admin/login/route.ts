@@ -90,29 +90,48 @@ function grantSession(headers: Record<string, string>) {
   return response;
 }
 
+/**
+ * Never lets an unexpected error escape unhandled: on Vercel an uncaught
+ * throw/rejection inside a route handler can terminate the function before
+ * any response is written, which surfaces to the browser as a network
+ * failure (no status code at all) rather than a normal 5xx. This guarantees
+ * a JSON response is always returned. The caught error is logged server-side
+ * only (never the request body, which may hold the admin password).
+ */
 export async function POST(request: Request) {
-  if (!isAdminRequestOriginAllowed(request)) {
+  try {
+    if (!isAdminRequestOriginAllowed(request)) {
+      return NextResponse.json(
+        { error: "Admin login origin is not allowed." },
+        { status: 403, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const rate = consumeAdminLoginRateLimit(getClientIp(request));
+    const headers = responseHeaders(rate);
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "Too many admin login attempts. Try again later." },
+        { status: 429, headers: { ...headers, "Retry-After": String(rate.retryAfterSeconds) } },
+      );
+    }
+
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body) {
+      return NextResponse.json({ error: "A login method is required." }, { status: 400, headers });
+    }
+
+    if (body.method === "wallet") return await loginWithWallet(body, headers);
+    if (body.method === "password") return loginWithPassword(body, headers);
+    return NextResponse.json({ error: "Unsupported admin login method." }, { status: 400, headers });
+  } catch (error) {
+    console.error(
+      "Admin login failed unexpectedly.",
+      error instanceof Error ? (error.stack ?? error.message) : error,
+    );
     return NextResponse.json(
-      { error: "Admin login origin is not allowed." },
-      { status: 403, headers: { "Cache-Control": "no-store" } },
+      { error: "Admin login failed unexpectedly. Try again." },
+      { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }
-
-  const rate = consumeAdminLoginRateLimit(getClientIp(request));
-  const headers = responseHeaders(rate);
-  if (!rate.allowed) {
-    return NextResponse.json(
-      { error: "Too many admin login attempts. Try again later." },
-      { status: 429, headers: { ...headers, "Retry-After": String(rate.retryAfterSeconds) } },
-    );
-  }
-
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!body) {
-    return NextResponse.json({ error: "A login method is required." }, { status: 400, headers });
-  }
-
-  if (body.method === "wallet") return loginWithWallet(body, headers);
-  if (body.method === "password") return loginWithPassword(body, headers);
-  return NextResponse.json({ error: "Unsupported admin login method." }, { status: 400, headers });
 }
