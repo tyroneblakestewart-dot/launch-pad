@@ -11,16 +11,24 @@ function isAuthenticated(request: Request): boolean {
 }
 
 export async function GET(request: Request) {
-  if (!isAuthenticated(request)) {
+  try {
+    if (!isAuthenticated(request)) {
+      return NextResponse.json(
+        { error: "Admin sign-in is required." },
+        { status: 401, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const checks = await getSystemHealth();
     return NextResponse.json(
-      { error: "Admin sign-in is required." },
-      { status: 401, headers: { "Cache-Control": "no-store" } },
+      { checks, checkedAt: new Date().toISOString() },
+      { status: 200, headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    console.error("Admin health check failed unexpectedly.", error instanceof Error ? (error.stack ?? error.message) : error);
+    return NextResponse.json(
+      { error: "Admin health check failed unexpectedly. Try again." },
+      { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }
-
-  const checks = await getSystemHealth();
-  return NextResponse.json(
-    { checks, checkedAt: new Date().toISOString() },
-    { status: 200, headers: { "Cache-Control": "no-store" } },
-  );
 }
