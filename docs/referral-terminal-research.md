@@ -1,110 +1,128 @@
 # Referral trading-terminal research
 
 **Research date:** 2026-08-01  
-**Hoodlums target chain:** Robinhood Chain, chain ID `46630` (Ethereum L2)
+**Requested network:** chain ID `46630`
 
-## Scope and test used
+## Critical network correction
 
-This note distinguishes **actual trade execution** from market-data coverage.
+Robinhood's official network documentation distinguishes two networks:
 
-A chain counts as supported for trading only when the terminal's official material shows one of the following:
+- **Robinhood Chain mainnet:** chain ID `4663`
+- **Robinhood Chain Testnet:** chain ID `46630`
 
-- a chain-specific buy/sell or swap interface;
-- a trading bot that accepts contracts and executes buys/sells on that chain; or
-- documented DEX/launchpad routes used by the terminal on that chain.
+Therefore, the chain ID in the research request (`46630`) is **Robinhood Chain Testnet**, not mainnet. This matters because a terminal announcing “Robinhood Chain” support on its production site does not establish support for testnet chain ID `46630`.
 
-A chain appearing in a chart, token list, trending feed, wallet tracker, bridge, scanner or general "supports N chains" marketing statement does **not** by itself prove that the terminal has a working buy/sell route.
+For chain ID **46630 specifically, none of GMGN, Axiom, Maestro or Ave.ai documents a working buy/sell route.** The launchpad must not present any of the four as a functioning Trade destination for a Hoodlums token deployed on that testnet.
 
-## Executive conclusion
+Official network reference: [Robinhood Chain — Connecting](https://docs.robinhood.com/chain/connecting/).
 
-**None of GMGN, Axiom, Maestro or Ave.ai currently documents a working Robinhood Chain buy/sell route.**
+## Method
 
-Axiom is the clearest example of why the distinction matters: its live Pulse page can track new pairs across Solana, BNB, Base and Robinhood, while Axiom's trading documentation still describes the spot wallet/trading product as Solana and its market-order instructions buy with SOL. Robinhood discovery is therefore not proof of Robinhood execution.
-
-For Hoodlums' own Robinhood Chain tokens, these four services should not currently be presented as functioning **Trade** destinations. Their referral links can still be useful for third-party tokens on the chains each service actually trades.
+A chain counts as supported for actual trading only when first-party material demonstrates a buy/sell or swap interface, a trading bot that executes orders on that chain, or a documented execution route. Charting, token discovery, trending feeds, wallet tracking, bridge support, or a token page by itself do not prove that a buy/sell transaction can be executed.
 
 ## Comparison table
 
 | Terminal | Chains supported for actual trading | Robinhood Chain supported? | Referral link format | Can pre-load a token contract? | Notes |
 |---|---|---|---|---|---|
-| **GMGN** | Current official trading-bot list: **Solana, Ethereum, Base, BNB Smart Chain (BSC), Tron**. The separate GMGN Agent API swap product currently lists only **Solana, BSC and Base**. | **No.** Robinhood is absent from the current official trading-bot and Agent API swap chain lists. Market/trending coverage must not be treated as execution support. | Current web attribution uses the `ref` query parameter: `https://gmgn.ai/?ref={CODE}`. The official legacy referral guide documents token deep links as `https://gmgn.ai/{CHAIN}/token/{CODE}_{TOKEN_CONTRACT}`. Bot links: `https://t.me/GMGN_sol_bot?start=i_{CODE}` and token-specific `https://t.me/GMGN_sol_bot?start=i_{CODE}_c_{TOKEN_CONTRACT}`. | **Yes, on a supported chain.** | GMGN's current referral page confirms website, chain-bot and specific-token referral link types, but some literal examples are only printed in its older official Notion guide. Generate and test the account's current link before production use. |
-| **Axiom** | **Solana spot token trading.** Axiom also embeds **Hyperliquid perpetuals**, but that is a separate leveraged-derivatives product, not arbitrary contract spot trading on other EVM chains. | **No.** Axiom may display/track Robinhood pairs in Pulse, but official spot-order instructions remain Solana-based and no Robinhood swap route is documented. | Generated referral landing: `https://axiom.trade/@{CODE}`. Official docs describe a unique referral link; live Axiom referral pages use the `/@code` route. | **Token page: yes; combined referral deep link: not documented.** Token route: `https://axiom.trade/meme/{TOKEN_CONTRACT}?chain=sol`. No official source found for one URL that both opens that contract and applies `/@{CODE}` attribution. | Do not invent a combined referral/token URL. Use `/@{CODE}` for acquisition, or the Solana token route for direct discovery, unless Axiom supplies a documented combined format. |
-| **Maestro** | **Solana, BNB Smart Chain (BSC), Base, Ethereum, Monad, Sonic, Avalanche, Arbitrum, Hyper EVM, Tron (TRX), TON**. | **No.** Robinhood is absent from Maestro's current eleven-chain trading list and supported-DEX table. | Sticky referral links generated by the bot use the observed live format `https://t.me/maestro?start=r-{REFERRAL_USERNAME}`. Official docs instruct users to obtain the Sticky link through `/referral`. | **Yes.** Maestro officially supports token-specific **Quick-Buy Referral** links that immediately open the token report for trading. The official text does not publish a stable raw URL template; generate it in the bot by entering the token contract. | The Sticky URL shape is visible in live Maestro links, but the safest implementation is to store the exact link generated by Maestro. Do not hand-build Quick-Buy URLs because the official docs deliberately direct users to generate them in-bot. |
-| **Ave.ai / Ave Sniper Bot** | Explicit current buy/sell documentation confirms **Solana, BSC, Ethereum, Base, Core, TON, Tron, Sui, Polygon and Plasma**. Ave's PC web guide explicitly names **Solana, Ethereum, BSC and Base**. Other official pages document additional app/bot routes or advertise 10+ chains, including X Layer and Merlin, but Ave does not maintain one synchronized exhaustive execution list across web, app and bot. | **No documented route.** Robinhood is absent from the chain-specific trading pages and referral-eligible chain list reviewed. Ave's broad 130+/160+ chain coverage claim is not sufficient evidence of a working Robinhood swap. | Web: append `ref={CODE}` to any Ave URL, for example `https://ave.ai/?ref={CODE}`. A token referral URL can therefore be `https://ave.ai/token/{TOKEN_CONTRACT}-{CHAIN}?ref={CODE}`. Telegram: `https://t.me/AveSniperBot?start=ref_{CODE}`. Token-specific Telegram: `https://t.me/AveSniperBot?start={TOKEN_CONTRACT}-{CODE}`. | **Yes.** Both web token pages and the Telegram bot can pre-load a contract. The bot auto-detects the chain from the address. | Ave's docs are internally broader and newer than their older navigation/index. Treat only a chain-specific trade page or confirmed in-product route as executable. Referral rewards documentation currently names Solana, ETH, BSC, Base, Core, Tron and TON; trading support and referral-reward eligibility are not necessarily identical. |
+| **GMGN** | **Solana, Ethereum, Base, BNB Smart Chain (BSC), Tron.** These are the current official GMGN chain-specific trading bots/wallet networks. GMGN's separate Agent API swap product is narrower: Solana, BSC and Base. | **No.** Neither mainnet `4663` nor testnet `46630` appears in GMGN's official trading-bot, wallet, trading-API or Agent API swap chain lists. | Generic web: `https://gmgn.ai/?ref={CODE}`. Token web: `https://gmgn.ai/{CHAIN}/token/{CODE}_{TOKEN_CONTRACT}`. Chain-bot referral: `https://t.me/GMGN_sol_bot?start=i_{CODE}`. Solana bot token link: `https://t.me/GMGN_sol_bot?start=i_{CODE}_c_{TOKEN_CONTRACT}`. Use the matching official chain bot where available. | **Yes, on a supported chain.** | The current referral guide confirms web, chain-bot and specific-token referral types. The literal token URL grammar is published in GMGN's older first-party Notion guide, so generate/test the current account link before production use. |
+| **Axiom** | **Solana spot trading is explicitly documented.** Axiom has a current live BNB token/referrer route, but its public documentation does not clearly establish BNB buy/sell execution. Base and Robinhood appear in current Pulse/wallet-tracking surfaces; discovery is not proof of execution. Hyperliquid perpetuals are a separate derivatives product. | **Testnet `46630`: No documented support. Mainnet `4663`: Unclear.** Axiom's live site says “Robinhood Chain is now live on Axiom” and offers Convert/Bridge, but no official source reviewed documents a Robinhood token-contract buy/sell route or a completed Robinhood swap. Do not wire it as a working Trade button yet. | Acquisition/referral: `https://axiom.trade/@{CODE}`. A live combined token/referrer route has been observed as `https://axiom.trade/t/{TOKEN_CONTRACT}/@{CODE}?chain={CHAIN_SLUG}`; the `@` may appear URL-encoded as `%40`. A Solana token route also appears as `https://axiom.trade/meme/{TOKEN_CONTRACT}?chain=sol`. | **Yes on routes Axiom actually supports; not verified for Robinhood.** | Axiom does not publish the combined token/referral grammar in its referral docs. Store and test the link generated by the live product. Do not guess that `chain=robinhood` executes a trade merely because Pulse can display Robinhood pairs. |
+| **Maestro** | **Solana, BNB Smart Chain, Base, Ethereum, Monad, Sonic, Avalanche, Arbitrum, Hyper EVM, Tron and TON.** | **No.** Robinhood mainnet `4663` and testnet `46630` are absent from Maestro's current supported-chains and supported-DEX documentation. | Sticky referral: `https://t.me/maestro?start=r-{REFERRAL_ID}`. Token Quick-Buy referral: `https://t.me/maestro?start={TOKEN_CONTRACT}-{REFERRAL_ID}`. | **Yes.** The Quick-Buy link opens the token report and trading flow. | Maestro's official docs instruct users to generate Sticky and Quick-Buy links inside `/referral`. The raw formats above are visible in generated live Maestro bot links; production should store the exact generated link rather than reconstructing it. |
+| **Ave.ai / Ave Sniper Bot** | Current chain-specific Ave Sniper Bot buy/sell pages cover **Solana, BSC, Ethereum, Base, Core, TON, Tron, Sui, HYPE, Polygon, X Layer, Morph and Plasma**. Ave's PC-web trading guide explicitly names **Solana, Ethereum, BSC and Base**. Ave may expose more chains in its app, but it does not publish one synchronized exhaustive execution list. | **No documented route** for mainnet `4663` or testnet `46630`. Ave's broad multi-chain data/indexing claims do not establish a Robinhood swap route. | Web: add `ref={CODE}` to any Ave URL, e.g. `https://ave.ai/?ref={CODE}`. Token web: `https://ave.ai/token/{TOKEN_CONTRACT}-{CHAIN_SLUG}?ref={CODE}`. Telegram referral: `https://t.me/AveSniperBot?start=ref_{CODE}`. Telegram token referral: `https://t.me/AveSniperBot?start={TOKEN_CONTRACT}-{CODE}`. | **Yes, on a supported chain.** The Telegram bot auto-detects the chain from the contract address. | Trading support and referral-reward eligibility are not identical. Ave's current English rebate page names Solana, ETH, BSC, Base, Core, Tron and TON; verify reward eligibility before promising referral revenue on the other execution chains. |
 
 ## Hoodlums wiring decision
 
-### Hoodlums tokens on Robinhood Chain
+### Hoodlums tokens on chain ID 46630
 
-For a token deployed on Robinhood Chain (`46630`):
+For the network specified in the request — **Robinhood Chain Testnet (`46630`)** — all four buttons must be treated as unsupported:
 
-- **GMGN:** do not show as a working trade route.
-- **Axiom:** do not show as a working trade route. Robinhood Pulse/listing visibility is discovery only.
-- **Maestro:** do not show as a working trade route.
-- **Ave.ai:** do not show as a working trade route without a successful chain-specific swap test and official confirmation.
+- **GMGN:** no trade route.
+- **Axiom:** no documented testnet trade route.
+- **Maestro:** no trade route.
+- **Ave.ai:** no trade route.
 
-Recommended UI behaviour:
+Recommended product behaviour:
 
-1. Hide or disable these terminal buttons on Robinhood Chain token pages, or label them **Unsupported on Robinhood Chain** rather than **Trade**.
-2. Use a verified native Robinhood Chain DEX/router link for the real buy/sell action once one is available.
-3. Keep chart, explorer or market-data links separate from trade links so users are never sent to a page that can display a token but cannot execute the swap.
-4. Re-test each terminal with a funded test wallet and a real Robinhood liquidity pool before changing any answer from **No** to **Yes**.
+1. Hide these referral-terminal buttons on `46630` token pages, or render them disabled and labelled **Unsupported on Robinhood Chain Testnet**.
+2. Keep chart, explorer and market-data links separate from Trade actions.
+3. Use a verified native DEX/router link for the actual buy/sell action when a Robinhood testnet pool exists.
+4. Never treat a token being indexed, charted or shown in Pulse as proof that a terminal can submit the swap.
 
-### Referral links that can earn on supported third-party chains
+### Robinhood Chain mainnet (chain ID 4663)
 
-- **GMGN:** use for Solana, Ethereum, Base, BSC and Tron trades supported by GMGN. Token-specific pre-load links are available.
-- **Axiom:** use for Solana spot trading. Hyperliquid perpetual referral activity is a separate product case. No documented combined referral-plus-token deep link was found.
-- **Maestro:** use the bot-generated Sticky or Quick-Buy links for its eleven supported chains. Quick-Buy is the correct token-specific route.
-- **Ave.ai:** use web or Telegram token-specific links only on a chain with a confirmed Ave trade route. Check referral-reward eligibility separately because its published rebate chain list is narrower than some of its trading pages.
+The answer is also not “all four supported” on mainnet:
 
-## Evidence and caveats by terminal
+- **GMGN:** no official mainnet route.
+- **Axiom:** **unclear**. Axiom announces Robinhood in the live product, but a contract-specific buy/sell route and referral attribution have not been proven.
+- **Maestro:** no official mainnet route.
+- **Ave.ai:** no official mainnet route.
+
+Until Axiom supplies official execution documentation or a funded low-value swap succeeds through a referral-tagged Robinhood token URL, Hoodlums should not label it as a working Trade destination.
+
+### Referral buttons that can be used for third-party tokens
+
+- **GMGN:** usable for supported Solana, Ethereum, Base, BSC and Tron trading routes; token-specific referral preloading is available.
+- **Axiom:** confidently usable for documented Solana spot trading. Treat BNB and Robinhood routes as requiring live execution verification before production wiring.
+- **Maestro:** usable for its eleven documented trading chains through bot-generated Sticky or token-specific Quick-Buy links.
+- **Ave.ai:** usable on chains with a confirmed Ave buy/sell page, but check the narrower rebate-eligible chain list before assuming each trade earns commission.
+
+## Evidence by terminal
 
 ### GMGN
 
-- The current official Telegram bot list names trading bots for Solana, Ethereum, Base, BSC and Tron.
-- The GMGN Agent API is a separate integration and currently lists swap support for Solana, BSC and Base; ETH and other new chains are stated as in progress.
-- The current referral page confirms a shared web/bot code, a browser `ref` parameter, chain-specific bot links and specific-token web links.
-- The older official GMGN Notion referral guide is the source for the literal token-page and Telegram token-preload templates. Because this is an older guide, production links should be generated/tested in the current GMGN account before launch.
+- Current official bot list: Solana, Ethereum, Base, BSC and Tron.
+- Current wallet documentation assigns a trading wallet/bot to those five networks.
+- GMGN Agent API swap support currently lists Solana, BSC and Base, with ETH and other chains described as in progress.
+- Current referral documentation confirms a shared website/bot referral code and specific-token link types.
+- GMGN's first-party legacy referral guide publishes the literal token-page and Telegram token-preload URL formats.
 
 ### Axiom
 
-- Axiom's FAQ says the wallet currently supports Solana, with more chains planned.
-- Its market-order guide asks users to enter the amount of Solana to buy and reports SOL bought/sold/held.
-- Axiom's Hyperliquid tab executes leveraged perpetual positions in USDC. It does not establish a spot route for arbitrary contracts on Hyper EVM or Robinhood Chain.
-- Live Axiom pages show `/@{CODE}` referral routes and `/meme/{CONTRACT}?chain=sol` token routes, but no official source found a supported combined form.
-- A live Axiom Pulse page can mention Robinhood alongside Solana, BNB and Base for new-pair tracking. That is exactly the market-data-only case excluded by this research method.
+- Axiom's published wallet and market-order documentation remains Solana-specific and describes buys in SOL.
+- Axiom's current live Pulse page announces Robinhood Chain and offers a Convert/Bridge action.
+- The live product also surfaces tracking across Solana, BNB, Base and Robinhood, but tracking is not execution evidence.
+- First-party live routes confirm `https://axiom.trade/@{CODE}` referral pages and token URLs, including a combined token/referrer BNB route.
+- No reviewed official page proves a buy or sell of a Robinhood contract, identifies a Robinhood router/DEX, publishes a Robinhood token URL, or states support for testnet chain ID `46630`.
 
 ### Maestro
 
-- Maestro's current supported-chains page explicitly says the bot supports eleven chains and is written in the context of chains users enable to trade on.
-- Robinhood is not present.
-- Official referral docs define Sticky and token-specific Quick-Buy links. Quick-Buy immediately displays the token report so the user can start trading.
-- The docs do not expose the Quick-Buy URL grammar in text; they require generation through `/referral` or by pasting the contract. Store the generated URL rather than reverse-engineering it.
+- Maestro's supported-chains page expressly lists eleven chains in the context of chains users enable for trading.
+- Robinhood is absent from the chain and DEX tables.
+- Official referral docs define Sticky and token-specific Quick-Buy referrals; Quick-Buy opens the token report so the user can trade.
 
 ### Ave.ai
 
-- The Ave Sniper Bot has explicit chain-specific buy/sell pages for the confirmed chains listed in the table.
-- Ave's older Quick Trading index lists eight chains, while newer indexed pages add Polygon and Plasma and Ave marketing says 10+ chains. Separate app event documentation also demonstrates Merlin trading. This documentation drift prevents an honest claim that one published list is exhaustive.
-- Ave's broad claim of integration with 130+/160+ blockchains and 300+ DEXs mixes data/platform coverage with execution and cannot prove a Robinhood trade route.
-- Ave's official web referral guide says `ref={CODE}` may be appended to any Ave URL. Its bot referral guide explicitly provides both generic and token-specific Telegram formats.
+- The current Ave Sniper Bot navigation links chain-specific Quick Trading pages for thirteen chains, and those pages describe immediate Quick Buy and Quick Sell execution.
+- Ave's PC-web guide explicitly confirms rapid trading across Solana, Ethereum, BSC and Base.
+- Robinhood does not appear in the reviewed chain-specific trading pages.
+- Ave's website referral guide says `ref={CODE}` can be appended to any Ave URL.
+- Ave's bot referral guide gives exact generic and token-specific Telegram formats and says the bot identifies the chain from the contract address.
 
 ## Official and first-party sources
+
+### Robinhood Chain
+
+- Network IDs and endpoints: https://docs.robinhood.com/chain/connecting/
+- Wallet network configuration: https://docs.robinhood.com/chain/add-network-to-wallet/
 
 ### GMGN
 
 - Trading bot list: https://docs.gmgn.ai/index/gmgn-telegram-bot-list
+- Trading wallet networks: https://docs.gmgn.ai/index/tg-wallet-import-export-private-key-deposit-withdraw
 - Referral links: https://docs.gmgn.ai/index/referral-link
 - Agent API supported swap chains: https://docs.gmgn.ai/index/gmgn-agent-api
-- Official legacy referral examples: https://gmgnai.notion.site/Refer-friends-to-earn-commissions-f093f975faaf435f96b9d2a26075db9f?pvs=21
+- Legacy first-party referral URL examples: https://gmgnai.notion.site/Refer-friends-to-earn-commissions-f093f975faaf435f96b9d2a26075db9f?pvs=21
 
 ### Axiom
 
-- FAQ / supported wallet chain: https://docs.axiom.trade/faqs
+- FAQ / documented wallet chain: https://docs.axiom.trade/faqs
 - Spot market orders: https://docs.axiom.trade/axiom/swap/market
+- Instant Trade: https://docs.axiom.trade/axiom/swap/instant-trade
 - Referral program: https://docs.axiom.trade/getting-started/referral-program
 - Hyperliquid perpetuals: https://docs.axiom.trade/perpetuals/trading-on-hyperliquid
+- Current live Pulse announcement: https://axiom.trade/pulse
 - Live referral-route examples: https://axiom.trade/@exchange and https://axiom.trade/@sns
-- Live Solana token-route example: https://axiom.trade/meme/Ak7hDCxDSocD2ZgJBCa1ZwLcuDQz5F6n747a7rQtpXE3?chain=sol
+- Live Solana token route example: https://axiom.trade/meme/8Kpqq6791DvdomkV59DXMqRXvoh3k6wM6nbFNkcBpump?chain=sol
+- Observed combined BNB token/referrer route: https://axiom.trade/t/0xdd2fb432d7edef543fa401f2a9c4d5c93b2a4444/%400x01yuqi?chain=bnb
 
 ### Maestro
 
@@ -114,14 +132,12 @@ Recommended UI behaviour:
 
 ### Ave.ai
 
-- Web referral format: https://doc.ave.ai/ave.ai-referral-program/refer-friends-to-earn-rebate
+- Website referral format: https://doc.ave.ai/ave.ai-referral-program/refer-friends-to-earn-rebate
 - Bot referral and token-preload format: https://avebotdoc.ave.ai/en/faq/trading-fee-and-referral-rewards
-- Quick Trading index: https://avebotdoc.ave.ai/en/quick-use/quick-trading
-- Current bot trading overview: https://doc.ave.ai/tutorial/tg-bot-tutorial/bot-trading
-- PC web trading chains: https://doc.ave.ai/tutorial/pc-web-turorial/token-page-and-trading-system
-- Broader platform claim: https://doc.ave.ai/
-- Example newer chain-specific pages: https://avebotdoc.ave.ai/en/quick-use/quick-trading/polygon-trading and https://avebotdoc.ave.ai/en/quick-use/quick-trading/plasma-trading
+- Current chain-specific Quick Trading navigation: https://avebotdoc.ave.ai/en/quick-use/quick-trading/polygon-trading
+- Current Plasma buy/sell page: https://avebotdoc.ave.ai/en/quick-use/quick-trading/plasma-trading
+- PC-web trading chains: https://doc.ave.ai/tutorial/pc-web-tutorial/token-page-and-trading-system
 
 ## Reverification requirement
 
-Terminal chain support, DEX routes and referral deep-link formats can change quickly. Reverify the relevant official chain page and perform a real low-value execution test before enabling any production **Trade** button or relying on referral attribution.
+Terminal chain support, DEX routes and referral URL grammars can change quickly. Before enabling a production Trade button, open the exact referral-tagged token URL, confirm the intended chain and contract are loaded, and complete a low-value buy and sell with a dedicated test wallet. A successful page load alone is not a successful trade route.
