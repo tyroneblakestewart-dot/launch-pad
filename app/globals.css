@@ -292,6 +292,17 @@ label small { display: block; margin-top: 5px; color: #5f6a61; font: 10px var(--
   font: 600 10px var(--mono);
 }
 .preview-toolbar > div { display: flex; align-items: center; gap: 8px; color: #a9b3ab; }
+.reopen-generated-site-button {
+  padding: 4px 9px;
+  border: 1px solid rgba(85,255,120,.28);
+  border-radius: 6px;
+  color: var(--green);
+  background: transparent;
+  font: 600 9px var(--mono);
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.reopen-generated-site-button:hover { border-color: rgba(85,255,120,.55); }
 .site-preview {
   position: relative;
   max-width: 1180px;
@@ -557,6 +568,8 @@ label small { display: block; margin-top: 5px; color: #5f6a61; font: 10px var(--
   .workspace { display: block; }
   .builder-panel { border-right: 0; border-bottom: 1px solid var(--line); padding: 21px 16px 40px; }
   .preview-panel { padding: 16px 10px 30px; }
+  .preview-toolbar { flex-wrap: wrap; row-gap: 6px; }
+  .preview-toolbar > div { flex-wrap: wrap; row-gap: 6px; }
   .preview-nav { padding-inline: 15px; }
   .hero-section { min-height: auto; padding: 42px 22px 30px; }
   .hero-copy h2 { font-size: clamp(41px, 13vw, 68px); }
