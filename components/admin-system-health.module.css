@@ -1,0 +1,124 @@
+.section {
+  border-radius: 16px;
+  border: 1px solid rgba(188, 231, 89, 0.15);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 16px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #eef3ea;
+}
+
+.refreshButton {
+  padding: 7px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid rgba(188, 231, 89, 0.25);
+  background: transparent;
+  color: rgba(238, 243, 234, 0.85);
+  cursor: pointer;
+}
+
+.refreshButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.timestamp {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  color: rgba(238, 243, 234, 0.55);
+}
+
+.loading {
+  margin: 12px 0 0;
+  font-size: 0.85rem;
+  color: rgba(238, 243, 234, 0.65);
+}
+
+.error {
+  margin: 12px 0 0;
+  font-size: 0.85rem;
+  color: #ff8a8a;
+}
+
+.grid {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.card {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #8a9188;
+}
+
+.card[data-status="green"] .dot {
+  background: #6ee787;
+  box-shadow: 0 0 8px rgba(110, 231, 135, 0.6);
+}
+
+.card[data-status="amber"] .dot {
+  background: #f0c04b;
+  box-shadow: 0 0 8px rgba(240, 192, 75, 0.6);
+}
+
+.card[data-status="red"] .dot {
+  background: #ff6b6b;
+  box-shadow: 0 0 8px rgba(255, 107, 107, 0.6);
+}
+
+.cardBody {
+  min-width: 0;
+}
+
+.cardLabel {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #eef3ea;
+}
+
+.cardStatus {
+  margin: 2px 0 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(238, 243, 234, 0.6);
+}
+
+.cardMessage {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: rgba(238, 243, 234, 0.75);
+  word-break: break-word;
+}
