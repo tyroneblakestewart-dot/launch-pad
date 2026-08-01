@@ -87,6 +87,7 @@ describe("backend test inventory", () => {
       "lib/server/robinhood-trending.ts",
       "lib/server/sanitise-provider-detail.ts",
       "lib/server/telegram.ts",
+      "lib/server/token-holders.ts",
     ]);
   });
 });
