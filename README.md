@@ -69,6 +69,8 @@ The `/bonding-curve` route is the fifth launch-workflow page. It explains the ap
 
 `contracts/HoodlumsTestBondingCurve.sol` charges a fixed **1% trading fee on every buy and sell**, split **60% to the protocol treasury and 40% to the token creator** (`TRADING_FEE_BPS = 100`, `PROTOCOL_FEE_SHARE_BPS = 6000`, `CREATOR_FEE_SHARE_BPS = 4000`; both the treasury and creator addresses are constructor parameters, never hardcoded). Fees use **pull payments only**: a buy or sell never pushes native currency to the treasury or creator, it only credits a claimable balance (`treasuryFeeBalance`, `creatorFeeBalance`), which either recipient withdraws themselves via `withdrawFees()`. This means a reverting or gas-griefing treasury or creator can never block a buy, a sell, graduation, or the other recipient's withdrawal. The fee is deducted from the gross trade amount before the curve quote (buys) or from the curve's gross output before payout (sells), so `realNativeReserve` and the graduation target only ever reflect post-fee amounts; accrued fees are tracked separately from curve/pool liquidity and remain withdrawable both before and after graduation.
 
+**Live graduation status.** `components/bonding-curve-graduation-status.tsx` is a read-only view rendered on `/bonding-curve` that reads a configured curve directly from a public Robinhood Chain Testnet RPC endpoint (no wallet connection required) and displays one of three states: **not yet funded** (creator hasn't placed the token supply into the curve), **bonding** (a progress bar showing `realNativeReserve` against `graduationTarget`, which already excludes every accrued trading fee, matching the contract's own `graduationProgressBps()`), or **graduated** (the locked pool address with an explorer link and a note that its liquidity is permanently locked). `lib/bonding-curve-config.ts` reads the curve address from `NEXT_PUBLIC_HOODLUMS_BONDING_CURVE_ADDRESSES` (public JSON, e.g. `{"46630":"0xYourDeployedCurve"}`), mirroring `NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES` / `getFactoryAddress` below — unlike the factory, there is no public default yet, so an unset env var renders a truthful "not deployed" state instead of guessing an address. This view never sends a transaction; buy/sell controls are still not wired up.
+
 ### Factory deployment (live on Robinhood Chain Testnet)
 
 `contracts/HoodlumsTokenFactory.sol` is deployed and verified on Robinhood
@@ -192,6 +194,10 @@ short ethers/viem snippet: `approve(curveAddress, totalSupply)` and
 sending native value, ending with one calling `quoteBuyFee()`/`buy()` at the
 exact remaining amount from `remainingNativeToGraduate()`.
 
+Once a curve is deployed, set `NEXT_PUBLIC_HOODLUMS_BONDING_CURVE_ADDRESSES`
+(see "Live graduation status" above) to see its progress and graduation
+state on `/bonding-curve` — neither script does this automatically.
+
 ### Wallet-signed token test lab
 
 The `/testnet` route supports two proof-of-launch flows:
@@ -261,7 +267,7 @@ Loading a saved project (or clicking "Reopen generated site" in the preview tool
 | `/providers` | Robinhood provider handoff, contract verification, and creator-buy tracking | Available; external actions require a provider and wallet |
 | `/allocations` | Allocation planning and wallet-approved testnet distribution | Available |
 | `/liquidity-lab` | Register and fund a separately deployed test AMM | Test-only; nav tab hidden unless `NEXT_PUBLIC_SHOW_TESTNET_TOOLS=true` |
-| `/bonding-curve` | Review the full-supply curve and automatic pool-graduation lifecycle | Foundation page; live trading not active; nav tab hidden unless `NEXT_PUBLIC_SHOW_TESTNET_TOOLS=true` |
+| `/bonding-curve` | Review the full-supply curve and automatic pool-graduation lifecycle, plus live read-only graduation status for a configured curve | Foundation page; live trading not active; nav tab hidden unless `NEXT_PUBLIC_SHOW_TESTNET_TOOLS=true` |
 | `/testnet` | Robinhood Chain Testnet and Solana devnet token creation | Test-only |
 | `/monad` | Monad Testnet ERC-20 deployment | Test-only |
 | `/social` | X handoff and Telegram publishing workspace | Available |

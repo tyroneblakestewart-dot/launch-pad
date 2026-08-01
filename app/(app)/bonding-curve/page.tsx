@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BondingCurveGraduationStatus } from "@/components/bonding-curve-graduation-status";
 import styles from "./bonding-curve.module.css";
 
 export const metadata: Metadata = {
@@ -129,12 +130,9 @@ export default function BondingCurvePage() {
             <div><dt>Graduation target</dt><dd>Set at deployment</dd></div>
             <div><dt>Liquidity outcome</dt><dd>Locked pool</dd></div>
             <div><dt>Network</dt><dd>Robinhood testnet</dd></div>
-            <div><dt>Current status</dt><dd>Not deployed</dd></div>
           </dl>
           <div className={styles.desktopProgress}>
-            <div><span>Graduation progress</span><b>0%</b></div>
-            <i><span /></i>
-            <small>Progress will activate after live curve deployment.</small>
+            <BondingCurveGraduationStatus />
           </div>
         </aside>
       </section>
@@ -154,6 +152,14 @@ export default function BondingCurvePage() {
               buy/sell controls are not active yet.
             </p>
           </div>
+        </section>
+
+        <section className={styles.liveStatusSection} aria-labelledby="curve-live-status-title">
+          <div className={styles.sectionHeading}>
+            <p>LIVE GRADUATION STATUS</p>
+            <h2 id="curve-live-status-title">Reads directly from the deployed curve</h2>
+          </div>
+          <BondingCurveGraduationStatus />
         </section>
 
         <section className={styles.summaryGrid} aria-label="Bonding curve launch rules">
@@ -213,9 +219,9 @@ export default function BondingCurvePage() {
             <p className={styles.cardLabel}>NEXT MILESTONE</p>
             <h2>Connect the curve to real testnet launches</h2>
             <p>
-              The next development step is an atomic factory flow that creates the token, places its
-              full supply into the curve and exposes live quote, buy, sell and graduation progress on
-              this page.
+              Live graduation status now reads directly from a configured curve. The next development
+              step is an atomic factory flow that creates the token, places its full supply into the
+              curve and exposes live quote, buy and sell controls on this page.
             </p>
           </div>
           <div className={styles.actions}>

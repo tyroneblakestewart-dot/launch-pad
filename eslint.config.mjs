@@ -25,6 +25,7 @@ const eslintConfig = defineConfig([
       "components/wallet-provider-selector.tsx",
       "components/social-hub.tsx",
       "components/liquidity-lab.tsx",
+      "components/bonding-curve-graduation-status.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",

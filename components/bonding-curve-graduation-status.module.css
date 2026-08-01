@@ -1,0 +1,118 @@
+.panel {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(131, 183, 139, 0.2);
+  border-radius: 12px;
+  background: rgba(11, 17, 12, 0.88);
+}
+
+.panel p {
+  margin: 0;
+  color: #9ba49d;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.badgeNeutral,
+.badgeBonding,
+.badgeGraduated,
+.badgeError {
+  justify-self: start;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font: 900 10px "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+}
+
+.badgeNeutral {
+  background: rgba(131, 183, 139, 0.18);
+  color: #c6d0c8;
+}
+
+.badgeBonding {
+  background: #bce759;
+  color: #071006;
+}
+
+.badgeGraduated {
+  background: #6ee7a0;
+  color: #071006;
+}
+
+.badgeError {
+  background: rgba(239, 100, 100, 0.18);
+  color: #f29c9c;
+}
+
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.progressHeader span {
+  color: #89968c;
+  font-size: 11px;
+}
+
+.progressHeader b {
+  color: #bce759;
+  font-size: 12px;
+}
+
+.progressTrack {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #111713;
+}
+
+.progressFill {
+  height: 100%;
+  background: #bce759;
+  transition: width 0.3s ease;
+}
+
+.poolRow {
+  display: grid;
+  gap: 4px;
+}
+
+.poolRow span {
+  color: #78857a;
+  font: 700 9px "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.poolRow strong {
+  color: #e7ece8;
+  font-size: 13px;
+}
+
+.poolRow a {
+  color: #bce759;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.poolRow a:hover {
+  text-decoration: underline;
+}
+
+.refreshButton {
+  justify-self: start;
+  padding: 7px 12px;
+  border: 1px solid rgba(131, 183, 139, 0.3);
+  border-radius: 8px;
+  background: transparent;
+  color: #c6d0c8;
+  font: 700 11px "IBM Plex Mono", monospace;
+  cursor: pointer;
+}
+
+.refreshButton:hover {
+  border-color: #bce759;
+  color: #bce759;
+}
