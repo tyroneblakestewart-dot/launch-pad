@@ -86,7 +86,11 @@ describe("reopening a previously generated site (issue #198)", () => {
       'import {\n  REOPEN_GENERATED_SITE_EVENT,\n  type PublishableSitePayload,\n} from "@/components/full-website-generator"',
     );
     expect(studio).toContain("function reopenGeneratedSite(target: TokenProject)");
-    expect(studio).toContain("if (!target.generatedSiteHtml) return;");
+    // The generatedSiteHtml guard lives in publishableSiteFromProject, which
+    // reopenGeneratedSite calls and bails out on before dispatching anything.
+    expect(studio).toContain("if (!target.generatedSiteHtml) return null;");
+    expect(studio).toContain("const site = publishableSiteFromProject(target);");
+    expect(studio).toContain("if (!site) return;");
     expect(studio).toContain("generatedSiteHtml: target.generatedSiteHtml");
     expect(studio).toContain(
       "new CustomEvent(REOPEN_GENERATED_SITE_EVENT, {\n      detail: { imageDataUrl: target.heroImage, site },\n    })",
