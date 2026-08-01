@@ -251,6 +251,8 @@ The browser-local collision check remains a convenience, while the authoritative
 
 `TokenProject` stores optional `generatedSiteHtml`/`generatedSiteVersion` fields. The studio listens for `launchpad:site-generated`, re-validates the generated HTML, and stores it with the local project without scraping the DOM. Changing token identity details clears stale captured HTML. The signed publish endpoint persists only a validated, sanitised copy of the submitted site.
 
+Loading a saved project (or clicking "Reopen generated site" in the preview toolbar) dispatches `launchpad:reopen-generated-site` with that stored `generatedSiteHtml`, and `FullWebsiteGenerator` renders it through the exact same code path as a fresh generation — no AI call, and the inline preview, full-screen toggle, and "Publish draft" payload all read that one value (issue #198).
+
 ## Routes
 
 | Route | Purpose | Status |

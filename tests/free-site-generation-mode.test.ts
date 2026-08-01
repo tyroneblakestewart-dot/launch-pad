@@ -77,7 +77,11 @@ describe("free-site vs bespoke generation mode wiring", () => {
     const source = await generatorSource();
 
     const onGenerateStart = source.indexOf("async function onGenerate(event: Event) {");
-    const onGenerateEnd = source.indexOf('window.addEventListener("message", onMessage);');
+    // Bounded at onReopen's declaration (issue #198's reopen-without-regenerating
+    // path), not the addEventListener calls, since onReopen now sits between
+    // onGenerate and that effect wiring — including it would double-count
+    // onReopen's own renderGeneratedWebsite call below.
+    const onGenerateEnd = source.indexOf("function onReopen(event: Event) {");
     expect(onGenerateStart).toBeGreaterThan(-1);
     expect(onGenerateEnd).toBeGreaterThan(onGenerateStart);
     const onGenerateBody = source.slice(onGenerateStart, onGenerateEnd);

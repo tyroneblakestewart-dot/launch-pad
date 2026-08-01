@@ -29,11 +29,13 @@ export interface TokenProject {
   siteSections?: FreeSiteSections;
   /**
    * The validated standalone HTML produced by the last successful
-   * "Generate site from artwork" run for this exact token identity. Kept
-   * so a future publish adapter has the complete design available; not
-   * used for anything else today. Cleared whenever the name, ticker or
-   * artwork changes so one token's page can never be mistaken for
-   * another's. The same reset applies when the project description changes.
+   * "Generate site from artwork" run for this exact token identity. Loading
+   * a project (or the studio's "Reopen generated site" control) redisplays
+   * this exact HTML via `launchpad:reopen-generated-site` instead of
+   * calling the AI generator again, and it is what gets published. Cleared
+   * whenever the name, ticker or artwork changes so one token's page can
+   * never be mistaken for another's. The same reset applies when the
+   * project description changes.
    */
   generatedSiteHtml?: string | null;
   /** Increments each time `generatedSiteHtml` is captured. */

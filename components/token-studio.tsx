@@ -1,6 +1,10 @@
 "use client";
 
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import {
+  REOPEN_GENERATED_SITE_EVENT,
+  type PublishableSitePayload,
+} from "@/components/full-website-generator";
 import { CHAIN_CONFIG, ROBINHOOD_MAINNET } from "@/lib/chains";
 import { FREE_SITE_SECTION_DEFAULTS, type FreeSiteSectionKey } from "@/lib/free-site-sections";
 import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
@@ -86,6 +90,40 @@ function shortAddress(address: string): string {
 function formatSupply(value: string): string {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric.toLocaleString("en-GB") : value;
+}
+
+function publishableSiteFromProject(target: TokenProject): PublishableSitePayload | null {
+  if (!target.generatedSiteHtml) return null;
+  return {
+    slug: target.websiteSlug || slugify(target.name) || "",
+    name: target.name.trim(),
+    ticker: target.ticker.trim().toUpperCase(),
+    description: target.description.trim(),
+    supply: target.supply,
+    decimals: target.decimals,
+    chain: target.chain,
+    chainId: target.chain === "robinhood" ? "46630" : "solana-devnet",
+    contractAddress: target.contractAddress.trim(),
+    generatedSiteHtml: target.generatedSiteHtml,
+    artworkReference: target.heroImage,
+    xHandle: target.xHandle.trim(),
+    telegram: target.telegram.trim(),
+    status: "prepared",
+  };
+}
+
+// Redisplays a project's last captured generation (inline preview, full
+// screen, and the publish payload all read this same object) instead of
+// forcing a fresh, non-deterministic model call just to look at it again
+// (issue #198).
+function reopenGeneratedSite(target: TokenProject) {
+  const site = publishableSiteFromProject(target);
+  if (!site) return;
+  window.dispatchEvent(
+    new CustomEvent(REOPEN_GENERATED_SITE_EVENT, {
+      detail: { imageDataUrl: target.heroImage, site },
+    }),
+  );
 }
 
 const IDENTITY_KEYS = new Set<keyof TokenProject>([
@@ -256,6 +294,7 @@ export function TokenStudio() {
     setWallet(null);
     setShowProjects(false);
     setNotice(`${saved.name} loaded. Reconnect the correct wallet before launching.`);
+    reopenGeneratedSite(saved);
   }
 
   async function handleImage(event: ChangeEvent<HTMLInputElement>) {
@@ -594,6 +633,15 @@ export function TokenStudio() {
           <div className="preview-toolbar">
             <div>
               <span className="live-dot" /> Live website preview
+              {project.generatedSiteHtml && (
+                <button
+                  type="button"
+                  className="reopen-generated-site-button"
+                  onClick={() => reopenGeneratedSite(project)}
+                >
+                  Reopen generated site
+                </button>
+              )}
             </div>
             <span>/{displaySlug}</span>
           </div>

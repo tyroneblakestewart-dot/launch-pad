@@ -30,7 +30,7 @@ type GenerateDetail = {
   mode?: "free" | "bespoke";
 };
 
-type PublishableSitePayload = {
+export type PublishableSitePayload = {
   slug: string;
   name: string;
   ticker: string;
@@ -45,6 +45,17 @@ type PublishableSitePayload = {
   xHandle: string;
   telegram: string;
   status: "prepared";
+};
+
+// Dispatched by the studio (see components/token-studio.tsx) to redisplay a
+// previously captured generation without calling the AI generator again —
+// regenerating is a fresh, non-deterministic model call and must never be
+// the only way to see a site the user already generated (issue #198).
+export const REOPEN_GENERATED_SITE_EVENT = "launchpad:reopen-generated-site";
+
+type ReopenGeneratedSiteDetail = {
+  imageDataUrl?: string;
+  site: PublishableSitePayload;
 };
 
 type PublishChallengeResponse = {
@@ -338,6 +349,26 @@ function isMobilePreviewViewport(): boolean {
   return window.matchMedia(MOBILE_PREVIEW_QUERY).matches;
 }
 
+// The free-site template stores placeholder-bearing HTML (see
+// lib/free-site-platform-facts.ts and issue #173): the raw HTML kept for
+// publishing never bakes in a contract address, but this substitutes the
+// same platform facts the served page would use today, so what the creator
+// sees in the studio (inline, full screen, or reopened later) always
+// matches what /[slug] serves. isFreeSiteTemplateHtml is a marker check, so
+// bespoke (paid AI) pages — which never write that marker — pass through
+// unchanged. The chart lookup itself is skipped here (kept "coming soon")
+// to avoid an extra network dependency; /[slug] always does the
+// authoritative live lookup.
+function previewHtmlFor(rawHtml: string, contractAddress: string): string {
+  return isFreeSiteTemplateHtml(rawHtml)
+    ? substituteFreeSitePlatformFacts(rawHtml, {
+        contractAddress,
+        chart: { found: false },
+        lpLockedAt: null,
+      })
+    : rawHtml;
+}
+
 function applyGeneratedPreviewHeight(frame: HTMLIFrameElement, reportedHeight: number) {
   frame.style.height = getGeneratedPreviewFrameHeight(reportedHeight, isMobilePreviewViewport());
 }
@@ -545,24 +576,7 @@ export function FullWebsiteGenerator() {
               }));
         if (currentGeneration !== generationNumber) return;
         const publishSite = publishableSiteFromGeneration(detail, page.html);
-        // The free-site template stores placeholder-bearing HTML (see
-        // lib/free-site-platform-facts.ts and issue #173): publishSite above
-        // keeps that raw html so a draft/publish payload never bakes in a
-        // contract address, but the preview below substitutes the same
-        // platform facts the served page would use today, so what the
-        // creator sees matches what /[slug] serves. The bespoke (paid AI)
-        // pipeline never writes the free-site marker, so its preview is
-        // unaffected. The chart lookup itself is skipped in this preview
-        // (kept "coming soon") to avoid an extra network dependency here;
-        // /[slug] always does the authoritative live lookup.
-        const previewHtml =
-          mode === "free" && isFreeSiteTemplateHtml(page.html)
-            ? substituteFreeSitePlatformFacts(page.html, {
-                contractAddress: detail.contractAddress?.trim() || "",
-                chart: { found: false },
-                lpLockedAt: null,
-              })
-            : page.html;
+        const previewHtml = previewHtmlFor(page.html, detail.contractAddress?.trim() || "");
         activePreview = renderGeneratedWebsite(previewHtml, detail.imageDataUrl || "", publishSite, () => {
           generationNumber += 1;
           activeController?.abort();
@@ -600,9 +614,29 @@ export function FullWebsiteGenerator() {
       }
     }
 
+    function onReopen(event: Event) {
+      const detail = (event as CustomEvent<ReopenGeneratedSiteDetail>).detail;
+      const site = detail?.site;
+      if (!site || !site.generatedSiteHtml) return;
+      generationNumber += 1;
+      activeController?.abort();
+      activeController = null;
+      restoreStudioControls();
+      lastReportedHeight = 1800;
+      const previewHtml = previewHtmlFor(site.generatedSiteHtml, site.contractAddress);
+      activePreview = renderGeneratedWebsite(previewHtml, detail?.imageDataUrl || "", site, () => {
+        generationNumber += 1;
+        activeController?.abort();
+        activeController = null;
+        restoreStudioControls();
+      });
+      applyActiveFrameHeight();
+    }
+
     window.addEventListener("message", onMessage);
     window.addEventListener("resize", onViewportResize);
     window.addEventListener("launchpad:generate-site", onGenerate);
+    window.addEventListener(REOPEN_GENERATED_SITE_EVENT, onReopen);
     return () => {
       generationNumber += 1;
       activeController?.abort();
@@ -610,6 +644,7 @@ export function FullWebsiteGenerator() {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("resize", onViewportResize);
       window.removeEventListener("launchpad:generate-site", onGenerate);
+      window.removeEventListener(REOPEN_GENERATED_SITE_EVENT, onReopen);
       restoreStudioControls();
     };
   }, []);
