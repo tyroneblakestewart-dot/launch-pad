@@ -17,14 +17,14 @@ export type SystemHealthCheck = {
 const HEALTH_CHECK_TIMEOUT_MS = 5_000;
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
   });
   try {
     return await Promise.race([promise, timeout]);
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 
