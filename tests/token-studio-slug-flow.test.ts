@@ -29,9 +29,11 @@ describe("Token studio save flow wiring", () => {
   it("captures the generated site HTML from the site-generated event instead of scraping the DOM", async () => {
     const studio = await readFile(path.join(ROOT, "components", "token-studio.tsx"), "utf8");
 
+    expect(studio).toContain(
+      'import { applyGeneratedSiteCapture, type SiteGeneratedEventDetail } from "@/lib/generated-site-capture"',
+    );
     expect(studio).toContain('window.addEventListener("launchpad:site-generated", onSiteGenerated)');
-    expect(studio).toContain("isCompleteGeneratedPageHtml(detail.html)");
-    expect(studio).toContain("generatedSiteHtml: html");
+    expect(studio).toContain("setProject((current) => applyGeneratedSiteCapture(current, detail))");
     expect(studio).not.toContain("document.querySelector(\".full-generated-page-frame\")");
   });
 

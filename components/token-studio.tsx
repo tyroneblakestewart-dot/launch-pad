@@ -7,7 +7,7 @@ import {
 } from "@/components/full-website-generator";
 import { CHAIN_CONFIG, ROBINHOOD_MAINNET } from "@/lib/chains";
 import { FREE_SITE_SECTION_DEFAULTS, type FreeSiteSectionKey } from "@/lib/free-site-sections";
-import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
+import { applyGeneratedSiteCapture, type SiteGeneratedEventDetail } from "@/lib/generated-site-capture";
 import { PROJECT_SAVE_RESULT_EVENT } from "@/lib/project-save-result";
 import { findSlugCollision, slugify, validateSlug } from "@/lib/slug";
 import type { SupportedChain, TokenProject, WalletState } from "@/lib/types";
@@ -92,7 +92,7 @@ function formatSupply(value: string): string {
   return Number.isFinite(numeric) ? numeric.toLocaleString("en-GB") : value;
 }
 
-function publishableSiteFromProject(target: TokenProject): PublishableSitePayload | null {
+export function publishableSiteFromProject(target: TokenProject): PublishableSitePayload | null {
   if (!target.generatedSiteHtml) return null;
   return {
     slug: target.websiteSlug || slugify(target.name) || "",
@@ -157,16 +157,8 @@ export function TokenStudio() {
 
   useEffect(() => {
     function onSiteGenerated(event: Event) {
-      const detail = (event as CustomEvent<{ fullPage?: boolean; html?: unknown }>).detail;
-      if (!detail?.fullPage || typeof detail.html !== "string") return;
-      if (!isCompleteGeneratedPageHtml(detail.html)) return;
-      const html = detail.html;
-      setProject((current) => ({
-        ...current,
-        generatedSiteHtml: html,
-        generatedSiteVersion: (current.generatedSiteVersion || 0) + 1,
-        updatedAt: new Date().toISOString(),
-      }));
+      const detail = (event as CustomEvent<SiteGeneratedEventDetail>).detail;
+      setProject((current) => applyGeneratedSiteCapture(current, detail));
     }
 
     window.addEventListener("launchpad:site-generated", onSiteGenerated);
