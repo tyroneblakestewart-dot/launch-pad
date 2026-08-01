@@ -52,7 +52,7 @@ export function AdminSystemHealth() {
   }, []);
 
   useEffect(() => {
-    void loadHealth();
+    queueMicrotask(() => void loadHealth());
     const interval = setInterval(() => void loadHealth(), REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [loadHealth]);
