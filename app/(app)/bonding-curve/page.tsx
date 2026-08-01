@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { RobinhoodTrendingTokens } from "@/components/robinhood-trending-tokens";
 import styles from "./bonding-curve.module.css";
 
 export const metadata: Metadata = {
@@ -138,6 +139,8 @@ export default function BondingCurvePage() {
           </div>
         </aside>
       </section>
+
+      <RobinhoodTrendingTokens />
 
       <div className={styles.legacyLayout}>
         <section className={styles.hero}>
