@@ -14,6 +14,7 @@ type GenerateSiteProtectionEnvironment = {
   VERCEL_ENV?: string;
   VERCEL_URL?: string;
   VERCEL_BRANCH_URL?: string;
+  VERCEL_PROJECT_PRODUCTION_URL?: string;
   [key: string]: string | undefined;
 };
 
@@ -82,6 +83,17 @@ export function getGenerateSiteAllowedOrigins(
   const origins = new Set<string>();
   const configuredOrigin = normaliseAbsoluteOrigin(allowedOrigin);
   if (configuredOrigin) origins.add(configuredOrigin);
+
+  if (environment.VERCEL_ENV === "production") {
+    // Vercel serves every Production deployment on both the assigned custom
+    // domain (GENERATE_SITE_STYLE_ALLOWED_ORIGIN, e.g. hoodlums.dev) and its
+    // own stable Production alias (VERCEL_PROJECT_PRODUCTION_URL, a
+    // *.vercel.app domain unless a custom domain fully replaces it). Unlike
+    // VERCEL_URL, this value stays the same across deployments, so it is
+    // safe to always trust in production.
+    const productionOrigin = normaliseVercelSystemOrigin(environment.VERCEL_PROJECT_PRODUCTION_URL);
+    if (productionOrigin) origins.add(productionOrigin);
+  }
 
   if (environment.VERCEL_ENV === "preview") {
     const deploymentOrigin = normaliseVercelSystemOrigin(environment.VERCEL_URL);
