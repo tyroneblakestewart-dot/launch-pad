@@ -122,6 +122,15 @@ export function BondingCurveGraduationStatus({ curveAddress }: { curveAddress?: 
     );
   }
 
+  if (view.kind === "no-address") {
+    return (
+      <div className={styles.panel} role="status">
+        <span className={styles.badgeNeutral}>NOT DEPLOYED</span>
+        <p>No bonding curve is configured for Robinhood Chain Testnet yet. Live status appears here once one is.</p>
+      </div>
+    );
+  }
+
   const { status } = view;
 
   if (status.state === "graduated") {
