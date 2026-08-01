@@ -12,9 +12,18 @@
 .hero,
 .summaryGrid,
 .flowSection,
-.nextStep {
+.nextStep,
+.liveStatusSection {
   width: min(1120px, 100%);
   margin-inline: auto;
+}
+
+.liveStatusSection {
+  margin: 16px auto 0;
+}
+
+.liveStatusSection .sectionHeading {
+  margin-bottom: 14px;
 }
 
 .hero {
@@ -309,13 +318,7 @@
   .desktopSummaryPanel dl div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid rgba(131, 183, 139, .12); }
   .desktopSummaryPanel dt { color: #7e8b81; font-size: 12px; }
   .desktopSummaryPanel dd { margin: 0; color: #d7ded8; font-size: 12px; font-weight: 800; text-align: right; }
-  .desktopProgress { margin-top: 22px; padding: 15px; border: 1px solid rgba(185, 239, 77, .2); border-radius: 10px; background: rgba(185, 239, 77, .035); }
-  .desktopProgress > div { display: flex; justify-content: space-between; gap: 12px; }
-  .desktopProgress > div span { color: #89968c; font-size: 11px; }
-  .desktopProgress > div b { color: #bce759; font-size: 12px; }
-  .desktopProgress i { display: block; height: 7px; margin: 11px 0; overflow: hidden; border-radius: 999px; background: #111713; }
-  .desktopProgress i span { display: block; width: 0; height: 100%; background: #bce759; }
-  .desktopProgress small { color: #6f7b71; font: 500 10px/1.45 "IBM Plex Mono", monospace; }
+  .desktopProgress { margin-top: 22px; }
 }
 
 @media (max-width: 900px) {
