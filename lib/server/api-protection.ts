@@ -6,6 +6,10 @@ export const GENERATE_SITE_STYLE_WINDOW_MS = 60 * 60 * 1000;
 export const PUBLISH_CHALLENGE_LIMIT = 20;
 export const PUBLISH_SITE_LIMIT = 10;
 export const PUBLISH_WINDOW_MS = 60 * 60 * 1000;
+export const ADMIN_CHALLENGE_LIMIT = 20;
+export const ADMIN_CHALLENGE_WINDOW_MS = 60 * 60 * 1000;
+export const ADMIN_LOGIN_LIMIT = 5;
+export const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000;
 
 type RateRecord = { count: number; resetAt: number };
 type RateStore = Map<string, RateRecord>;
@@ -21,6 +25,8 @@ type GlobalWithRateStore = typeof globalThis & {
   __hoodlumsGenerateSiteStyleRateStore?: RateStore;
   __hoodlumsPublishChallengeRateStore?: RateStore;
   __hoodlumsPublishSiteRateStore?: RateStore;
+  __hoodlumsAdminChallengeRateStore?: RateStore;
+  __hoodlumsAdminLoginRateStore?: RateStore;
 };
 
 function generateRateStore(): RateStore {
@@ -45,6 +51,22 @@ function publishSiteRateStore(): RateStore {
     globalScope.__hoodlumsPublishSiteRateStore = new Map();
   }
   return globalScope.__hoodlumsPublishSiteRateStore;
+}
+
+function adminChallengeRateStore(): RateStore {
+  const globalScope = globalThis as GlobalWithRateStore;
+  if (!globalScope.__hoodlumsAdminChallengeRateStore) {
+    globalScope.__hoodlumsAdminChallengeRateStore = new Map();
+  }
+  return globalScope.__hoodlumsAdminChallengeRateStore;
+}
+
+function adminLoginRateStore(): RateStore {
+  const globalScope = globalThis as GlobalWithRateStore;
+  if (!globalScope.__hoodlumsAdminLoginRateStore) {
+    globalScope.__hoodlumsAdminLoginRateStore = new Map();
+  }
+  return globalScope.__hoodlumsAdminLoginRateStore;
 }
 
 function safeEqual(left: string, right: string): boolean {
@@ -91,6 +113,21 @@ export function getGenerateSiteAllowedOrigins(
   }
 
   return [...origins];
+}
+
+/**
+ * Same-origin check for state-changing admin endpoints (challenge/login/logout).
+ * Mirrors the ad-hoc `allowedOrigin` helper duplicated across the publish
+ * routes, centralised here since four admin routes share it.
+ */
+export function isAdminRequestOriginAllowed(request: Request): boolean {
+  const origin = request.headers.get("origin") || "";
+  const configured =
+    process.env.ADMIN_ALLOWED_ORIGIN?.trim() ||
+    process.env.PUBLISH_ALLOWED_ORIGIN?.trim() ||
+    process.env.GENERATE_SITE_STYLE_ALLOWED_ORIGIN?.trim() ||
+    new URL(request.url).origin;
+  return Boolean(origin && origin === configured);
 }
 
 export function getClientIp(request: Request): string {
@@ -170,6 +207,32 @@ export function consumePublishSiteRateLimit(ip: string, now = Date.now()) {
   );
 }
 
+/** Gates issuing a fresh admin wallet-signature challenge, same shape as publish challenges. */
+export function consumeAdminChallengeRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(
+    adminChallengeRateStore(),
+    ip,
+    ADMIN_CHALLENGE_LIMIT,
+    ADMIN_CHALLENGE_WINDOW_MS,
+    now,
+  );
+}
+
+/**
+ * Gates admin login attempts (wallet signature or password) per IP. Tighter
+ * than the challenge limit since this is the brute-force surface for
+ * ADMIN_PASSWORD.
+ */
+export function consumeAdminLoginRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(
+    adminLoginRateStore(),
+    ip,
+    ADMIN_LOGIN_LIMIT,
+    ADMIN_LOGIN_WINDOW_MS,
+    now,
+  );
+}
+
 export function resetGenerateSiteStyleRateLimitForTests() {
   generateRateStore().clear();
 }
@@ -177,4 +240,9 @@ export function resetGenerateSiteStyleRateLimitForTests() {
 export function resetPublishRateLimitsForTests() {
   publishChallengeRateStore().clear();
   publishSiteRateStore().clear();
+}
+
+export function resetAdminRateLimitsForTests() {
+  adminChallengeRateStore().clear();
+  adminLoginRateStore().clear();
 }

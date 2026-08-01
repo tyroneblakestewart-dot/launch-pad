@@ -272,9 +272,50 @@ Loading a saved project (or clicking "Reopen generated site" in the preview tool
 | `/monad` | Monad Testnet ERC-20 deployment | Test-only |
 | `/social` | X handoff and Telegram publishing workspace | Available |
 | `/account` | Account-provider interface preview | Coming later |
+| `/admin` | Private owner-only control panel; System Health section only so far | Requires `ADMIN_WALLET_ADDRESS` and/or `ADMIN_PASSWORD`; unauthenticated visitors see only a login screen |
 | `/api/publish/challenge` | Create a short-lived single-use wallet message challenge | Available after `DATABASE_URL` and migration setup |
 | `/api/publish` | Verify the signature and atomically publish a generated site | Available after `DATABASE_URL` and migration setup |
+| `/api/admin/challenge` | Issue a short-lived single-use wallet message challenge for the configured admin wallet | Available after `ADMIN_WALLET_ADDRESS` is set |
+| `/api/admin/login` | Verify a wallet signature or the admin password and start a session | Available after `ADMIN_WALLET_ADDRESS` and/or `ADMIN_PASSWORD` is set |
+| `/api/admin/logout` | End the current admin session | Available |
+| `/api/admin/health` | Live System Health checks (generation, database, contracts, deployment); session-gated | Available |
 | `/[slug]` | Public generated token site, metadata, artwork and Dexscreener section | Reads durable published records; unknown slugs 404 |
+
+## Admin dashboard
+
+`/admin` is a private control panel for the platform owner only. It ships in
+this PR with the dashboard shell, sign-in, and a System Health section; more
+sections (Activity, Money, Issues) can be added later without touching the
+shell.
+
+**Signing in.** There are two ways in, and unauthenticated visitors only ever
+see a login screen — never dashboard content:
+
+- **Wallet signature (primary).** Same pattern as publishing: the server
+  issues a short-lived single-use nonce, you sign a message with the wallet
+  set in `ADMIN_WALLET_ADDRESS`, and the server verifies the signature. No
+  gas, no transaction. Any other wallet is rejected.
+- **Password (fallback).** For access away from that wallet (e.g. from a
+  phone). Reads `ADMIN_PASSWORD`, compares it in constant time, and rate-limits
+  attempts. The password is never logged.
+
+Both env vars are optional independently — set one, both, or neither (which
+disables that login path entirely and returns a 503 from the corresponding
+endpoint rather than silently accepting anything).
+
+**System Health.** Four independent, colour-coded (green/amber/red) checks,
+polled from `/api/admin/health` once signed in:
+
+- **Website generation** — is an AI generation provider configured? (checks
+  configuration only, never spends money on a real call)
+- **Database** — does `SELECT 1` succeed against `DATABASE_URL`?
+- **On-chain contracts** — do the configured factory and bonding curve
+  respond to a read call on Robinhood Chain Testnet?
+- **Deployment** — is this server process serving requests, and (in
+  production) does it have Vercel deployment metadata?
+
+Each check fails independently: a red database doesn't affect the contracts
+check or take down the page.
 
 ## Safety model and limitations
 

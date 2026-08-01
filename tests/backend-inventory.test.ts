@@ -28,6 +28,10 @@ describe("backend test inventory", () => {
       .sort();
 
     expect(routeFiles).toEqual([
+      "app/api/admin/challenge/route.ts",
+      "app/api/admin/health/route.ts",
+      "app/api/admin/login/route.ts",
+      "app/api/admin/logout/route.ts",
       "app/api/dexscreener-pair/route.ts",
       "app/api/generate-free-site/route.ts",
       "app/api/generate-site-page/route.ts",
@@ -51,6 +55,10 @@ describe("backend test inventory", () => {
     );
 
     expect(Object.fromEntries(methods)).toEqual({
+      "app/api/admin/challenge/route.ts": ["POST"],
+      "app/api/admin/health/route.ts": ["GET"],
+      "app/api/admin/login/route.ts": ["POST"],
+      "app/api/admin/logout/route.ts": ["POST"],
       "app/api/dexscreener-pair/route.ts": ["GET"],
       "app/api/generate-free-site/route.ts": ["POST"],
       "app/api/generate-site-page/route.ts": ["POST"],
@@ -71,6 +79,8 @@ describe("backend test inventory", () => {
       .sort();
 
     expect(serverFiles).toEqual([
+      "lib/server/admin-auth.ts",
+      "lib/server/admin-session-store.ts",
       "lib/server/ai-responses-runtime.ts",
       "lib/server/api-protection.ts",
       "lib/server/artwork-identity-request.ts",
@@ -86,6 +96,7 @@ describe("backend test inventory", () => {
       "lib/server/published-site-validation.ts",
       "lib/server/robinhood-trending.ts",
       "lib/server/sanitise-provider-detail.ts",
+      "lib/server/system-health.ts",
       "lib/server/telegram.ts",
     ]);
   });
