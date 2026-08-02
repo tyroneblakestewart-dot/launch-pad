@@ -55,16 +55,18 @@
   margin-left: auto;
 }
 
-.createButton,
+.savedLaunchesButton,
 .accountButton {
   padding: 9px 16px;
   border-radius: 999px;
   font: 800 11px var(--mono);
   text-decoration: none;
   white-space: nowrap;
+  border: none;
+  cursor: pointer;
 }
 
-.createButton {
+.savedLaunchesButton {
   background: #bce759;
   color: #071008;
 }
@@ -124,22 +126,13 @@
   gap: 10px;
 }
 
-.primaryCta,
-.secondaryCta {
+.primaryCta {
   padding: 12px 20px;
   border-radius: 999px;
   font: 800 12px var(--mono);
   text-decoration: none;
-}
-
-.primaryCta {
   background: #bce759;
   color: #071008;
-}
-
-.secondaryCta {
-  border: 1px solid rgba(188, 231, 89, 0.2);
-  color: #f4f7ef;
 }
 
 .facts {

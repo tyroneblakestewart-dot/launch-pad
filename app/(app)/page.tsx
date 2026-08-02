@@ -37,8 +37,6 @@ export default async function Home({ searchParams }: HomePageProps) {
         heroSub={content.hero_sub}
         primaryCtaLabel={content.primary_cta_label}
         primaryCtaLink={content.primary_cta_link}
-        secondaryCtaLabel={content.secondary_cta_label}
-        secondaryCtaLink={content.secondary_cta_link}
       />
       <div id="launch-studio" style={{ scrollMarginTop: 16 }}>
         <TokenStudioWorkspace />

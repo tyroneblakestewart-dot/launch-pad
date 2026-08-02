@@ -24,10 +24,6 @@
   [class*="hoodlums-launch-hero-module"][class*="mainColumn"] {
     width: 100%;
   }
-
-  #launch-studio {
-    margin-left: 224px;
-  }
 }
 
 /* Studio shell and section header */
@@ -341,10 +337,6 @@
 @media (max-width: 900px) {
   [class*="hoodlums-launch-hero-module"][class*="page"] {
     padding-left: 0 !important;
-  }
-
-  #launch-studio {
-    margin-left: 0;
   }
 
   #launch-studio .workspace {
