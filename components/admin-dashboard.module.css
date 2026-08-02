@@ -6,9 +6,9 @@
 
 .header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   margin-bottom: 18px;
 }
 
@@ -19,18 +19,41 @@
   color: #eef3ea;
 }
 
-.signOutButton {
+.subtitle {
+  margin: 4px 0 0;
+  color: rgba(238, 243, 234, 0.55);
+  font-size: 0.78rem;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.signOutButton,
+.refreshButton {
   padding: 9px 14px;
   font-size: 0.82rem;
   font-weight: 600;
   border-radius: 10px;
-  border: 1px solid rgba(188, 231, 89, 0.25);
-  background: transparent;
-  color: rgba(238, 243, 234, 0.85);
   cursor: pointer;
 }
 
-.signOutButton:disabled {
+.signOutButton {
+  border: 1px solid rgba(188, 231, 89, 0.25);
+  background: transparent;
+  color: rgba(238, 243, 234, 0.85);
+}
+
+.refreshButton {
+  border: 1px solid rgba(188, 231, 89, 0.45);
+  background: rgba(188, 231, 89, 0.09);
+  color: #bce759;
+}
+
+.signOutButton:disabled,
+.refreshButton:disabled {
   opacity: 0.6;
   cursor: default;
 }
@@ -40,6 +63,8 @@
   gap: 8px;
   margin-bottom: 20px;
   overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
 }
 
 .navItem,
@@ -65,4 +90,44 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.error,
+.loadingPanel {
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 0.82rem;
+}
+
+.error {
+  margin: 0;
+  border: 1px solid rgba(255, 119, 119, 0.28);
+  background: rgba(255, 119, 119, 0.08);
+  color: #ff9a9a;
+}
+
+.loadingPanel {
+  border: 1px solid rgba(188, 231, 89, 0.15);
+  background: rgba(10, 13, 11, 0.88);
+  color: rgba(238, 243, 234, 0.65);
+}
+
+@media (min-width: 900px) {
+  .dashboard {
+    padding: 24px 28px 60px;
+  }
+}
+
+@media (max-width: 620px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .headerActions {
+    width: 100%;
+  }
+
+  .headerActions button {
+    flex: 1;
+  }
 }
