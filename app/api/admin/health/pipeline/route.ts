@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSystemHealthCheckId } from "@/lib/admin-operations";
 import {
   hashAdminSessionToken,
   parseAdminSessionCookie,
@@ -8,7 +9,7 @@ import {
   isAdminSessionValid,
 } from "@/lib/server/admin-session-store";
 import { getVercelOidcToken } from "@/lib/server/ai-responses-runtime";
-import { getSystemHealth } from "@/lib/server/system-health";
+import { buildServicePipeline } from "@/lib/server/system-health-pipeline";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,11 @@ async function isAuthenticated(request: Request): Promise<boolean> {
   );
 }
 
+/**
+ * Read-only per-service pipeline drill-down. Fetched on demand when an
+ * admin expands a System Health card, not on the 30-second summary poll, so
+ * the AI-provider reachability probe below isn't fired every refresh.
+ */
 export async function GET(request: Request) {
   try {
     if (!(await isAuthenticated(request))) {
@@ -28,9 +34,19 @@ export async function GET(request: Request) {
       );
     }
 
-    const checks = await getSystemHealth({ requestOidcToken: getVercelOidcToken(request) });
+    const service = new URL(request.url).searchParams.get("service");
+    if (!isSystemHealthCheckId(service)) {
+      return NextResponse.json(
+        { error: "A valid service is required." },
+        { status: 400, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const pipeline = await buildServicePipeline(service, {
+      requestOidcToken: getVercelOidcToken(request),
+    });
     return NextResponse.json(
-      { checks, checkedAt: new Date().toISOString() },
+      { pipeline, checkedAt: new Date().toISOString() },
       { status: 200, headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
@@ -45,11 +61,11 @@ export async function GET(request: Request) {
     }
 
     console.error(
-      "Admin health check failed unexpectedly.",
+      "Admin health pipeline check failed unexpectedly.",
       error instanceof Error ? (error.stack ?? error.message) : error,
     );
     return NextResponse.json(
-      { error: "Admin health check failed unexpectedly. Try again." },
+      { error: "The pipeline detail could not be loaded. Try again." },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }

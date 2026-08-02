@@ -63,12 +63,26 @@
 }
 
 .card {
-  display: flex;
-  gap: 10px;
-  padding: 12px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+}
+
+.cardToggle {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* Keeps the tap target comfortable on iPhone Safari without relying on hover. */
+  min-height: 44px;
 }
 
 .dot {
@@ -80,26 +94,32 @@
   background: #8a9188;
 }
 
-.card[data-status="green"] .dot {
+.card[data-status="green"] .dot,
+.pipelineNode[data-status="green"] .pipelineNodeDot {
   background: #6ee787;
   box-shadow: 0 0 8px rgba(110, 231, 135, 0.6);
 }
 
-.card[data-status="amber"] .dot {
+.card[data-status="amber"] .dot,
+.pipelineNode[data-status="amber"] .pipelineNodeDot {
   background: #f0c04b;
   box-shadow: 0 0 8px rgba(240, 192, 75, 0.6);
 }
 
-.card[data-status="red"] .dot {
+.card[data-status="red"] .dot,
+.pipelineNode[data-status="red"] .pipelineNodeDot {
   background: #ff6b6b;
   box-shadow: 0 0 8px rgba(255, 107, 107, 0.6);
 }
 
 .cardBody {
+  display: block;
   min-width: 0;
+  flex: 1;
 }
 
 .cardLabel {
+  display: block;
   margin: 0;
   font-size: 0.85rem;
   font-weight: 700;
@@ -107,6 +127,7 @@
 }
 
 .cardStatus {
+  display: block;
   margin: 2px 0 4px;
   font-size: 0.72rem;
   font-weight: 700;
@@ -116,9 +137,185 @@
 }
 
 .cardMessage {
+  display: block;
   margin: 0;
   font-size: 0.8rem;
   line-height: 1.4;
   color: rgba(238, 243, 234, 0.75);
   word-break: break-word;
+}
+
+.cardChevron {
+  flex: none;
+  font-size: 0.7rem;
+  color: rgba(238, 243, 234, 0.5);
+  margin-top: 4px;
+}
+
+.drillDown {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px;
+}
+
+.pipelineRefreshButton {
+  margin-top: 10px;
+  padding: 6px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid rgba(188, 231, 89, 0.25);
+  background: transparent;
+  color: rgba(238, 243, 234, 0.85);
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.pipelineRefreshButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Pipeline flow diagram: nodes + connectors. Wraps to a vertical flow on
+   narrow viewports (iPhone Safari) instead of forcing horizontal scroll. */
+.pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pipelineFlow {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+}
+
+.pipelineNodeWrap {
+  display: flex;
+  align-items: center;
+}
+
+.connector {
+  flex: none;
+  width: 18px;
+  height: 2px;
+  margin: 0 4px;
+  background: rgba(238, 243, 234, 0.25);
+}
+
+.pipelineNode {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  min-width: 128px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pipelineNode[data-selected="true"] {
+  border-color: rgba(188, 231, 89, 0.6);
+  background: rgba(188, 231, 89, 0.08);
+}
+
+.pipelineNodeDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8a9188;
+}
+
+.pipelineNodeLabel {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #eef3ea;
+}
+
+.pipelineNodeStatus {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: rgba(238, 243, 234, 0.6);
+}
+
+.pipelineDetail {
+  border-radius: 10px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.pipelineDetail[data-status="green"] {
+  border-color: rgba(110, 231, 135, 0.35);
+}
+
+.pipelineDetail[data-status="amber"] {
+  border-color: rgba(240, 192, 75, 0.35);
+}
+
+.pipelineDetail[data-status="red"] {
+  border-color: rgba(255, 107, 107, 0.35);
+}
+
+.pipelineDetailLabel {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #eef3ea;
+}
+
+.pipelineDetailMessage {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: rgba(238, 243, 234, 0.8);
+  word-break: break-word;
+}
+
+.pipelineDetailObserved {
+  margin: 6px 0 0;
+  font-size: 0.7rem;
+  color: rgba(238, 243, 234, 0.5);
+}
+
+.pipelineHint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(238, 243, 234, 0.5);
+}
+
+/* Below iPhone-width breakpoints the flow reads top-to-bottom instead of
+   wrapping mid-row, which is easier to scan on a narrow screen. */
+@media (max-width: 480px) {
+  .pipelineFlow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pipelineNodeWrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .connector {
+    width: 2px;
+    height: 14px;
+    margin: 2px auto;
+  }
+
+  .pipelineNode {
+    min-width: 0;
+    width: 100%;
+  }
 }

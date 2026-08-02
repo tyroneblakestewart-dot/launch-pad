@@ -28,6 +28,15 @@ describe("checkWebsiteGenerationHealth", () => {
     const result = checkWebsiteGenerationHealth(throwingEnv);
     expect(result).toMatchObject({ id: "website-generation", status: "red" });
   });
+
+  it("is green from the request's Vercel Function OIDC token even with no env credential — regression for the check reporting 'not configured' while generation worked", () => {
+    const result = checkWebsiteGenerationHealth({}, "runtime-oidc-token");
+    expect(result).toMatchObject({
+      id: "website-generation",
+      status: "green",
+      message: expect.stringContaining("vercel-ai-gateway"),
+    });
+  });
 });
 
 describe("checkDatabaseHealth", () => {
@@ -110,6 +119,17 @@ describe("getSystemHealth", () => {
     expect(checks.map((check) => check.id).sort()).toEqual(
       ["contracts", "database", "deployment", "website-generation"].sort(),
     );
+  });
+
+  it("threads the request OIDC token into the website-generation check", async () => {
+    const checks = await getSystemHealth({
+      env: { NODE_ENV: "development" },
+      requestOidcToken: "runtime-oidc-token",
+      database: { databaseUrl: "" },
+      contracts: { chainId: 1 },
+    });
+    const byId = Object.fromEntries(checks.map((check) => [check.id, check]));
+    expect(byId["website-generation"].status).toBe("green");
   });
 
   it("keeps every other check intact when one check fails", async () => {

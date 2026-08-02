@@ -10,6 +10,7 @@ import {
   getAdminOperationsStore,
 } from "@/lib/server/admin-operations-store";
 import { getAdminOperationsSnapshot } from "@/lib/server/admin-operations";
+import { getVercelOidcToken } from "@/lib/server/ai-responses-runtime";
 import {
   AdminSessionStoreUnavailableError,
   isAdminSessionValid,
@@ -54,7 +55,9 @@ export async function GET(request: Request) {
       );
     }
 
-    const snapshot = await getAdminOperationsSnapshot();
+    const snapshot = await getAdminOperationsSnapshot({
+      requestOidcToken: getVercelOidcToken(request),
+    });
     return NextResponse.json(snapshot, {
       status: 200,
       headers: NO_STORE_HEADERS,

@@ -54,11 +54,45 @@ export type AdminActivityItem = {
 
 export type AdminHealthStatus = "green" | "amber" | "red";
 
+export const SYSTEM_HEALTH_CHECK_IDS = [
+  "website-generation",
+  "database",
+  "contracts",
+  "deployment",
+] as const;
+
+export type SystemHealthCheckId = (typeof SYSTEM_HEALTH_CHECK_IDS)[number];
+
+export function isSystemHealthCheckId(value: unknown): value is SystemHealthCheckId {
+  return typeof value === "string" && (SYSTEM_HEALTH_CHECK_IDS as readonly string[]).includes(value);
+}
+
 export type AdminHealthCheck = {
-  id: "website-generation" | "database" | "contracts" | "deployment";
+  id: SystemHealthCheckId;
   label: string;
   status: AdminHealthStatus;
   message: string;
+};
+
+/**
+ * One stage in a service's request pipeline. `observedAt` is set only when
+ * the status reflects a recorded/observed fact (a database timestamp, an
+ * isolation change) rather than a check that ran live just now — a stage
+ * that cannot be live-probed and has never been observed reports amber with
+ * `observedAt: null` instead of guessing at green.
+ */
+export type AdminPipelineStage = {
+  id: string;
+  label: string;
+  status: AdminHealthStatus;
+  message: string;
+  observedAt: string | null;
+};
+
+export type AdminServicePipeline = {
+  id: SystemHealthCheckId;
+  label: string;
+  stages: AdminPipelineStage[];
 };
 
 export type AdminSiteStats = {
