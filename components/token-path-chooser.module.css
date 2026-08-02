@@ -5,9 +5,9 @@
   display: grid;
   place-items: center;
   padding: 18px;
-  background: rgba(0, 0, 0, 0.75);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
+  background: rgba(0, 0, 0, 0.76);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
 }
 
 .panel {
@@ -15,12 +15,10 @@
   max-height: calc(100svh - 32px);
   overflow: auto;
   padding: 30px 26px 32px;
-  border: 1px solid rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.28);
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(14, 17, 15, 0.86), rgba(4, 6, 5, 0.9));
-  -webkit-backdrop-filter: blur(28px) saturate(1.15);
-  backdrop-filter: blur(28px) saturate(1.15);
-  box-shadow: 0 40px 140px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 26px;
+  background: linear-gradient(180deg, rgba(18, 21, 19, 0.99), rgba(6, 8, 7, 0.99));
+  box-shadow: 0 30px 120px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   color: #f4f7f1;
   scrollbar-width: none;
 }
@@ -39,19 +37,19 @@
   width: min(132px, 34vw);
   height: 40px;
   margin: 0 auto 14px;
-  background: var(--hoodlums-green, #bce759);
+  background: #c6f53e;
   -webkit-mask-position: center;
   mask-position: center;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   -webkit-mask-size: contain;
   mask-size: contain;
-  filter: drop-shadow(0 0 14px rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.25));
+  filter: drop-shadow(0 0 14px rgba(198, 245, 62, 0.18));
 }
 
 .eyebrow {
   margin: 0 0 8px;
-  color: var(--hoodlums-green, #bce759);
+  color: #c6f53e;
   font: 700 10px/1 "IBM Plex Mono", monospace;
   letter-spacing: 0.18em;
 }
@@ -96,19 +94,19 @@
 }
 
 .column:hover {
-  border-color: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.45);
+  border-color: rgba(198, 245, 62, 0.45);
   transform: translateY(-2px);
 }
 
 .columnRecommended {
-  border-color: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.45);
-  background: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.06);
+  border-color: rgba(198, 245, 62, 0.45);
+  background: rgba(198, 245, 62, 0.06);
 }
 
 .columnSelected {
-  border-color: var(--hoodlums-green, #bce759);
-  background: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.11);
-  box-shadow: 0 0 0 1px var(--hoodlums-green, #bce759), 0 18px 48px rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.18);
+  border-color: #c6f53e;
+  background: rgba(198, 245, 62, 0.11);
+  box-shadow: 0 0 0 1px #c6f53e, 0 18px 48px rgba(198, 245, 62, 0.18);
   transform: translateY(-2px);
 }
 
@@ -122,12 +120,12 @@
   left: 18px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--hoodlums-green, #bce759);
+  background: #c6f53e;
   color: #071008;
   font: 800 9px/1 "IBM Plex Mono", monospace;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  box-shadow: 0 6px 18px rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.3);
+  box-shadow: 0 6px 18px rgba(198, 245, 62, 0.3);
 }
 
 .columnName {
@@ -138,7 +136,7 @@
 }
 
 .columnPrice {
-  color: var(--hoodlums-green, #bce759);
+  color: #c6f53e;
   font: 700 12px/1 "IBM Plex Mono", monospace;
 }
 
@@ -173,7 +171,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--hoodlums-green, #bce759);
+  background: #c6f53e;
 }
 
 .continueButton {
@@ -182,16 +180,31 @@
   margin-top: 24px;
   border: 0;
   border-radius: 999px;
-  background: var(--hoodlums-green, #bce759);
-  color: #071008;
+  background: linear-gradient(135deg, #c6f53e, #91f0b6);
+  color: #061006;
   font-size: 16px;
   font-weight: 900;
   cursor: pointer;
-  box-shadow: 0 16px 40px rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.24);
+  box-shadow: 0 16px 40px rgba(198, 245, 62, 0.16);
 }
 
 .continueButton:active {
   transform: translateY(1px);
+}
+
+.terms {
+  margin: 14px auto 0;
+  max-width: 480px;
+  color: #929693;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.terms span {
+  color: #c8ccca;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 @media (min-width: 720px) {
