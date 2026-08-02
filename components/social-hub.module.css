@@ -2,10 +2,6 @@
   min-height: 100vh;
   padding: 28px;
   color: #ecfff0;
-  background:
-    radial-gradient(circle at 15% 10%, rgba(46, 125, 63, 0.2), transparent 34%),
-    radial-gradient(circle at 85% 0%, rgba(232, 196, 53, 0.11), transparent 30%),
-    #030705;
   font-family: Arial, Helvetica, sans-serif;
 }
 

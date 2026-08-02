@@ -133,13 +133,6 @@ a[href="/testnet"] {
   box-shadow: 0 10px 26px rgba(var(--hoodlums-green-rgb), 0.15) !important;
 }
 
-/* Provider launch flow. */
-[class*="provider-launcher-module"][class*="shell"] {
-  background:
-    radial-gradient(circle at 85% 5%, rgba(var(--hoodlums-green-rgb), 0.11), transparent 30rem),
-    linear-gradient(180deg, #070a08, #040605) !important;
-}
-
 [class*="provider-launcher-module"][class*="header"] p,
 [class*="provider-launcher-module"][class*="sectionHeading"] p,
 [class*="provider-launcher-module"][class*="resultCard"] p,
@@ -187,14 +180,6 @@ a[href="/testnet"] {
 
 [class*="provider-launcher-module"][class*="toggleRow"] input {
   accent-color: var(--hoodlums-green) !important;
-}
-
-/* Allocation and distribution desk. */
-[class*="token-allocation-desk-module"][class*="shell"] {
-  background:
-    radial-gradient(circle at 90% 2%, rgba(var(--hoodlums-green-rgb), 0.11), transparent 32rem),
-    radial-gradient(circle at 5% 70%, rgba(232, 196, 53, 0.06), transparent 28rem),
-    linear-gradient(180deg, #070a08, #040605) !important;
 }
 
 [class*="token-allocation-desk-module"][class*="header"] p,

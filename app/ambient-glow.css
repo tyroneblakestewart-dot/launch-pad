@@ -1,0 +1,28 @@
+/*
+ * Single shared ambient background for the private studio shell (Home,
+ * Providers, Allocations, Account, Bonding Curve, and every other route
+ * inside app/(app)/layout.tsx). It is a fixed viewport layer painted once
+ * behind all page content, so the glow never seams or clips as a page
+ * scrolls or changes height, and every route inherits the same treatment
+ * from this one place instead of drifting per-page copies.
+ *
+ * Lightweight on purpose (a static radial-gradient background, no blur or
+ * filter) so it stays cheap on mobile Safari.
+ */
+.ambient-glow {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(var(--hoodlums-green-rgb), 0.14), transparent 60%),
+    radial-gradient(circle at 100% 100%, rgba(var(--hoodlums-green-rgb), 0.06), transparent 55%),
+    #050706;
+}
+
+/* Keep the glow out of the fixed left sidebar's column; the sidebar is its
+   own solid-black column with no glow bleed. */
+@media (min-width: 1100px) {
+  .ambient-glow {
+    left: 238px;
+  }
+}

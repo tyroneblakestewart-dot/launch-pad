@@ -4,6 +4,7 @@ import { GenerateSiteStyleAuthBridge } from "@/components/generate-site-style-au
 import { WalletProviderSelector } from "@/components/wallet-provider-selector";
 import "../globals.css";
 import "../hoodlums-brand-theme.css";
+import "../ambient-glow.css";
 import "../hoodlums-dashboard-consistency.css";
 import "../hoodlums-studio-consistency.css";
 import "../allocation-mobile-tabs.css";
@@ -43,6 +44,7 @@ export default function StudioLayout({ children }: Readonly<{ children: React.Re
   return (
     <>
       <GenerateSiteStyleAuthBridge />
+      <div className="ambient-glow" aria-hidden="true" />
       <AppNavigation />
       {children}
       <MobileBottomNavigation />
