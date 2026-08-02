@@ -1,0 +1,343 @@
+.panel {
+  border: 1px solid rgba(188, 231, 89, 0.15);
+  border-radius: 16px;
+  background: rgba(10, 13, 11, 0.88);
+  padding: 18px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 1.05rem;
+}
+
+.sectionIntro,
+.note,
+.timestamp,
+.empty,
+.cardDetail,
+.activityTime,
+.issueMessage,
+.serviceDescription,
+.serviceRoutes,
+.serviceReason {
+  color: rgba(238, 243, 234, 0.62);
+  line-height: 1.5;
+}
+
+.sectionIntro {
+  max-width: 760px;
+  margin: 6px 0 0;
+  font-size: 0.88rem;
+}
+
+.timestamp {
+  margin: 0;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.summaryGrid,
+.moneyGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summaryCard,
+.moneyCard {
+  min-width: 0;
+  border: 1px solid rgba(238, 243, 234, 0.09);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.018);
+  padding: 14px;
+}
+
+.cardLabel {
+  margin: 0 0 7px;
+  color: rgba(238, 243, 234, 0.58);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cardValue {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 1.35rem;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.cardDetail {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+}
+
+.good {
+  color: #72e88d;
+}
+
+.warning {
+  color: #f0bf4e;
+}
+
+.bad {
+  color: #ff7777;
+}
+
+.activityList,
+.issueList,
+.serviceList {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activityItem,
+.issueItem,
+.serviceItem {
+  border: 1px solid rgba(238, 243, 234, 0.09);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.018);
+  padding: 13px 14px;
+}
+
+.activityTop,
+.issueTop,
+.serviceTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.activityMessage,
+.issueTitle,
+.serviceLabel {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.activityTime {
+  margin: 0;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.issueMessage,
+.serviceDescription,
+.serviceRoutes,
+.serviceReason {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+}
+
+.serviceRoutes {
+  overflow-wrap: anywhere;
+}
+
+.badgeActive,
+.badgeIsolated,
+.badgeAmber,
+.badgeRed {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.badgeActive {
+  color: #72e88d;
+  background: rgba(114, 232, 141, 0.1);
+  border: 1px solid rgba(114, 232, 141, 0.25);
+}
+
+.badgeIsolated,
+.badgeAmber {
+  color: #f0bf4e;
+  background: rgba(240, 191, 78, 0.1);
+  border: 1px solid rgba(240, 191, 78, 0.25);
+}
+
+.badgeRed {
+  color: #ff8585;
+  background: rgba(255, 119, 119, 0.1);
+  border: 1px solid rgba(255, 119, 119, 0.25);
+}
+
+.serviceActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.isolateButton,
+.restoreButton,
+.cancelButton,
+.confirmButton {
+  border-radius: 9px;
+  padding: 8px 12px;
+  font-size: 0.76rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.isolateButton,
+.cancelButton {
+  color: #f0bf4e;
+  background: transparent;
+  border: 1px solid rgba(240, 191, 78, 0.3);
+}
+
+.restoreButton {
+  color: #72e88d;
+  background: transparent;
+  border: 1px solid rgba(114, 232, 141, 0.3);
+}
+
+.confirmButton {
+  color: #10150d;
+  background: #f0bf4e;
+  border: 1px solid #f0bf4e;
+}
+
+.isolateButton:disabled,
+.restoreButton:disabled,
+.cancelButton:disabled,
+.confirmButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.isolationForm {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(238, 243, 234, 0.08);
+}
+
+.reasonInput {
+  width: 100%;
+  min-height: 78px;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid rgba(240, 191, 78, 0.25);
+  background: rgba(0, 0, 0, 0.28);
+  color: #eef3ea;
+  padding: 10px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.reasonInput:focus {
+  outline: 2px solid rgba(240, 191, 78, 0.22);
+  outline-offset: 1px;
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.callout {
+  margin: 0 0 16px;
+  border: 1px solid rgba(188, 231, 89, 0.16);
+  border-radius: 12px;
+  background: rgba(188, 231, 89, 0.045);
+  padding: 12px 13px;
+  color: rgba(238, 243, 234, 0.75);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.subheading {
+  margin: 20px 0 10px;
+  color: #eef3ea;
+  font-size: 0.9rem;
+}
+
+.error {
+  margin: 0 0 12px;
+  border: 1px solid rgba(255, 119, 119, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 119, 119, 0.08);
+  color: #ff9a9a;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+}
+
+.note,
+.empty {
+  margin: 12px 0 0;
+  font-size: 0.78rem;
+}
+
+.address {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+@media (min-width: 780px) {
+  .summaryGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .moneyGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .panel {
+    padding: 14px;
+  }
+
+  .sectionHeader,
+  .activityTop,
+  .issueTop,
+  .serviceTop {
+    flex-direction: column;
+  }
+
+  .timestamp,
+  .activityTime {
+    white-space: normal;
+  }
+
+  .summaryGrid,
+  .moneyGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .serviceActions,
+  .formActions {
+    justify-content: stretch;
+  }
+
+  .serviceActions button,
+  .formActions button {
+    flex: 1;
+  }
+}
