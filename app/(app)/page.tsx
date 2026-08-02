@@ -40,7 +40,7 @@ export default async function Home({ searchParams }: HomePageProps) {
         secondaryCtaLabel={content.secondary_cta_label}
         secondaryCtaLink={content.secondary_cta_link}
       />
-      <div id="launch-studio" style={{ scrollMarginTop: 16, background: "#050706" }}>
+      <div id="launch-studio" style={{ scrollMarginTop: 16 }}>
         <TokenStudioWorkspace />
       </div>
     </>

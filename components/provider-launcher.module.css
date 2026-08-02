@@ -1,9 +1,6 @@
 .shell {
   min-height: 100vh;
   padding: 28px;
-  background:
-    radial-gradient(circle at 85% 5%, rgba(85, 255, 120, .11), transparent 30rem),
-    linear-gradient(180deg, #070a08, #040605);
   color: #f3f6ef;
 }
 .header {

@@ -1,4 +1,4 @@
-.page { min-height:100vh; padding:48px 22px 120px; background:radial-gradient(circle at top, rgba(185,239,77,.07), transparent 34%), #030805; color:#f2f5ef; }
+.page { min-height:100vh; padding:48px 22px 120px; color:#f2f5ef; }
 .panel { width:min(760px, 100%); margin:0 auto; padding:28px; border:1px solid rgba(131,183,139,.2); border-radius:18px; background:rgba(7,12,8,.96); box-shadow:0 24px 80px rgba(0,0,0,.32); }
 .header { display:grid; gap:10px; margin-bottom:28px; }
 .header p { margin:0; color:#b9ef4d; font:800 10px "IBM Plex Mono", monospace; letter-spacing:.16em; }

@@ -2,10 +2,6 @@
   min-height: 100vh;
   padding: 52px;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 78% 4%, rgba(185, 239, 77, 0.1), transparent 30%),
-    radial-gradient(circle at 18% 55%, rgba(45, 113, 61, 0.12), transparent 36%),
-    #050706;
   color: #f5f7f2;
 }
 
