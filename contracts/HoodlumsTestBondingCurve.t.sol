@@ -22,6 +22,7 @@ interface Vm {
     function warp(uint256 newTimestamp) external;
     function recordLogs() external;
     function getRecordedLogs() external returns (VmLog[] memory logs);
+    function expectRevert() external;
 }
 
 /// @dev Holds fees without a fallback that can accept native currency, used to
@@ -790,7 +791,7 @@ contract HoodlumsTestBondingCurveTest {
         require(found, "Graduated event not emitted");
     }
 
-    function testFailedUniswapMintRevertsWholeGraduationCleanly() public {
+    function test_RevertWhen_UniswapMintFails() public {
         FailingNonfungiblePositionManager failingManager = new FailingNonfungiblePositionManager();
         FixedSupplyMemeToken failToken = _deployToken(WHOLE_TOKEN_SUPPLY);
         uint256 target = 0.99 ether;
@@ -818,11 +819,9 @@ contract HoodlumsTestBondingCurveTest {
         uint256 curveBalanceBeforeFinalBuy = address(failCurve).balance;
 
         vm.prank(BUYER);
-        (bool success,) = address(failCurve).call{value: 0.5 ether}(
-            abi.encodeCall(HoodlumsTestBondingCurve.buy, (0, DEADLINE))
-        );
+        vm.expectRevert();
+        failCurve.buy{value: 0.5 ether}(0, DEADLINE);
 
-        require(!success, "buy succeeded despite failing Uniswap mint");
         require(!failCurve.graduated(), "curve marked graduated despite failed mint");
         require(failCurve.liquidityPool() == address(0), "pool address set despite failed mint");
         require(failCurve.lpTokenId() == 0, "lp token id set despite failed mint");
