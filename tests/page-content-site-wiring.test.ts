@@ -128,9 +128,9 @@ describe("home page content wiring", () => {
   it("passes the registered defaults into HoodlumsMarketHome as props", async () => {
     const tree = await HomePage({ searchParams: undefined });
     const [home] = findAll(tree, (el) => el.type === HoodlumsMarketHome);
-    expect(home.props.heroEyebrow).toBe("HOODLUMS BONDING MARKET");
-    expect(home.props.heroTitleLine1).toBe("From new token to");
-    expect(home.props.heroTitleLine2).toBe("locked liquidity.");
+    expect(home.props.heroEyebrow).toBe("BUILD. TEST. LAUNCH.");
+    expect(home.props.heroTitleLine1).toBe("Launch a meme token");
+    expect(home.props.heroTitleLine2).toBe("without the clutter.");
     expect(home.props.primaryCtaLabel).toBe("Create new token");
     expect(home.props.primaryCtaLink).toBe("#launch-studio");
   });

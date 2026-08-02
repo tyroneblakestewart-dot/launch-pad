@@ -139,16 +139,7 @@ export function TokenStudioWorkspace() {
 
   if (!isOpen) {
     return (
-      <section className={styles.closedWorkspace} aria-labelledby="start-launch-title">
-        <div className={styles.copy}>
-          <p className={styles.eyebrow}>BUILD. TEST. LAUNCH.</p>
-          <h2 id="start-launch-title">Launch a meme token without the clutter.</h2>
-          <p>
-            Start a new token or continue a project you already saved. Everything else stays
-            out of the way until you need it.
-          </p>
-        </div>
-
+      <section className={styles.closedWorkspace} aria-label="Start a launch">
         <div className={styles.actions}>
           <button className={styles.primaryAction} onClick={() => openWorkspace("new")}>
             Create new token

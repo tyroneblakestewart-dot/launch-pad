@@ -25,8 +25,9 @@ describe("Hoodlums bonding-market studio home (issue #185)", () => {
     expect(component).toContain("5-MIN ROBINHOOD MARKET PULSE");
     expect(component).toContain("+ Create");
     expect(component).toContain("Account");
-    expect(component).toContain("HOODLUMS BONDING MARKET");
-    expect(component).toContain("locked liquidity.");
+    expect(component).toContain("BUILD. TEST. LAUNCH.");
+    expect(component).toContain("Launch a meme token");
+    expect(component).toContain("without the clutter.");
     expect(component).toContain("Create new token");
     expect(component).toContain("0% token tax");
     expect(component).toContain("No mint function");

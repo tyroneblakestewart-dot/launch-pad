@@ -21,9 +21,9 @@ type HoodlumsMarketHomeProps = {
  * "home"). Nothing else on this page reads from the registry. */
 export function HoodlumsMarketHome({
   liveSites,
-  heroEyebrow = "HOODLUMS BONDING MARKET",
-  heroTitleLine1 = "From new token to",
-  heroTitleLine2 = "locked liquidity.",
+  heroEyebrow = "BUILD. TEST. LAUNCH.",
+  heroTitleLine1 = "Launch a meme token",
+  heroTitleLine2 = "without the clutter.",
   heroSub = "Create a fixed-supply token, give it a live Hoodlums website, and put its full supply into a bonding curve that graduates into permanently locked liquidity.",
   primaryCtaLabel = "Create new token",
   primaryCtaLink = "#launch-studio",
@@ -54,7 +54,7 @@ export function HoodlumsMarketHome({
             <h1 id="hoodlums-market-title" className={styles.headline}>
               {heroTitleLine1}
               <br />
-              <span>{heroTitleLine2}</span>
+              {heroTitleLine2}
             </h1>
             <p className={styles.sub}>{heroSub}</p>
             <div className={styles.ctas}>
