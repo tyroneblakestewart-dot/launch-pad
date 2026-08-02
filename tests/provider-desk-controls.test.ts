@@ -22,7 +22,7 @@ describe("provider launch desk controls", () => {
       "utf8",
     );
 
-    expect(page).toContain("<ProviderLauncher />");
+    expect(page).toContain("<ProviderLauncher");
     expect(launcher).toContain("Prepare launch data");
     expect(launcher).toContain("Verify and buy");
     expect(launcher).toContain("Copy launch pack");

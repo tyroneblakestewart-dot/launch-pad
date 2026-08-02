@@ -1,10 +1,23 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Link from "next/link";
+import HomePage from "@/app/(app)/page";
+import ProvidersPage from "@/app/(app)/providers/page";
 import BondingCurvePage from "@/app/(app)/bonding-curve/page";
 import AllocationsPage from "@/app/(app)/allocations/page";
+import AccountPage from "@/app/(app)/account/page";
 import PublicGeneratedSitePage from "@/app/[slug]/page";
+import { HoodlumsMarketHome } from "@/components/hoodlums-market-home";
+import { ProviderLauncher } from "@/components/provider-launcher";
+import { TokenAllocationDesk } from "@/components/token-allocation-desk";
 import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
 import type { PublicGeneratedSite } from "@/lib/public-site";
+import { hashAdminSessionToken } from "@/lib/server/admin-auth";
+import {
+  createAdminSession,
+  createMemoryAdminSessionStore,
+  resetAdminStoresForTests,
+  setAdminSessionStoreForTests,
+} from "@/lib/server/admin-session-store";
 import {
   resetPublicGeneratedSiteAdapterForTests,
   setPublicGeneratedSiteAdapter,
@@ -15,6 +28,14 @@ import {
   resetPageContentStoreForTests,
   setPageContentStoreForTests,
 } from "@/lib/server/page-content-store";
+
+let cookieJar = new Map<string, { value: string }>();
+
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) => cookieJar.get(name),
+  }),
+}));
 
 type ReactNode = unknown;
 type ReactElementLike = { type: unknown; props: Record<string, unknown> };
@@ -53,11 +74,23 @@ async function publishOverride(pageId: string, elementId: string, elementType: "
   await store.publish({ pageId, elementId, actor: "admin" });
 }
 
+beforeEach(() => {
+  cookieJar = new Map();
+  setAdminSessionStoreForTests(createMemoryAdminSessionStore());
+});
+
 afterEach(() => {
   resetPageContentStoreForTests();
   resetPublicGeneratedSiteAdapterForTests();
   resetDexscreenerPairCacheForTests();
+  resetAdminStoresForTests();
 });
+
+async function authenticatePreviewSession(): Promise<void> {
+  const token = "a-real-admin-session-token";
+  await createAdminSession(hashAdminSessionToken(token));
+  cookieJar.set("hoodlums_admin_session", { value: token });
+}
 
 describe("bonding-curve page content wiring", () => {
   it("renders the registered defaults when nothing has been published", async () => {
@@ -91,6 +124,72 @@ describe("bonding-curve page content wiring", () => {
   });
 });
 
+describe("home page content wiring", () => {
+  it("passes the registered defaults into HoodlumsMarketHome as props", async () => {
+    const tree = await HomePage({ searchParams: undefined });
+    const [home] = findAll(tree, (el) => el.type === HoodlumsMarketHome);
+    expect(home.props.heroEyebrow).toBe("HOODLUMS BONDING MARKET");
+    expect(home.props.heroTitleLine1).toBe("From new token to");
+    expect(home.props.heroTitleLine2).toBe("locked liquidity.");
+    expect(home.props.primaryCtaLabel).toBe("Create new token");
+    expect(home.props.primaryCtaLink).toBe("#launch-studio");
+  });
+
+  it("passes a published override through to HoodlumsMarketHome", async () => {
+    await publishOverride("home", "hero_title_line2", "heading", "guaranteed liquidity.");
+    const tree = await HomePage({ searchParams: undefined });
+    const [home] = findAll(tree, (el) => el.type === HoodlumsMarketHome);
+    expect(home.props.heroTitleLine2).toBe("guaranteed liquidity.");
+  });
+
+  it("only shows a staged draft to an authenticated preview request", async () => {
+    await authenticatePreviewSession();
+    const store = createMemoryPageContentStore();
+    setPageContentStoreForTests(store);
+    await store.saveDraft({ pageId: "home", elementId: "hero_sub", elementType: "text", value: "Draft sub-copy", actor: "admin" });
+
+    const withoutPreview = await HomePage({ searchParams: Promise.resolve({}) });
+    const [homeWithoutPreview] = findAll(withoutPreview, (el) => el.type === HoodlumsMarketHome);
+    expect(homeWithoutPreview.props.heroSub).not.toBe("Draft sub-copy");
+
+    const withPreview = await HomePage({ searchParams: Promise.resolve({ cms_preview: "1" }) });
+    const [homeWithPreview] = findAll(withPreview, (el) => el.type === HoodlumsMarketHome);
+    expect(homeWithPreview.props.heroSub).toBe("Draft sub-copy");
+  });
+});
+
+describe("providers page content wiring", () => {
+  it("passes the registered defaults into ProviderLauncher as props", async () => {
+    const tree = await ProvidersPage({ searchParams: undefined });
+    const [providers] = findAll(tree, (el) => el.type === ProviderLauncher);
+    expect(providers.props.headerEyebrow).toBe("PRIVATE LAUNCH ADAPTERS");
+    expect(providers.props.headerTitle).toBe("Robinhood provider launch desk");
+    expect(providers.props.backToStudioLabel).toBe("Back to studio");
+  });
+
+  it("passes a published override through to ProviderLauncher", async () => {
+    await publishOverride("providers", "header_title", "heading", "Provider desk V2");
+    const tree = await ProvidersPage({ searchParams: undefined });
+    const [providers] = findAll(tree, (el) => el.type === ProviderLauncher);
+    expect(providers.props.headerTitle).toBe("Provider desk V2");
+  });
+
+  it("only shows a staged draft to an authenticated preview request", async () => {
+    await authenticatePreviewSession();
+    const store = createMemoryPageContentStore();
+    setPageContentStoreForTests(store);
+    await store.saveDraft({ pageId: "providers", elementId: "header_intro", elementType: "text", value: "Draft intro", actor: "admin" });
+
+    const withoutPreview = await ProvidersPage({ searchParams: Promise.resolve({}) });
+    const [providersWithoutPreview] = findAll(withoutPreview, (el) => el.type === ProviderLauncher);
+    expect(providersWithoutPreview.props.headerIntro).not.toBe("Draft intro");
+
+    const withPreview = await ProvidersPage({ searchParams: Promise.resolve({ cms_preview: "1" }) });
+    const [providersWithPreview] = findAll(withPreview, (el) => el.type === ProviderLauncher);
+    expect(providersWithPreview.props.headerIntro).toBe("Draft intro");
+  });
+});
+
 describe("allocations page content wiring", () => {
   it("renders the default liquidity-lab CTA", async () => {
     const tree = await AllocationsPage({ searchParams: undefined });
@@ -118,6 +217,35 @@ describe("allocations page content wiring", () => {
     const links = findAll(tree, (el) => el.type === Link);
     expect(links[0].props.href).toBe("/testnet");
     expect(collectText(links[0].props.children)).toBe("Go to lab");
+  });
+
+  it("passes the registered header defaults into TokenAllocationDesk as props", async () => {
+    const tree = await AllocationsPage({ searchParams: undefined });
+    const [desk] = findAll(tree, (el) => el.type === TokenAllocationDesk);
+    expect(desk.props.headerEyebrow).toBe("PRIVATE TOKEN OPERATIONS");
+    expect(desk.props.headerTitle).toBe("Allocation and distribution desk");
+  });
+
+  it("passes a published header override through to TokenAllocationDesk", async () => {
+    await publishOverride("allocations", "header_title", "heading", "Allocation desk V2");
+    const tree = await AllocationsPage({ searchParams: undefined });
+    const [desk] = findAll(tree, (el) => el.type === TokenAllocationDesk);
+    expect(desk.props.headerTitle).toBe("Allocation desk V2");
+  });
+
+  it("only shows a staged header draft to an authenticated preview request", async () => {
+    await authenticatePreviewSession();
+    const store = createMemoryPageContentStore();
+    setPageContentStoreForTests(store);
+    await store.saveDraft({ pageId: "allocations", elementId: "header_eyebrow", elementType: "text", value: "Draft eyebrow", actor: "admin" });
+
+    const withoutPreview = await AllocationsPage({ searchParams: Promise.resolve({}) });
+    const [deskWithoutPreview] = findAll(withoutPreview, (el) => el.type === TokenAllocationDesk);
+    expect(deskWithoutPreview.props.headerEyebrow).not.toBe("Draft eyebrow");
+
+    const withPreview = await AllocationsPage({ searchParams: Promise.resolve({ cms_preview: "1" }) });
+    const [deskWithPreview] = findAll(withPreview, (el) => el.type === TokenAllocationDesk);
+    expect(deskWithPreview.props.headerEyebrow).toBe("Draft eyebrow");
   });
 });
 
@@ -167,5 +295,46 @@ describe("public token site ([slug]) chrome content wiring", () => {
     const children = element.props.children as ReactElementLike[];
     const dexscreener = children[1] as ReactElementLike;
     expect(dexscreener.props.heading).toBe("Live chart");
+  });
+});
+
+describe("account page content wiring", () => {
+  it("renders the registered defaults when nothing has been published", async () => {
+    const tree = await AccountPage({ searchParams: undefined });
+    const text = collectText(tree);
+    expect(text).toContain("Choose how you sign in.");
+    expect(text).toContain("Email and project sync");
+    expect(text).toContain("Solana and EVM wallet");
+    expect(text).toContain(
+      "Existing wallet connections inside the launch tools remain unchanged while this account system is built safely in separate steps.",
+    );
+  });
+
+  it("renders a published override for a header field and a provider row note", async () => {
+    const store = createMemoryPageContentStore();
+    setPageContentStoreForTests(store);
+    await store.saveDraft({ pageId: "account", elementId: "header_title", elementType: "heading", value: "Sign in, your way.", actor: "admin" });
+    await store.publish({ pageId: "account", elementId: "header_title", actor: "admin" });
+    await store.saveDraft({ pageId: "account", elementId: "metamask_note", elementType: "text", value: "Recommended EVM wallet", actor: "admin" });
+    await store.publish({ pageId: "account", elementId: "metamask_note", actor: "admin" });
+
+    const tree = await AccountPage({ searchParams: undefined });
+    const text = collectText(tree);
+    expect(text).toContain("Sign in, your way.");
+    expect(text).toContain("Recommended EVM wallet");
+    expect(text).not.toContain("Choose how you sign in.");
+  });
+
+  it("only shows a staged draft to an authenticated preview request", async () => {
+    await authenticatePreviewSession();
+    const store = createMemoryPageContentStore();
+    setPageContentStoreForTests(store);
+    await store.saveDraft({ pageId: "account", elementId: "footer_copy", elementType: "text", value: "Draft footer copy", actor: "admin" });
+
+    const withoutPreview = await AccountPage({ searchParams: Promise.resolve({}) });
+    expect(collectText(withoutPreview)).not.toContain("Draft footer copy");
+
+    const withPreview = await AccountPage({ searchParams: Promise.resolve({ cms_preview: "1" }) });
+    expect(collectText(withPreview)).toContain("Draft footer copy");
   });
 });

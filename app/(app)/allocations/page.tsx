@@ -15,7 +15,11 @@ export default async function AllocationsPage({ searchParams }: AllocationsPageP
 
   return (
     <>
-      <TokenAllocationDesk />
+      <TokenAllocationDesk
+        headerEyebrow={content.header_eyebrow}
+        headerTitle={content.header_title}
+        headerIntro={content.header_intro}
+      />
       {isContentVisible(content.liquidity_cta_visible) ? (
         <div style={{ position: "fixed", right: 18, bottom: 18, zIndex: 20 }}>
           <Link

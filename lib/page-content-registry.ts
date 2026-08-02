@@ -35,13 +35,50 @@ export type PageContentPageDefinition = {
  * The registered public pages/tabs and their editable elements. Every page
  * listed here has its live rendering wired to read published values with a
  * hardcoded-default fallback (see the per-page `getPage*Content` callers).
- * Pages built mostly from large stateful client components (home/Create &
- * Bond, Providers, Allocations' main workspace) are intentionally not yet
- * registered — their copy lives inside those components rather than at the
- * page-chrome level, and wiring them safely needs a separate follow-up so a
- * bad edit can never destabilise the primary mobile-Safari workspace.
+ * Home, Providers and Allocations resolve their content server-side at the
+ * page-chrome level and pass it down as plain props/strings into the large
+ * stateful client components that own the rest of each page (ProviderLauncher,
+ * TokenAllocationDesk) — those components' internal state, effects and wallet
+ * flows are never restructured, per the PR #118 mobile-Safari rules.
  */
 export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
+  {
+    id: "home",
+    label: "Home / Create & Bond",
+    route: "/",
+    elements: [
+      { id: "hero_eyebrow", type: "text", label: "Hero eyebrow", defaultValue: "HOODLUMS BONDING MARKET" },
+      { id: "hero_title_line1", type: "heading", label: "Hero title, line 1", defaultValue: "From new token to" },
+      { id: "hero_title_line2", type: "heading", label: "Hero title, highlighted line 2", defaultValue: "locked liquidity." },
+      {
+        id: "hero_sub",
+        type: "text",
+        label: "Hero sub-copy",
+        defaultValue:
+          "Create a fixed-supply token, give it a live Hoodlums website, and put its full supply into a bonding curve that graduates into permanently locked liquidity.",
+      },
+      { id: "primary_cta_label", type: "button_label", label: "Primary CTA label", defaultValue: "Create new token" },
+      { id: "primary_cta_link", type: "button_link", label: "Primary CTA link", defaultValue: "#launch-studio" },
+      { id: "secondary_cta_label", type: "button_label", label: "Secondary CTA label", defaultValue: "Open saved launches" },
+      { id: "secondary_cta_link", type: "button_link", label: "Secondary CTA link", defaultValue: "#launch-studio" },
+    ],
+  },
+  {
+    id: "providers",
+    label: "Providers",
+    route: "/providers",
+    elements: [
+      { id: "header_eyebrow", type: "text", label: "Header eyebrow", defaultValue: "PRIVATE LAUNCH ADAPTERS" },
+      { id: "header_title", type: "heading", label: "Header title", defaultValue: "Robinhood provider launch desk" },
+      {
+        id: "header_intro",
+        type: "text",
+        label: "Header intro copy",
+        defaultValue: "Launch through the provider, verify the token, then continue straight into the creator buy.",
+      },
+      { id: "back_to_studio_label", type: "button_label", label: "“Back to studio” link label", defaultValue: "Back to studio" },
+    ],
+  },
   {
     id: "bonding-curve",
     label: "Bonding Curve",
@@ -81,6 +118,14 @@ export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
     label: "Allocations",
     route: "/allocations",
     elements: [
+      { id: "header_eyebrow", type: "text", label: "Header eyebrow", defaultValue: "PRIVATE TOKEN OPERATIONS" },
+      { id: "header_title", type: "heading", label: "Header title", defaultValue: "Allocation and distribution desk" },
+      {
+        id: "header_intro",
+        type: "text",
+        label: "Header intro copy",
+        defaultValue: "Plan the supply, save a record, then approve each real ERC-20 transfer yourself.",
+      },
       {
         id: "liquidity_cta_label",
         type: "button_label",
@@ -122,6 +167,39 @@ export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
         defaultValue: "CHECK DEXSCREENER ↗",
       },
       { id: "dexscreener_visible", type: "visibility", label: "Show Dexscreener section", defaultValue: "true" },
+    ],
+  },
+  {
+    id: "account",
+    label: "Account",
+    route: "/account",
+    elements: [
+      { id: "header_eyebrow", type: "text", label: "Header eyebrow", defaultValue: "ACCOUNT" },
+      { id: "header_title", type: "heading", label: "Header title", defaultValue: "Choose how you sign in." },
+      {
+        id: "header_intro",
+        type: "text",
+        label: "Header intro copy",
+        defaultValue:
+          "Your account will eventually keep projects available across devices. No sign-in provider is active in this first layout release.",
+      },
+      { id: "web_accounts_title", type: "heading", label: "“Continue with” section title", defaultValue: "Continue with" },
+      { id: "web_accounts_subtitle", type: "text", label: "“Continue with” section subtitle", defaultValue: "Web accounts" },
+      { id: "google_note", type: "text", label: "Google row note", defaultValue: "Email and project sync" },
+      { id: "github_note", type: "text", label: "GitHub row note", defaultValue: "Developer account" },
+      { id: "x_note", type: "text", label: "X row note", defaultValue: "Social identity" },
+      { id: "wallet_title", type: "heading", label: "“Connect a wallet” section title", defaultValue: "Connect a wallet" },
+      { id: "wallet_subtitle", type: "text", label: "“Connect a wallet” section subtitle", defaultValue: "Web3 accounts" },
+      { id: "metamask_note", type: "text", label: "MetaMask row note", defaultValue: "EVM wallet" },
+      { id: "rabby_note", type: "text", label: "Rabby row note", defaultValue: "EVM wallet" },
+      { id: "phantom_note", type: "text", label: "Phantom row note", defaultValue: "Solana and EVM wallet" },
+      {
+        id: "footer_copy",
+        type: "text",
+        label: "Footer copy",
+        defaultValue:
+          "Existing wallet connections inside the launch tools remain unchanged while this account system is built safely in separate steps.",
+      },
     ],
   },
 ];
