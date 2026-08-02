@@ -125,8 +125,19 @@ that `contracts/HoodlumsTestBondingCurve.sol` graduates correctly on
 Robinhood Chain Testnet. Neither script is run automatically, wired into the
 `/bonding-curve` UI, or invoked by CI — they exist for an owner-initiated
 deployment drill: deploy a curve for a real token, drive it to its
-graduation target by hand, and watch `_graduate()` fire and seed the locked
-pool.
+graduation target by hand, and watch `_graduate()` fire and seed a full-range
+Uniswap V3 position for the token/WETH pair, with the resulting LP NFT
+permanently locked at `address(1)`.
+
+**Uniswap V3 addresses are never hardcoded or defaulted.** `positionManager_`,
+`uniswapV3Factory_`, and `weth9_` are required constructor arguments (see
+below) with no fallback value, specifically so an unverified address can
+never be used silently. Before deploying, get the canonical
+`NonfungiblePositionManager`, `UniswapV3Factory`, and `WETH9` addresses for
+Robinhood Chain Testnet directly from Uniswap's own official deployment
+documentation (or the chain's own docs) — do not reuse addresses pasted into
+an issue, chat, or any other unverified source, and do not assume Robinhood
+Chain has a Uniswap V3 deployment at all without confirming it first.
 
 **1. Deploy the curve** for a token you've already launched (e.g. via the
 live factory above or the direct `/testnet` deploy flow):
@@ -146,6 +157,9 @@ commit real values):
 | `HOODLUMS_BONDING_CURVE_TOKEN_ADDRESS` | The already-deployed ERC-20 this curve will trade. |
 | `HOODLUMS_BONDING_CURVE_CREATOR_ADDRESS` | Constructor `creator_` — must be the wallet holding the token's complete current supply; only it can call `fundCurve()` and receives the 40% creator fee share. |
 | `HOODLUMS_BONDING_CURVE_TREASURY_ADDRESS` | Constructor `treasury_` — receives the 60% protocol fee share. |
+| `HOODLUMS_BONDING_CURVE_POSITION_MANAGER_ADDRESS` | Constructor `positionManager_` — the chain's Uniswap V3 `NonfungiblePositionManager`. No default; verify against official docs before setting. |
+| `HOODLUMS_BONDING_CURVE_UNISWAP_V3_FACTORY_ADDRESS` | Constructor `uniswapV3Factory_` — the chain's Uniswap V3 `UniswapV3Factory`. No default; verify against official docs before setting. |
+| `HOODLUMS_BONDING_CURVE_WETH9_ADDRESS` | Constructor `weth9_` — the chain's canonical wrapped native currency. No default; verify against official docs before setting. |
 
 Optional overrides (documented defaults below are used when unset):
 

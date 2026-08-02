@@ -5,7 +5,64 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {HoodlumsTestLiquidityPool} from "./HoodlumsTestLiquidityPool.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+
+/// @dev Wrapped native currency: only `deposit()` beyond plain ERC-20 is needed here.
+interface IWETH9 is IERC20 {
+    function deposit() external payable;
+}
+
+/// @dev Minimal slice of Uniswap V3's `IUniswapV3Factory` needed to create or
+///      locate the canonical token/WETH pool for the configured fee tier.
+interface IUniswapV3FactoryMinimal {
+    function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool);
+    function createPool(address tokenA, address tokenB, uint24 fee) external returns (address pool);
+}
+
+/// @dev Minimal slice of Uniswap V3's `IUniswapV3Pool` needed to read/set the
+///      pool's initial price exactly once.
+interface IUniswapV3PoolMinimal {
+    function initialize(uint160 sqrtPriceX96) external;
+    function slot0()
+        external
+        view
+        returns (
+            uint160 sqrtPriceX96,
+            int24 tick,
+            uint16 observationIndex,
+            uint16 observationCardinality,
+            uint16 observationCardinalityNext,
+            uint8 feeProtocol,
+            bool unlocked
+        );
+}
+
+/// @dev Minimal slice of Uniswap V3's `INonfungiblePositionManager` needed to
+///      mint a full-range concentrated liquidity position and move the
+///      resulting LP NFT. Matches the real contract's ABI exactly so a live
+///      deployment can be wired in via constructor address.
+interface INonfungiblePositionManagerMinimal {
+    struct MintParams {
+        address token0;
+        address token1;
+        uint24 fee;
+        int24 tickLower;
+        int24 tickUpper;
+        uint256 amount0Desired;
+        uint256 amount1Desired;
+        uint256 amount0Min;
+        uint256 amount1Min;
+        address recipient;
+        uint256 deadline;
+    }
+
+    function mint(MintParams calldata params)
+        external
+        payable
+        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
+
+    function safeTransferFrom(address from, address to, uint256 tokenId) external;
+}
 
 /// @notice Testnet-only virtual-reserve bonding curve for a fixed-supply ERC-20.
 /// @dev The complete current token supply must enter the curve before trading.
@@ -25,6 +82,16 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     uint256 public constant POOL_MINIMUM_LIQUIDITY_SQUARED = 1_002_001;
     address public constant LP_LOCK_ADDRESS = address(1);
 
+    /// @dev Uniswap V3's 1% fee tier, matching what Pons uses for graduation pools.
+    uint24 public constant POOL_FEE_TIER = 10_000;
+    /// @dev Tick spacing Uniswap V3 fixes for the 1% fee tier.
+    int24 public constant POOL_TICK_SPACING = 200;
+    /// @dev Widest usable ticks for `POOL_TICK_SPACING` (nearest multiples of
+    ///      200 inside TickMath's [MIN_TICK, MAX_TICK]), so the minted
+    ///      position spans the full price range like a V2 pool.
+    int24 public constant MIN_TICK = -887200;
+    int24 public constant MAX_TICK = 887200;
+
     /// @dev Total trading fee charged on every buy and sell, in basis points of BPS.
     uint256 public constant TRADING_FEE_BPS = 100;
     /// @dev Share of every trading fee paid to `treasury`, in basis points of BPS.
@@ -38,6 +105,17 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     uint256 public immutable initialVirtualTokenReserve;
     uint256 public immutable initialVirtualEthReserve;
     uint256 public immutable graduationTarget;
+
+    /// @dev Uniswap V3 `NonfungiblePositionManager` used to mint the
+    ///      graduation liquidity position. Never hardcoded: passed in at
+    ///      deploy time so the same contract works against testnet or
+    ///      mainnet Uniswap deployments.
+    address public immutable positionManager;
+    /// @dev Uniswap V3 `UniswapV3Factory` used to create or locate the
+    ///      token/WETH pool for `POOL_FEE_TIER`.
+    address public immutable uniswapV3Factory;
+    /// @dev Wrapped native currency Uniswap V3 pairs the token against.
+    address public immutable weth9;
 
     uint256 public virtualTokenReserve;
     uint256 public virtualEthReserve;
@@ -78,7 +156,6 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     error InsufficientNativeReserve();
     error UnsupportedTokenTransfer();
     error NativeTransferFailed();
-    error LiquidityLockFailed();
     error DirectPaymentNotAccepted();
     error NoFeesToWithdraw();
     error NotFeeRecipient();
@@ -102,12 +179,9 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         uint256 virtualTokenReserve,
         uint256 virtualEthReserve
     );
-    event CurveGraduated(
-        address indexed pool,
-        uint256 tokenLiquidity,
-        uint256 nativeLiquidity,
-        uint256 lpLocked
-    );
+    /// @notice Emitted once graduation seeds the Uniswap V3 position and
+    ///         permanently locks the resulting LP NFT.
+    event Graduated(address indexed pool, uint256 indexed tokenId);
     event FeeAccrued(address indexed recipient, uint256 amount);
     event FeeWithdrawn(address indexed recipient, uint256 amount);
 
@@ -133,11 +207,22 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         address treasury_,
         uint256 virtualTokenReserve_,
         uint256 virtualEthReserve_,
-        uint256 graduationTarget_
+        uint256 graduationTarget_,
+        address positionManager_,
+        address uniswapV3Factory_,
+        address weth9_
     ) {
-        if (token_ == address(0) || creator_ == address(0) || treasury_ == address(0)) {
+        if (
+            token_ == address(0) ||
+            creator_ == address(0) ||
+            treasury_ == address(0) ||
+            positionManager_ == address(0) ||
+            uniswapV3Factory_ == address(0) ||
+            weth9_ == address(0)
+        ) {
             revert InvalidAddress();
         }
+        if (token_ == weth9_) revert InvalidConfiguration();
         if (
             virtualTokenReserve_ == 0 ||
             virtualEthReserve_ == 0 ||
@@ -155,6 +240,9 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         graduationTarget = graduationTarget_;
         virtualTokenReserve = virtualTokenReserve_;
         virtualEthReserve = virtualEthReserve_;
+        positionManager = positionManager_;
+        uniswapV3Factory = uniswapV3Factory_;
+        weth9 = weth9_;
     }
 
     /// @notice Fund the curve once with the token's complete current supply.
@@ -388,9 +476,17 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         return Math.mulDiv(realNativeReserve, BPS, graduationTarget);
     }
 
-    /// @dev Seeds the pool using only `realNativeReserve`, which already excludes
-    ///      every accrued fee. Fee balances stay in this contract's native
-    ///      balance and remain withdrawable via `withdrawFees()` after graduation.
+    /// @dev Seeds a full-range Uniswap V3 position using only
+    ///      `realNativeReserve`, which already excludes every accrued fee. Fee
+    ///      balances stay in this contract's native balance and remain
+    ///      withdrawable via `withdrawFees()` after graduation. Called only
+    ///      from `buy()` and `graduate()`, both `nonReentrant`, so every
+    ///      external call below (WETH, factory, pool, position manager) runs
+    ///      under that same reentrancy lock. Every step is a normal
+    ///      (non-low-level) external call or a checked transfer, so a failure
+    ///      anywhere — pool creation, initialization, or `mint()` — reverts
+    ///      the entire transaction and undoes every state change made here
+    ///      and in the caller; graduation cannot partially complete.
     function _graduate() internal {
         uint256 tokenLiquidity = token.balanceOf(address(this));
         uint256 nativeLiquidity = realNativeReserve;
@@ -399,25 +495,60 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         graduated = true;
         realNativeReserve = 0;
 
-        HoodlumsTestLiquidityPool pool = new HoodlumsTestLiquidityPool(address(token));
-        liquidityPool = address(pool);
+        IWETH9(weth9).deposit{value: nativeLiquidity}();
 
-        token.forceApprove(address(pool), tokenLiquidity);
-        pool.addLiquidity{value: nativeLiquidity}(
-            tokenLiquidity,
-            tokenLiquidity,
-            nativeLiquidity,
-            0,
-            block.timestamp
-        );
-        token.forceApprove(address(pool), 0);
+        bool tokenIsToken0 = address(token) < weth9;
+        address token0 = tokenIsToken0 ? address(token) : weth9;
+        address token1 = tokenIsToken0 ? weth9 : address(token);
+        uint256 amount0 = tokenIsToken0 ? tokenLiquidity : nativeLiquidity;
+        uint256 amount1 = tokenIsToken0 ? nativeLiquidity : tokenLiquidity;
 
-        uint256 lpLocked = pool.balanceOf(address(this));
-        if (lpLocked == 0 || !pool.transfer(LP_LOCK_ADDRESS, lpLocked)) {
-            revert LiquidityLockFailed();
+        address pool = IUniswapV3FactoryMinimal(uniswapV3Factory).getPool(token0, token1, POOL_FEE_TIER);
+        if (pool == address(0)) {
+            pool = IUniswapV3FactoryMinimal(uniswapV3Factory).createPool(token0, token1, POOL_FEE_TIER);
         }
 
-        emit CurveGraduated(address(pool), tokenLiquidity, nativeLiquidity, lpLocked);
+        (uint160 existingSqrtPriceX96,,,,,,) = IUniswapV3PoolMinimal(pool).slot0();
+        if (existingSqrtPriceX96 == 0) {
+            IUniswapV3PoolMinimal(pool).initialize(_sqrtPriceX96(amount1, amount0));
+        }
+
+        token.forceApprove(positionManager, tokenLiquidity);
+        IWETH9(weth9).approve(positionManager, nativeLiquidity);
+
+        (uint256 tokenId,,,) = INonfungiblePositionManagerMinimal(positionManager).mint(
+            INonfungiblePositionManagerMinimal.MintParams({
+                token0: token0,
+                token1: token1,
+                fee: POOL_FEE_TIER,
+                tickLower: MIN_TICK,
+                tickUpper: MAX_TICK,
+                amount0Desired: amount0,
+                amount1Desired: amount1,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: address(this),
+                deadline: block.timestamp
+            })
+        );
+
+        token.forceApprove(positionManager, 0);
+        IWETH9(weth9).approve(positionManager, 0);
+
+        liquidityPool = pool;
+        INonfungiblePositionManagerMinimal(positionManager).safeTransferFrom(address(this), LP_LOCK_ADDRESS, tokenId);
+
+        emit Graduated(pool, tokenId);
+    }
+
+    /// @dev Uniswap V3's initial price for a fresh pool, expressed as
+    ///      `sqrt(reserve1 / reserve0) * 2^96`. For a full-range position this
+    ///      is also the exact token ratio `mint()` will consume, so graduation
+    ///      uses (up to rounding) the complete token and native liquidity, the
+    ///      same guarantee the previous constant-product pool gave.
+    function _sqrtPriceX96(uint256 reserve1, uint256 reserve0) internal pure returns (uint160) {
+        uint256 ratioX192 = Math.mulDiv(reserve1, 1 << 192, reserve0);
+        return SafeCast.toUint160(Math.sqrt(ratioX192));
     }
 
     /// @dev Splits an already-charged fee 60/40 between treasury and creator and

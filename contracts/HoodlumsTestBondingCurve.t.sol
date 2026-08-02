@@ -3,12 +3,25 @@ pragma solidity ^0.8.24;
 
 import {FixedSupplyMemeToken} from "./FixedSupplyMemeToken.sol";
 import {HoodlumsTestBondingCurve} from "./HoodlumsTestBondingCurve.sol";
-import {HoodlumsTestLiquidityPool} from "./HoodlumsTestLiquidityPool.sol";
+import {
+    FailingNonfungiblePositionManager,
+    MockNonfungiblePositionManager,
+    MockUniswapV3Factory,
+    MockWETH9
+} from "./mocks/UniswapV3Mocks.sol";
 
 interface Vm {
+    struct Log {
+        bytes32[] topics;
+        bytes data;
+        address emitter;
+    }
+
     function deal(address account, uint256 newBalance) external;
     function prank(address nextCaller) external;
     function warp(uint256 newTimestamp) external;
+    function recordLogs() external;
+    function getRecordedLogs() external returns (Log[] memory);
 }
 
 /// @dev Holds fees without a fallback that can accept native currency, used to
@@ -132,11 +145,71 @@ contract HoodlumsTestBondingCurveTest {
         require(!zeroTreasury, "zero treasury accepted");
     }
 
+    function testConstructorRejectsZeroUniswapAddressesOrTokenEqualToWeth9() public {
+        FixedSupplyMemeToken freshToken = _deployToken(WHOLE_TOKEN_SUPPLY);
+        (address weth_, address factory_, address positionManager_) = _deployUniswapMocks();
+
+        (bool zeroPositionManager,) = address(this).call(
+            abi.encodeCall(
+                HoodlumsTestBondingCurveTest._deployCurveWithUniswapAddresses,
+                (freshToken, address(this), TREASURY, DEFAULT_GRADUATION_TARGET, address(0), factory_, weth_)
+            )
+        );
+        require(!zeroPositionManager, "zero position manager accepted");
+
+        (bool zeroFactory,) = address(this).call(
+            abi.encodeCall(
+                HoodlumsTestBondingCurveTest._deployCurveWithUniswapAddresses,
+                (freshToken, address(this), TREASURY, DEFAULT_GRADUATION_TARGET, positionManager_, address(0), weth_)
+            )
+        );
+        require(!zeroFactory, "zero factory accepted");
+
+        (bool zeroWeth,) = address(this).call(
+            abi.encodeCall(
+                HoodlumsTestBondingCurveTest._deployCurveWithUniswapAddresses,
+                (freshToken, address(this), TREASURY, DEFAULT_GRADUATION_TARGET, positionManager_, factory_, address(0))
+            )
+        );
+        require(!zeroWeth, "zero weth9 accepted");
+
+        (bool tokenEqualsWeth,) = address(this).call(
+            abi.encodeCall(
+                HoodlumsTestBondingCurveTest._deployCurveWithUniswapAddresses,
+                (freshToken, address(this), TREASURY, DEFAULT_GRADUATION_TARGET, positionManager_, factory_, address(freshToken))
+            )
+        );
+        require(!tokenEqualsWeth, "token usable as its own weth9 pair accepted");
+    }
+
     function _deployCurveWith(
         FixedSupplyMemeToken curveToken,
         address creator_,
         address treasury_,
         uint256 target
+    ) external returns (HoodlumsTestBondingCurve) {
+        (address weth_, address factory_, address positionManager_) = _deployUniswapMocks();
+        return new HoodlumsTestBondingCurve(
+            address(curveToken),
+            creator_,
+            treasury_,
+            VIRTUAL_TOKEN_RESERVE,
+            VIRTUAL_ETH_RESERVE,
+            target,
+            positionManager_,
+            factory_,
+            weth_
+        );
+    }
+
+    function _deployCurveWithUniswapAddresses(
+        FixedSupplyMemeToken curveToken,
+        address creator_,
+        address treasury_,
+        uint256 target,
+        address positionManager_,
+        address factory_,
+        address weth_
     ) external returns (HoodlumsTestBondingCurve) {
         return new HoodlumsTestBondingCurve(
             address(curveToken),
@@ -144,8 +217,17 @@ contract HoodlumsTestBondingCurveTest {
             treasury_,
             VIRTUAL_TOKEN_RESERVE,
             VIRTUAL_ETH_RESERVE,
-            target
+            target,
+            positionManager_,
+            factory_,
+            weth_
         );
+    }
+
+    function _deployUniswapMocks() internal returns (address weth_, address factory_, address positionManager_) {
+        weth_ = address(new MockWETH9());
+        factory_ = address(new MockUniswapV3Factory());
+        positionManager_ = address(new MockNonfungiblePositionManager());
     }
 
     function testOnlyCreatorCanFundAndCurveCannotBeFundedTwice() public {
@@ -402,13 +484,17 @@ contract HoodlumsTestBondingCurveTest {
 
     function testWithdrawFeesCombinesBothSharesWhenTreasuryAndCreatorAreTheSameAddress() public {
         FixedSupplyMemeToken sharedToken = _deployToken(WHOLE_TOKEN_SUPPLY);
+        (address weth_, address factory_, address positionManager_) = _deployUniswapMocks();
         HoodlumsTestBondingCurve sharedCurve = new HoodlumsTestBondingCurve(
             address(sharedToken),
             address(this),
             address(this),
             VIRTUAL_TOKEN_RESERVE,
             VIRTUAL_ETH_RESERVE,
-            DEFAULT_GRADUATION_TARGET
+            DEFAULT_GRADUATION_TARGET,
+            positionManager_,
+            factory_,
+            weth_
         );
         sharedToken.approve(address(sharedCurve), sharedToken.totalSupply());
         sharedCurve.fundCurve();
@@ -436,13 +522,17 @@ contract HoodlumsTestBondingCurveTest {
     function testRevertingFeeRecipientCannotBlockTradesOrTheOtherRecipient() public {
         RevertingFeeRecipient revertingTreasury = new RevertingFeeRecipient();
         FixedSupplyMemeToken revToken = _deployToken(WHOLE_TOKEN_SUPPLY);
+        (address weth_, address factory_, address positionManager_) = _deployUniswapMocks();
         HoodlumsTestBondingCurve revCurve = new HoodlumsTestBondingCurve(
             address(revToken),
             address(this),
             address(revertingTreasury),
             VIRTUAL_TOKEN_RESERVE,
             VIRTUAL_ETH_RESERVE,
-            5 ether
+            5 ether,
+            positionManager_,
+            factory_,
+            weth_
         );
         revToken.approve(address(revCurve), revToken.totalSupply());
         revCurve.fundCurve();
@@ -498,7 +588,8 @@ contract HoodlumsTestBondingCurveTest {
 
     function testFeesRemainOutsidePoolLiquidityAndWithdrawableAfterGraduation() public {
         uint256 target = 0.99 ether;
-        (, HoodlumsTestBondingCurve graduatingCurve) = _deployFreshFundedCurve(target);
+        (, HoodlumsTestBondingCurve graduatingCurve, MockWETH9 weth,, MockNonfungiblePositionManager positionManager) =
+            _deployFreshFundedCurveWithMocks(target);
 
         vm.deal(BUYER, 2 ether);
         vm.prank(BUYER);
@@ -507,9 +598,8 @@ contract HoodlumsTestBondingCurveTest {
         graduatingCurve.buy{value: 0.5 ether}(0, DEADLINE);
         require(graduatingCurve.graduated(), "curve did not graduate");
 
-        address poolAddress = graduatingCurve.liquidityPool();
-        HoodlumsTestLiquidityPool pool = HoodlumsTestLiquidityPool(payable(poolAddress));
-        require(pool.reserveEth() == target, "fees leaked into pool liquidity");
+        require(graduatingCurve.liquidityPool() != address(0), "pool not created");
+        require(weth.balanceOf(address(positionManager)) == target, "fees leaked into pool liquidity");
 
         uint256 treasuryOwed = graduatingCurve.treasuryFeeBalance();
         uint256 creatorOwed = graduatingCurve.creatorFeeBalance();
@@ -603,12 +693,19 @@ contract HoodlumsTestBondingCurveTest {
         require(!forcedGraduation, "forced balance triggered graduation");
     }
 
-    function testTargetBuyAutomaticallyGraduatesAndLocksAllInitialLp() public {
+    function testTargetBuyAutomaticallyGraduatesAndSeedsUniswapV3PositionFullySeeded() public {
         uint256 target = 0.99 ether;
         uint256 forcedBalance = 0.2 ether;
-        (FixedSupplyMemeToken graduatingToken, HoodlumsTestBondingCurve graduatingCurve) =
-            _deployFreshFundedCurve(target);
+        (
+            FixedSupplyMemeToken graduatingToken,
+            HoodlumsTestBondingCurve graduatingCurve,
+            MockWETH9 weth,
+            MockUniswapV3Factory factory,
+            MockNonfungiblePositionManager positionManager
+        ) = _deployFreshFundedCurveWithMocks(target);
         vm.deal(address(graduatingCurve), forcedBalance);
+
+        uint256 tokenLiquidityBeforeGraduation = graduatingCurve.tokensAvailable();
 
         vm.deal(BUYER, 2 ether);
         vm.prank(BUYER);
@@ -623,19 +720,130 @@ contract HoodlumsTestBondingCurveTest {
 
         address poolAddress = graduatingCurve.liquidityPool();
         require(poolAddress != address(0), "pool not created");
+        require(
+            factory.getPool(address(graduatingToken), address(weth), graduatingCurve.POOL_FEE_TIER()) == poolAddress,
+            "curve's pool disagrees with the factory's canonical pool"
+        );
 
-        HoodlumsTestLiquidityPool pool = HoodlumsTestLiquidityPool(payable(poolAddress));
-        require(pool.token() == address(graduatingToken), "pool uses wrong token");
-        require(pool.reserveEth() == target, "post-fee reserve not fully seeded, or fee leaked in");
-        require(pool.reserveToken() > 0, "token liquidity missing");
-        require(pool.balanceOf(address(1)) == pool.totalSupply(), "initial LP not fully locked");
-        require(pool.balanceOf(address(graduatingCurve)) == 0, "curve retained LP tokens");
+        require(graduatingCurve.tokensAvailable() == 0, "curve retained tokens instead of seeding the position");
+        require(
+            weth.balanceOf(address(positionManager)) == target,
+            "post-fee native reserve not fully pulled into the Uniswap position"
+        );
+        require(
+            graduatingToken.balanceOf(address(positionManager)) == tokenLiquidityBeforeGraduation,
+            "remaining token supply not fully pulled into the Uniswap position"
+        );
         require(graduatingToken.balanceOf(address(graduatingCurve)) == 0, "curve retained tokens");
         require(
             address(graduatingCurve).balance ==
                 forcedBalance + graduatingCurve.treasuryFeeBalance() + graduatingCurve.creatorFeeBalance(),
             "forced balance plus fees accounting wrong"
         );
+    }
+
+    function testGraduationSendsLpNftToLockAddressPermanently() public {
+        uint256 target = 0.99 ether;
+        (, HoodlumsTestBondingCurve graduatingCurve,,, MockNonfungiblePositionManager positionManager) =
+            _deployFreshFundedCurveWithMocks(target);
+
+        vm.deal(BUYER, 2 ether);
+        vm.prank(BUYER);
+        graduatingCurve.buy{value: 0.5 ether}(0, DEADLINE);
+        vm.prank(BUYER);
+        graduatingCurve.buy{value: 0.5 ether}(0, DEADLINE);
+        require(graduatingCurve.graduated(), "curve did not graduate");
+
+        // A fresh MockNonfungiblePositionManager always mints its first LP
+        // NFT as token id 1.
+        require(
+            positionManager.ownerOf(1) == graduatingCurve.LP_LOCK_ADDRESS(),
+            "LP NFT not sent to the lock address"
+        );
+        require(graduatingCurve.LP_LOCK_ADDRESS() == address(1), "lock address is not address(1)");
+    }
+
+    function testGraduationEmitsGraduatedEventWithPoolAndTokenId() public {
+        uint256 target = 0.99 ether;
+        (, HoodlumsTestBondingCurve graduatingCurve,,,) = _deployFreshFundedCurveWithMocks(target);
+
+        vm.deal(BUYER, 2 ether);
+        vm.prank(BUYER);
+        graduatingCurve.buy{value: 0.5 ether}(0, DEADLINE);
+
+        vm.recordLogs();
+        vm.prank(BUYER);
+        graduatingCurve.buy{value: 0.5 ether}(0, DEADLINE);
+        require(graduatingCurve.graduated(), "curve did not graduate");
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        bytes32 graduatedTopic0 = keccak256("Graduated(address,uint256)");
+        bool foundGraduatedEvent;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics.length != 3 || logs[i].topics[0] != graduatedTopic0) continue;
+            if (logs[i].emitter != address(graduatingCurve)) continue;
+
+            address eventPool = address(uint160(uint256(logs[i].topics[1])));
+            uint256 eventTokenId = uint256(logs[i].topics[2]);
+            require(eventPool == graduatingCurve.liquidityPool(), "Graduated event pool mismatch");
+            require(eventPool != address(0), "Graduated event pool is zero");
+            // A fresh MockNonfungiblePositionManager always mints its first
+            // LP NFT as token id 1.
+            require(eventTokenId == 1, "Graduated event tokenId mismatch");
+            foundGraduatedEvent = true;
+        }
+        require(foundGraduatedEvent, "Graduated event not emitted");
+    }
+
+    function testFailedUniswapMintRevertsGraduationCleanly() public {
+        uint256 target = 0.99 ether;
+        FailingNonfungiblePositionManager failingPositionManager = new FailingNonfungiblePositionManager();
+        (FixedSupplyMemeToken graduatingToken, HoodlumsTestBondingCurve graduatingCurve) =
+            _deployFreshFundedCurveWithPositionManager(target, address(failingPositionManager));
+
+        vm.deal(BUYER, 2 ether);
+        vm.prank(BUYER);
+        graduatingCurve.buy{value: 0.5 ether}(0, DEADLINE);
+
+        uint256 reserveBeforeFailedGraduation = graduatingCurve.nativeReserve();
+        uint256 curveTokensBeforeFailedGraduation = graduatingCurve.tokensAvailable();
+        uint256 buyerTokensBeforeFailedGraduation = graduatingToken.balanceOf(BUYER);
+        uint256 curveNativeBalanceBeforeFailedGraduation = address(graduatingCurve).balance;
+
+        vm.prank(BUYER);
+        (bool graduatingBuySucceeded,) = address(graduatingCurve).call{value: 0.5 ether}(
+            abi.encodeCall(HoodlumsTestBondingCurve.buy, (0, DEADLINE))
+        );
+
+        require(!graduatingBuySucceeded, "buy succeeded despite a Uniswap mint() that always reverts");
+        require(!graduatingCurve.graduated(), "graduated flag set despite failed mint");
+        require(graduatingCurve.nativeReserve() == reserveBeforeFailedGraduation, "reserve changed on failed graduation");
+        require(
+            graduatingCurve.tokensAvailable() == curveTokensBeforeFailedGraduation,
+            "curve token balance changed on failed graduation"
+        );
+        require(
+            graduatingToken.balanceOf(BUYER) == buyerTokensBeforeFailedGraduation,
+            "buyer received tokens despite the whole buy() reverting"
+        );
+        require(
+            address(graduatingCurve).balance == curveNativeBalanceBeforeFailedGraduation,
+            "curve native balance changed on failed graduation"
+        );
+        require(graduatingCurve.liquidityPool() == address(0), "liquidityPool set despite failed graduation");
+
+        // The exact same buy succeeds once routed through a working position
+        // manager, proving the revert above was caused by the failing mock
+        // and not some unrelated fixture problem.
+        (, HoodlumsTestBondingCurve workingCurve) = _deployFreshFundedCurveWithPositionManager(
+            target,
+            address(new MockNonfungiblePositionManager())
+        );
+        vm.prank(BUYER);
+        workingCurve.buy{value: 0.5 ether}(0, DEADLINE);
+        vm.prank(BUYER);
+        workingCurve.buy{value: 0.5 ether}(0, DEADLINE);
+        require(workingCurve.graduated(), "control curve with a working position manager failed to graduate");
     }
 
     function testTradingStopsAfterGraduation() public {
@@ -713,13 +921,17 @@ contract HoodlumsTestBondingCurveTest {
     function testReentrancyOnFeeWithdrawalFailsSafely() public {
         ReentrantFeeClaimant claimant = new ReentrantFeeClaimant();
         FixedSupplyMemeToken reToken = _deployToken(WHOLE_TOKEN_SUPPLY);
+        (address weth_, address factory_, address positionManager_) = _deployUniswapMocks();
         HoodlumsTestBondingCurve reCurve = new HoodlumsTestBondingCurve(
             address(reToken),
             address(this),
             address(claimant),
             VIRTUAL_TOKEN_RESERVE,
             VIRTUAL_ETH_RESERVE,
-            DEFAULT_GRADUATION_TARGET
+            DEFAULT_GRADUATION_TARGET,
+            positionManager_,
+            factory_,
+            weth_
         );
         claimant.setCurve(reCurve);
         reToken.approve(address(reCurve), reToken.totalSupply());
@@ -776,13 +988,17 @@ contract HoodlumsTestBondingCurveTest {
         internal
         returns (HoodlumsTestBondingCurve freshCurve)
     {
+        (address weth_, address factory_, address positionManager_) = _deployUniswapMocks();
         freshCurve = new HoodlumsTestBondingCurve(
             address(curveToken),
             address(this),
             TREASURY,
             VIRTUAL_TOKEN_RESERVE,
             VIRTUAL_ETH_RESERVE,
-            target
+            target,
+            positionManager_,
+            factory_,
+            weth_
         );
     }
 
@@ -801,6 +1017,64 @@ contract HoodlumsTestBondingCurveTest {
     {
         freshToken = _deployToken(WHOLE_TOKEN_SUPPLY);
         fundedCurve = _deployFundedCurve(freshToken, target);
+    }
+
+    /// @dev Like `_deployFreshFundedCurve`, but also returns the Uniswap V3
+    ///      mocks wired into the curve's constructor so graduation-specific
+    ///      tests can inspect pulled-in liquidity and LP NFT ownership.
+    function _deployFreshFundedCurveWithMocks(uint256 target)
+        internal
+        returns (
+            FixedSupplyMemeToken freshToken,
+            HoodlumsTestBondingCurve fundedCurve,
+            MockWETH9 weth,
+            MockUniswapV3Factory factory,
+            MockNonfungiblePositionManager positionManager
+        )
+    {
+        freshToken = _deployToken(WHOLE_TOKEN_SUPPLY);
+        weth = new MockWETH9();
+        factory = new MockUniswapV3Factory();
+        positionManager = new MockNonfungiblePositionManager();
+        fundedCurve = new HoodlumsTestBondingCurve(
+            address(freshToken),
+            address(this),
+            TREASURY,
+            VIRTUAL_TOKEN_RESERVE,
+            VIRTUAL_ETH_RESERVE,
+            target,
+            address(positionManager),
+            address(factory),
+            address(weth)
+        );
+        freshToken.approve(address(fundedCurve), freshToken.totalSupply());
+        fundedCurve.fundCurve();
+    }
+
+    /// @dev Same as `_deployFreshFundedCurveWithMocks`, but wires in a
+    ///      caller-supplied position manager (e.g. `FailingNonfungiblePositionManager`)
+    ///      so failure paths can be exercised without touching `mint()`'s
+    ///      real mock implementation.
+    function _deployFreshFundedCurveWithPositionManager(uint256 target, address positionManager_)
+        internal
+        returns (FixedSupplyMemeToken freshToken, HoodlumsTestBondingCurve fundedCurve)
+    {
+        freshToken = _deployToken(WHOLE_TOKEN_SUPPLY);
+        MockWETH9 weth = new MockWETH9();
+        MockUniswapV3Factory factory = new MockUniswapV3Factory();
+        fundedCurve = new HoodlumsTestBondingCurve(
+            address(freshToken),
+            address(this),
+            TREASURY,
+            VIRTUAL_TOKEN_RESERVE,
+            VIRTUAL_ETH_RESERVE,
+            target,
+            positionManager_,
+            address(factory),
+            address(weth)
+        );
+        freshToken.approve(address(fundedCurve), freshToken.totalSupply());
+        fundedCurve.fundCurve();
     }
 
     receive() external payable {}
