@@ -4,10 +4,20 @@ import { POST as challenge } from "@/app/api/admin/challenge/route";
 import { GET as health } from "@/app/api/admin/health/route";
 import { POST as login } from "@/app/api/admin/login/route";
 import { POST as logout } from "@/app/api/admin/logout/route";
-import { ADMIN_SESSION_COOKIE } from "@/lib/server/admin-auth";
+import {
+  ADMIN_SESSION_COOKIE,
+  hashAdminSessionToken,
+} from "@/lib/server/admin-auth";
 import { resetAdminRateLimitsForTests } from "@/lib/server/api-protection";
 import * as adminSessionStore from "@/lib/server/admin-session-store";
-import { resetAdminStoresForTests } from "@/lib/server/admin-session-store";
+import {
+  createMemoryAdminSessionState,
+  createMemoryAdminSessionStore,
+  isAdminSessionValid,
+  resetAdminStoresForTests,
+  setAdminSessionStoreForTests,
+  type MemoryAdminSessionState,
+} from "@/lib/server/admin-session-store";
 
 const ADMIN_ACCOUNT = privateKeyToAccount(
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as `0x${string}`,
@@ -17,7 +27,17 @@ const OTHER_ACCOUNT = privateKeyToAccount(
 );
 const ADMIN_PASSWORD = "correct horse battery staple";
 
-function postRequest(path: string, body: unknown, extraHeaders: Record<string, string> = {}) {
+let sharedAdminState: MemoryAdminSessionState;
+
+function installFreshServerlessInstance(): void {
+  setAdminSessionStoreForTests(createMemoryAdminSessionStore(sharedAdminState));
+}
+
+function postRequest(
+  path: string,
+  body: unknown,
+  extraHeaders: Record<string, string> = {},
+) {
   return new Request(`http://localhost:3000${path}`, {
     method: "POST",
     headers: {
@@ -29,18 +49,27 @@ function postRequest(path: string, body: unknown, extraHeaders: Record<string, s
   });
 }
 
-function getRequest(path: string, extraHeaders: Record<string, string> = {}) {
+function getRequest(
+  path: string,
+  extraHeaders: Record<string, string> = {},
+) {
   return new Request(`http://localhost:3000${path}`, {
     method: "GET",
     headers: { ...extraHeaders },
   });
 }
 
-function sessionCookieFrom(response: Response): string {
+function sessionTokenFrom(response: Response): string {
   const setCookie = response.headers.get("set-cookie") || "";
   const match = new RegExp(`${ADMIN_SESSION_COOKIE}=([^;]+)`).exec(setCookie);
-  if (!match) throw new Error(`No ${ADMIN_SESSION_COOKIE} cookie in response`);
-  return `${ADMIN_SESSION_COOKIE}=${match[1]}`;
+  if (!match) {
+    throw new Error(`No ${ADMIN_SESSION_COOKIE} cookie in response`);
+  }
+  return match[1];
+}
+
+function sessionCookieFrom(response: Response): string {
+  return `${ADMIN_SESSION_COOKIE}=${sessionTokenFrom(response)}`;
 }
 
 async function loginWithWallet(signer = ADMIN_ACCOUNT) {
@@ -49,8 +78,15 @@ async function loginWithWallet(signer = ADMIN_ACCOUNT) {
   );
   if (challengeResponse.status !== 201) return challengeResponse;
 
-  const body = (await challengeResponse.json()) as { challengeId: string; nonce: string; message: string };
+  const body = (await challengeResponse.json()) as {
+    challengeId: string;
+    nonce: string;
+    message: string;
+  };
   const signature = await signer.signMessage({ message: body.message });
+
+  // Challenge and login may execute in different Vercel functions.
+  installFreshServerlessInstance();
   return login(
     postRequest("/api/admin/login", {
       method: "wallet",
@@ -62,15 +98,39 @@ async function loginWithWallet(signer = ADMIN_ACCOUNT) {
 }
 
 async function loginWithPassword(password: string) {
+  installFreshServerlessInstance();
   return login(postRequest("/api/admin/login", { method: "password", password }));
+}
+
+async function expectWorkingSessionAndHealth(loginResponse: Response): Promise<void> {
+  expect(loginResponse.status).toBe(200);
+  await expect(loginResponse.json()).resolves.toEqual({ authenticated: true });
+
+  const sessionToken = sessionTokenFrom(loginResponse);
+  const cookie = `${ADMIN_SESSION_COOKIE}=${sessionToken}`;
+
+  // Page/session validation and health may each run in another cold instance.
+  installFreshServerlessInstance();
+  await expect(isAdminSessionValid(hashAdminSessionToken(sessionToken))).resolves.toBe(true);
+
+  installFreshServerlessInstance();
+  const healthResponse = await health(getRequest("/api/admin/health", { Cookie: cookie }));
+  expect(healthResponse.status).toBe(200);
+  const payload = (await healthResponse.json()) as {
+    checks: Array<{ id: string }>;
+  };
+  expect(payload.checks.map((check) => check.id).sort()).toEqual(
+    ["contracts", "database", "deployment", "website-generation"].sort(),
+  );
 }
 
 beforeEach(() => {
   process.env.ADMIN_WALLET_ADDRESS = ADMIN_ACCOUNT.address;
   process.env.ADMIN_PASSWORD = ADMIN_PASSWORD;
   process.env.PUBLISH_ALLOWED_ORIGIN = "http://localhost:3000";
+  sharedAdminState = createMemoryAdminSessionState();
+  installFreshServerlessInstance();
   resetAdminRateLimitsForTests();
-  resetAdminStoresForTests();
 });
 
 afterEach(() => {
@@ -82,21 +142,11 @@ afterEach(() => {
 });
 
 describe("admin wallet login", () => {
-  it("signs in with the configured owner wallet and can then load system health", async () => {
-    const loginResponse = await loginWithWallet();
-    expect(loginResponse.status).toBe(200);
-    await expect(loginResponse.json()).resolves.toEqual({ authenticated: true });
-
-    const cookie = sessionCookieFrom(loginResponse);
-    const healthResponse = await health(getRequest("/api/admin/health", { Cookie: cookie }));
-    expect(healthResponse.status).toBe(200);
-    const payload = (await healthResponse.json()) as { checks: Array<{ id: string }> };
-    expect(payload.checks.map((c) => c.id).sort()).toEqual(
-      ["contracts", "database", "deployment", "website-generation"].sort(),
-    );
+  it("persists the wallet login and loads System Health across serverless instances", async () => {
+    await expectWorkingSessionAndHealth(await loginWithWallet());
   });
 
-  it("rejects a wallet that is not the configured admin wallet, before any signature is even requested", async () => {
+  it("rejects a wallet that is not the configured admin wallet before signing", async () => {
     const challengeResponse = await challenge(
       postRequest("/api/admin/challenge", { walletAddress: OTHER_ACCOUNT.address }),
     );
@@ -106,14 +156,19 @@ describe("admin wallet login", () => {
     });
   });
 
-  it("rejects a login signed by a different wallet than the one that requested the challenge", async () => {
+  it("rejects a login signed by a different wallet", async () => {
     const challengeResponse = await challenge(
       postRequest("/api/admin/challenge", { walletAddress: ADMIN_ACCOUNT.address }),
     );
     expect(challengeResponse.status).toBe(201);
-    const body = (await challengeResponse.json()) as { challengeId: string; nonce: string; message: string };
+    const body = (await challengeResponse.json()) as {
+      challengeId: string;
+      nonce: string;
+      message: string;
+    };
     const signature = await OTHER_ACCOUNT.signMessage({ message: body.message });
 
+    installFreshServerlessInstance();
     const loginResponse = await login(
       postRequest("/api/admin/login", {
         method: "wallet",
@@ -125,19 +180,18 @@ describe("admin wallet login", () => {
     expect(loginResponse.status).toBe(401);
   });
 
-  it("returns 503 for the challenge endpoint when no admin wallet is configured", async () => {
+  it("returns 503 when no admin wallet is configured", async () => {
     delete process.env.ADMIN_WALLET_ADDRESS;
-    const response = await challenge(postRequest("/api/admin/challenge", { walletAddress: ADMIN_ACCOUNT.address }));
+    const response = await challenge(
+      postRequest("/api/admin/challenge", { walletAddress: ADMIN_ACCOUNT.address }),
+    );
     expect(response.status).toBe(503);
   });
 });
 
 describe("admin password login", () => {
-  it("signs in with the correct password and receives a session cookie", async () => {
-    const loginResponse = await loginWithPassword(ADMIN_PASSWORD);
-    expect(loginResponse.status).toBe(200);
-    await expect(loginResponse.json()).resolves.toEqual({ authenticated: true });
-    expect(sessionCookieFrom(loginResponse)).toContain(`${ADMIN_SESSION_COOKIE}=`);
+  it("persists the password login and loads System Health across serverless instances", async () => {
+    await expectWorkingSessionAndHealth(await loginWithPassword(ADMIN_PASSWORD));
   });
 
   it("rejects an incorrect password", async () => {
@@ -153,22 +207,31 @@ describe("admin password login", () => {
 });
 
 describe("admin session gating", () => {
-  it("blocks system health without a session cookie", async () => {
+  it("blocks System Health without a session cookie", async () => {
     const response = await health(getRequest("/api/admin/health"));
     expect(response.status).toBe(401);
   });
 
-  it("blocks system health with a garbage cookie", async () => {
-    const response = await health(getRequest("/api/admin/health", { Cookie: `${ADMIN_SESSION_COOKIE}=garbage` }));
+  it("blocks System Health with a garbage cookie", async () => {
+    const response = await health(
+      getRequest("/api/admin/health", {
+        Cookie: `${ADMIN_SESSION_COOKIE}=garbage`,
+      }),
+    );
     expect(response.status).toBe(401);
   });
 
-  it("logs out and immediately invalidates the session", async () => {
+  it("logs out and invalidates the durable session", async () => {
     const loginResponse = await loginWithWallet();
     const cookie = sessionCookieFrom(loginResponse);
 
-    await logout(postRequest("/api/admin/logout", {}, { Cookie: cookie }));
+    installFreshServerlessInstance();
+    const logoutResponse = await logout(
+      postRequest("/api/admin/logout", {}, { Cookie: cookie }),
+    );
+    expect(logoutResponse.status).toBe(200);
 
+    installFreshServerlessInstance();
     const healthResponse = await health(getRequest("/api/admin/health", { Cookie: cookie }));
     expect(healthResponse.status).toBe(401);
   });
@@ -215,12 +278,10 @@ describe("admin login always returns a response, never crashes", () => {
     expect(response.status).toBe(401);
   });
 
-  it("returns 500 instead of throwing when session creation fails unexpectedly during wallet login", async () => {
-    const createAdminSessionSpy = vi
-      .spyOn(adminSessionStore, "createAdminSession")
-      .mockImplementation(() => {
-        throw new Error("simulated session store failure");
-      });
+  it("returns 500 instead of throwing when wallet-session persistence fails", async () => {
+    const persistenceSpy = vi
+      .spyOn(adminSessionStore, "consumeAdminChallengeAndCreateSession")
+      .mockRejectedValue(new Error("simulated session store failure"));
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     try {
@@ -231,17 +292,15 @@ describe("admin login always returns a response, never crashes", () => {
         error: "Admin login failed unexpectedly. Try again.",
       });
     } finally {
-      createAdminSessionSpy.mockRestore();
+      persistenceSpy.mockRestore();
       consoleErrorSpy.mockRestore();
     }
   });
 
-  it("returns 500 instead of throwing when session creation fails unexpectedly during password login", async () => {
-    const createAdminSessionSpy = vi
+  it("returns 500 instead of throwing when password-session persistence fails", async () => {
+    const persistenceSpy = vi
       .spyOn(adminSessionStore, "createAdminSession")
-      .mockImplementation(() => {
-        throw new Error("simulated session store failure");
-      });
+      .mockRejectedValue(new Error("simulated session store failure"));
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     try {
@@ -252,17 +311,15 @@ describe("admin login always returns a response, never crashes", () => {
         error: "Admin login failed unexpectedly. Try again.",
       });
     } finally {
-      createAdminSessionSpy.mockRestore();
+      persistenceSpy.mockRestore();
       consoleErrorSpy.mockRestore();
     }
   });
 
-  it("never logs the submitted password when a login attempt fails unexpectedly", async () => {
-    const createAdminSessionSpy = vi
+  it("never logs the submitted password when persistence fails", async () => {
+    const persistenceSpy = vi
       .spyOn(adminSessionStore, "createAdminSession")
-      .mockImplementation(() => {
-        throw new Error("simulated session store failure");
-      });
+      .mockRejectedValue(new Error("simulated session store failure"));
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     try {
@@ -270,7 +327,7 @@ describe("admin login always returns a response, never crashes", () => {
       const loggedOutput = consoleErrorSpy.mock.calls.flat().join(" ");
       expect(loggedOutput).not.toContain(ADMIN_PASSWORD);
     } finally {
-      createAdminSessionSpy.mockRestore();
+      persistenceSpy.mockRestore();
       consoleErrorSpy.mockRestore();
     }
   });
