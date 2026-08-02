@@ -89,9 +89,15 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
         </div>
 
         {pending && (
-          <button type="button" className={styles.continueButton} onClick={() => onConfirm(pending)}>
-            Continue with {launchPathLabel(pending)}
-          </button>
+          <>
+            <button type="button" className={styles.continueButton} onClick={() => onConfirm(pending)}>
+              Continue with {launchPathLabel(pending)}
+            </button>
+            <p className={styles.terms}>
+              By clicking this button, you agree to the <span>Terms and Conditions</span>,{" "}
+              <span>Privacy Policy</span>, and certify that you are over 18 years old.
+            </p>
+          </>
         )}
       </section>
     </div>
