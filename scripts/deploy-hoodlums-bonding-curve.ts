@@ -68,6 +68,9 @@ async function main() {
   console.log(`  Graduation target:      ${config.graduationTargetWei.toString()} wei`);
   console.log(`  Virtual native reserve:  ${config.virtualEthReserveWei.toString()} wei`);
   console.log(`  Virtual token reserve:   ${config.virtualTokenReserveRaw.toString()} raw units`);
+  console.log(`  Uniswap NonfungiblePositionManager: ${config.positionManagerAddress}`);
+  console.log(`  Uniswap V3Factory:                  ${config.uniswapV3FactoryAddress}`);
+  console.log(`  WETH9:                              ${config.weth9Address}`);
   console.log("  Trading fee: 1% per trade, split 60% treasury / 40% creator (contract constants, not constructor args)");
 
   const hash = await walletClient.deployContract({
@@ -82,6 +85,9 @@ async function main() {
       config.virtualTokenReserveRaw,
       config.virtualEthReserveWei,
       config.graduationTargetWei,
+      config.positionManagerAddress,
+      config.uniswapV3FactoryAddress,
+      config.weth9Address,
     ],
   });
   console.log(`Deployment transaction submitted: ${hash}`);
@@ -109,6 +115,9 @@ async function main() {
   console.log(`  virtualTokenReserve_:   ${config.virtualTokenReserveRaw.toString()}`);
   console.log(`  virtualEthReserve_:     ${config.virtualEthReserveWei.toString()}`);
   console.log(`  graduationTarget_:      ${config.graduationTargetWei.toString()}`);
+  console.log(`  positionManager_:       ${config.positionManagerAddress}`);
+  console.log(`  uniswapV3Factory_:      ${config.uniswapV3FactoryAddress}`);
+  console.log(`  weth9_:                 ${config.weth9Address}`);
   console.log("");
   console.log(
     `Minimum curve funding required (raw token units): ${minimumCurveFunding.toString()}. ` +

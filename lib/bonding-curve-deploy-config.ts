@@ -11,6 +11,13 @@ export const TOKEN_DECIMALS_ENV_VAR = "HOODLUMS_BONDING_CURVE_TOKEN_DECIMALS";
 export const GRADUATION_TARGET_ETHER_ENV_VAR = "HOODLUMS_BONDING_CURVE_GRADUATION_TARGET_ETHER";
 export const VIRTUAL_ETH_RESERVE_ETHER_ENV_VAR = "HOODLUMS_BONDING_CURVE_VIRTUAL_ETH_RESERVE_ETHER";
 export const VIRTUAL_TOKEN_RESERVE_WHOLE_ENV_VAR = "HOODLUMS_BONDING_CURVE_VIRTUAL_TOKEN_RESERVE_WHOLE";
+// Uniswap V3 addresses the curve graduates into (constructor immutables, no
+// defaults — see README.md "Bonding curve deployment (drill)" and issue #227
+// for why these have no hardcoded fallback: they must be independently
+// verified for the target chain from Uniswap's own official docs before use).
+export const POSITION_MANAGER_ADDRESS_ENV_VAR = "HOODLUMS_BONDING_CURVE_POSITION_MANAGER_ADDRESS";
+export const UNISWAP_V3_FACTORY_ADDRESS_ENV_VAR = "HOODLUMS_BONDING_CURVE_UNISWAP_V3_FACTORY_ADDRESS";
+export const WETH9_ADDRESS_ENV_VAR = "HOODLUMS_BONDING_CURVE_WETH9_ADDRESS";
 
 /** Per the deployment drill request: graduate once 4 native testnet tokens accrue. */
 export const DEFAULT_GRADUATION_TARGET_ETHER = "4";
@@ -27,6 +34,9 @@ export interface BondingCurveDeployConfig {
   graduationTargetWei: bigint;
   virtualEthReserveWei: bigint;
   virtualTokenReserveRaw: bigint;
+  positionManagerAddress: Address;
+  uniswapV3FactoryAddress: Address;
+  weth9Address: Address;
 }
 
 type Env = Record<string, string | undefined>;
@@ -71,6 +81,9 @@ export function resolveBondingCurveDeployConfig(env: Env = process.env): Bonding
   const tokenAddress = requireAddress(env, TOKEN_ADDRESS_ENV_VAR);
   const creatorAddress = requireAddress(env, CREATOR_ADDRESS_ENV_VAR);
   const treasuryAddress = requireAddress(env, TREASURY_ADDRESS_ENV_VAR);
+  const positionManagerAddress = requireAddress(env, POSITION_MANAGER_ADDRESS_ENV_VAR);
+  const uniswapV3FactoryAddress = requireAddress(env, UNISWAP_V3_FACTORY_ADDRESS_ENV_VAR);
+  const weth9Address = requireAddress(env, WETH9_ADDRESS_ENV_VAR);
 
   const decimalsRaw = env[TOKEN_DECIMALS_ENV_VAR] ?? String(DEFAULT_TOKEN_DECIMALS);
   const tokenDecimals = Number(decimalsRaw);
@@ -114,5 +127,8 @@ export function resolveBondingCurveDeployConfig(env: Env = process.env): Bonding
     graduationTargetWei,
     virtualEthReserveWei,
     virtualTokenReserveRaw,
+    positionManagerAddress,
+    uniswapV3FactoryAddress,
+    weth9Address,
   };
 }

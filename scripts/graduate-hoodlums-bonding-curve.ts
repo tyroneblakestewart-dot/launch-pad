@@ -101,7 +101,8 @@ async function main() {
   const alreadyGraduated = await readCurve<boolean>("graduated");
   if (alreadyGraduated) {
     const pool = await readCurve<Address>("liquidityPool");
-    console.log(`Curve already graduated. Locked pool: ${pool}`);
+    const lpTokenId = await readCurve<bigint>("lpTokenId");
+    console.log(`Curve already graduated. Uniswap V3 pool: ${pool} (LP token ID ${lpTokenId.toString()})`);
     await connection.close();
     return;
   }
@@ -177,9 +178,11 @@ async function main() {
   }
 
   const pool = await readCurve<Address>("liquidityPool");
+  const lpTokenId = await readCurve<bigint>("lpTokenId");
   console.log("");
-  console.log("Graduated. _graduate() fired and seeded the locked pool.");
-  console.log(`  Locked pool address: ${pool}`);
+  console.log("Graduated. _graduate() fired and seeded a full-range Uniswap V3 position, LP NFT locked at address(1).");
+  console.log(`  Uniswap V3 pool: ${pool}`);
+  console.log(`  LP token ID:     ${lpTokenId.toString()}`);
 
   await connection.close();
 }
