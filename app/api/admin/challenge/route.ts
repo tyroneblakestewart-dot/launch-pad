@@ -12,7 +12,10 @@ import {
   hashAdminNonce,
   normaliseAdminWalletAddress,
 } from "@/lib/server/admin-auth";
-import { createAdminChallenge } from "@/lib/server/admin-session-store";
+import {
+  AdminSessionStoreUnavailableError,
+  createAdminChallenge,
+} from "@/lib/server/admin-session-store";
 
 export const runtime = "nodejs";
 
@@ -39,7 +42,13 @@ export async function POST(request: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many admin login attempts. Try again later." },
-        { status: 429, headers: { ...headers, "Retry-After": String(rate.retryAfterSeconds) } },
+        {
+          status: 429,
+          headers: {
+            ...headers,
+            "Retry-After": String(rate.retryAfterSeconds),
+          },
+        },
       );
     }
 
@@ -51,7 +60,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const body = (await request.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
     const walletAddress = normaliseAdminWalletAddress(body?.walletAddress);
     if (!walletAddress) {
       return NextResponse.json(
@@ -67,7 +79,10 @@ export async function POST(request: Request) {
     }
 
     const nonce = createAdminNonce();
-    const challenge = createAdminChallenge(walletAddress, hashAdminNonce(nonce));
+    const challenge = await createAdminChallenge(
+      walletAddress,
+      hashAdminNonce(nonce),
+    );
     const message = buildAdminAuthorisationMessage({ ...challenge, nonce });
 
     return NextResponse.json(
@@ -82,7 +97,20 @@ export async function POST(request: Request) {
       { status: 201, headers },
     );
   } catch (error) {
-    console.error("Admin challenge failed unexpectedly.", error instanceof Error ? (error.stack ?? error.message) : error);
+    if (error instanceof AdminSessionStoreUnavailableError) {
+      return NextResponse.json(
+        {
+          error:
+            "Admin sign-in storage is not configured. Apply the database migrations and try again.",
+        },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    console.error(
+      "Admin challenge failed unexpectedly.",
+      error instanceof Error ? (error.stack ?? error.message) : error,
+    );
     return NextResponse.json(
       { error: "Admin challenge failed unexpectedly. Try again." },
       { status: 500, headers: { "Cache-Control": "no-store" } },
