@@ -89,7 +89,23 @@ function isPositiveAmount(value: string): boolean {
   return Number.isFinite(parsed) && parsed > 0;
 }
 
-export function ProviderLauncher() {
+type ProviderLauncherProps = {
+  headerEyebrow?: string;
+  headerTitle?: string;
+  headerIntro?: string;
+  backToStudioLabel?: string;
+};
+
+/** Header chrome copy defaults match the original hardcoded strings and can
+ * be overridden by the "Pages" CMS (see lib/page-content-registry.ts, page id
+ * "providers"). The rest of this component's launch/verify/buy state is
+ * untouched. */
+export function ProviderLauncher({
+  headerEyebrow = "PRIVATE LAUNCH ADAPTERS",
+  headerTitle = "Robinhood provider launch desk",
+  headerIntro = "Launch through the provider, verify the token, then continue straight into the creator buy.",
+  backToStudioLabel = "Back to studio",
+}: ProviderLauncherProps = {}) {
   const [projects, setProjects] = useState<TokenProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [providerId, setProviderId] = useState<ProviderId>("noxa");
@@ -524,12 +540,12 @@ export function ProviderLauncher() {
     <main className={styles.shell}>
       <header className={styles.header}>
         <div>
-          <p>PRIVATE LAUNCH ADAPTERS</p>
-          <h1>Robinhood provider launch desk</h1>
-          <span>Launch through the provider, verify the token, then continue straight into the creator buy.</span>
+          <p>{headerEyebrow}</p>
+          <h1>{headerTitle}</h1>
+          <span>{headerIntro}</span>
         </div>
         <div className={styles.headerActions}>
-          <Link href="/">Back to studio</Link>
+          <Link href="/">{backToStudioLabel}</Link>
           <button onClick={connectWallet} disabled={busy}>
             {walletAddress ? shortAddress(walletAddress) : busy ? "Connecting…" : "Connect wallet"}
           </button>

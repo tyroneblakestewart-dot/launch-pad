@@ -4,7 +4,32 @@ import { HoodlumsTokenGrid } from "@/components/hoodlums-token-grid";
 import { RobinhoodTrendingPanel } from "@/components/robinhood-trending-panel";
 import styles from "./hoodlums-market-home.module.css";
 
-export function HoodlumsMarketHome({ liveSites }: { liveSites: PublicGeneratedSite[] }) {
+type HoodlumsMarketHomeProps = {
+  liveSites: PublicGeneratedSite[];
+  heroEyebrow?: string;
+  heroTitleLine1?: string;
+  heroTitleLine2?: string;
+  heroSub?: string;
+  primaryCtaLabel?: string;
+  primaryCtaLink?: string;
+  secondaryCtaLabel?: string;
+  secondaryCtaLink?: string;
+};
+
+/** Hero chrome copy defaults match the original hardcoded strings and can be
+ * overridden by the "Pages" CMS (see lib/page-content-registry.ts, page id
+ * "home"). Nothing else on this page reads from the registry. */
+export function HoodlumsMarketHome({
+  liveSites,
+  heroEyebrow = "HOODLUMS BONDING MARKET",
+  heroTitleLine1 = "From new token to",
+  heroTitleLine2 = "locked liquidity.",
+  heroSub = "Create a fixed-supply token, give it a live Hoodlums website, and put its full supply into a bonding curve that graduates into permanently locked liquidity.",
+  primaryCtaLabel = "Create new token",
+  primaryCtaLink = "#launch-studio",
+  secondaryCtaLabel = "Open saved launches",
+  secondaryCtaLink = "#launch-studio",
+}: HoodlumsMarketHomeProps) {
   return (
     <div className={styles.page}>
       <header className={styles.topbar}>
@@ -25,22 +50,19 @@ export function HoodlumsMarketHome({ liveSites }: { liveSites: PublicGeneratedSi
       <div className={styles.layout}>
         <div className={styles.main}>
           <section className={styles.hero} aria-labelledby="hoodlums-market-title">
-            <p className={styles.eyebrow}>HOODLUMS BONDING MARKET</p>
+            <p className={styles.eyebrow}>{heroEyebrow}</p>
             <h1 id="hoodlums-market-title" className={styles.headline}>
-              From new token to
+              {heroTitleLine1}
               <br />
-              <span>locked liquidity.</span>
+              <span>{heroTitleLine2}</span>
             </h1>
-            <p className={styles.sub}>
-              Create a fixed-supply token, give it a live Hoodlums website, and put its full supply
-              into a bonding curve that graduates into permanently locked liquidity.
-            </p>
+            <p className={styles.sub}>{heroSub}</p>
             <div className={styles.ctas}>
-              <a href="#launch-studio" className={styles.primaryCta}>
-                Create new token
+              <a href={primaryCtaLink} className={styles.primaryCta}>
+                {primaryCtaLabel}
               </a>
-              <a href="#launch-studio" className={styles.secondaryCta}>
-                Open saved launches
+              <a href={secondaryCtaLink} className={styles.secondaryCta}>
+                {secondaryCtaLabel}
               </a>
             </div>
             <ul className={styles.facts}>

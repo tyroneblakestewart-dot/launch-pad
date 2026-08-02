@@ -340,14 +340,20 @@ table (migration `006_page_content_registry.sql`; see
   links limited to a site-relative path or an `https://` URL) before they are
   ever staged as a draft, and every publish is recorded in the Activity log
   with the old and new value.
-- **Currently registered:** `/bonding-curve` (hero copy, next-milestone
-  section and its two CTAs), `/allocations` (the liquidity-lab CTA), and the
-  public `/[slug]` token page's Dexscreener chrome. The home/Create & Bond
-  and Providers pages, and the Allocations *workspace* itself, are
-  intentionally not yet registered — their copy lives inside large stateful
-  client components rather than at the page-chrome level, and wiring them
-  safely needs a follow-up so a bad edit can never destabilise the primary
-  mobile-Safari workspace.
+- **Currently registered:** `/` (hero copy and its two CTAs), `/providers`
+  (header copy and the "Back to studio" label), `/allocations` (header copy
+  plus the liquidity-lab CTA), `/account` (header copy, section titles, and
+  each sign-in provider's descriptive note), `/bonding-curve` (hero copy,
+  next-milestone section and its two CTAs), and the public `/[slug]` token
+  page's Dexscreener chrome. Home, Providers and Allocations resolve this
+  content server-side at the page-chrome level and pass it down as plain
+  props into the large stateful client components that own the rest of each
+  page (`HoodlumsMarketHome`, `ProviderLauncher`, `TokenAllocationDesk`) —
+  those components' internal state, wallet flows and effects are never
+  restructured, so a bad edit can never destabilise the primary mobile-Safari
+  workspace. The sign-in provider *names* themselves (Google, MetaMask, etc.)
+  are intentionally not editable, since they select each row's logo and CSS
+  class.
 
 ## Safety model and limitations
 

@@ -120,7 +120,21 @@ function formatTokenAmount(value: bigint, decimals: number): string {
   }).format(numeric);
 }
 
-export function TokenAllocationDesk() {
+type TokenAllocationDeskProps = {
+  headerEyebrow?: string;
+  headerTitle?: string;
+  headerIntro?: string;
+};
+
+/** Header chrome copy defaults match the original hardcoded strings and can
+ * be overridden by the "Pages" CMS (see lib/page-content-registry.ts, page id
+ * "allocations"). The rest of this component's plan/distribution state is
+ * untouched. */
+export function TokenAllocationDesk({
+  headerEyebrow = "PRIVATE TOKEN OPERATIONS",
+  headerTitle = "Allocation and distribution desk",
+  headerIntro = "Plan the supply, save a record, then approve each real ERC-20 transfer yourself.",
+}: TokenAllocationDeskProps = {}) {
   const [projects, setProjects] = useState<TokenProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [contractAddress, setContractAddress] = useState("");
@@ -479,9 +493,9 @@ export function TokenAllocationDesk() {
     <main className={styles.shell}>
       <header className={styles.header}>
         <div>
-          <p>PRIVATE TOKEN OPERATIONS</p>
-          <h1>Allocation and distribution desk</h1>
-          <span>Plan the supply, save a record, then approve each real ERC-20 transfer yourself.</span>
+          <p>{headerEyebrow}</p>
+          <h1>{headerTitle}</h1>
+          <span>{headerIntro}</span>
         </div>
         <div className={styles.headerActions}>
           <Link href="/">Back to studio</Link>
