@@ -1,10 +1,3 @@
-.closedWorkspace {
-  margin: 0;
-  padding: clamp(20px, 4vw, 40px) clamp(20px, 5vw, 64px) clamp(40px, 6vw, 72px);
-  display: flex;
-  justify-content: center;
-}
-
 .statusRow,
 .workspaceBar > div:first-child {
   display: flex;
@@ -71,15 +64,6 @@
   white-space: nowrap;
 }
 
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-}
-
-.actions button,
-.actions a,
 .workspaceActions button {
   min-height: 46px;
   padding: 0 18px;
@@ -92,23 +76,16 @@
   cursor: pointer;
 }
 
-.primaryAction,
 .closeButton {
   border: 1px solid #bce759;
   color: #11160f;
   background: #bce759;
 }
 
-.secondaryAction,
 .workspaceActions button:first-child {
   border: 1px solid #303933;
   color: #eef2ed;
   background: #121713;
-}
-
-.actions a {
-  color: #bce759;
-  border: 1px solid transparent;
 }
 
 .openWorkspace {
@@ -149,10 +126,6 @@
 }
 
 @media (max-width: 700px) {
-  .closedWorkspace {
-    padding: 20px 18px 40px;
-  }
-
   .tokenRecord {
     align-items: flex-start;
   }
@@ -164,9 +137,7 @@
   }
 
   .workspaceActions,
-  .workspaceActions button,
-  .actions button,
-  .actions a {
+  .workspaceActions button {
     width: 100%;
   }
 }

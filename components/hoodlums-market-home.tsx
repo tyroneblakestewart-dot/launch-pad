@@ -1,7 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import type { MouseEvent } from "react";
 import type { PublicGeneratedSite } from "@/lib/public-site";
 import { HoodlumsTokenGrid } from "@/components/hoodlums-token-grid";
 import { RobinhoodTrendingPanel } from "@/components/robinhood-trending-panel";
+import { requestWorkspaceOpen } from "@/lib/workspace-open-request";
 import styles from "./hoodlums-market-home.module.css";
 
 type HoodlumsMarketHomeProps = {
@@ -12,8 +16,6 @@ type HoodlumsMarketHomeProps = {
   heroSub?: string;
   primaryCtaLabel?: string;
   primaryCtaLink?: string;
-  secondaryCtaLabel?: string;
-  secondaryCtaLink?: string;
 };
 
 /** Hero chrome copy defaults match the original hardcoded strings and can be
@@ -27,9 +29,12 @@ export function HoodlumsMarketHome({
   heroSub = "Create a fixed-supply token, give it a live Hoodlums website, and put its full supply into a bonding curve that graduates into permanently locked liquidity.",
   primaryCtaLabel = "Create new token",
   primaryCtaLink = "#launch-studio",
-  secondaryCtaLabel = "Open saved launches",
-  secondaryCtaLink = "#launch-studio",
 }: HoodlumsMarketHomeProps) {
+  function handlePrimaryCtaClick(event: MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    requestWorkspaceOpen("new");
+  }
+
   return (
     <div className={styles.page}>
       <header className={styles.topbar}>
@@ -38,9 +43,13 @@ export function HoodlumsMarketHome({
           5-MIN ROBINHOOD MARKET PULSE
         </span>
         <div className={styles.topActions}>
-          <a href="#launch-studio" className={styles.createButton}>
-            + Create
-          </a>
+          <button
+            type="button"
+            className={styles.savedLaunchesButton}
+            onClick={() => requestWorkspaceOpen("saved")}
+          >
+            Open saved launches
+          </button>
           <Link href="/account" className={styles.accountButton}>
             Account
           </Link>
@@ -58,11 +67,8 @@ export function HoodlumsMarketHome({
             </h1>
             <p className={styles.sub}>{heroSub}</p>
             <div className={styles.ctas}>
-              <a href={primaryCtaLink} className={styles.primaryCta}>
+              <a href={primaryCtaLink} className={styles.primaryCta} onClick={handlePrimaryCtaClick}>
                 {primaryCtaLabel}
-              </a>
-              <a href={secondaryCtaLink} className={styles.secondaryCta}>
-                {secondaryCtaLabel}
               </a>
             </div>
             <ul className={styles.facts}>

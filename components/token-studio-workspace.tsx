@@ -8,6 +8,10 @@ import {
   type ProjectSaveResultDetail,
 } from "@/lib/project-save-result";
 import type { TokenProject } from "@/lib/types";
+import {
+  OPEN_WORKSPACE_REQUEST_EVENT,
+  type OpenWorkspaceRequestDetail,
+} from "@/lib/workspace-open-request";
 import { TokenStudio } from "./token-studio";
 import styles from "./token-studio-workspace.module.css";
 
@@ -116,6 +120,20 @@ export function TokenStudioWorkspace() {
     return () => window.clearInterval(timer);
   }, [isOpen, pendingAction]);
 
+  useEffect(() => {
+    function onOpenWorkspaceRequest(event: Event) {
+      const { action } = (event as CustomEvent<OpenWorkspaceRequestDetail>).detail;
+      if (action === "saved") {
+        openSavedLaunches();
+      } else {
+        openWorkspace("new");
+      }
+    }
+
+    window.addEventListener(OPEN_WORKSPACE_REQUEST_EVENT, onOpenWorkspaceRequest);
+    return () => window.removeEventListener(OPEN_WORKSPACE_REQUEST_EVENT, onOpenWorkspaceRequest);
+  }, [isOpen]);
+
   function openWorkspace(action: Exclude<PendingAction, null>) {
     setPendingAction(action);
     setIsOpen(true);
@@ -138,18 +156,7 @@ export function TokenStudioWorkspace() {
   }
 
   if (!isOpen) {
-    return (
-      <section className={styles.closedWorkspace} aria-label="Start a launch">
-        <div className={styles.actions}>
-          <button className={styles.primaryAction} onClick={() => openWorkspace("new")}>
-            Create new token
-          </button>
-          <button className={styles.secondaryAction} onClick={openSavedLaunches}>
-            Open saved launches
-          </button>
-        </div>
-      </section>
-    );
+    return null;
   }
 
   return (

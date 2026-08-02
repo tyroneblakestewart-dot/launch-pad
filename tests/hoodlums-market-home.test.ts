@@ -23,12 +23,15 @@ describe("Hoodlums bonding-market studio home (issue #185)", () => {
     const component = await source("components", "hoodlums-market-home.tsx");
 
     expect(component).toContain("5-MIN ROBINHOOD MARKET PULSE");
-    expect(component).toContain("+ Create");
+    expect(component).not.toContain("+ Create");
+    expect(component).toContain("Open saved launches");
+    expect(component).toContain("requestWorkspaceOpen(\"saved\")");
     expect(component).toContain("Account");
     expect(component).toContain("BUILD. TEST. LAUNCH.");
     expect(component).toContain("Launch a meme token");
     expect(component).toContain("without the clutter.");
     expect(component).toContain("Create new token");
+    expect(component).toContain("requestWorkspaceOpen(\"new\")");
     expect(component).toContain("0% token tax");
     expect(component).toContain("No mint function");
     expect(component).toContain("No owner");

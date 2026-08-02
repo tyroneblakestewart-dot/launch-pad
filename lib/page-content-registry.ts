@@ -59,8 +59,6 @@ export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
       },
       { id: "primary_cta_label", type: "button_label", label: "Primary CTA label", defaultValue: "Create new token" },
       { id: "primary_cta_link", type: "button_link", label: "Primary CTA link", defaultValue: "#launch-studio" },
-      { id: "secondary_cta_label", type: "button_label", label: "Secondary CTA label", defaultValue: "Open saved launches" },
-      { id: "secondary_cta_link", type: "button_link", label: "Secondary CTA link", defaultValue: "#launch-studio" },
     ],
   },
   {
