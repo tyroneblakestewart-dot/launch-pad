@@ -5,20 +5,22 @@
   display: grid;
   place-items: center;
   padding: 18px;
-  background: rgba(2, 4, 3, 0.92);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+  background: rgba(0, 0, 0, 0.75);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
 }
 
 .panel {
-  width: min(1060px, 100%);
+  width: min(1080px, 100%);
   max-height: calc(100svh - 32px);
   overflow: auto;
-  padding: 26px 22px 30px;
-  border: 1px solid rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.22);
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(15, 18, 16, 0.99), rgba(5, 7, 6, 0.99));
-  box-shadow: 0 30px 120px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  padding: 30px 26px 32px;
+  border: 1px solid rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.28);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(14, 17, 15, 0.86), rgba(4, 6, 5, 0.9));
+  -webkit-backdrop-filter: blur(28px) saturate(1.15);
+  backdrop-filter: blur(28px) saturate(1.15);
+  box-shadow: 0 40px 140px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   color: #f4f7f1;
   scrollbar-width: none;
 }
@@ -28,8 +30,23 @@
 }
 
 .heading {
-  margin-bottom: 22px;
+  margin-bottom: 24px;
   text-align: center;
+}
+
+.wordmark {
+  display: block;
+  width: min(132px, 34vw);
+  height: 40px;
+  margin: 0 auto 14px;
+  background: var(--hoodlums-green, #bce759);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  filter: drop-shadow(0 0 14px rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.25));
 }
 
 .eyebrow {
@@ -57,7 +74,7 @@
 .columns {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 14px;
 }
 
 .column {
@@ -66,32 +83,37 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  padding: 20px 18px 22px;
+  padding: 22px 18px 24px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.025);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   color: #f4f7f1;
   text-align: left;
-  transition: border-color 0.16s ease, background 0.16s ease, opacity 0.16s ease, transform 0.16s ease;
+  transition: border-color 0.16s ease, background 0.16s ease, opacity 0.16s ease, transform 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .column:hover {
-  border-color: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.4);
+  border-color: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.45);
+  transform: translateY(-2px);
 }
 
 .columnRecommended {
-  border-color: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.4);
-  background: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.045);
+  border-color: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.45);
+  background: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.06);
 }
 
 .columnSelected {
   border-color: var(--hoodlums-green, #bce759);
-  background: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.09);
-  box-shadow: 0 0 0 1px var(--hoodlums-green, #bce759), 0 14px 40px rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.14);
+  background: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.11);
+  box-shadow: 0 0 0 1px var(--hoodlums-green, #bce759), 0 18px 48px rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.18);
+  transform: translateY(-2px);
 }
 
 .columnDimmed {
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
 .badge {
@@ -105,6 +127,7 @@
   font: 800 9px/1 "IBM Plex Mono", monospace;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  box-shadow: 0 6px 18px rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.3);
 }
 
 .columnName {
@@ -156,7 +179,7 @@
 .continueButton {
   min-height: 58px;
   width: 100%;
-  margin-top: 22px;
+  margin-top: 24px;
   border: 0;
   border-radius: 999px;
   background: var(--hoodlums-green, #bce759);
@@ -164,7 +187,7 @@
   font-size: 16px;
   font-weight: 900;
   cursor: pointer;
-  box-shadow: 0 16px 40px rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.2);
+  box-shadow: 0 16px 40px rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.24);
 }
 
 .continueButton:active {
@@ -195,7 +218,7 @@
 
   .panel {
     max-height: calc(100svh - 24px);
-    padding: 20px 14px 22px;
-    border-radius: 18px;
+    padding: 22px 16px 24px;
+    border-radius: 20px;
   }
 }
