@@ -146,6 +146,42 @@ commit real values):
 | `HOODLUMS_BONDING_CURVE_TOKEN_ADDRESS` | The already-deployed ERC-20 this curve will trade. |
 | `HOODLUMS_BONDING_CURVE_CREATOR_ADDRESS` | Constructor `creator_` — must be the wallet holding the token's complete current supply; only it can call `fundCurve()` and receives the 40% creator fee share. |
 | `HOODLUMS_BONDING_CURVE_TREASURY_ADDRESS` | Constructor `treasury_` — receives the 60% protocol fee share. |
+| `HOODLUMS_BONDING_CURVE_POSITION_MANAGER_ADDRESS` | Constructor `positionManager_` — the Uniswap V3 `NonfungiblePositionManager` `_graduate()` calls to mint the full-range graduation position. |
+| `HOODLUMS_BONDING_CURVE_UNISWAP_V3_FACTORY_ADDRESS` | Constructor `uniswapV3Factory_` — the Uniswap V3 factory `_graduate()` uses to look up or create the token/WETH pool (1% fee tier). |
+| `HOODLUMS_BONDING_CURVE_WETH9_ADDRESS` | Constructor `weth9_` — the WETH contract `_graduate()` wraps the native reserve into before seeding liquidity. |
+
+None of the three Uniswap V3 addresses above has a hardcoded fallback in the
+contract, this script, or `lib/bonding-curve-deploy-config.ts` — every
+deployment must supply them explicitly. **Always get the canonical
+`NonfungiblePositionManager` / `UniswapV3Factory` / `WETH9` addresses for
+your target chain directly from Uniswap's own official developer docs
+(developers.uniswap.org)**, not from a chat message, issue, or PR
+description — addresses copied secondhand have already been caught
+containing transcription errors during this project's review process (see
+issue #227). As of that issue, the following
+Uniswap V3 addresses were verified against Uniswap's docs for **Robinhood
+Chain mainnet (chain ID 4663)** — note this repo's `lib/chains.ts` only
+configures Robinhood Chain **Testnet** (`46630`) today and deliberately
+aliases `ROBINHOOD_MAINNET` back to testnet as a safety measure, so these
+mainnet values are for future reference only, not for use against the
+testnet deployment target below:
+
+| Contract | Address | Used by this curve? |
+| --- | --- | --- |
+| `NonfungiblePositionManager` | `0x73991a25c818bf1f1128deaab1492d45638de0d3` | Yes — `positionManager_` |
+| `UniswapV3Factory` | `0x1f7d7550b1b028f7571e69a784071f0205fd2efa` | Yes — `uniswapV3Factory_` |
+| `WETH9` | `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73` | Yes — `weth9_` |
+| `SwapRouter02` | `0xcaf681a66d020601342297493863e78c959e5cb2` | No — reference only, for future trading-UI work |
+| `QuoterV2` | `0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7` | No — reference only |
+| `UniversalRouter` | `0x8876789976decbfcbbbe364623c63652db8c0904` | No — reference only |
+| `Permit2` | `0x000000000022D473030F116dDEE9F6B43aC78BA3` | No — reference only |
+
+`Permit2` above is Uniswap's well-known canonical cross-chain deployment
+address; the value originally pasted into issue #227 was one hex digit short
+of a valid address, corrected here from that canonical value. Re-verify all
+seven addresses independently against Uniswap's docs before using any of
+them in a real deployment — this table is a record of what was checked for
+issue #227, not a substitute for checking again at deploy time.
 
 Optional overrides (documented defaults below are used when unset):
 
@@ -185,7 +221,8 @@ the exact gross native input whose post-fee net lands exactly on the
 remaining amount to graduate — `buy()` only calls `_graduate()` when
 `realNativeReserve` equals `graduationTarget` exactly, so an approximate
 last buy would leave the curve permanently short. Once graduated, it prints
-the locked pool address created by `_graduate()`.
+the Uniswap V3 pool address and LP NFT token ID that `_graduate()` created
+and permanently locked at `address(1)`.
 
 If you'd rather drive individual steps by hand instead of running this
 script, the same effect can be reproduced with `cast send` (Foundry) or a

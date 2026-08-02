@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   CREATOR_ADDRESS_ENV_VAR,
   GRADUATION_TARGET_ETHER_ENV_VAR,
+  POSITION_MANAGER_ADDRESS_ENV_VAR,
   TOKEN_ADDRESS_ENV_VAR,
   TOKEN_DECIMALS_ENV_VAR,
   TREASURY_ADDRESS_ENV_VAR,
+  UNISWAP_V3_FACTORY_ADDRESS_ENV_VAR,
   VIRTUAL_ETH_RESERVE_ETHER_ENV_VAR,
   VIRTUAL_TOKEN_RESERVE_WHOLE_ENV_VAR,
+  WETH9_ADDRESS_ENV_VAR,
   resolveBondingCurveDeployConfig,
 } from "../lib/bonding-curve-deploy-config";
 
@@ -14,11 +17,17 @@ import {
 const TOKEN_ADDRESS = "0x1234567890123456789012345678901234567890";
 const CREATOR_ADDRESS = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd";
 const TREASURY_ADDRESS = "0x505217cbbe3059993877983b4fdad5c6e32af1f5";
+const POSITION_MANAGER_ADDRESS = "0x73991a25c818bf1f1128deaab1492d45638de0d3";
+const UNISWAP_V3_FACTORY_ADDRESS = "0x1f7d7550b1b028f7571e69a784071f0205fd2efa";
+const WETH9_ADDRESS = "0x0bd7d308f8e1639fab988df18a8011f41eacad73";
 
 const REQUIRED_ENV = {
   [TOKEN_ADDRESS_ENV_VAR]: TOKEN_ADDRESS,
   [CREATOR_ADDRESS_ENV_VAR]: CREATOR_ADDRESS,
   [TREASURY_ADDRESS_ENV_VAR]: TREASURY_ADDRESS,
+  [POSITION_MANAGER_ADDRESS_ENV_VAR]: POSITION_MANAGER_ADDRESS,
+  [UNISWAP_V3_FACTORY_ADDRESS_ENV_VAR]: UNISWAP_V3_FACTORY_ADDRESS,
+  [WETH9_ADDRESS_ENV_VAR]: WETH9_ADDRESS,
 };
 
 describe("resolveBondingCurveDeployConfig", () => {
@@ -31,6 +40,9 @@ describe("resolveBondingCurveDeployConfig", () => {
     expect(config.graduationTargetWei).toBe(4_000_000_000_000_000_000n);
     expect(config.virtualEthReserveWei).toBe(1_000_000_000_000_000_000n);
     expect(config.virtualTokenReserveRaw).toBe(1_000_000n * 10n ** 18n);
+    expect(config.positionManagerAddress).toBe(POSITION_MANAGER_ADDRESS);
+    expect(config.uniswapV3FactoryAddress).toBe(UNISWAP_V3_FACTORY_ADDRESS);
+    expect(config.weth9Address).toBe(WETH9_ADDRESS);
   });
 
   it("throws when a required address is missing", () => {
@@ -39,6 +51,26 @@ describe("resolveBondingCurveDeployConfig", () => {
     expect(() => resolveBondingCurveDeployConfig(rest)).toThrow(
       `Missing required environment variable: ${TOKEN_ADDRESS_ENV_VAR}`,
     );
+  });
+
+  it("throws when a required Uniswap V3 address is missing", () => {
+    for (const envVar of [
+      POSITION_MANAGER_ADDRESS_ENV_VAR,
+      UNISWAP_V3_FACTORY_ADDRESS_ENV_VAR,
+      WETH9_ADDRESS_ENV_VAR,
+    ]) {
+      const rest = { ...REQUIRED_ENV };
+      delete (rest as Record<string, string | undefined>)[envVar];
+      expect(() => resolveBondingCurveDeployConfig(rest)).toThrow(
+        `Missing required environment variable: ${envVar}`,
+      );
+    }
+  });
+
+  it("throws when a Uniswap V3 address env var is not a valid 0x address", () => {
+    expect(() =>
+      resolveBondingCurveDeployConfig({ ...REQUIRED_ENV, [WETH9_ADDRESS_ENV_VAR]: "not-an-address" }),
+    ).toThrow(`${WETH9_ADDRESS_ENV_VAR} must be a valid 0x address`);
   });
 
   it("throws when an address env var is not a valid 0x address", () => {
