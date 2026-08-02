@@ -1,36 +1,44 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { AdminSystemHealth } from "@/components/admin-system-health";
 import styles from "./admin-dashboard.module.css";
 
 type SectionId = "system-health";
 
-// Only System Health ships in this PR. Add future sections (Activity, Money,
+// Only System Health ships for now. Add future sections (Activity, Money,
 // Issues) here — the nav and content switch below need no other changes.
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "system-health", label: "System Health" },
 ];
 
 async function signOutOfAdmin(): Promise<void> {
-  await fetch("/api/admin/logout", { method: "POST" });
+  const response = await fetch("/api/admin/logout", {
+    method: "POST",
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    throw new Error(payload.error || "Admin sign-out failed.");
+  }
 }
 
 export function AdminDashboard() {
-  const router = useRouter();
-  const [activeSection, setActiveSection] = useState<SectionId>("system-health");
+  const [activeSection, setActiveSection] =
+    useState<SectionId>("system-health");
   const [signingOut, setSigningOut] = useState(false);
 
   const handleSignOut = useCallback(async () => {
     setSigningOut(true);
     try {
       await signOutOfAdmin();
-      router.refresh();
+      window.location.replace("/admin");
     } finally {
       setSigningOut(false);
     }
-  }, [router]);
+  }, []);
 
   return (
     <main className={styles.dashboard}>
@@ -51,7 +59,11 @@ export function AdminDashboard() {
           <button
             key={section.id}
             type="button"
-            className={section.id === activeSection ? styles.navItemActive : styles.navItem}
+            className={
+              section.id === activeSection
+                ? styles.navItemActive
+                : styles.navItem
+            }
             onClick={() => setActiveSection(section.id)}
           >
             {section.label}
