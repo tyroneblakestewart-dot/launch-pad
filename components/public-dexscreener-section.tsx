@@ -7,13 +7,31 @@ import {
   type DexscreenerPairResult,
 } from "@/lib/dexscreener-client";
 
+type PublicDexscreenerSectionProps = {
+  address: string;
+  heading?: string;
+  openLabel?: string;
+  emptyHeading?: string;
+  emptyCopy?: string;
+  checkLabel?: string;
+};
+
 /**
  * Standalone Dexscreener chart section for the public `app/[slug]` page.
  * Unlike the studio's `DexscreenerSiteSection`, this takes the contract
  * address directly as a prop instead of polling the studio DOM, since the
- * public page has no studio form to read from.
+ * public page has no studio form to read from. The chrome copy defaults
+ * match the original hardcoded strings and can be overridden by the "Pages"
+ * CMS (see lib/page-content-registry.ts, page id "public-token-site").
  */
-export function PublicDexscreenerSection({ address }: { address: string }) {
+export function PublicDexscreenerSection({
+  address,
+  heading = "Dexscreener",
+  openLabel = "OPEN DEXSCREENER ↗",
+  emptyHeading = "Trading pair not detected yet",
+  emptyCopy = "Once liquidity creates a Dexscreener pair, the live chart will appear here automatically.",
+  checkLabel = "CHECK DEXSCREENER ↗",
+}: PublicDexscreenerSectionProps) {
   const [result, setResult] = useState<DexscreenerPairResult>({ found: false });
   const [loading, setLoading] = useState(false);
 
@@ -43,9 +61,9 @@ export function PublicDexscreenerSection({ address }: { address: string }) {
   return (
     <section className="public-dexscreener-section" id="chart">
       <div className="public-dexscreener-heading">
-        <h2>Dexscreener</h2>
+        <h2>{heading}</h2>
         <a href={visibleResult.pairUrl || searchUrl} target="_blank" rel="noreferrer">
-          OPEN DEXSCREENER ↗
+          {openLabel}
         </a>
       </div>
 
@@ -67,13 +85,10 @@ export function PublicDexscreenerSection({ address }: { address: string }) {
         </div>
       ) : (
         <div className="public-dexscreener-empty">
-          <strong>{loading ? "Searching Dexscreener…" : "Trading pair not detected yet"}</strong>
-          <p>
-            {visibleResult.error ||
-              "Once liquidity creates a Dexscreener pair, the live chart will appear here automatically."}
-          </p>
+          <strong>{loading ? "Searching Dexscreener…" : emptyHeading}</strong>
+          <p>{visibleResult.error || emptyCopy}</p>
           <a href={searchUrl} target="_blank" rel="noreferrer">
-            CHECK DEXSCREENER ↗
+            {checkLabel}
           </a>
         </div>
       )}

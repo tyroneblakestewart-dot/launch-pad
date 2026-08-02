@@ -1,12 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BondingCurveGraduationStatus } from "@/components/bonding-curve-graduation-status";
+import { isContentVisible } from "@/lib/page-content-registry";
+import { CMS_PREVIEW_QUERY_PARAM, resolvePageContent } from "@/lib/server/page-content";
 import styles from "./bonding-curve.module.css";
 
 export const metadata: Metadata = {
   title: "Bonding Curve | HOODLUMS",
   description:
     "Review the HOODLUMS testnet bonding-curve launch model and automatic liquidity-pool graduation flow.",
+};
+
+type BondingCurvePageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 const FLOW_STEPS = [
@@ -37,7 +43,13 @@ const FLOW_STEPS = [
   },
 ] as const;
 
-export default function BondingCurvePage() {
+export default async function BondingCurvePage({ searchParams }: BondingCurvePageProps) {
+  const { content } = await resolvePageContent(
+    "bonding-curve",
+    (await searchParams)?.[CMS_PREVIEW_QUERY_PARAM],
+  );
+  const showNextStep = isContentVisible(content.next_step_visible);
+
   return (
     <main className={styles.page}>
       <section className={styles.desktopWorkspace} aria-labelledby="desktop-bonding-title">
@@ -139,12 +151,9 @@ export default function BondingCurvePage() {
 
       <div className={styles.legacyLayout}>
         <section className={styles.hero}>
-          <p className={styles.eyebrow}>ROBINHOOD CHAIN TESTNET · STEP 5</p>
-          <h1>Bonding Curve</h1>
-          <p className={styles.intro}>
-            Follow the token from a protected full-supply launch through curve trading and into its
-            permanently locked liquidity pool.
-          </p>
+          <p className={styles.eyebrow}>{content.hero_eyebrow}</p>
+          <h1>{content.hero_title}</h1>
+          <p className={styles.intro}>{content.hero_intro}</p>
           <div className={styles.status} role="status">
             <span>FOUNDATION MERGED</span>
             <p>
@@ -214,23 +223,21 @@ export default function BondingCurvePage() {
           </ol>
         </section>
 
-        <section className={styles.nextStep}>
-          <div>
-            <p className={styles.cardLabel}>NEXT MILESTONE</p>
-            <h2>Connect the curve to real testnet launches</h2>
-            <p>
-              Live graduation status now reads directly from a configured curve. The next development
-              step is an atomic factory flow that creates the token, places its full supply into the
-              curve and exposes live quote, buy and sell controls on this page.
-            </p>
-          </div>
-          <div className={styles.actions}>
-            <Link href="/testnet">Open testnet launcher</Link>
-            <Link href="/liquidity-lab" className={styles.secondaryAction}>
-              Open liquidity lab
-            </Link>
-          </div>
-        </section>
+        {showNextStep ? (
+          <section className={styles.nextStep}>
+            <div>
+              <p className={styles.cardLabel}>NEXT MILESTONE</p>
+              <h2>{content.next_step_heading}</h2>
+              <p>{content.next_step_copy}</p>
+            </div>
+            <div className={styles.actions}>
+              <Link href={content.primary_cta_link}>{content.primary_cta_label}</Link>
+              <Link href={content.secondary_cta_link} className={styles.secondaryAction}>
+                {content.secondary_cta_label}
+              </Link>
+            </div>
+          </section>
+        ) : null}
       </div>
     </main>
   );

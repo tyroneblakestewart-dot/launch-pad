@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import {
   ADMIN_NONCE_TTL_MS,
   ADMIN_SESSION_TTL_MS,
+  hashAdminSessionToken,
   type AdminChallenge,
 } from "@/lib/server/admin-auth";
 import { getPostgresPool } from "@/lib/server/postgres";
@@ -382,4 +383,21 @@ export async function destroyAdminSession(
   sessionTokenHash: string,
 ): Promise<void> {
   await getAdminSessionStore().destroySession(sessionTokenHash);
+}
+
+/**
+ * Shared fail-closed session check used by the `/admin` page gate and by
+ * server-rendered public pages deciding whether to honour a CMS preview
+ * request. Never throws — an unreachable session store (or an absent
+ * migration) means "not authenticated", not a crash.
+ */
+export async function isAdminSessionTokenValid(
+  token: string | undefined,
+): Promise<boolean> {
+  if (!token) return false;
+  try {
+    return await isAdminSessionValid(hashAdminSessionToken(token));
+  } catch {
+    return false;
+  }
 }

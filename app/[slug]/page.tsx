@@ -10,7 +10,9 @@ import {
   type FreeSiteChartFact,
 } from "@/lib/free-site-platform-facts";
 import { isCompleteGeneratedPageHtml, prepareGeneratedPageForPreview } from "@/lib/generated-site-page";
+import { isContentVisible } from "@/lib/page-content-registry";
 import { lookupDexscreenerPair } from "@/lib/server/dexscreener";
+import { resolvePageContent } from "@/lib/server/page-content";
 import { getPublicGeneratedSiteBySlug } from "@/lib/server/public-generated-sites";
 import { decodeArtworkDataUrl } from "@/lib/server/public-site-artwork";
 import { validateSlug } from "@/lib/slug";
@@ -22,7 +24,10 @@ export const revalidate = 0;
 const DRAFT_ROBOTS = { index: false, follow: false } as const;
 
 type PublicSiteRouteParams = { slug: string };
-type PublicSiteSearchParams = { preview?: string | string[] };
+type PublicSiteSearchParams = {
+  preview?: string | string[];
+  cms_preview?: string | string[];
+};
 type PublicSiteRouteProps = {
   params: Promise<PublicSiteRouteParams>;
   searchParams?: Promise<PublicSiteSearchParams>;
@@ -112,6 +117,11 @@ export default async function PublicGeneratedSitePage({ params, searchParams }: 
     });
   }
 
+  const { content: chrome } = await resolvePageContent(
+    "public-token-site",
+    (await searchParams)?.cms_preview,
+  );
+
   return (
     <main className="public-generated-site">
       {hasGeneratedHtml && hasArtwork ? (
@@ -123,8 +133,15 @@ export default async function PublicGeneratedSitePage({ params, searchParams }: 
           in-document (see docs/free-site-template-source.html); this
           separate, unthemed section only backs the bespoke (paid AI)
           pipeline, which has no chart section of its own. */}
-      {!isFreeSiteTemplate && site.contractAddress ? (
-        <PublicDexscreenerSection address={site.contractAddress} />
+      {!isFreeSiteTemplate && site.contractAddress && isContentVisible(chrome.dexscreener_visible) ? (
+        <PublicDexscreenerSection
+          address={site.contractAddress}
+          heading={chrome.dexscreener_heading}
+          openLabel={chrome.dexscreener_open_label}
+          emptyHeading={chrome.dexscreener_empty_heading}
+          emptyCopy={chrome.dexscreener_empty_copy}
+          checkLabel={chrome.dexscreener_check_label}
+        />
       ) : null}
     </main>
   );
