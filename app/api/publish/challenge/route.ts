@@ -17,6 +17,7 @@ import {
   hashPublishableSite,
   normalisePublishableSite,
 } from "@/lib/server/published-site-validation";
+import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import { validateSlug } from "@/lib/slug";
 
 export const runtime = "nodejs";
@@ -58,6 +59,9 @@ export async function POST(request: Request) {
       },
     );
   }
+
+  const isolationResponse = await getServiceIsolationResponse("public-publishing");
+  if (isolationResponse) return isolationResponse;
 
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const walletAddress = normalisePublishWalletAddress(body?.walletAddress);
