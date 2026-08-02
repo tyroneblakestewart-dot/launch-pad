@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useState, type FormEvent } from "react";
 import { createWalletClient, custom } from "viem";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
@@ -14,8 +13,13 @@ type AdminChallengeResponse = {
   message: string;
 };
 
-async function readJsonResponse<T>(response: Response, fallback: string): Promise<T> {
-  const payload = (await response.json().catch(() => ({}))) as { error?: string } & Partial<T>;
+async function readJsonResponse<T>(
+  response: Response,
+  fallback: string,
+): Promise<T> {
+  const payload = (await response.json().catch(() => ({}))) as {
+    error?: string;
+  } & Partial<T>;
   if (!response.ok) throw new Error(payload.error || fallback);
   return payload as T;
 }
@@ -30,6 +34,7 @@ async function signInWithWallet(): Promise<void> {
 
   const challengeResponse = await fetch("/api/admin/challenge", {
     method: "POST",
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ walletAddress: account }),
   });
@@ -37,10 +42,14 @@ async function signInWithWallet(): Promise<void> {
     challengeResponse,
     "The admin challenge could not be created.",
   );
-  const signature = await walletClient.signMessage({ account, message: challenge.message });
+  const signature = await walletClient.signMessage({
+    account,
+    message: challenge.message,
+  });
 
   const loginResponse = await fetch("/api/admin/login", {
     method: "POST",
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       method: "wallet",
@@ -55,15 +64,21 @@ async function signInWithWallet(): Promise<void> {
 async function signInWithPassword(password: string): Promise<void> {
   const response = await fetch("/api/admin/login", {
     method: "POST",
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ method: "password", password }),
   });
   await readJsonResponse(response, "Incorrect admin password.");
 }
 
-/** Private admin sign-in: owner wallet signature (primary) or a fallback password. Never shows dashboard content. */
+function showAuthenticatedDashboard(): void {
+  // A full navigation guarantees the new httpOnly cookie is sent to the
+  // server component gate instead of relying on a stale client-router tree.
+  window.location.replace("/admin");
+}
+
+/** Private admin sign-in: owner wallet signature or a fallback password. */
 export function AdminLoginScreen() {
-  const router = useRouter();
   const [method, setMethod] = useState<LoginMethod>("wallet");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -74,13 +89,12 @@ export function AdminLoginScreen() {
     setError(null);
     try {
       await signInWithWallet();
-      router.refresh();
+      showAuthenticatedDashboard();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Wallet sign-in failed.");
-    } finally {
       setBusy(false);
     }
-  }, [router]);
+  }, []);
 
   const handlePasswordSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -89,14 +103,13 @@ export function AdminLoginScreen() {
       setError(null);
       try {
         await signInWithPassword(password);
-        router.refresh();
+        showAuthenticatedDashboard();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Incorrect admin password.");
-      } finally {
         setBusy(false);
       }
     },
-    [password, router],
+    [password],
   );
 
   return (
@@ -104,7 +117,8 @@ export function AdminLoginScreen() {
       <div className={styles.card}>
         <h1 className={styles.title}>HOODLUMS Admin</h1>
         <p className={styles.subtitle}>
-          Private control panel. Sign in with the owner wallet, or with the fallback password.
+          Private control panel. Sign in with the owner wallet, or with the
+          fallback password.
         </p>
 
         <div className={styles.tabs} role="tablist">
@@ -138,7 +152,10 @@ export function AdminLoginScreen() {
             {busy ? "Signing in…" : "Connect wallet & sign in"}
           </button>
         ) : (
-          <form className={styles.form} onSubmit={(event) => void handlePasswordSubmit(event)}>
+          <form
+            className={styles.form}
+            onSubmit={(event) => void handlePasswordSubmit(event)}
+          >
             <input
               type="password"
               autoComplete="current-password"
@@ -148,7 +165,11 @@ export function AdminLoginScreen() {
               onChange={(event) => setPassword(event.target.value)}
               disabled={busy}
             />
-            <button type="submit" className={styles.primaryButton} disabled={busy || !password}>
+            <button
+              type="submit"
+              className={styles.primaryButton}
+              disabled={busy || !password}
+            >
               {busy ? "Signing in…" : "Sign in"}
             </button>
           </form>
