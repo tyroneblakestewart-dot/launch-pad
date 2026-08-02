@@ -1,0 +1,368 @@
+import { describe, expect, it } from "vitest";
+import type { AdminServiceControl } from "@/lib/admin-operations";
+import {
+  buildContractsPipeline,
+  buildDatabasePipeline,
+  buildDeploymentPipeline,
+  buildServicePipeline,
+  buildWebsiteGenerationPipeline,
+} from "@/lib/server/system-health-pipeline";
+
+function stageById(pipeline: { stages: Array<{ id: string }> }, id: string) {
+  const stage = pipeline.stages.find((candidate) => candidate.id === id);
+  if (!stage) throw new Error(`No stage with id ${id}`);
+  return stage;
+}
+
+function activeControl(overrides: Partial<AdminServiceControl> = {}): AdminServiceControl {
+  return {
+    key: "website-generation",
+    label: "Website generation",
+    description: "AI artwork analysis, site copy, styling and full-page generation.",
+    affectedRoutes: "/api/generate-free-site, /api/generate-site-page, /api/generate-site-style",
+    isolated: false,
+    reason: "",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("buildWebsiteGenerationPipeline", () => {
+  it("reports provider configured green from an env credential and amber with none", async () => {
+    const withKey = await buildWebsiteGenerationPipeline({
+      env: { OPENAI_API_KEY: "test-key" },
+      getServiceControl: async () => activeControl(),
+      fetchImpl: async () => new Response(null, { status: 200 }),
+    });
+    expect(stageById(withKey, "provider-configured")).toMatchObject({ status: "green" });
+
+    const withoutKey = await buildWebsiteGenerationPipeline({
+      env: {},
+      getServiceControl: async () => activeControl(),
+      fetchImpl: async () => new Response(null, { status: 200 }),
+    });
+    expect(stageById(withoutKey, "provider-configured")).toMatchObject({ status: "amber" });
+  });
+
+  it("resolves the provider from the request OIDC token even with no env credential — the fixed bug", async () => {
+    const pipeline = await buildWebsiteGenerationPipeline({
+      env: {},
+      requestOidcToken: "runtime-oidc-token",
+      getServiceControl: async () => activeControl(),
+      fetchImpl: async () => new Response(null, { status: 200 }),
+    });
+    expect(stageById(pipeline, "provider-configured")).toMatchObject({
+      status: "green",
+      message: expect.stringContaining("vercel-ai-gateway"),
+    });
+  });
+
+  it("marks endpoint-reachable amber with the reason when the service is isolated", async () => {
+    const pipeline = await buildWebsiteGenerationPipeline({
+      env: { OPENAI_API_KEY: "test-key" },
+      getServiceControl: async () => activeControl({ isolated: true, reason: "Investigating a provider outage." }),
+      fetchImpl: async () => new Response(null, { status: 200 }),
+    });
+    expect(stageById(pipeline, "endpoint-reachable")).toMatchObject({
+      status: "amber",
+      message: expect.stringContaining("Investigating a provider outage."),
+    });
+  });
+
+  it("fails open (amber, not red) when the isolation store cannot be read", async () => {
+    const pipeline = await buildWebsiteGenerationPipeline({
+      env: { OPENAI_API_KEY: "test-key" },
+      getServiceControl: async () => {
+        throw new Error("control store unavailable");
+      },
+      fetchImpl: async () => new Response(null, { status: 200 }),
+    });
+    expect(stageById(pipeline, "endpoint-reachable")).toMatchObject({ status: "amber" });
+  });
+
+  it("is red in production without the shared secret and green when it matches the bridge value", async () => {
+    const missing = await buildWebsiteGenerationPipeline({
+      env: { OPENAI_API_KEY: "test-key", NODE_ENV: "production" },
+      getServiceControl: async () => activeControl(),
+      fetchImpl: async () => new Response(null, { status: 200 }),
+    });
+    expect(stageById(missing, "origin-check")).toMatchObject({ status: "red" });
+
+    const matching = await buildWebsiteGenerationPipeline({
+      env: {
+        OPENAI_API_KEY: "test-key",
+        GENERATE_SITE_STYLE_SHARED_SECRET: "shared-secret",
+        NEXT_PUBLIC_GENERATE_SITE_STYLE_SHARED_SECRET: "shared-secret",
+      },
+      getServiceControl: async () => activeControl(),
+      fetchImpl: async () => new Response(null, { status: 200 }),
+    });
+    expect(stageById(matching, "origin-check")).toMatchObject({ status: "green" });
+  });
+
+  it("reports the rate limiter as configured only once the shared secret is set", async () => {
+    const withoutSecret = await buildWebsiteGenerationPipeline({
+      env: {},
+      getServiceControl: async () => activeControl(),
+      fetchImpl: async () => new Response(null, { status: 200 }),
+    });
+    expect(stageById(withoutSecret, "rate-limiter")).toMatchObject({ status: "amber" });
+
+    const withSecret = await buildWebsiteGenerationPipeline({
+      env: { GENERATE_SITE_STYLE_SHARED_SECRET: "shared-secret" },
+      getServiceControl: async () => activeControl(),
+      fetchImpl: async () => new Response(null, { status: 200 }),
+    });
+    expect(stageById(withSecret, "rate-limiter")).toMatchObject({
+      status: "green",
+      message: expect.stringContaining("10 requests"),
+    });
+  });
+
+  it("probes provider reachability with a HEAD request and never sends a generation payload", async () => {
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const pipeline = await buildWebsiteGenerationPipeline({
+      env: { OPENAI_API_KEY: "test-key" },
+      getServiceControl: async () => activeControl(),
+      fetchImpl: async (input, init) => {
+        calls.push({ url: String(input), init });
+        return new Response(null, { status: 401 });
+      },
+    });
+    expect(stageById(pipeline, "provider-reachable")).toMatchObject({ status: "green" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].init?.method).toBe("HEAD");
+    expect(calls[0].init?.body).toBeUndefined();
+  });
+
+  it("marks provider reachability red when the network probe fails, and amber when not configured", async () => {
+    const networkDown = await buildWebsiteGenerationPipeline({
+      env: { OPENAI_API_KEY: "test-key" },
+      getServiceControl: async () => activeControl(),
+      fetchImpl: async () => {
+        throw new Error("network unreachable");
+      },
+    });
+    expect(stageById(networkDown, "provider-reachable")).toMatchObject({ status: "red" });
+
+    const notConfigured = await buildWebsiteGenerationPipeline({
+      env: {},
+      getServiceControl: async () => activeControl(),
+      fetchImpl: async () => new Response(null, { status: 200 }),
+    });
+    expect(stageById(notConfigured, "provider-reachable")).toMatchObject({ status: "amber" });
+  });
+
+  it("never fakes a green for unrecorded stages — last outcome and response validation stay amber with no observedAt", async () => {
+    const pipeline = await buildWebsiteGenerationPipeline({
+      env: { OPENAI_API_KEY: "test-key" },
+      getServiceControl: async () => activeControl(),
+      fetchImpl: async () => new Response(null, { status: 200 }),
+    });
+    const outcome = stageById(pipeline, "last-generation-outcome");
+    expect(outcome.status).toBe("amber");
+    expect(outcome.observedAt).toBeNull();
+
+    const validation = stageById(pipeline, "response-validation");
+    expect(validation.status).toBe("amber");
+    expect(validation.observedAt).toBeNull();
+  });
+});
+
+describe("buildDatabasePipeline", () => {
+  function fakePool(overrides: {
+    query?: (text: string, params?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>;
+  } = {}) {
+    return {
+      totalCount: 2,
+      idleCount: 1,
+      waitingCount: 0,
+      query:
+        overrides.query ??
+        (async (text: string) => {
+          if (text.includes("information_schema.tables")) {
+            return {
+              rows: [
+                { table_name: "published_sites" },
+                { table_name: "wallet_nonces" },
+                { table_name: "admin_sessions" },
+                { table_name: "admin_service_controls" },
+              ],
+            };
+          }
+          if (text.includes("MAX(created_at)")) {
+            return { rows: [{ last_write: "2026-01-02T00:00:00.000Z" }] };
+          }
+          return { rows: [] };
+        }),
+    };
+  }
+
+  it("reports every stage amber when DATABASE_URL is not configured", async () => {
+    const pipeline = await buildDatabasePipeline({ databaseUrl: "" });
+    expect(pipeline.stages.every((stage) => stage.status === "amber")).toBe(true);
+  });
+
+  it("is green end to end when the connection, tables and activity log all check out", async () => {
+    const pipeline = await buildDatabasePipeline({
+      databaseUrl: "postgres://test",
+      getPool: () => fakePool(),
+    });
+    expect(stageById(pipeline, "connection")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "pool-state")).toMatchObject({
+      status: "green",
+      message: expect.stringContaining("2 total"),
+    });
+    expect(stageById(pipeline, "tables")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "last-read-write")).toMatchObject({
+      status: "green",
+      observedAt: "2026-01-02T00:00:00.000Z",
+    });
+  });
+
+  it("is red on connection failure and lists missing tables by name", async () => {
+    const pipeline = await buildDatabasePipeline({
+      databaseUrl: "postgres://test",
+      getPool: () =>
+        fakePool({
+          query: async (text: string) => {
+            if (text.includes("SELECT 1")) throw new Error("connection refused");
+            if (text.includes("information_schema.tables")) {
+              return { rows: [{ table_name: "published_sites" }] };
+            }
+            return { rows: [] };
+          },
+        }),
+    });
+    expect(stageById(pipeline, "connection")).toMatchObject({ status: "red" });
+    const tables = stageById(pipeline, "tables");
+    expect(tables.status).toBe("red");
+    expect(tables.message).toContain("wallet_nonces");
+    expect(tables.message).toContain("admin_sessions");
+    expect(tables.message).toContain("admin_service_controls");
+    expect(tables.message).not.toContain("published_sites");
+  });
+
+  it("reports last-read-write as never recorded rather than guessing green", async () => {
+    const pipeline = await buildDatabasePipeline({
+      databaseUrl: "postgres://test",
+      getPool: () =>
+        fakePool({
+          query: async (text: string) => {
+            if (text.includes("MAX(created_at)")) return { rows: [{ last_write: null }] };
+            if (text.includes("information_schema.tables")) {
+              return {
+                rows: [
+                  { table_name: "published_sites" },
+                  { table_name: "wallet_nonces" },
+                  { table_name: "admin_sessions" },
+                  { table_name: "admin_service_controls" },
+                ],
+              };
+            }
+            return { rows: [] };
+          },
+        }),
+    });
+    const lastReadWrite = stageById(pipeline, "last-read-write");
+    expect(lastReadWrite.observedAt).toBeNull();
+    expect(lastReadWrite.message).toContain("No write has been recorded");
+  });
+});
+
+describe("buildContractsPipeline", () => {
+  it("is green end to end and confirms the chain ID matches", async () => {
+    const pipeline = await buildContractsPipeline({
+      chainId: 46630,
+      factoryAddress: "0x1111111111111111111111111111111111111",
+      bondingCurveAddress: "0x2222222222222222222222222222222222222",
+      readChainId: async () => 46630,
+      readFactory: async () => "0xowner",
+      readBondingCurve: async () => true,
+    });
+    expect(stageById(pipeline, "rpc-reachable")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "factory-read")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "bonding-curve-read")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "chain-id-match")).toMatchObject({ status: "green" });
+  });
+
+  it("flags a chain ID mismatch as red", async () => {
+    const pipeline = await buildContractsPipeline({
+      chainId: 46630,
+      readChainId: async () => 1,
+      readFactory: async () => "0xowner",
+      readBondingCurve: async () => true,
+    });
+    expect(stageById(pipeline, "chain-id-match")).toMatchObject({ status: "red" });
+  });
+
+  it("is red when the RPC call fails, and amber for unconfigured addresses", async () => {
+    const pipeline = await buildContractsPipeline({
+      chainId: 1,
+      readChainId: async () => Promise.reject(new Error("rpc down")),
+    });
+    expect(stageById(pipeline, "rpc-reachable")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "factory-read")).toMatchObject({ status: "amber" });
+    expect(stageById(pipeline, "bonding-curve-read")).toMatchObject({ status: "amber" });
+    expect(stageById(pipeline, "chain-id-match")).toMatchObject({ status: "amber" });
+  });
+});
+
+describe("buildDeploymentPipeline", () => {
+  it("is green locally with no commit metadata required", () => {
+    const pipeline = buildDeploymentPipeline({ env: { NODE_ENV: "development" } });
+    expect(stageById(pipeline, "current-commit")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "last-deploy-status")).toMatchObject({ status: "green" });
+  });
+
+  it("is red in production without Vercel deployment metadata", () => {
+    const pipeline = buildDeploymentPipeline({ env: { NODE_ENV: "production" } });
+    expect(stageById(pipeline, "current-commit")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "last-deploy-status")).toMatchObject({ status: "red" });
+  });
+
+  it("lists every missing required variable by name, never by value", () => {
+    const pipeline = buildDeploymentPipeline({ env: { NODE_ENV: "production", VERCEL_ENV: "production" } });
+    const envStage = stageById(pipeline, "env-vars");
+    expect(envStage.status).toBe("red");
+    expect(envStage.message).toContain("Database: DATABASE_URL");
+    expect(envStage.message).toContain("Market feed: GMGN_API_KEY");
+    expect(envStage.message).toContain("Admin authentication: ADMIN_WALLET_ADDRESS or ADMIN_PASSWORD");
+  });
+
+  it("is green when every required variable is present, and accepts the request OIDC header as a generation credential", () => {
+    const pipeline = buildDeploymentPipeline({
+      env: {
+        NODE_ENV: "production",
+        VERCEL_ENV: "production",
+        GENERATE_SITE_STYLE_SHARED_SECRET: "secret",
+        DATABASE_URL: "postgres://test",
+        GMGN_API_KEY: "gmgn-key",
+        ADMIN_PASSWORD: "correct horse battery staple",
+      },
+      requestOidcToken: "runtime-oidc-token",
+    });
+    expect(stageById(pipeline, "env-vars")).toMatchObject({ status: "green" });
+  });
+});
+
+describe("buildServicePipeline dispatch", () => {
+  it("routes each id to the matching pipeline builder", async () => {
+    const websiteGeneration = await buildServicePipeline("website-generation", {
+      env: {},
+      websiteGeneration: { getServiceControl: async () => activeControl(), fetchImpl: async () => new Response(null) },
+    });
+    expect(websiteGeneration.id).toBe("website-generation");
+
+    const database = await buildServicePipeline("database", { database: { databaseUrl: "" } });
+    expect(database.id).toBe("database");
+
+    const contracts = await buildServicePipeline("contracts", {
+      contracts: { chainId: 1, readChainId: async () => 1 },
+    });
+    expect(contracts.id).toBe("contracts");
+
+    const deployment = await buildServicePipeline("deployment", { env: { NODE_ENV: "development" } });
+    expect(deployment.id).toBe("deployment");
+  });
+});

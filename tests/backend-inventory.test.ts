@@ -29,6 +29,7 @@ describe("backend test inventory", () => {
 
     expect(routeFiles).toEqual([
       "app/api/admin/challenge/route.ts",
+      "app/api/admin/health/pipeline/route.ts",
       "app/api/admin/health/route.ts",
       "app/api/admin/login/route.ts",
       "app/api/admin/logout/route.ts",
@@ -57,6 +58,7 @@ describe("backend test inventory", () => {
 
     expect(Object.fromEntries(methods)).toEqual({
       "app/api/admin/challenge/route.ts": ["POST"],
+      "app/api/admin/health/pipeline/route.ts": ["GET"],
       "app/api/admin/health/route.ts": ["GET"],
       "app/api/admin/login/route.ts": ["POST"],
       "app/api/admin/logout/route.ts": ["POST"],
@@ -101,6 +103,7 @@ describe("backend test inventory", () => {
       "lib/server/robinhood-trending.ts",
       "lib/server/sanitise-provider-detail.ts",
       "lib/server/service-isolation.ts",
+      "lib/server/system-health-pipeline.ts",
       "lib/server/system-health.ts",
       "lib/server/telegram.ts",
     ]);

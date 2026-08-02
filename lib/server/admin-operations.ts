@@ -243,16 +243,22 @@ function buildIssues(input: {
   return issues;
 }
 
+export type AdminOperationsSnapshotDeps = {
+  requestOidcToken?: string;
+};
+
 /**
  * Builds every admin section independently. A failure in activity, money or
  * service controls is returned as a section error instead of blanking the
  * rest of the dashboard.
  */
-export async function getAdminOperationsSnapshot(): Promise<AdminOperationsSnapshot> {
+export async function getAdminOperationsSnapshot(
+  deps: AdminOperationsSnapshotDeps = {},
+): Promise<AdminOperationsSnapshot> {
   const store = getAdminOperationsStore();
   const [healthResult, servicesResult, activityResult, sitesResult, sessionsResult, moneyResult] =
     await Promise.allSettled([
-      getSystemHealth(),
+      getSystemHealth({ requestOidcToken: deps.requestOidcToken }),
       store.listServiceControls(),
       store.listActivity(40),
       getSiteStats(),

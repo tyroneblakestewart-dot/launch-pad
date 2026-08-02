@@ -14,9 +14,9 @@ export type SystemHealthCheck = {
   message: string;
 };
 
-const HEALTH_CHECK_TIMEOUT_MS = 5_000;
+export const HEALTH_CHECK_TIMEOUT_MS = 5_000;
 
-async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+export async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
@@ -32,14 +32,21 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: s
  * Reports whether an AI generation provider is configured, without ever
  * spending money on a real OpenAI/gateway call — this check may be polled
  * repeatedly from the dashboard, so it must stay free.
+ *
+ * `requestOidcToken` must be threaded through from the incoming admin
+ * request (`getVercelOidcToken(request)`). In production, generation
+ * authenticates via the automatic per-request `x-vercel-oidc-token` header,
+ * not a `VERCEL_OIDC_TOKEN` environment variable — checking `env` alone
+ * reported "not configured" even while real generation requests succeeded.
  */
 export function checkWebsiteGenerationHealth(
   env: Record<string, string | undefined> = process.env,
+  requestOidcToken = "",
 ): SystemHealthCheck {
   const id = "website-generation" as const;
   const label = "Website generation";
   try {
-    const runtime = resolveAIResponsesRuntime(env);
+    const runtime = resolveAIResponsesRuntime(env, requestOidcToken);
     if (!runtime) {
       return { id, label, status: "amber", message: "No AI generation provider is configured." };
     }
@@ -157,7 +164,7 @@ export async function checkContractsHealth(deps: {
   }
 }
 
-function contractsClient(chainId: number, rpcUrl: string | undefined) {
+export function contractsClient(chainId: number, rpcUrl: string | undefined) {
   const resolvedRpcUrl = rpcUrl ?? ROBINHOOD_TESTNET.rpcUrls[0];
   return createPublicClient({
     chain: {
@@ -208,6 +215,7 @@ export function checkDeploymentHealth(
 
 export type SystemHealthDeps = {
   env?: Record<string, string | undefined>;
+  requestOidcToken?: string;
   database?: Parameters<typeof checkDatabaseHealth>[0];
   contracts?: Parameters<typeof checkContractsHealth>[0];
 };
@@ -219,7 +227,7 @@ export type SystemHealthDeps = {
  */
 export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<SystemHealthCheck[]> {
   const [websiteGeneration, database, contracts, deployment] = await Promise.all([
-    checkWebsiteGenerationHealth(deps.env),
+    checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
     checkDatabaseHealth(deps.database),
     checkContractsHealth(deps.contracts),
     checkDeploymentHealth(deps.env),
