@@ -282,6 +282,15 @@ Loading a saved project (or clicking "Reopen generated site" in the preview tool
 | `/api/admin/pages` | List registered page content (draft/published/default) and stage a draft edit; session-gated | Available after `DATABASE_URL` and migration setup |
 | `/api/admin/pages/actions` | Publish, publish-all, discard, or reset-to-default a page content draft; session-gated | Available after `DATABASE_URL` and migration setup |
 | `/[slug]` | Public generated token site, metadata, artwork and Dexscreener section | Reads durable published records; unknown slugs 404 |
+| `/token/[chain]/[address]` | Zero-friction trade/chart/holder page for any token by contract address, launched through Hoodlums or not | No wallet signature, no DB write; unsupported chains and invalid addresses 404 |
+
+### Any-token trade/chart/holder page
+
+`/token/[chain]/[address]` (`app/token/[chain]/[address]/page.tsx`) is a customer-acquisition page for any token by contract address, whether or not it launched through Hoodlums — "bring your existing token, see it in two minutes." It requires no wallet signature and makes no database write; an unsupported chain segment or an invalid address 404s. It reuses the same chart-embed plumbing as `/[slug]` (`PublicDexscreenerSection`, `lib/server/dexscreener.ts`) rather than rebuilding it, so a token with no liquidity yet shows the same clean "no chart yet" state instead of a broken embed.
+
+A row of referral-coded "trade on X" links (`lib/trade-terminal-links.ts`) covers the terminals confirmed to support Robinhood Chain: GMGN, Axiom, Maestro and Ave.ai. Each referral code is read from a `NEXT_PUBLIC_*` var (`NEXT_PUBLIC_GMGN_REF_CODE`, `NEXT_PUBLIC_AXIOM_REF_CODE`, `NEXT_PUBLIC_MAESTRO_REF_CODE`, `NEXT_PUBLIC_AVE_REF_CODE`) — these are PUBLIC config, not secrets, and are unrelated to the server-only `GMGN_API_KEY` used by the `/testnet` trending feed. An unset code still produces a working, un-refcoded link. The exact URL shape for each platform reflects its commonly documented referral convention as of this PR; confirm against each platform's current affiliate program before relying on attribution.
+
+Basic holder stats (`lib/server/token-holders.ts`) come from the Robinhood Chain Testnet explorer's public Blockscout API and exclude the LP pool address (resolved via the same Dexscreener pair lookup as the chart) from the top-holder list, so pooled liquidity is never shown as a whale. Solana holder stats are not wired up yet — that chain resolves to a "not available" state rather than a guess.
 
 ## Admin dashboard
 

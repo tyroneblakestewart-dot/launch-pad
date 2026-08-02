@@ -113,6 +113,7 @@ describe("backend test inventory", () => {
       "lib/server/system-health-pipeline.ts",
       "lib/server/system-health.ts",
       "lib/server/telegram.ts",
+      "lib/server/token-holders.ts",
     ]);
   });
 });
