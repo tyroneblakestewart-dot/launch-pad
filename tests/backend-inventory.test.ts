@@ -32,6 +32,7 @@ describe("backend test inventory", () => {
       "app/api/admin/health/route.ts",
       "app/api/admin/login/route.ts",
       "app/api/admin/logout/route.ts",
+      "app/api/admin/operations/route.ts",
       "app/api/dexscreener-pair/route.ts",
       "app/api/generate-free-site/route.ts",
       "app/api/generate-site-page/route.ts",
@@ -59,6 +60,7 @@ describe("backend test inventory", () => {
       "app/api/admin/health/route.ts": ["GET"],
       "app/api/admin/login/route.ts": ["POST"],
       "app/api/admin/logout/route.ts": ["POST"],
+      "app/api/admin/operations/route.ts": ["GET", "PATCH"],
       "app/api/dexscreener-pair/route.ts": ["GET"],
       "app/api/generate-free-site/route.ts": ["POST"],
       "app/api/generate-site-page/route.ts": ["POST"],
@@ -80,6 +82,8 @@ describe("backend test inventory", () => {
 
     expect(serverFiles).toEqual([
       "lib/server/admin-auth.ts",
+      "lib/server/admin-operations-store.ts",
+      "lib/server/admin-operations.ts",
       "lib/server/admin-session-store.ts",
       "lib/server/ai-responses-runtime.ts",
       "lib/server/api-protection.ts",
@@ -96,6 +100,7 @@ describe("backend test inventory", () => {
       "lib/server/published-site-validation.ts",
       "lib/server/robinhood-trending.ts",
       "lib/server/sanitise-provider-detail.ts",
+      "lib/server/service-isolation.ts",
       "lib/server/system-health.ts",
       "lib/server/telegram.ts",
     ]);

@@ -36,6 +36,7 @@ import {
   requestStreamedFullPageGeneration,
   type StreamedFullPageOutcome,
 } from "@/lib/server/generate-site-page-stream";
+import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import type { GenerateSitePageStreamEvent } from "@/lib/generate-site-page-stream-protocol";
 
 export const runtime = "nodejs";
@@ -184,6 +185,9 @@ export async function POST(request: Request) {
       );
     }
   }
+
+  const isolationResponse = await getServiceIsolationResponse("website-generation");
+  if (isolationResponse) return isolationResponse;
 
   const ai = resolveAIResponsesRuntime(process.env, getVercelOidcToken(request));
   if (!ai) {

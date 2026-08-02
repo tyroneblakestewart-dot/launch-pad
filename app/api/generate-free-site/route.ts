@@ -31,6 +31,7 @@ import {
 } from "@/lib/server/generate-site-style";
 import { buildPageArtworkIdentityRequestBody } from "@/lib/site-page-openai-pipeline";
 import { requestArtworkIdentity } from "@/lib/server/artwork-identity-request";
+import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 
 // The studio form already collects these alongside name/ticker/description;
 // the free-site template renders them as verified facts and never asks the
@@ -192,6 +193,9 @@ export async function POST(request: Request) {
       );
     }
   }
+
+  const isolationResponse = await getServiceIsolationResponse("website-generation");
+  if (isolationResponse) return isolationResponse;
 
   const ai = resolveAIResponsesRuntime(
     process.env,

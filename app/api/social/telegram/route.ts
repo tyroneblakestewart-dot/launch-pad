@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import {
   MAX_TELEGRAM_TEXT_LENGTH,
   isBotToken,
@@ -28,6 +29,9 @@ function jsonError(error: string, status: number) {
 }
 
 export async function POST(request: Request) {
+  const isolationResponse = await getServiceIsolationResponse("telegram-publishing");
+  if (isolationResponse) return isolationResponse;
+
   let body: TelegramRequest;
   try {
     body = (await request.json()) as TelegramRequest;

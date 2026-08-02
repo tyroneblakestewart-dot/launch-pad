@@ -5,6 +5,7 @@ import {
   hashAdminSessionToken,
   parseAdminSessionCookie,
 } from "@/lib/server/admin-auth";
+import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
 import {
   AdminSessionStoreUnavailableError,
   destroyAdminSession,
@@ -39,6 +40,10 @@ export async function POST(request: Request) {
   if (token) {
     try {
       await destroyAdminSession(hashAdminSessionToken(token));
+      await recordAdminActivityBestEffort({
+        kind: "admin-logout",
+        message: "Admin signed out.",
+      });
     } catch (error) {
       status = error instanceof AdminSessionStoreUnavailableError ? 503 : 500;
       errorMessage =

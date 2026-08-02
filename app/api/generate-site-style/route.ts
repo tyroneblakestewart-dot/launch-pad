@@ -25,6 +25,7 @@ import {
   getClientIp,
   isGenerateSiteStyleRequestAuthorised,
 } from "@/lib/server/api-protection";
+import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -114,6 +115,9 @@ export async function POST(request: Request) {
       );
     }
   }
+
+  const isolationResponse = await getServiceIsolationResponse("website-generation");
+  if (isolationResponse) return isolationResponse;
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {

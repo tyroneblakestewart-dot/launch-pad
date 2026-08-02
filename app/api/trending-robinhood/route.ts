@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import { fetchRobinhoodTrendingTokens, fetchSolanaTrendingTokens } from "@/lib/server/robinhood-trending";
 
 // Temporarily forcing every request to run the function instead of serving
@@ -7,6 +8,9 @@ import { fetchRobinhoodTrendingTokens, fetchSolanaTrendingTokens } from "@/lib/s
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  const isolationResponse = await getServiceIsolationResponse("market-feed");
+  if (isolationResponse) return isolationResponse;
+
   console.log("[trending-route] env check:", {
     hasKey: !!process.env.GMGN_API_KEY,
     keyLength: process.env.GMGN_API_KEY?.length ?? 0,
