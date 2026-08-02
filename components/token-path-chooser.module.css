@@ -1,0 +1,201 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(2, 4, 3, 0.92);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+
+.panel {
+  width: min(1060px, 100%);
+  max-height: calc(100svh - 32px);
+  overflow: auto;
+  padding: 26px 22px 30px;
+  border: 1px solid rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.22);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(15, 18, 16, 0.99), rgba(5, 7, 6, 0.99));
+  box-shadow: 0 30px 120px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: #f4f7f1;
+  scrollbar-width: none;
+}
+
+.panel::-webkit-scrollbar {
+  display: none;
+}
+
+.heading {
+  margin-bottom: 22px;
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--hoodlums-green, #bce759);
+  font: 700 10px/1 "IBM Plex Mono", monospace;
+  letter-spacing: 0.18em;
+}
+
+.heading h2 {
+  margin: 0 0 8px;
+  font-size: clamp(23px, 4vw, 32px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.subheading {
+  margin: 0 auto;
+  max-width: 480px;
+  color: #a8aaa9;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.column {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 20px 18px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.025);
+  color: #f4f7f1;
+  text-align: left;
+  transition: border-color 0.16s ease, background 0.16s ease, opacity 0.16s ease, transform 0.16s ease;
+}
+
+.column:hover {
+  border-color: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.4);
+}
+
+.columnRecommended {
+  border-color: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.4);
+  background: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.045);
+}
+
+.columnSelected {
+  border-color: var(--hoodlums-green, #bce759);
+  background: rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.09);
+  box-shadow: 0 0 0 1px var(--hoodlums-green, #bce759), 0 14px 40px rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.14);
+}
+
+.columnDimmed {
+  opacity: 0.55;
+}
+
+.badge {
+  position: absolute;
+  top: -11px;
+  left: 18px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--hoodlums-green, #bce759);
+  color: #071008;
+  font: 800 9px/1 "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.columnName {
+  margin-top: 6px;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.columnPrice {
+  color: var(--hoodlums-green, #bce759);
+  font: 700 12px/1 "IBM Plex Mono", monospace;
+}
+
+.columnTagline {
+  margin: 8px 0 4px;
+  color: #a8aaa9;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.columnBullets {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.bullet {
+  display: block;
+  padding-left: 16px;
+  position: relative;
+  color: #c3c9c4;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.bullet::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hoodlums-green, #bce759);
+}
+
+.continueButton {
+  min-height: 58px;
+  width: 100%;
+  margin-top: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--hoodlums-green, #bce759);
+  color: #071008;
+  font-size: 16px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 16px 40px rgba(var(--hoodlums-green-rgb, 188, 231, 89), 0.2);
+}
+
+.continueButton:active {
+  transform: translateY(1px);
+}
+
+@media (min-width: 720px) {
+  .columns {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1000px) {
+  .columns {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .continueButton {
+    width: min(360px, 100%);
+    margin-inline: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .backdrop {
+    padding: 12px;
+  }
+
+  .panel {
+    max-height: calc(100svh - 24px);
+    padding: 20px 14px 22px;
+    border-radius: 18px;
+  }
+}
