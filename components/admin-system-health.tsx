@@ -27,8 +27,7 @@ const REFRESH_INTERVAL_MS = 30_000;
 
 /**
  * Polls /api/admin/health, which runs each check independently server-side.
- * A malformed or partial response still renders whatever checks came back —
- * one failing check must never blank the whole section.
+ * A malformed or partial response still renders whatever checks came back.
  */
 export function AdminSystemHealth() {
   const [checks, setChecks] = useState<HealthCheck[]>([]);
@@ -38,14 +37,32 @@ export function AdminSystemHealth() {
 
   const loadHealth = useCallback(async () => {
     try {
-      const response = await fetch("/api/admin/health", { cache: "no-store" });
-      if (!response.ok) throw new Error("The system health check could not be loaded.");
+      const response = await fetch("/api/admin/health", {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (response.status === 401) {
+        window.location.replace("/admin");
+        return;
+      }
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          payload.error || "The system health check could not be loaded.",
+        );
+      }
       const payload = (await response.json()) as HealthResponse;
       setChecks(Array.isArray(payload.checks) ? payload.checks : []);
       setCheckedAt(payload.checkedAt || null);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "The system health check could not be loaded.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "The system health check could not be loaded.",
+      );
     } finally {
       setLoading(false);
     }
@@ -61,13 +78,20 @@ export function AdminSystemHealth() {
     <div className={styles.section}>
       <div className={styles.sectionHeader}>
         <h2 className={styles.sectionTitle}>System Health</h2>
-        <button type="button" className={styles.refreshButton} onClick={() => void loadHealth()} disabled={loading}>
+        <button
+          type="button"
+          className={styles.refreshButton}
+          onClick={() => void loadHealth()}
+          disabled={loading}
+        >
           Refresh
         </button>
       </div>
 
       {checkedAt ? (
-        <p className={styles.timestamp}>Checked {new Date(checkedAt).toLocaleTimeString()}</p>
+        <p className={styles.timestamp}>
+          Checked {new Date(checkedAt).toLocaleTimeString()}
+        </p>
       ) : null}
 
       {error ? (
