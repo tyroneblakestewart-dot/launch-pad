@@ -47,9 +47,9 @@ export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
     label: "Home / Create & Bond",
     route: "/",
     elements: [
-      { id: "hero_eyebrow", type: "text", label: "Hero eyebrow", defaultValue: "HOODLUMS BONDING MARKET" },
-      { id: "hero_title_line1", type: "heading", label: "Hero title, line 1", defaultValue: "From new token to" },
-      { id: "hero_title_line2", type: "heading", label: "Hero title, highlighted line 2", defaultValue: "locked liquidity." },
+      { id: "hero_eyebrow", type: "text", label: "Hero eyebrow", defaultValue: "BUILD. TEST. LAUNCH." },
+      { id: "hero_title_line1", type: "heading", label: "Hero title, line 1", defaultValue: "Launch a meme token" },
+      { id: "hero_title_line2", type: "heading", label: "Hero title, line 2", defaultValue: "without the clutter." },
       {
         id: "hero_sub",
         type: "text",

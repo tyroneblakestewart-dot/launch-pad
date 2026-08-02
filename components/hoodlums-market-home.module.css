@@ -105,11 +105,10 @@
 .headline {
   margin: 0;
   color: #f4f7ef;
-  font: 400 34px/1.1 var(--display);
-}
-
-.headline span {
-  color: #bce759;
+  font-weight: 800;
+  font-size: clamp(30px, 5vw, 58px);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
 }
 
 .sub {
@@ -164,9 +163,5 @@
 @media (max-width: 640px) {
   .page {
     padding: 14px 14px 32px;
-  }
-
-  .headline {
-    font-size: 26px;
   }
 }
