@@ -2,6 +2,7 @@ import type { FreeSiteSections } from "@/lib/free-site-sections";
 
 export type SupportedChain = "solana" | "robinhood";
 export type ProjectStatus = "draft" | "prepared" | "launched";
+export type LaunchPath = "bond" | "bond-site" | "bond-pro-site" | "pro";
 
 export interface TokenProject {
   id: string;
@@ -40,6 +41,13 @@ export interface TokenProject {
   generatedSiteHtml?: string | null;
   /** Increments each time `generatedSiteHtml` is captured. */
   generatedSiteVersion?: number | null;
+  /**
+   * The path chosen in the path-chooser overlay (Bond / Bond + Site /
+   * Bond + Pro Site / Pro) before the token setup form unlocks. Unset until
+   * the user picks and confirms one; drives what happens after launch, not
+   * anything charged at this step.
+   */
+  launchPath?: LaunchPath | null;
 }
 
 export interface WalletState {

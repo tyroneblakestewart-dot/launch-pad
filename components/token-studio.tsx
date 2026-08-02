@@ -8,9 +8,11 @@ import {
 import { CHAIN_CONFIG, ROBINHOOD_MAINNET } from "@/lib/chains";
 import { FREE_SITE_SECTION_DEFAULTS, type FreeSiteSectionKey } from "@/lib/free-site-sections";
 import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
+import { launchPathLabel } from "@/lib/launch-paths";
 import { PROJECT_SAVE_RESULT_EVENT } from "@/lib/project-save-result";
 import { findSlugCollision, slugify, validateSlug } from "@/lib/slug";
-import type { SupportedChain, TokenProject, WalletState } from "@/lib/types";
+import type { LaunchPath, SupportedChain, TokenProject, WalletState } from "@/lib/types";
+import { TokenPathChooser } from "./token-path-chooser";
 
 const SECTION_TOGGLE_FIELDS: ReadonlyArray<{ key: FreeSiteSectionKey; label: string }> = [
   { key: "about", label: "About" },
@@ -143,6 +145,7 @@ export function TokenStudio() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
   const [showLaunchSummary, setShowLaunchSummary] = useState(false);
+  const [showPathChooser, setShowPathChooser] = useState(false);
 
   useEffect(() => {
     try {
@@ -279,7 +282,17 @@ export function TokenStudio() {
     setProject(makeProject());
     setWallet(null);
     setShowProjects(false);
+    setShowPathChooser(true);
     setNotice("New private token project created.");
+  }
+
+  function confirmLaunchPath(path: LaunchPath) {
+    updateProject("launchPath", path);
+    setShowPathChooser(false);
+  }
+
+  function changeLaunchPath() {
+    setShowPathChooser(true);
   }
 
   function deleteProject(id: string) {
@@ -391,7 +404,7 @@ export function TokenStudio() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
+      <header className="topbar" inert={showPathChooser || undefined}>
         <div className="brand-lockup">
           <div className="brand-mark">H</div>
           <div>
@@ -416,11 +429,24 @@ export function TokenStudio() {
       </section>
 
       <section className="workspace">
-        <aside className="builder-panel">
+        <aside
+          className={showPathChooser ? "builder-panel path-locked" : "builder-panel"}
+          role="group"
+          aria-disabled={showPathChooser || undefined}
+          inert={showPathChooser || undefined}
+        >
           <div className="panel-heading">
             <div>
               <p className="eyebrow">BUILD 01</p>
               <h2>Token setup</h2>
+              {project.launchPath && (
+                <p className="plan-indicator">
+                  Plan: {launchPathLabel(project.launchPath)} ·{" "}
+                  <button type="button" className="change-plan-button" onClick={changeLaunchPath}>
+                    Change plan
+                  </button>
+                </p>
+              )}
             </div>
             <span className="progress-count">{completedChecks}/{readiness.length}</span>
           </div>
@@ -803,6 +829,12 @@ export function TokenStudio() {
           </div>
         </div>
       )}
+
+      <TokenPathChooser
+        open={showPathChooser}
+        selected={project.launchPath ?? null}
+        onConfirm={confirmLaunchPath}
+      />
     </main>
   );
 }
