@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import { LAUNCH_PATH_OPTIONS, launchPathLabel } from "@/lib/launch-paths";
 import type { LaunchPath } from "@/lib/types";
 import styles from "./token-path-chooser.module.css";
@@ -35,6 +36,15 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
     <div className={styles.backdrop} role="dialog" aria-modal="true" aria-labelledby="token-path-chooser-title">
       <section className={styles.panel}>
         <div className={styles.heading}>
+          <span
+            className={styles.wordmark}
+            role="img"
+            aria-label="Hoodlums"
+            style={{
+              WebkitMaskImage: `url(${HOODLUMS_WORDMARK_IMAGE})`,
+              maskImage: `url(${HOODLUMS_WORDMARK_IMAGE})`,
+            }}
+          />
           <p className={styles.eyebrow}>CHOOSE YOUR PATH</p>
           <h2 id="token-path-chooser-title">How do you want to launch?</h2>
           <p className={styles.subheading}>
