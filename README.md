@@ -272,13 +272,15 @@ Loading a saved project (or clicking "Reopen generated site" in the preview tool
 | `/monad` | Monad Testnet ERC-20 deployment | Test-only |
 | `/social` | X handoff and Telegram publishing workspace | Available |
 | `/account` | Account-provider interface preview | Coming later |
-| `/admin` | Private owner-only control panel; System Health section only so far | Requires `ADMIN_WALLET_ADDRESS` and/or `ADMIN_PASSWORD`; unauthenticated visitors see only a login screen |
+| `/admin` | Private owner-only control panel; System Health and Pages (content CMS) sections | Requires `ADMIN_WALLET_ADDRESS` and/or `ADMIN_PASSWORD`; unauthenticated visitors see only a login screen |
 | `/api/publish/challenge` | Create a short-lived single-use wallet message challenge | Available after `DATABASE_URL` and migration setup |
 | `/api/publish` | Verify the signature and atomically publish a generated site | Available after `DATABASE_URL` and migration setup |
 | `/api/admin/challenge` | Issue a short-lived single-use wallet message challenge for the configured admin wallet | Available after `ADMIN_WALLET_ADDRESS` is set |
 | `/api/admin/login` | Verify a wallet signature or the admin password and start a session | Available after `ADMIN_WALLET_ADDRESS` and/or `ADMIN_PASSWORD` is set |
 | `/api/admin/logout` | End the current admin session | Available |
 | `/api/admin/health` | Live System Health checks (generation, database, contracts, deployment); session-gated | Available |
+| `/api/admin/pages` | List registered page content (draft/published/default) and stage a draft edit; session-gated | Available after `DATABASE_URL` and migration setup |
+| `/api/admin/pages/actions` | Publish, publish-all, discard, or reset-to-default a page content draft; session-gated | Available after `DATABASE_URL` and migration setup |
 | `/[slug]` | Public generated token site, metadata, artwork and Dexscreener section | Reads durable published records; unknown slugs 404 |
 
 ## Admin dashboard
@@ -316,6 +318,36 @@ polled from `/api/admin/health` once signed in:
 
 Each check fails independently: a red database doesn't affect the contracts
 check or take down the page.
+
+**Pages (content CMS).** A lightweight, draft-first content editor for
+registered public-page chrome — headings, copy, button labels/links and
+section visibility toggles. Backed by the durable `page_content_entries`
+table (migration `006_page_content_registry.sql`; see
+`lib/page-content-registry.ts` for the registered pages/elements):
+
+- Edits save as a **draft** first — nothing goes live until an admin clicks
+  **Publish** (or **Publish all drafts** for a page). **Discard draft** drops
+  a pending edit; **Reset to default** stages the original hardcoded value
+  back into a draft so it goes through the same preview step.
+- **Preview** opens the real public page with drafts applied, gated by
+  `?cms_preview=1` plus the same durable admin session cookie every other
+  admin action requires — the flag is silently ignored for anyone without a
+  live session, so a draft is never visible to the public.
+- The public read path always falls back to the page's hardcoded default if
+  the registry has no published value for an element, or if the database is
+  unreachable — content editing can never take a page down.
+- Submitted values are sanitised server-side (HTML tags stripped from text;
+  links limited to a site-relative path or an `https://` URL) before they are
+  ever staged as a draft, and every publish is recorded in the Activity log
+  with the old and new value.
+- **Currently registered:** `/bonding-curve` (hero copy, next-milestone
+  section and its two CTAs), `/allocations` (the liquidity-lab CTA), and the
+  public `/[slug]` token page's Dexscreener chrome. The home/Create & Bond
+  and Providers pages, and the Allocations *workspace* itself, are
+  intentionally not yet registered — their copy lives inside large stateful
+  client components rather than at the page-chrome level, and wiring them
+  safely needs a follow-up so a bad edit can never destabilise the primary
+  mobile-Safari workspace.
 
 ## Safety model and limitations
 

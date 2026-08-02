@@ -1,11 +1,8 @@
 import { cookies } from "next/headers";
 import { AdminDashboard } from "@/components/admin-dashboard";
 import { AdminLoginScreen } from "@/components/admin-login-screen";
-import {
-  ADMIN_SESSION_COOKIE,
-  hashAdminSessionToken,
-} from "@/lib/server/admin-auth";
-import { isAdminSessionValid } from "@/lib/server/admin-session-store";
+import { ADMIN_SESSION_COOKIE } from "@/lib/server/admin-auth";
+import { isAdminSessionTokenValid } from "@/lib/server/admin-session-store";
 
 export const dynamic = "force-dynamic";
 
@@ -13,13 +10,7 @@ export const dynamic = "force-dynamic";
 export async function isAdminSessionTokenAuthenticated(
   token: string | undefined,
 ): Promise<boolean> {
-  if (!token) return false;
-  try {
-    return await isAdminSessionValid(hashAdminSessionToken(token));
-  } catch {
-    // Fail closed if Postgres is unavailable or the admin migration is absent.
-    return false;
-  }
+  return isAdminSessionTokenValid(token);
 }
 
 export default async function AdminPage() {

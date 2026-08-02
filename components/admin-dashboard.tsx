@@ -7,6 +7,7 @@ import {
   AdminMoney,
   AdminOverview,
 } from "@/components/admin-operations-sections";
+import { AdminPagesSection } from "@/components/admin-pages-section";
 import { AdminSystemHealth } from "@/components/admin-system-health";
 import type {
   AdminOperationsSnapshot,
@@ -19,6 +20,7 @@ type SectionId =
   | "activity"
   | "money"
   | "issues"
+  | "pages"
   | "system-health";
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
@@ -26,6 +28,7 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "activity", label: "Activity" },
   { id: "money", label: "Money" },
   { id: "issues", label: "Issues" },
+  { id: "pages", label: "Pages" },
   { id: "system-health", label: "System Health" },
 ];
 
@@ -197,7 +200,7 @@ export function AdminDashboard() {
           </p>
         ) : null}
 
-        {activeSection !== "system-health" && !snapshot ? (
+        {activeSection !== "system-health" && activeSection !== "pages" && !snapshot ? (
           <div className={styles.loadingPanel}>
             {loading ? "Loading admin operations…" : "No operations data is available."}
           </div>
@@ -220,6 +223,7 @@ export function AdminDashboard() {
             onSetIsolation={handleSetIsolation}
           />
         ) : null}
+        {activeSection === "pages" ? <AdminPagesSection /> : null}
         {activeSection === "system-health" ? <AdminSystemHealth /> : null}
       </section>
     </main>

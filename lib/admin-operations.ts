@@ -42,7 +42,8 @@ export type AdminActivityKind =
   | "service-restored"
   | "admin-login-wallet"
   | "admin-login-password"
-  | "admin-logout";
+  | "admin-logout"
+  | "page-content-published";
 
 export type AdminActivityItem = {
   id: string;
