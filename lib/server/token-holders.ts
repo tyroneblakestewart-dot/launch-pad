@@ -19,13 +19,25 @@ const MAX_HOLDERS = 10;
 // The Robinhood Chain Testnet explorer (`lib/chains.ts`'s `explorerBaseUrl`)
 // runs Blockscout, whose v2 REST API (https://docs.blockscout.com/devs/apis/rest)
 // is stable across instances built on that software.
-const BLOCKSCOUT_API_BASE = "https://explorer.testnet.chain.robinhood.com/api/v2";
+export const BLOCKSCOUT_API_BASE = "https://explorer.testnet.chain.robinhood.com/api/v2";
 
-type BlockscoutTokenInfo = { holders_count?: string; holders?: string; total_supply?: string };
+// Exported so `lib/server/token-market-stats.ts` can read the same token-info
+// endpoint (name/symbol/decimals/market cap) without a second definition of
+// the Blockscout base URL or shape.
+export type BlockscoutTokenInfo = {
+  name?: string;
+  symbol?: string;
+  decimals?: string;
+  holders_count?: string;
+  holders?: string;
+  total_supply?: string;
+  exchange_rate?: string | null;
+  circulating_market_cap?: string | null;
+};
 type BlockscoutHolderItem = { address?: { hash?: string }; value?: string };
 type BlockscoutHoldersPage = { items?: BlockscoutHolderItem[] };
 
-async function fetchJson<T>(url: string, signal: AbortSignal): Promise<T | null> {
+export async function fetchJson<T>(url: string, signal: AbortSignal): Promise<T | null> {
   try {
     const response = await fetch(url, {
       headers: { Accept: "application/json" },

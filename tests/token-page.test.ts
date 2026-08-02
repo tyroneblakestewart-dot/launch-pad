@@ -1,11 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { notFound } from "next/navigation";
 import TokenPage, { generateMetadata } from "@/app/token/[chain]/[address]/page";
-import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
-import { TokenHolderStats } from "@/components/token-holder-stats";
-import { TokenTradeButtons } from "@/components/token-trade-buttons";
+import { TokenPageView, type TokenPageViewProps } from "@/components/token-page/token-page-view";
+import { BONDING_CURVE_ADDRESSES_ENV_VAR } from "@/lib/bonding-curve-config";
+import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 
 const ADDRESS = "0x3bf7447cd055f1475a8b09090c7b062abc9d3798";
+const CURVE_ADDRESS = "0x1234567890123456789012345678901234567890";
+const ORIGINAL_CURVE_ENV = process.env[BONDING_CURVE_ADDRESSES_ENV_VAR];
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  if (ORIGINAL_CURVE_ENV === undefined) delete process.env[BONDING_CURVE_ADDRESSES_ENV_VAR];
+  else process.env[BONDING_CURVE_ADDRESSES_ENV_VAR] = ORIGINAL_CURVE_ENV;
+});
 
 function notFoundDigest(): string {
   try {
@@ -16,12 +24,8 @@ function notFoundDigest(): string {
   throw new Error("notFound() did not throw");
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
-function stubFetch(options: { pairs?: unknown[]; holdersOk?: boolean } = {}) {
-  const { pairs = [], holdersOk = false } = options;
+function stubFetch(options: { pairs?: unknown[]; dataOk?: boolean } = {}) {
+  const { pairs = [], dataOk = false } = options;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -32,66 +36,89 @@ function stubFetch(options: { pairs?: unknown[]; holdersOk?: boolean } = {}) {
           headers: { "Content-Type": "application/json" },
         });
       }
-      return new Response(holdersOk ? JSON.stringify({ items: [] }) : null, {
-        status: holdersOk ? 200 : 404,
-      });
+      return new Response(dataOk ? JSON.stringify({ items: [] }) : null, { status: dataOk ? 200 : 404 });
     }),
   );
 }
 
+async function renderTokenPage(chain: string, address: string): Promise<TokenPageViewProps> {
+  const element = await TokenPage({ params: Promise.resolve({ chain, address }) });
+  if (element.type !== TokenPageView) throw new Error("expected TokenPage to render TokenPageView");
+  return element.props as TokenPageViewProps;
+}
+
 describe("TokenPage", () => {
-  it("renders the chart section, trade buttons and holder stats for a valid Robinhood Chain address", async () => {
+  it("renders TokenPageView with chain, address, chainInfo and trade links", async () => {
     stubFetch();
+    delete process.env[BONDING_CURVE_ADDRESSES_ENV_VAR];
 
-    const element = await TokenPage({
-      params: Promise.resolve({ chain: "robinhood", address: ADDRESS }),
-    });
-    const children = element.props.children as unknown[];
-    // [header, TokenTradeButtons, PublicDexscreenerSection, TokenHolderStats]
-    const tradeButtons = children[1] as { type: unknown; props: { links: unknown[] } };
-    const chart = children[2] as { type: unknown; props: { address: string } };
-    const holders = children[3] as { type: unknown };
+    const props = await renderTokenPage("robinhood", ADDRESS);
 
-    expect(tradeButtons.type).toBe(TokenTradeButtons);
-    expect(tradeButtons.props.links.length).toBeGreaterThan(0);
-    expect(chart.type).toBe(PublicDexscreenerSection);
-    expect(chart.props.address).toBe(ADDRESS);
-    expect(holders.type).toBe(TokenHolderStats);
+    expect(props.chain).toBe("robinhood");
+    expect(props.address).toBe(ADDRESS);
+    expect(props.chainInfo.shortLabel).toBe("RHC TEST");
+    expect(props.tradeLinks.length).toBeGreaterThan(0);
   });
 
-  it("passes the address straight through to the reused Dexscreener chart component (no rebuilt embed logic)", async () => {
+  it("has chart: passes a found chart and non-null liquidity through from a live Dexscreener pair", async () => {
     stubFetch({
       pairs: [
         {
           chainId: "robinhood",
           dexId: "uniswap",
-          pairAddress: "pair-1",
+          pairAddress: "0xpair1",
           url: "https://dexscreener.com/robinhood/pair-1",
           liquidity: { usd: 5_000 },
         },
       ],
     });
 
-    const element = await TokenPage({
-      params: Promise.resolve({ chain: "robinhood", address: ADDRESS }),
-    });
-    const children = element.props.children as unknown[];
-    const chart = children[2] as { type: unknown; props: { address: string } };
+    const props = await renderTokenPage("robinhood", ADDRESS);
 
-    expect(chart.type).toBe(PublicDexscreenerSection);
-    expect(chart.props.address).toBe(ADDRESS);
+    expect(props.marketStats).toMatchObject({ supported: true, liquidityUsd: 5_000 });
+    if (!props.marketStats.supported) throw new Error("expected supported market stats");
+    expect(props.marketStats.chart).toMatchObject({ found: true });
   });
 
-  it("shows no trade-terminal buttons for a chain with no confirmed-supporting terminal", async () => {
+  it("no liquidity: passes an unfound chart and null liquidity when no Dexscreener pair exists yet", async () => {
+    stubFetch({ pairs: [] });
+
+    const props = await renderTokenPage("robinhood", ADDRESS);
+
+    expect(props.marketStats).toMatchObject({ supported: true, liquidityUsd: null, chart: { found: false } });
+  });
+
+  it("no curve configured: passes a null curveAddress when the bonding-curve env var is unset", async () => {
     stubFetch();
+    delete process.env[BONDING_CURVE_ADDRESSES_ENV_VAR];
 
-    const element = await TokenPage({
-      params: Promise.resolve({ chain: "solana", address: "So11111111111111111111111111111111111111112" }),
+    const props = await renderTokenPage("robinhood", ADDRESS);
+
+    expect(props.curveAddress).toBeNull();
+  });
+
+  it("passes the configured curve address through when one is set for Robinhood Chain Testnet", async () => {
+    stubFetch();
+    process.env[BONDING_CURVE_ADDRESSES_ENV_VAR] = JSON.stringify({
+      [ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL]: CURVE_ADDRESS,
     });
-    const children = element.props.children as unknown[];
-    const tradeButtons = children[1] as { props: { links: unknown[] } };
 
-    expect(tradeButtons.props.links).toEqual([]);
+    const props = await renderTokenPage("robinhood", ADDRESS);
+
+    expect(props.curveAddress).toBe(CURVE_ADDRESS);
+  });
+
+  it("never configures a curve for a non-EVM chain, and reports unsupported market stats", async () => {
+    stubFetch();
+    process.env[BONDING_CURVE_ADDRESSES_ENV_VAR] = JSON.stringify({
+      [ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL]: CURVE_ADDRESS,
+    });
+
+    const props = await renderTokenPage("solana", "So11111111111111111111111111111111111111112");
+
+    expect(props.curveAddress).toBeNull();
+    expect(props.marketStats).toEqual({ supported: false });
+    expect(props.tradeLinks).toEqual([]);
   });
 
   it("calls notFound() for an unsupported chain segment", async () => {

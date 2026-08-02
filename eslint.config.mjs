@@ -26,6 +26,7 @@ const eslintConfig = defineConfig([
       "components/social-hub.tsx",
       "components/liquidity-lab.tsx",
       "components/bonding-curve-graduation-status.tsx",
+      "components/token-page/token-left-column.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",

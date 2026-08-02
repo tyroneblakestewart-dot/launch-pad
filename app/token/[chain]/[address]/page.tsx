@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
-import { TokenHolderStats } from "@/components/token-holder-stats";
-import { TokenTradeButtons } from "@/components/token-trade-buttons";
-import { CHAIN_CONFIG } from "@/lib/chains";
+import type { Address } from "viem";
+import { TokenPageView } from "@/components/token-page/token-page-view";
+import { CHAIN_CONFIG, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import { getBondingCurveAddress } from "@/lib/bonding-curve-config";
 import { isValidDexAddress } from "@/lib/server/dexscreener";
-import { fetchTokenHolderStats } from "@/lib/server/token-holders";
+import { fetchTokenMarketStats } from "@/lib/server/token-market-stats";
 import { getTradeTerminalLinks } from "@/lib/trade-terminal-links";
 import type { SupportedChain } from "@/lib/types";
 
@@ -47,59 +47,23 @@ export default async function TokenPage({ params }: TokenPageProps) {
   if (!parsedChain || !isValidDexAddress(address)) notFound();
 
   const tradeLinks = getTradeTerminalLinks(parsedChain, address);
-  const holderStats = await fetchTokenHolderStats(parsedChain, address);
+  const marketStats = await fetchTokenMarketStats(parsedChain, address);
   const chainInfo = CHAIN_CONFIG[parsedChain];
+  // Only one bonding curve is configured per chain today (see
+  // lib/bonding-curve-config.ts), so this reads that single curve's
+  // address; `TokenLeftColumn` confirms on-chain whether it actually
+  // trades *this* token before showing live swap controls.
+  const curveAddress: Address | null =
+    parsedChain === "robinhood" ? getBondingCurveAddress(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL) ?? null : null;
 
   return (
-    <main className="token-page">
-      <header className="token-page-header">
-        <p className="token-page-chain">{chainInfo.label}</p>
-        <h1>{address}</h1>
-        <a href={`${chainInfo.explorerBaseUrl}${address}`} target="_blank" rel="noreferrer">
-          VIEW ON {chainInfo.explorerLabel.toUpperCase()} ↗
-        </a>
-      </header>
-
-      <TokenTradeButtons links={tradeLinks} />
-      <PublicDexscreenerSection address={address} />
-      <TokenHolderStats stats={holderStats} />
-
-      <style>{`
-        .token-page {
-          min-height: 100vh;
-          padding-top: 40px;
-          color: #f4f7ef;
-          font-family: system-ui, sans-serif;
-        }
-        .token-page-header {
-          max-width: 960px;
-          margin: 0 auto;
-          padding: 0 24px 24px;
-        }
-        .token-page-chain {
-          margin: 0 0 8px;
-          color: #55ff78;
-          font: 700 11px "IBM Plex Mono", monospace;
-          letter-spacing: .08em;
-        }
-        .token-page-header h1 {
-          margin: 0 0 16px;
-          font-size: clamp(16px, 4vw, 24px);
-          font-family: "IBM Plex Mono", monospace;
-          word-break: break-all;
-        }
-        .token-page-header a {
-          display: inline-block;
-          padding: 10px 13px;
-          border: 1px solid rgba(85,255,120,.45);
-          border-radius: 6px;
-          color: #55ff78;
-          background: rgba(85,255,120,.06);
-          font: 800 8px "IBM Plex Mono", monospace;
-          letter-spacing: .06em;
-          text-decoration: none;
-        }
-      `}</style>
-    </main>
+    <TokenPageView
+      chain={parsedChain}
+      address={address}
+      chainInfo={chainInfo}
+      marketStats={marketStats}
+      tradeLinks={tradeLinks}
+      curveAddress={curveAddress}
+    />
   );
 }
