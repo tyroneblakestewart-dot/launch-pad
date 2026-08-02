@@ -14,6 +14,7 @@ import {
   verifyAdminPassword,
   verifyAdminWalletSignature,
 } from "@/lib/server/admin-auth";
+import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
 import {
   AdminSessionStoreUnavailableError,
   consumeAdminChallengeAndCreateSession,
@@ -107,6 +108,10 @@ async function loginWithWallet(
     return unauthorised("Wallet admin authorisation failed.", headers);
   }
 
+  await recordAdminActivityBestEffort({
+    kind: "admin-login-wallet",
+    message: "Admin signed in with the authorised wallet.",
+  });
   return authenticatedResponse(headers, token, result.expiresAt);
 }
 
@@ -127,6 +132,10 @@ async function loginWithPassword(
 
   const token = createAdminSessionToken();
   const expiresAt = await createAdminSession(hashAdminSessionToken(token));
+  await recordAdminActivityBestEffort({
+    kind: "admin-login-password",
+    message: "Admin signed in with the fallback password.",
+  });
   return authenticatedResponse(headers, token, expiresAt);
 }
 
