@@ -3,6 +3,7 @@ export type DexPair = {
   dexId?: string;
   pairAddress?: string;
   url?: string;
+  priceUsd?: string;
   liquidity?: { usd?: number | null };
   volume?: { h24?: number | null };
   baseToken?: { name?: string; symbol?: string; address?: string };

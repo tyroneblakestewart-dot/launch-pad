@@ -16,6 +16,34 @@ export const HOODLUMS_BONDING_CURVE_READ_ABI = parseAbi([
 ]);
 
 /**
+ * Trading slice of contracts/HoodlumsTestBondingCurve.sol's public interface,
+ * kept separate from `HOODLUMS_BONDING_CURVE_READ_ABI` (which is locked to
+ * exactly the read-only graduation-status fields by
+ * tests/bonding-curve-config.test.ts). Used by the token page's swap panel
+ * (issue #225) to confirm which token a configured curve trades
+ * (`token()`), quote a trade before submitting it, and submit the wallet-
+ * signed buy/sell itself.
+ */
+export const HOODLUMS_BONDING_CURVE_TRADE_ABI = parseAbi([
+  "function token() view returns (address)",
+  "function quoteBuy(uint256 grossNativeIn) view returns (uint256 tokensOut)",
+  "function quoteSell(uint256 tokensIn) view returns (uint256 nativeOut)",
+  "function buy(uint256 minTokensOut, uint256 deadline) payable returns (uint256 tokensOut)",
+  "function sell(uint256 tokensIn, uint256 minNativeOut, uint256 deadline) returns (uint256 nativeOut)",
+]);
+
+/**
+ * Minimal ERC-20 slice needed to sell curve tokens: `sell()` pulls tokens via
+ * `transferFrom`, so the swap panel must read/raise the curve's allowance
+ * before calling it.
+ */
+export const ERC20_MIN_ABI = parseAbi([
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function balanceOf(address account) view returns (uint256)",
+]);
+
+/**
  * The frontend reads a deployed bonding-curve address from a single env var,
  * mirroring FACTORY_ADDRESSES_ENV_VAR / getFactoryAddress in
  * lib/factory-config.ts, so wiring a newly deployed curve into the UI never
