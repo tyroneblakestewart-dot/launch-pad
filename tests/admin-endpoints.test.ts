@@ -120,7 +120,7 @@ async function expectWorkingSessionAndHealth(loginResponse: Response): Promise<v
     checks: Array<{ id: string }>;
   };
   expect(payload.checks.map((check) => check.id).sort()).toEqual(
-    ["contracts", "database", "deployment", "website-generation"].sort(),
+    ["contracts", "database", "deployment", "subscribers", "website-generation"].sort(),
   );
 }
 

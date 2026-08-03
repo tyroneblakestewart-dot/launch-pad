@@ -60,6 +60,7 @@ export const SYSTEM_HEALTH_CHECK_IDS = [
   "database",
   "contracts",
   "deployment",
+  "subscribers",
 ] as const;
 
 export type SystemHealthCheckId = (typeof SYSTEM_HEALTH_CHECK_IDS)[number];
@@ -133,6 +134,47 @@ export type AdminOperationsSnapshot = {
   money: AdminMoneySnapshot;
   issues: AdminOperationsIssue[];
   sectionErrors: string[];
+};
+
+export const SUBSCRIBER_TIERS = [
+  "free",
+  "bond",
+  "bond_site",
+  "bond_pro_site",
+  "pro",
+] as const;
+
+export type AdminSubscriberTier = (typeof SUBSCRIBER_TIERS)[number];
+
+export const SUBSCRIBER_STATUSES = ["active", "expired", "free"] as const;
+
+export type AdminSubscriberStatus = (typeof SUBSCRIBER_STATUSES)[number];
+
+export const SUBSCRIBER_TIER_LABEL: Record<AdminSubscriberTier, string> = {
+  free: "Free",
+  bond: "Bond",
+  bond_site: "Bond+Site",
+  bond_pro_site: "Bond+Pro Site",
+  pro: "Pro",
+};
+
+export type AdminSubscriberRow = {
+  walletAddress: string;
+  tier: AdminSubscriberTier;
+  status: AdminSubscriberStatus;
+  slugs: string[];
+  xHandle: string | null;
+  telegram: string | null;
+  startedAt: string | null;
+  expiresAt: string | null;
+  lastPaymentAmountEth: string | null;
+  lastPaymentAt: string | null;
+};
+
+export type AdminSubscribersSnapshot = {
+  status: "ready" | "unavailable";
+  message: string;
+  rows: AdminSubscriberRow[];
 };
 
 export function isAdminServiceKey(value: unknown): value is AdminServiceKey {
