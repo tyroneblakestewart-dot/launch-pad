@@ -51,10 +51,10 @@ describe("admin Subscribers section UI", () => {
     expect(component).toContain("Copy");
   });
 
-  it("shows a summary of active Pro, active Bond+Pro Site and free-tier counts", async () => {
+  it("shows a summary of active Pro, active Bond + Pro Site and free-tier counts", async () => {
     const component = await source("components/admin-subscribers-section.tsx");
     expect(component).toContain("active Pro subscribers");
-    expect(component).toContain("active Bond+Pro Site");
+    expect(component).toContain("active Bond + Pro Site");
     expect(component).toContain("free tier");
   });
 

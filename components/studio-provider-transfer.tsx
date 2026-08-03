@@ -74,7 +74,7 @@ export function StudioProviderTransfer() {
   function transferProject() {
     const project = getCurrentStudioProject();
     if (!project) {
-      setMessage("Select Robinhood Chain in the studio before copying to NOXA or Pons.");
+      setMessage("Select Robinhood Chain in the studio before copying to the provider launch desk.");
       return;
     }
 

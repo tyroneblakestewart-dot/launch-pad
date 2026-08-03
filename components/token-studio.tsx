@@ -70,7 +70,7 @@ function getErrorMessage(error: unknown): string {
   if (typeof error === "object" && error && "message" in error) {
     return String((error as { message: unknown }).message);
   }
-  return "Something went wrong.";
+  return "Something went wrong. Try again in a moment.";
 }
 
 function makeProject(): TokenProject {
@@ -823,7 +823,9 @@ export function TokenStudio() {
               <div><dt>Mainnet transaction</dt><dd className="blocked">BLOCKED IN SAFE MODE</dd></div>
             </dl>
             <div className="warning-box">
-              The deployment adapter is deliberately not active in this first commit. The next step is a testnet-only wallet transaction, followed by a reviewed mainnet switch.
+              Deployment isn&apos;t connected yet — this preview shows what your transaction will
+              look like once it is. The next step is a testnet-only wallet transaction, followed
+              by a reviewed mainnet switch.
             </div>
             <button className="primary-button full-width" onClick={() => setShowLaunchSummary(false)}>Return to builder</button>
           </div>

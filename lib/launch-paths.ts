@@ -29,8 +29,7 @@ export const LAUNCH_PATH_OPTIONS: readonly LaunchPathOption[] = [
     tagline: "Everything in Bond, plus an AI-generated website built for your token.",
     bullets: [
       "Everything in Bond",
-      "AI-generated website",
-      "5 design variants",
+      "AI-generated website design",
       "Dexscreener chart",
       "Holder stats",
     ],
