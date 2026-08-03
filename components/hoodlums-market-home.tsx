@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { MouseEvent } from "react";
 import type { PublicGeneratedSite } from "@/lib/public-site";
+import { HoodlumsPlansSection } from "@/components/hoodlums-plans-section";
 import { HoodlumsTokenGrid } from "@/components/hoodlums-token-grid";
 import { RobinhoodTrendingPanel } from "@/components/robinhood-trending-panel";
 import { requestWorkspaceOpen } from "@/lib/workspace-open-request";
@@ -16,6 +17,7 @@ type HoodlumsMarketHomeProps = {
   heroSub?: string;
   primaryCtaLabel?: string;
   primaryCtaLink?: string;
+  showPlans?: boolean;
 };
 
 /** Hero chrome copy defaults match the original hardcoded strings and can be
@@ -29,6 +31,7 @@ export function HoodlumsMarketHome({
   heroSub = "Create a fixed-supply token, give it a live Hoodlums website, and put its full supply into a bonding curve that graduates into permanently locked liquidity.",
   primaryCtaLabel = "Create new token",
   primaryCtaLink = "#launch-studio",
+  showPlans = true,
 }: HoodlumsMarketHomeProps) {
   function handlePrimaryCtaClick(event: MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
@@ -85,6 +88,8 @@ export function HoodlumsMarketHome({
 
         <RobinhoodTrendingPanel />
       </div>
+
+      {showPlans ? <HoodlumsPlansSection /> : null}
     </div>
   );
 }
