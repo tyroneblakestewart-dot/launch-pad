@@ -1,18 +1,37 @@
+import { consumeLaunchPathPreset, storeLaunchPathPreset } from "./launch-paths";
+import type { LaunchPath } from "./types";
+
 /**
  * Signal used by chrome that lives outside the token studio workspace (the
- * top bar and hero CTA) to open it directly, without duplicating the
- * open/focus logic that already lives in TokenStudioWorkspace.
+ * top bar, hero CTA and plans section) to open it directly, without
+ * duplicating the open/focus logic that already lives in TokenStudioWorkspace.
  */
 export const OPEN_WORKSPACE_REQUEST_EVENT = "launchpad:open-workspace-request";
 
 export type WorkspaceOpenAction = "new" | "saved";
 
-export type OpenWorkspaceRequestDetail = Readonly<{ action: WorkspaceOpenAction }>;
+export type OpenWorkspaceRequestDetail = Readonly<{
+  action: WorkspaceOpenAction;
+  launchPath?: LaunchPath;
+}>;
 
-export function requestWorkspaceOpen(action: WorkspaceOpenAction): void {
-  window.dispatchEvent(
+export function requestWorkspaceOpen(
+  action: WorkspaceOpenAction,
+  launchPath?: LaunchPath,
+  target?: EventTarget,
+): void {
+  if (launchPath) {
+    storeLaunchPathPreset(launchPath);
+  } else {
+    consumeLaunchPathPreset();
+  }
+
+  const eventTarget = target ?? (typeof window === "undefined" ? null : window);
+  if (!eventTarget) return;
+
+  eventTarget.dispatchEvent(
     new CustomEvent<OpenWorkspaceRequestDetail>(OPEN_WORKSPACE_REQUEST_EVENT, {
-      detail: { action },
+      detail: launchPath ? { action, launchPath } : { action },
     }),
   );
 }
