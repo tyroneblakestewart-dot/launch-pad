@@ -7,7 +7,7 @@ import {
   shouldCloseWorkspaceAfterSave,
   type ProjectSaveResultDetail,
 } from "@/lib/project-save-result";
-import type { LaunchPath, TokenProject } from "@/lib/types";
+import type { TokenProject } from "@/lib/types";
 import {
   OPEN_WORKSPACE_REQUEST_EVENT,
   type OpenWorkspaceRequestDetail,
@@ -76,7 +76,6 @@ function focusNewProjectEditor() {
 export function TokenStudioWorkspace() {
   const [isOpen, setIsOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
-  const [requestedLaunchPath, setRequestedLaunchPath] = useState<LaunchPath | null>(null);
   const awaitingSaveAndClose = useRef(false);
 
   useEffect(() => {
@@ -90,7 +89,6 @@ export function TokenStudioWorkspace() {
       awaitingSaveAndClose.current = false;
       if (!shouldCloseWorkspaceAfterSave(detail)) return;
       setPendingAction(null);
-      setRequestedLaunchPath(null);
       setIsOpen(false);
     }
 
@@ -115,7 +113,6 @@ export function TokenStudioWorkspace() {
         }
       } else if (attempts >= 20) {
         setPendingAction(null);
-        setRequestedLaunchPath(null);
         window.clearInterval(timer);
       }
     }, 50);
@@ -125,12 +122,10 @@ export function TokenStudioWorkspace() {
 
   useEffect(() => {
     function onOpenWorkspaceRequest(event: Event) {
-      const { action, launchPath } = (event as CustomEvent<OpenWorkspaceRequestDetail>).detail;
+      const { action } = (event as CustomEvent<OpenWorkspaceRequestDetail>).detail;
       if (action === "saved") {
-        setRequestedLaunchPath(null);
         openSavedLaunches();
       } else {
-        setRequestedLaunchPath(launchPath ?? null);
         openWorkspace("new");
       }
     }
@@ -179,10 +174,7 @@ export function TokenStudioWorkspace() {
         </div>
       </div>
       <div className={pendingAction ? styles.preparing : undefined}>
-        <TokenStudio
-          requestedLaunchPath={requestedLaunchPath}
-          onRequestedLaunchPathConsumed={() => setRequestedLaunchPath(null)}
-        />
+        <TokenStudio />
       </div>
     </div>
   );
