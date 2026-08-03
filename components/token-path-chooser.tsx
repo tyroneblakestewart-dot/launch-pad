@@ -2,47 +2,62 @@
 
 import { useEffect, useState } from "react";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
-import { LAUNCH_PATH_OPTIONS, launchPathLabel } from "@/lib/launch-paths";
+import {
+  LAUNCH_PATH_OPTIONS,
+  consumeLaunchPathPreset,
+  launchPathLabel,
+} from "@/lib/launch-paths";
 import type { LaunchPath } from "@/lib/types";
+import {
+  OPEN_WORKSPACE_REQUEST_EVENT,
+  type OpenWorkspaceRequestDetail,
+} from "@/lib/workspace-open-request";
 import styles from "./token-path-chooser.module.css";
 
 interface TokenPathChooserProps {
   open: boolean;
   selected: LaunchPath | null;
-  preset?: LaunchPath | null;
   onConfirm: (path: LaunchPath) => void;
-  onDismiss: () => void;
 }
 
-export function TokenPathChooser({
-  open,
-  selected,
-  preset = null,
-  onConfirm,
-  onDismiss,
-}: TokenPathChooserProps) {
-  const seedSelection = preset ?? selected;
-  const [pending, setPending] = useState<LaunchPath | null>(seedSelection);
+export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooserProps) {
+  const [pending, setPending] = useState<LaunchPath | null>(selected);
   const [wasOpen, setWasOpen] = useState(open);
-  const [lastSeedSelection, setLastSeedSelection] = useState(seedSelection);
+  const [dismissed, setDismissed] = useState(false);
 
-  if (open !== wasOpen || (open && seedSelection !== lastSeedSelection)) {
+  if (open !== wasOpen) {
     setWasOpen(open);
-    setLastSeedSelection(seedSelection);
-    if (open) setPending(seedSelection);
+    if (open) {
+      setPending(consumeLaunchPathPreset() ?? selected);
+      setDismissed(false);
+    }
   }
 
   useEffect(() => {
-    if (!open) return;
+    function onWorkspaceRequest(event: Event) {
+      if (!open) return;
+      const { action, launchPath } = (event as CustomEvent<OpenWorkspaceRequestDetail>).detail;
+      if (action !== "new" || !launchPath) return;
+      consumeLaunchPathPreset();
+      setPending(launchPath);
+      setDismissed(false);
+    }
+
+    window.addEventListener(OPEN_WORKSPACE_REQUEST_EVENT, onWorkspaceRequest);
+    return () => window.removeEventListener(OPEN_WORKSPACE_REQUEST_EVENT, onWorkspaceRequest);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || dismissed) return;
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = originalOverflow;
     };
-  }, [open]);
+  }, [dismissed, open]);
 
   function viewPlanDetails(targetId = "plans"): void {
-    onDismiss();
+    setDismissed(true);
     window.requestAnimationFrame(() => {
       document.getElementById(targetId)?.scrollIntoView({
         behavior: "smooth",
@@ -53,6 +68,18 @@ export function TokenPathChooser({
 
   if (!open) return null;
 
+  if (dismissed) {
+    return (
+      <button
+        type="button"
+        className={styles.resumeButton}
+        onClick={() => setDismissed(false)}
+      >
+        Choose a plan to continue
+      </button>
+    );
+  }
+
   return (
     <div className={styles.backdrop} role="dialog" aria-modal="true" aria-labelledby="token-path-chooser-title">
       <section className={styles.panel}>
@@ -60,7 +87,7 @@ export function TokenPathChooser({
           type="button"
           className={styles.closeButton}
           aria-label="Close plan chooser"
-          onClick={onDismiss}
+          onClick={() => setDismissed(true)}
         >
           ×
         </button>
