@@ -9,16 +9,27 @@ import styles from "./token-path-chooser.module.css";
 interface TokenPathChooserProps {
   open: boolean;
   selected: LaunchPath | null;
+  preset?: LaunchPath | null;
   onConfirm: (path: LaunchPath) => void;
+  onDismiss: () => void;
 }
 
-export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooserProps) {
-  const [pending, setPending] = useState<LaunchPath | null>(selected);
+export function TokenPathChooser({
+  open,
+  selected,
+  preset = null,
+  onConfirm,
+  onDismiss,
+}: TokenPathChooserProps) {
+  const seedSelection = preset ?? selected;
+  const [pending, setPending] = useState<LaunchPath | null>(seedSelection);
   const [wasOpen, setWasOpen] = useState(open);
+  const [lastSeedSelection, setLastSeedSelection] = useState(seedSelection);
 
-  if (open !== wasOpen) {
+  if (open !== wasOpen || (open && seedSelection !== lastSeedSelection)) {
     setWasOpen(open);
-    if (open) setPending(selected);
+    setLastSeedSelection(seedSelection);
+    if (open) setPending(seedSelection);
   }
 
   useEffect(() => {
@@ -30,11 +41,30 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
     };
   }, [open]);
 
+  function viewPlanDetails(targetId = "plans"): void {
+    onDismiss();
+    window.requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }
+
   if (!open) return null;
 
   return (
     <div className={styles.backdrop} role="dialog" aria-modal="true" aria-labelledby="token-path-chooser-title">
       <section className={styles.panel}>
+        <button
+          type="button"
+          className={styles.closeButton}
+          aria-label="Close plan chooser"
+          onClick={onDismiss}
+        >
+          ×
+        </button>
+
         <div className={styles.heading}>
           <span
             className={styles.wordmark}
@@ -55,9 +85,10 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
         <div className={styles.columns}>
           {LAUNCH_PATH_OPTIONS.map((option) => {
             const isSelected = pending === option.id;
+            const detailsLink = option.detailsLink;
             const columnClassName = [
               styles.column,
-              option.recommended ? styles.columnRecommended : "",
+              option.featured ? styles.columnFeatured : "",
               isSelected ? styles.columnSelected : "",
               pending && !isSelected ? styles.columnDimmed : "",
             ]
@@ -65,30 +96,41 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
               .join(" ");
 
             return (
-              <button
-                key={option.id}
-                type="button"
-                className={columnClassName}
-                aria-pressed={isSelected}
-                onClick={() => setPending(option.id)}
-              >
-                {option.recommended && <span className={styles.badge}>Recommended</span>}
-                <span className={styles.columnName}>{option.name}</span>
-                <span className={styles.columnPrice}>{option.price}</span>
-                <p className={styles.columnTagline}>{option.tagline}</p>
-                <span className={styles.columnBullets}>
-                  {option.bullets.map((bullet) => (
-                    <span className={styles.bullet} key={bullet}>
-                      {bullet}
-                    </span>
-                  ))}
-                </span>
-              </button>
+              <article key={option.id} className={columnClassName}>
+                {option.badge ? <span className={styles.badge}>{option.badge}</span> : null}
+                <button
+                  type="button"
+                  className={styles.columnSelect}
+                  aria-pressed={isSelected}
+                  onClick={() => setPending(option.id)}
+                >
+                  <span className={styles.columnName}>{option.name}</span>
+                  <span className={styles.columnPrice}>{option.price}</span>
+                  <span className={styles.columnTagline}>{option.tagline}</span>
+                  <span className={styles.columnBullets}>
+                    {option.bullets.map((bullet) => (
+                      <span className={styles.bullet} key={bullet}>
+                        {bullet}
+                      </span>
+                    ))}
+                  </span>
+                  {option.foot ? <span className={styles.columnFoot}>{option.foot}</span> : null}
+                </button>
+                {detailsLink ? (
+                  <button
+                    type="button"
+                    className={styles.columnDetailLink}
+                    onClick={() => viewPlanDetails(detailsLink.targetId)}
+                  >
+                    {detailsLink.label}
+                  </button>
+                ) : null}
+              </article>
             );
           })}
         </div>
 
-        {pending && (
+        {pending ? (
           <>
             <button type="button" className={styles.continueButton} onClick={() => onConfirm(pending)}>
               Continue with {launchPathLabel(pending)}
@@ -98,7 +140,11 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
               <span>Privacy Policy</span>, and certify that you are over 18 years old.
             </p>
           </>
-        )}
+        ) : null}
+
+        <button type="button" className={styles.fullDetailsLink} onClick={() => viewPlanDetails()}>
+          See full plan details ↓
+        </button>
       </section>
     </div>
   );
