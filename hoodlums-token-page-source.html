@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin:0; padding:0; background:#050706; }
+  * { box-sizing:border-box; }
+  a { color:#c6f53e; text-decoration:none; }
+  a:hover { color:#d9fa7d; }
+  ::selection { background:#c6f53e; color:#051006; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:rgba(131,183,139,0.2); border-radius:99px; }
+  @keyframes hd-pulse { 0%,100% { opacity:1 } 50% { opacity:.35 } }
+  .hd-grid { display:grid; grid-template-columns:300px minmax(0,1fr) 330px; gap:14px; align-items:start; }
+  .hd-mobilebar { display:none; }
+  @media (max-width:1180px) {
+    .hd-grid { grid-template-columns:280px minmax(0,1fr); }
+    .hd-right { grid-column:1 / -1; }
+  }
+  @media (max-width:880px) {
+    .hd-grid { grid-template-columns:minmax(0,1fr); }
+    .hd-right, .hd-left { grid-column:auto; }
+    .hd-swap { display:none !important; }
+    .hd-mobilebar { display:flex; }
+  }
+</style>
+<script src="./image-slot.js"></script>
+<template id="__bundler_thumbnail" data-bg-color="#050706"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#050706"></rect><path d="M18 68 L34 52 L46 60 L64 34 L82 42" fill="none" stroke="#c6f53e" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path></svg></template>
+</helmet>
+<div style="min-height:100vh;background:#050706;background-image:radial-gradient(circle at 80% 10%, rgba(198,245,62,0.10), transparent 24rem), linear-gradient(180deg,#070a08,#050706);color:#f4f7ef;font-family:Inter, system-ui, sans-serif;padding:14px 16px 90px">
+  <div style="max-width:1560px;margin:0 auto;display:flex;flex-direction:column;gap:14px">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:10px 14px;border:1px solid rgba(131,183,139,0.2);border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018)),#0d120e;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7)">
+      <div style="display:flex;align-items:center;gap:14px;min-width:0">
+        <a href="#" style="width:38px;height:38px;flex:none;border-radius:7px;border:1px solid rgba(131,183,139,0.2);background:linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02)),#111713;box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 6px 16px -10px rgba(0,0,0,0.85);color:#b8c2ba;display:grid;place-items:center;font-size:17px" style-hover="border-color:rgba(198,245,62,0.5);color:#c6f53e">←</a>
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;min-width:0">
+          <h1 style="margin:0;font-family:Inter,sans-serif;font-weight:800;font-size:26px;letter-spacing:-0.04em;text-transform:uppercase;line-height:1">Sheriff Money</h1>
+          <span style="font:700 13px/1 'IBM Plex Mono',monospace;color:#c6f53e;letter-spacing:0.06em">$SHRF</span>
+          <span style="display:flex;align-items:center;gap:6px;font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#91f0b6;border:1px solid rgba(145,240,182,0.3);background:rgba(145,240,182,0.07);padding:6px 9px;border-radius:999px"><span style="width:5px;height:5px;border-radius:50%;background:#91f0b6;animation:hd-pulse 2s ease-in-out infinite"></span>Live</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <a href="#" style="font:500 12px/1 'IBM Plex Mono',monospace;color:#b8c2ba;border:1px solid rgba(131,183,139,0.2);background:linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02)),#111713;box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 6px 16px -10px rgba(0,0,0,0.85);padding:9px 12px;border-radius:10px" style-hover="border-color:rgba(198,245,62,0.5);color:#c6f53e">Dexscreener ↗</a>
+        <a href="#" style="font:500 12px/1 'IBM Plex Mono',monospace;color:#b8c2ba;border:1px solid rgba(131,183,139,0.2);background:linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02)),#111713;box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 6px 16px -10px rgba(0,0,0,0.85);padding:9px 12px;border-radius:10px" style-hover="border-color:rgba(198,245,62,0.5);color:#c6f53e">GeckoTerminal ↗</a>
+        <a href="#" style="font:500 12px/1 'IBM Plex Mono',monospace;color:#b8c2ba;border:1px solid rgba(131,183,139,0.2);background:linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02)),#111713;box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 6px 16px -10px rgba(0,0,0,0.85);padding:9px 12px;border-radius:10px" style-hover="border-color:rgba(198,245,62,0.5);color:#c6f53e">Contract ↗</a>
+        <a href="#" style="font:500 12px/1 'IBM Plex Mono',monospace;color:#b8c2ba;border:1px solid rgba(131,183,139,0.2);background:linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02)),#111713;box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 6px 16px -10px rgba(0,0,0,0.85);padding:9px 12px;border-radius:10px" style-hover="border-color:rgba(198,245,62,0.5);color:#c6f53e">Pool ↗</a>
+      </div>
+    </div>
+
+    <div class="hd-grid">
+
+      <div class="hd-left" style="display:flex;flex-direction:column;gap:14px;min-width:0">
+
+        <div style="padding:14px;border:1px solid rgba(131,183,139,0.2);border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018)),#0d120e;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);display:flex;flex-direction:column;gap:14px">
+          <div style="position:relative;width:100%;aspect-ratio:1/1;border-radius:10px;overflow:hidden;border:1px solid rgba(198,245,62,0.22);box-shadow:inset 0 0 34px rgba(198,245,62,0.05)">
+            <image-slot id="hd-token-art" shape="rect" placeholder="Drop token art"></image-slot>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <span style="font-family:Inter,sans-serif;font-weight:800;font-size:18px;letter-spacing:-0.03em;text-transform:uppercase">Sheriff Money</span>
+              <span style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#c6f53e;border:1px solid rgba(198,245,62,0.34);background:rgba(198,245,62,0.07);padding:6px 8px;border-radius:999px">Robinhood Chain</span>
+            </div>
+            <button onClick="{{ copyAddress }}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;cursor:pointer;border:1px solid rgba(131,183,139,0.2);background:#111713;border-radius:7px;padding:10px 12px;font:500 12px/1 'IBM Plex Mono',monospace;color:#b8c2ba" style-hover="border-color:rgba(198,245,62,0.5);color:#c6f53e">
+              <span>0x7f3a…9c2e</span>
+              <span style="color:#c6f53e;font-size:11px;letter-spacing:0.1em;text-transform:uppercase">{{ copyLabel }}</span>
+            </button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(131,183,139,0.14);border:1px solid rgba(131,183,139,0.14);border-radius:14px;overflow:hidden">
+            <div style="background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01)),#0a0f0c;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset;padding:11px 12px;display:flex;flex-direction:column;gap:5px">
+              <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#a9b3ab">Market cap</span>
+              <span style="font-family:Inter,sans-serif;font-weight:800;font-size:17px;letter-spacing:-0.03em">$248.6K</span>
+            </div>
+            <div style="background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01)),#0a0f0c;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset;padding:11px 12px;display:flex;flex-direction:column;gap:5px">
+              <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#a9b3ab">Liquidity</span>
+              <span style="font-family:Inter,sans-serif;font-weight:800;font-size:17px;letter-spacing:-0.03em">$61.2K</span>
+            </div>
+            <div style="background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01)),#0a0f0c;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset;padding:11px 12px;display:flex;flex-direction:column;gap:5px">
+              <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#a9b3ab">24h volume</span>
+              <span style="font-family:Inter,sans-serif;font-weight:800;font-size:17px;letter-spacing:-0.03em">$92.4K</span>
+            </div>
+            <div style="background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01)),#0a0f0c;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset;padding:11px 12px;display:flex;flex-direction:column;gap:5px">
+              <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#a9b3ab">Holders</span>
+              <span style="font-family:Inter,sans-serif;font-weight:800;font-size:17px;letter-spacing:-0.03em">1,284</span>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+              <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#a9b3ab">Graduation</span>
+              <span style="font:700 12px/1 'IBM Plex Mono',monospace;color:#c6f53e">2.71 / 4.0 ETH</span>
+            </div>
+            <div style="height:10px;border-radius:999px;background:rgba(131,183,139,0.12);overflow:hidden;border:1px solid rgba(131,183,139,0.14)">
+              <div style="width:67.8%;height:100%;background:#bce759;box-shadow:0 0 18px rgba(198,245,62,0.4)"></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <span style="font:500 11px/1 'IBM Plex Mono',monospace;color:#a9b3ab">67.8% to Robinhood DEX</span>
+              <span style="font:500 11px/1 'IBM Plex Mono',monospace;color:#a9b3ab">launched 6h ago</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hd-swap" style="padding:14px;border:1px solid rgba(131,183,139,0.2);border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018)),#0d120e;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div style="display:flex;padding:3px;border-radius:999px;border:1px solid rgba(131,183,139,0.2);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset">
+              <button onClick="{{ setBuy }}" style="{{ buyTabStyle }}">Buy</button>
+              <button onClick="{{ setSell }}" style="{{ sellTabStyle }}">Sell</button>
+            </div>
+            <button onClick="{{ connect }}" style="{{ walletStyle }}">{{ walletLabel }}</button>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="border:1px solid rgba(131,183,139,0.2);background:linear-gradient(180deg, rgba(0,0,0,0.38), rgba(255,255,255,0.022)),#0a0f0c;box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#a9b3ab">{{ payLabel }}</span>
+                <span style="font:500 11px/1 'IBM Plex Mono',monospace;color:#a9b3ab">bal {{ payBalance }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <input value="{{ amount }}" onChange="{{ onAmount }}" inputmode="decimal" style="flex:1;min-width:0;background:transparent;border:0;outline:none;color:#f4f7ef;font-family:Inter,sans-serif;font-weight:800;font-size:26px;letter-spacing:-0.04em">
+                <span style="font:700 13px/1 'IBM Plex Mono',monospace;color:#f4f7ef;border:1px solid rgba(131,183,139,0.2);padding:8px 10px;border-radius:999px">{{ payTicker }}</span>
+              </div>
+              <div style="display:flex;gap:6px">
+                <sc-for list="{{ presets }}" as="preset" hint-placeholder-count="4">
+                  <button onClick="{{ preset.apply }}" style="flex:1;cursor:pointer;border:1px solid rgba(131,183,139,0.2);background:linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02)),#111713;box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 6px 16px -10px rgba(0,0,0,0.85);color:#b8c2ba;border-radius:6px;padding:7px 0;font:500 11px/1 'IBM Plex Mono',monospace" style-hover="border-color:rgba(198,245,62,0.5);color:#c6f53e">{{ preset.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display:flex;justify-content:center;margin:-16px 0 -14px;position:relative;z-index:2">
+              <span style="width:28px;height:28px;border-radius:50%;background:#050706;border:1px solid rgba(131,183,139,0.2);display:grid;place-items:center;color:#c6f53e;font-size:13px">↓</span>
+            </div>
+
+            <div style="border:1px solid rgba(131,183,139,0.2);background:linear-gradient(180deg, rgba(0,0,0,0.38), rgba(255,255,255,0.022)),#0a0f0c;box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px">
+              <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#a9b3ab">You receive</span>
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="flex:1;min-width:0;font-family:Inter,sans-serif;font-weight:800;font-size:26px;letter-spacing:-0.04em;color:#f4f7ef;overflow:hidden;text-overflow:ellipsis">{{ receive }}</span>
+                <span style="font:700 13px/1 'IBM Plex Mono',monospace;color:#c6f53e;border:1px solid rgba(198,245,62,0.34);background:rgba(198,245,62,0.07);padding:8px 10px;border-radius:999px">{{ receiveTicker }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#a9b3ab">Slippage</span>
+            <div style="display:flex;gap:6px">
+              <sc-for list="{{ slippages }}" as="s" hint-placeholder-count="3">
+                <button onClick="{{ s.apply }}" style="{{ s.style }}">{{ s.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+
+          <button onClick="{{ trade }}" style="{{ tradeStyle }}">{{ tradeLabel }}</button>
+          <span style="font:500 10.5px/1.5 'IBM Plex Mono',monospace;color:#a9b3ab;text-align:center">1 SHRF ≈ 0.0000021 ETH · fee 1%</span>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+
+        <div style="border:1px solid rgba(131,183,139,0.2);border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018)),#0d120e;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);overflow:hidden">
+          <div style="padding:16px 18px 8px;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.18em;text-transform:uppercase;color:#a9b3ab">Price · SHRF/ETH</span>
+              <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+                <span style="font-family:Inter,sans-serif;font-weight:800;font-size:40px;line-height:1;letter-spacing:-0.045em">$0.0002486</span>
+                <span style="{{ changeStyle }}">{{ changeLabel }}</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:4px;padding:3px;border-radius:7px;border:1px solid rgba(131,183,139,0.2);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset">
+              <sc-for list="{{ ranges }}" as="r" hint-placeholder-count="5">
+                <button onClick="{{ r.apply }}" style="{{ r.style }}">{{ r.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="position:relative;height:380px;margin:6px 14px 14px;border-radius:10px;background:linear-gradient(180deg, rgba(198,245,62,0.05), rgba(10,11,9,0) 55%);border:1px solid rgba(131,183,139,0.12);overflow:hidden">
+            <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(131,183,139,0.09) 1px, transparent 1px);background-size:100% 25%"></div>
+            <div style="position:absolute;inset:12px 58px 26px 12px">
+              <sc-for list="{{ candles }}" as="c" hint-placeholder-count="42">
+                <div style="{{ c.wrapStyle }}">
+                  <div style="{{ c.wickStyle }}"></div>
+                  <div style="{{ c.bodyStyle }}"></div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ showLine }}" hint-placeholder-val="{{ false }}">
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">
+                  <polygon points="{{ areaPoints }}" fill="rgba(198,245,62,0.13)"></polygon>
+                  <polyline points="{{ linePoints }}" fill="none" stroke="#c6f53e" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>
+                </svg>
+              </sc-if>
+              <div style="{{ lastPriceStyle }}"></div>
+            </div>
+            <div style="position:absolute;top:12px;right:8px;bottom:26px;width:52px;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end">
+              <sc-for list="{{ axis }}" as="a" hint-placeholder-count="5">
+                <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#5f6a61">{{ a }}</span>
+              </sc-for>
+            </div>
+            <div style="position:absolute;left:12px;right:58px;bottom:6px;display:flex;justify-content:space-between">
+              <sc-for list="{{ timeAxis }}" as="t" hint-placeholder-count="5">
+                <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#5f6a61">{{ t }}</span>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="border:1px solid rgba(131,183,139,0.2);border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018)),#0d120e;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);overflow:hidden">
+          <div style="display:flex;gap:4px;padding:10px 12px;border-bottom:1px solid rgba(131,183,139,0.14);overflow:auto">
+            <sc-for list="{{ tabs }}" as="tab" hint-placeholder-count="4">
+              <button onClick="{{ tab.apply }}" style="{{ tab.style }}">{{ tab.label }}</button>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ showTrades }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column">
+              <div style="display:grid;grid-template-columns:76px 1fr 1fr 1fr 78px;gap:10px;padding:10px 16px;font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#5f6a61;border-bottom:1px solid rgba(255,255,255,0.05)">
+                <span>Type</span><span>Wallet</span><span>Amount</span><span>ETH</span><span style="text-align:right">Time</span>
+              </div>
+              <sc-for list="{{ trades }}" as="t" hint-placeholder-count="8">
+                <div style="display:grid;grid-template-columns:76px 1fr 1fr 1fr 78px;gap:10px;padding:11px 16px;align-items:center;border-bottom:1px solid rgba(255,255,255,0.04);font:500 12.5px/1 'IBM Plex Mono',monospace" style-hover="background:rgba(255,255,255,0.02)">
+                  <span style="{{ t.typeStyle }}">{{ t.type }}</span>
+                  <span style="color:#b8c2ba">{{ t.wallet }}</span>
+                  <span style="color:#b6c0b7">{{ t.amount }}</span>
+                  <span style="color:#b6c0b7">{{ t.eth }}</span>
+                  <span style="color:#5f6a61;text-align:right">{{ t.time }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ showHolders }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column">
+              <div style="display:grid;grid-template-columns:52px 1fr 120px 1fr;gap:10px;padding:10px 16px;font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#5f6a61;border-bottom:1px solid rgba(255,255,255,0.05)">
+                <span>Rank</span><span>Wallet</span><span>% supply</span><span>Share</span>
+              </div>
+              <sc-for list="{{ holders }}" as="h" hint-placeholder-count="8">
+                <div style="display:grid;grid-template-columns:52px 1fr 120px 1fr;gap:10px;padding:11px 16px;align-items:center;border-bottom:1px solid rgba(255,255,255,0.04);font:500 12.5px/1 'IBM Plex Mono',monospace" style-hover="background:rgba(255,255,255,0.02)">
+                  <span style="color:#5f6a61">{{ h.rank }}</span>
+                  <span style="color:#b8c2ba">{{ h.wallet }}</span>
+                  <span style="color:#f4f7ef">{{ h.pct }}</span>
+                  <span style="height:6px;border-radius:999px;background:rgba(131,183,139,0.12);overflow:hidden"><span style="{{ h.barStyle }}"></span></span>
+                </div>
+              </sc-for>
+              <span style="padding:11px 16px;font:500 11px/1.5 'IBM Plex Mono',monospace;color:#5f6a61">LP pool address excluded from holder ranking.</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ showAbout }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:18px;display:flex;flex-direction:column;gap:12px">
+              <p style="margin:0;color:#b6c0b7;font-size:15px;line-height:1.6;max-width:70ch">The Sheriff doesn't chase the bag — he collects it. $SHRF is the enforcement arm of the Hoodlums crew: every buy funds the bounty pool, every graduation locks liquidity for good. No presale, no team allocation, no promises we can't keep on-chain.</p>
+              <p style="margin:0;color:#a9b3ab;font-size:14px;line-height:1.6;max-width:70ch">Written by the creator at launch. Supply 1,000,000,000 · LP burned on graduation · Contract renounced.</p>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ showChat }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+              <sc-for list="{{ chat }}" as="m" hint-placeholder-count="4">
+                <div style="display:flex;gap:10px;align-items:flex-start">
+                  <span style="width:28px;height:28px;flex:none;border-radius:50%;background:linear-gradient(135deg,rgba(198,245,62,0.35),rgba(145,240,182,0.15));border:1px solid rgba(131,183,139,0.2)"></span>
+                  <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                    <span style="font:500 11px/1 'IBM Plex Mono',monospace;color:#c6f53e">{{ m.wallet }} <span style="color:#5f6a61">· {{ m.time }}</span></span>
+                    <span style="font-size:14px;line-height:1.5;color:#b6c0b7">{{ m.text }}</span>
+                  </div>
+                </div>
+              </sc-for>
+              <div style="display:flex;gap:8px;align-items:center;padding-top:4px;border-top:1px solid rgba(131,183,139,0.12)">
+                <input placeholder="Say something to the crew" style="flex:1;min-width:0;background:linear-gradient(180deg, rgba(0,0,0,0.38), rgba(255,255,255,0.022)),#0a0f0c;box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;border:1px solid rgba(131,183,139,0.2);border-radius:7px;padding:11px 12px;color:#f4f7ef;font-size:13.5px;outline:none">
+                <button style="cursor:pointer;border:0;border-radius:999px;padding:11px 20px;background:#c6f53e;color:#051006;font-size:13px;font-weight:900">Post</button>
+              </div>
+              <span style="font:500 10.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#5f6a61">Token holders can post</span>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+
+      <div class="hd-right" style="display:flex;flex-direction:column;gap:14px;min-width:0">
+
+        <div style="padding:14px;border:1px solid rgba(131,183,139,0.2);border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018)),#0d120e;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);display:flex;flex-direction:column;gap:11px">
+          <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.18em;text-transform:uppercase;color:#a9b3ab">Trade on</span>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <sc-for list="{{ terminals }}" as="term" hint-placeholder-count="4">
+              <a href="#" style="display:flex;align-items:center;gap:9px;padding:11px;border:1px solid rgba(131,183,139,0.2);background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.012)),#0a0f0c;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.8);border-radius:13px;color:#b6c0b7" style-hover="border-color:rgba(198,245,62,0.5);background:rgba(198,245,62,0.05)">
+                <span style="{{ term.markStyle }}">{{ term.initial }}</span>
+                <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                  <span style="font:700 12.5px/1 Inter, sans-serif">{{ term.name }}</span>
+                  <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;color:#5f6a61">{{ term.note }}</span>
+                </span>
+              </a>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="padding:16px;border:1px solid rgba(131,183,139,0.2);border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018)),#0d120e;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);display:flex;flex-direction:column;gap:10px">
+          <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.18em;text-transform:uppercase;color:#a9b3ab">The story</span>
+          <p style="margin:0;color:#b6c0b7;font-size:14px;line-height:1.6">The Sheriff doesn't chase the bag — he collects it. Every buy funds the bounty pool, every graduation locks liquidity for good.</p>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;padding-top:2px">
+            <span style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#91f0b6;border:1px solid rgba(145,240,182,0.28);background:rgba(145,240,182,0.07);padding:6px 9px;border-radius:999px">LP burns on graduation</span>
+            <span style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#91f0b6;border:1px solid rgba(145,240,182,0.28);background:rgba(145,240,182,0.07);padding:6px 9px;border-radius:999px">No team allocation</span>
+          </div>
+        </div>
+
+        <sc-if value="{{ showCrewChat }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid rgba(131,183,139,0.2);border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018)),#0d120e;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);display:flex;flex-direction:column;overflow:hidden">
+          <div style="padding:14px 16px;border-bottom:1px solid rgba(131,183,139,0.14);display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.18em;text-transform:uppercase;color:#a9b3ab">Crew chat</span>
+            <span style="font:500 10px/1 'IBM Plex Mono',monospace;color:#5f6a61">{{ chatCount }} online</span>
+          </div>
+          <div style="padding:14px 16px;display:flex;flex-direction:column;gap:13px;max-height:300px;overflow:auto">
+            <sc-for list="{{ chat }}" as="m" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font:500 11px/1 'IBM Plex Mono',monospace;color:#c6f53e">{{ m.wallet }} <span style="color:#5f6a61">· {{ m.time }}</span></span>
+                <span style="font-size:13.5px;line-height:1.5;color:#b6c0b7">{{ m.text }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:12px 14px;border-top:1px solid rgba(131,183,139,0.14);display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;gap:8px">
+              <input placeholder="Message the crew" style="flex:1;min-width:0;background:linear-gradient(180deg, rgba(0,0,0,0.38), rgba(255,255,255,0.022)),#0a0f0c;box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;border:1px solid rgba(131,183,139,0.2);border-radius:7px;padding:10px 12px;color:#f4f7ef;font-size:13px;outline:none">
+              <button style="cursor:pointer;border:0;border-radius:7px;padding:10px 18px;background:#c6f53e;color:#051006;font-size:12.5px;font-weight:900">Post</button>
+            </div>
+            <span style="font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#5f6a61">Token holders can post</span>
+          </div>
+        </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+
+  <div class="hd-mobilebar" style="position:fixed;left:0;right:0;bottom:0;z-index:20;padding:12px 14px 16px;background:linear-gradient(180deg,rgba(6,8,7,0) 0%,rgba(6,8,7,0.92) 30%,rgba(6,8,7,0.99) 100%);backdrop-filter:blur(12px);border-top:1px solid rgba(198,245,62,0.2);align-items:center;gap:10px">
+    <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0">
+      <span style="font:500 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#a9b3ab">SHRF</span>
+      <span style="font-family:Inter,sans-serif;font-weight:800;font-size:16px;letter-spacing:-0.03em">$0.0002486</span>
+    </div>
+    <button onClick="{{ trade }}" style="min-height:52px;border:0;cursor:pointer;border-radius:7px;padding:0 30px;background:#c6f53e;color:#051006;font-size:16px;font-weight:900">Buy</button>
+    <button onClick="{{ setSell }}" style="min-height:52px;cursor:pointer;border-radius:7px;padding:0 22px;background:linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02)),#111713;box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 6px 16px -10px rgba(0,0,0,0.85);border:1px solid rgba(131,183,139,0.2);color:#b6c0b7;font-size:15px;font-weight:700">Sell</button>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;chartStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Candles&quot;,&quot;Line&quot;],&quot;default&quot;:&quot;Candles&quot;,&quot;tsType&quot;:&quot;'Candles' | 'Line'&quot;,&quot;section&quot;:&quot;Chart&quot;},&quot;bearish&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Chart&quot;},&quot;showCrewChat&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Panels&quot;}}">
+const RANGES = ['5M', '1H', '6H', '1D', 'ALL'];
+const TABS = [
+  { id: 'trades', label: 'Recent trades' },
+  { id: 'holders', label: 'Holders' },
+  { id: 'about', label: 'About' },
+  { id: 'chat', label: 'Chat' }
+];
+const TRADES = [
+  { type: 'BUY', wallet: '0x9a4c…21bd', amount: '4.28M SHRF', eth: '0.412 ETH', time: '12s' },
+  { type: 'SELL', wallet: '0x3fe1…88a0', amount: '910K SHRF', eth: '0.088 ETH', time: '48s' },
+  { type: 'BUY', wallet: '0xd207…4c19', amount: '12.6M SHRF', eth: '1.204 ETH', time: '1m' },
+  { type: 'BUY', wallet: '0x77bb…9e33', amount: '2.05M SHRF', eth: '0.196 ETH', time: '2m' },
+  { type: 'SELL', wallet: '0x18cd…70f4', amount: '5.41M SHRF', eth: '0.518 ETH', time: '4m' },
+  { type: 'BUY', wallet: '0xba90…3d71', amount: '822K SHRF', eth: '0.079 ETH', time: '5m' },
+  { type: 'BUY', wallet: '0x6e12…aa58', amount: '18.9M SHRF', eth: '1.810 ETH', time: '7m' },
+  { type: 'SELL', wallet: '0xc4f8…1b62', amount: '3.33M SHRF', eth: '0.319 ETH', time: '9m' }
+];
+const HOLDERS = [
+  { wallet: '0x9a4c…21bd', pct: 4.82 }, { wallet: '0x6e12…aa58', pct: 3.94 },
+  { wallet: '0xd207…4c19', pct: 3.11 }, { wallet: '0x77bb…9e33', pct: 2.65 },
+  { wallet: '0xba90…3d71', pct: 2.08 }, { wallet: '0x18cd…70f4', pct: 1.77 },
+  { wallet: '0xc4f8…1b62', pct: 1.42 }, { wallet: '0x3fe1…88a0', pct: 1.19 }
+];
+const CHAT = [
+  { wallet: '0x9a4c…21bd', time: '2m', text: 'sheriff locked the LP already, this one is different' },
+  { wallet: '0x6e12…aa58', time: '5m', text: 'added another 1.8 eth. graduation before midnight' },
+  { wallet: '0xba90…3d71', time: '11m', text: 'chart looks clean, no bundle wallets in the top 10' },
+  { wallet: '0xd207…4c19', time: '19m', text: 'site went live 20 min after launch. wild' }
+];
+const TERMINALS = [
+  { name: 'GMGN', note: 'ref · hoodlums', initial: 'G' },
+  { name: 'Axiom', note: 'ref · hoodlums', initial: 'A' },
+  { name: 'Maestro', note: 'telegram bot', initial: 'M' },
+  { name: 'Ave.ai', note: 'ref · hoodlums', initial: 'V' }
+];
+const PRESETS = ['0.1', '0.5', '1', 'MAX'];
+const SLIPPAGES = ['0.5%', '1%', '3%'];
+
+function seriesFor(range, bias) {
+  const seeds = { '5M': 7, '1H': 19, '6H': 31, '1D': 43, ALL: 61 };
+  let s = seeds[range] || 11;
+  const rand = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+  const out = [];
+  let price = 100;
+  const drift = range === 'ALL' ? 1.4 : range === '1D' ? 1.0 : 0.6;
+  for (let i = 0; i < 46; i++) {
+    const open = price;
+    const move = (rand() - bias) * 6 * drift;
+    const close = Math.max(12, open + move);
+    const high = Math.max(open, close) + rand() * 3;
+    const low = Math.min(open, close) - rand() * 3;
+    out.push({ open, close, high, low });
+    price = close;
+  }
+  return out;
+}
+
+class Component extends DCLogic {
+  state = { range: '1H', tab: 'trades', side: 'buy', slippage: '1%', amount: '0.5', copied: false, connected: false };
+
+  set(k, v) { this.setState({ [k]: v }); }
+
+  renderVals() {
+    const st = this.state;
+    const buying = st.side === 'buy';
+    const bearish = this.props.bearish ?? false;
+    const lineMode = (this.props.chartStyle ?? 'Candles') === 'Line';
+    const data = seriesFor(st.range, bearish ? 0.6 : 0.42);
+    const highs = data.map(d => d.high), lows = data.map(d => d.low);
+    const hi = Math.max(...highs), lo = Math.min(...lows), span = hi - lo || 1;
+    const w = 100 / data.length;
+    const y = v => ((hi - v) / span) * 100;
+    const last = data[data.length - 1];
+
+    const pill = (on, extra) => 'cursor:pointer;border-radius:6px;border:1px solid ' + (on ? 'rgba(198,245,62,0.6)' : 'transparent') +
+      ';background:' + (on ? 'linear-gradient(180deg, rgba(198,245,62,0.2), rgba(198,245,62,0.06))' : 'transparent') +
+      ';box-shadow:' + (on ? '0 1px 0 0 rgba(198,245,62,0.22) inset, 0 6px 18px -8px rgba(198,245,62,0.55)' : 'none') +
+      ';text-shadow:' + (on ? '0 0 12px rgba(198,245,62,0.4)' : 'none') +
+      ';color:' + (on ? '#c6f53e' : '#a9b3ab') +
+      ";font:700 11px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;padding:9px 14px;transition:all .14s;" + (extra || '');
+
+    const amt = parseFloat(st.amount) || 0;
+    const rate = 476000;
+
+    return {
+      ranges: RANGES.map(r => ({ label: r, style: pill(st.range === r), apply: () => this.set('range', r) })),
+      tabs: TABS.map(t => ({
+        label: t.label, apply: () => this.set('tab', t.id),
+        style: 'cursor:pointer;flex:none;border-radius:7px;box-shadow:' + (st.tab === t.id ? '0 1px 0 0 rgba(198,245,62,0.22) inset, 0 6px 18px -8px rgba(198,245,62,0.5)' : '0 1px 0 0 rgba(255,255,255,0.04) inset') + ';border:1px solid ' + (st.tab === t.id ? 'rgba(198,245,62,0.5)' : 'rgba(131,183,139,0.2)') +
+          ';background:' + (st.tab === t.id ? 'linear-gradient(180deg, rgba(198,245,62,0.2), rgba(198,245,62,0.05))' : 'transparent') + ';color:' + (st.tab === t.id ? '#c6f53e' : '#a9b3ab') +
+          ';text-shadow:' + (st.tab === t.id ? '0 0 12px rgba(198,245,62,0.4)' : 'none') + ";font:700 12px/1 Inter,sans-serif;letter-spacing:0.01em;padding:10px 15px;transition:all .14s"
+      })),
+      showTrades: st.tab === 'trades',
+      showHolders: st.tab === 'holders',
+      showAbout: st.tab === 'about',
+      showChat: st.tab === 'chat',
+
+      candles: lineMode ? [] : data.map((d, i) => {
+        const up = d.close >= d.open;
+        const col = up ? '#c6f53e' : '#ff5f56';
+        const top = y(Math.max(d.open, d.close));
+        const h = Math.max(0.8, y(Math.min(d.open, d.close)) - top);
+        return {
+          wrapStyle: 'position:absolute;bottom:0;top:0;left:' + (i * w) + '%;width:' + w + '%',
+          wickStyle: 'position:absolute;left:50%;transform:translateX(-50%);width:1px;background:' + col + ';opacity:.55;top:' + y(d.high) + '%;height:' + Math.max(0.6, y(d.low) - y(d.high)) + '%',
+          bodyStyle: 'position:absolute;left:14%;width:72%;border-radius:1.5px;background:' + col + ';box-shadow:0 0 8px ' + (up ? 'rgba(198,245,62,0.35)' : 'rgba(255,95,86,0.25)') + ';top:' + top + '%;height:' + h + '%'
+        };
+      }),
+      showLine: lineMode,
+      showCrewChat: this.props.showCrewChat ?? true,
+      linePoints: data.map((d, i) => (i / (data.length - 1) * 100).toFixed(2) + ',' + y(d.close).toFixed(2)).join(' '),
+      areaPoints: data.map((d, i) => (i / (data.length - 1) * 100).toFixed(2) + ',' + y(d.close).toFixed(2)).join(' ') + ' 100,100 0,100',
+      changeLabel: bearish ? '▼ 18.4%' : '▲ 34.7%',
+      changeStyle: "font:700 15px/1 'IBM Plex Mono',monospace;padding:6px 10px;border-radius:7px;" +
+        (bearish ? 'color:#ff5f56;background:rgba(255,95,86,0.1);border:1px solid rgba(255,95,86,0.3)'
+                 : 'color:#91f0b6;background:rgba(145,240,182,0.1);border:1px solid rgba(145,240,182,0.28)'),
+      lastPriceStyle: 'position:absolute;left:0;right:0;height:1px;border-top:1px dashed rgba(198,245,62,0.45);top:' + y(last.close) + '%',
+      axis: [hi, hi - span * 0.25, hi - span * 0.5, hi - span * 0.75, lo].map(v => '$' + (v * 0.0000025).toFixed(7)),
+      timeAxis: st.range === 'ALL' ? ['launch', '2h', '4h', '6h', 'now'] : ['-45m', '-30m', '-20m', '-10m', 'now'],
+
+      trades: TRADES.map(t => ({
+        ...t,
+        typeStyle: 'display:flex;align-items:center;gap:5px;font-weight:700;color:' + (t.type === 'BUY' ? '#c6f53e' : '#ff5f56'),
+        type: (t.type === 'BUY' ? '▲ ' : '▼ ') + t.type
+      })),
+      holders: HOLDERS.map((h, i) => ({
+        rank: '#' + (i + 1), wallet: h.wallet, pct: h.pct.toFixed(2) + '%',
+        barStyle: 'display:block;height:100%;width:' + (h.pct / 5 * 100) + '%;background:#bce759'
+      })),
+      chat: CHAT,
+      chatCount: 42,
+      terminals: TERMINALS.map(t => ({
+        ...t,
+        markStyle: 'width:30px;height:30px;flex:none;border-radius:6px;display:grid;place-items:center;background:rgba(198,245,62,0.1);border:1px solid rgba(198,245,62,0.28);color:#c6f53e;font-family:Inter,sans-serif;font-weight:800;font-size:13px'
+      })),
+
+      amount: st.amount,
+      onAmount: e => this.set('amount', e.target.value.replace(/[^0-9.]/g, '')),
+      presets: PRESETS.map(p => ({ label: p, apply: () => this.set('amount', p === 'MAX' ? '2.4' : p) })),
+      slippages: SLIPPAGES.map(s => ({ label: s, style: pill(st.slippage === s, 'padding:7px 11px'), apply: () => this.set('slippage', s) })),
+      payLabel: buying ? 'You pay' : 'You sell',
+      payTicker: buying ? 'ETH' : 'SHRF',
+      payBalance: buying ? '2.41 ETH' : '18.2M SHRF',
+      receiveTicker: buying ? 'SHRF' : 'ETH',
+      receive: buying ? (amt * rate).toLocaleString('en-US', { maximumFractionDigits: 0 }) : (amt / rate * 1e6).toFixed(4),
+      buyTabStyle: pill(buying, 'padding:9px 22px;font:900 12.5px/1 Inter,sans-serif;letter-spacing:0.02em'),
+      sellTabStyle: pill(!buying, 'padding:9px 22px;font:900 12.5px/1 Inter,sans-serif;letter-spacing:0.02em'),
+      setBuy: () => this.set('side', 'buy'),
+      setSell: () => this.set('side', 'sell'),
+      tradeLabel: st.connected ? (buying ? 'Buy SHRF' : 'Sell SHRF') : 'Connect wallet to ' + st.side,
+      tradeStyle: 'min-height:58px;width:100%;border:0;cursor:pointer;border-radius:7px;font-size:17px;font-weight:900;color:' +
+        (buying ? '#051006' : '#f4f7ef') + ';background:' + (buying ? '#c6f53e' : 'rgba(255,95,86,0.16)') +
+        ';box-shadow:' + (buying ? '0 16px 40px rgba(198,245,62,0.16)' : 'none') +
+        ';border:1px solid ' + (buying ? 'transparent' : 'rgba(255,95,86,0.45)'),
+      trade: () => this.setState({ connected: true }),
+      connect: () => this.setState(s => ({ connected: !s.connected })),
+      walletLabel: st.connected ? '0x9a4c…21bd' : 'Connect wallet',
+      walletStyle: 'cursor:pointer;border-radius:7px;padding:9px 14px;border:1px solid ' + (st.connected ? 'rgba(145,240,182,0.35)' : 'rgba(131,183,139,0.2)') +
+        ';box-shadow:0 1px 0 0 rgba(255,255,255,0.06) inset;background:' + (st.connected ? 'rgba(145,240,182,0.08)' : 'linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02)),#111713') + ';color:' + (st.connected ? '#91f0b6' : '#b8c2ba') +
+        ";font:500 11.5px/1 'IBM Plex Mono',monospace",
+
+      copyLabel: st.copied ? 'copied' : 'copy',
+      copyAddress: () => {
+        this.setState({ copied: true });
+        clearTimeout(this._t);
+        this._t = setTimeout(() => this.setState({ copied: false }), 1400);
+      }
+    };
+  }
+}
+
+</script>
+</body>
+</html>
