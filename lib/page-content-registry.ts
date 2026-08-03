@@ -200,6 +200,28 @@ export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
       },
     ],
   },
+  {
+    id: "terms",
+    label: "Terms of Use",
+    route: "/terms",
+    elements: [
+      { id: "eyebrow", type: "text", label: "Header eyebrow", defaultValue: "HOODLUMS LEGAL" },
+      { id: "title", type: "heading", label: "Header title", defaultValue: "Terms of Use" },
+      {
+        id: "intro",
+        type: "text",
+        label: "Header intro copy",
+        defaultValue:
+          "The conditions, responsibilities, and risks that apply when you access or use the HOODLUMS interface.",
+      },
+      {
+        id: "effective_date",
+        type: "text",
+        label: "Effective date",
+        defaultValue: "Effective August 3, 2026",
+      },
+    ],
+  },
 ];
 
 export function findPageDefinition(pageId: string): PageContentPageDefinition | undefined {
