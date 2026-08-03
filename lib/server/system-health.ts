@@ -8,7 +8,7 @@ import { getPostgresPool } from "@/lib/server/postgres";
 export type SystemHealthStatus = "green" | "amber" | "red";
 
 export type SystemHealthCheck = {
-  id: "website-generation" | "database" | "contracts" | "deployment";
+  id: "website-generation" | "database" | "contracts" | "deployment" | "subscribers";
   label: string;
   status: SystemHealthStatus;
   message: string;
@@ -213,11 +213,39 @@ export function checkDeploymentHealth(
   }
 }
 
+export type SubscribersPing = () => Promise<unknown>;
+
+/** Reports whether the `subscriptions` table backing the admin Subscribers section is reachable. */
+export async function checkSubscribersHealth(deps: {
+  databaseUrl?: string;
+  ping?: SubscribersPing;
+} = {}): Promise<SystemHealthCheck> {
+  const id = "subscribers" as const;
+  const label = "Subscribers";
+  const databaseUrl = deps.databaseUrl ?? process.env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl && !deps.ping) {
+    return { id, label, status: "amber", message: "DATABASE_URL is not configured." };
+  }
+  const ping = deps.ping ?? (() => getPostgresPool(databaseUrl).query("SELECT 1 FROM subscriptions LIMIT 1"));
+  try {
+    await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, "Subscribers table health check timed out.");
+    return { id, label, status: "green", message: "The subscriptions table is reachable." };
+  } catch {
+    return {
+      id,
+      label,
+      status: "red",
+      message: "The subscriptions table is not reachable. Apply migration 007_subscriptions.sql.",
+    };
+  }
+}
+
 export type SystemHealthDeps = {
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
   database?: Parameters<typeof checkDatabaseHealth>[0];
   contracts?: Parameters<typeof checkContractsHealth>[0];
+  subscribers?: Parameters<typeof checkSubscribersHealth>[0];
 };
 
 /**
@@ -226,11 +254,12 @@ export type SystemHealthDeps = {
  * the others or the response as a whole.
  */
 export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<SystemHealthCheck[]> {
-  const [websiteGeneration, database, contracts, deployment] = await Promise.all([
+  const [websiteGeneration, database, contracts, deployment, subscribers] = await Promise.all([
     checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
     checkDatabaseHealth(deps.database),
     checkContractsHealth(deps.contracts),
     checkDeploymentHealth(deps.env),
+    checkSubscribersHealth(deps.subscribers),
   ]);
-  return [websiteGeneration, database, contracts, deployment];
+  return [websiteGeneration, database, contracts, deployment, subscribers];
 }

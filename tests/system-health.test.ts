@@ -3,6 +3,7 @@ import {
   checkContractsHealth,
   checkDatabaseHealth,
   checkDeploymentHealth,
+  checkSubscribersHealth,
   checkWebsiteGenerationHealth,
   getSystemHealth,
 } from "@/lib/server/system-health";
@@ -109,15 +110,35 @@ describe("checkDeploymentHealth", () => {
   });
 });
 
+describe("checkSubscribersHealth", () => {
+  it("is green when the subscriptions table ping succeeds", async () => {
+    const result = await checkSubscribersHealth({ ping: async () => ({ rows: [] }) });
+    expect(result).toMatchObject({ id: "subscribers", status: "green" });
+  });
+
+  it("is red when the ping rejects (e.g. the migration has not been applied)", async () => {
+    const result = await checkSubscribersHealth({
+      ping: async () => Promise.reject(new Error(`relation "subscriptions" does not exist`)),
+    });
+    expect(result).toMatchObject({ id: "subscribers", status: "red" });
+  });
+
+  it("is amber when DATABASE_URL is not configured", async () => {
+    const result = await checkSubscribersHealth({ databaseUrl: "" });
+    expect(result).toMatchObject({ id: "subscribers", status: "amber" });
+  });
+});
+
 describe("getSystemHealth", () => {
-  it("returns all four checks, one per required area", async () => {
+  it("returns all five checks, one per required area", async () => {
     const checks = await getSystemHealth({
       env: { NODE_ENV: "development" },
       database: { databaseUrl: "" },
       contracts: { chainId: 1 },
+      subscribers: { databaseUrl: "" },
     });
     expect(checks.map((check) => check.id).sort()).toEqual(
-      ["contracts", "database", "deployment", "website-generation"].sort(),
+      ["contracts", "database", "deployment", "subscribers", "website-generation"].sort(),
     );
   });
 
@@ -127,6 +148,7 @@ describe("getSystemHealth", () => {
       requestOidcToken: "runtime-oidc-token",
       database: { databaseUrl: "" },
       contracts: { chainId: 1 },
+      subscribers: { databaseUrl: "" },
     });
     const byId = Object.fromEntries(checks.map((check) => [check.id, check]));
     expect(byId["website-generation"].status).toBe("green");
@@ -137,6 +159,7 @@ describe("getSystemHealth", () => {
       env: { NODE_ENV: "development" },
       database: { ping: async () => Promise.reject(new Error("down")) },
       contracts: { chainId: 1 },
+      subscribers: { databaseUrl: "" },
     });
     const byId = Object.fromEntries(checks.map((check) => [check.id, check]));
     expect(byId.database.status).toBe("red");

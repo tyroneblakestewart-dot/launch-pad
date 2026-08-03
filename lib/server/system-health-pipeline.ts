@@ -340,6 +340,106 @@ export async function buildDatabasePipeline(deps: DatabasePipelineDeps = {}): Pr
 }
 
 // ---------------------------------------------------------------------------
+// Subscribers
+// ---------------------------------------------------------------------------
+
+export type SubscribersPipelineDeps = {
+  databaseUrl?: string;
+  getPool?: (databaseUrl: string) => PoolLike;
+};
+
+export async function buildSubscribersPipeline(deps: SubscribersPipelineDeps = {}): Promise<AdminServicePipeline> {
+  const databaseUrl = deps.databaseUrl ?? process.env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl) {
+    const message = "DATABASE_URL is not configured.";
+    return {
+      id: "subscribers",
+      label: "Subscribers",
+      stages: [
+        stage("table-exists", "subscriptions table exists", "amber", message),
+        stage("read-query", "Subscribers read query", "amber", message),
+        stage("row-count", "Subscriber row count", "amber", message),
+      ],
+    };
+  }
+
+  const pool = (deps.getPool ?? ((url: string) => getPostgresPool(url) as unknown as PoolLike))(databaseUrl);
+
+  let tableExists = false;
+  let tableExistsStage: AdminPipelineStage;
+  try {
+    const result = await withTimeout(
+      pool.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'subscriptions'`,
+      ),
+      HEALTH_CHECK_TIMEOUT_MS,
+      "timed out",
+    );
+    tableExists = result.rows.length > 0;
+    tableExistsStage = tableExists
+      ? stage("table-exists", "subscriptions table exists", "green", "The subscriptions table is present.")
+      : stage(
+          "table-exists",
+          "subscriptions table exists",
+          "red",
+          "Migration 007_subscriptions.sql has not been applied yet.",
+        );
+  } catch {
+    tableExistsStage = stage(
+      "table-exists",
+      "subscriptions table exists",
+      "red",
+      "Could not check whether the subscriptions table exists.",
+    );
+  }
+
+  let readQueryStage: AdminPipelineStage;
+  let rowCountStage: AdminPipelineStage;
+  if (!tableExists) {
+    readQueryStage = stage(
+      "read-query",
+      "Subscribers read query",
+      "amber",
+      "Not probed; the subscriptions table does not exist yet.",
+    );
+    rowCountStage = stage(
+      "row-count",
+      "Subscriber row count",
+      "amber",
+      "Not probed; the subscriptions table does not exist yet.",
+    );
+  } else {
+    try {
+      const result = await withTimeout(
+        pool.query<{ count: number | string }>(`SELECT COUNT(*)::int AS count FROM subscriptions`),
+        HEALTH_CHECK_TIMEOUT_MS,
+        "timed out",
+      );
+      const count = Number(result.rows[0]?.count ?? 0);
+      readQueryStage = stage("read-query", "Subscribers read query", "green", "The subscribers read query succeeded.");
+      rowCountStage =
+        count === 0
+          ? stage(
+              "row-count",
+              "Subscriber row count",
+              "green",
+              `0 subscriber rows. The dashboard shows "No subscribers yet", not an error.`,
+            )
+          : stage("row-count", "Subscriber row count", "green", `${count} subscriber row(s).`);
+    } catch {
+      readQueryStage = stage("read-query", "Subscribers read query", "red", "The subscribers read query failed.");
+      rowCountStage = stage("row-count", "Subscriber row count", "red", "Could not count subscriber rows.");
+    }
+  }
+
+  return {
+    id: "subscribers",
+    label: "Subscribers",
+    stages: [tableExistsStage, readQueryStage, rowCountStage],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // On-chain contracts
 // ---------------------------------------------------------------------------
 
@@ -579,6 +679,7 @@ export type SystemHealthPipelineDeps = {
   websiteGeneration?: WebsiteGenerationPipelineDeps;
   database?: DatabasePipelineDeps;
   contracts?: ContractsPipelineDeps;
+  subscribers?: SubscribersPipelineDeps;
 };
 
 /** Builds a single service's pipeline on demand — used by the drill-down endpoint. */
@@ -599,5 +700,7 @@ export async function buildServicePipeline(
       return buildContractsPipeline(deps.contracts);
     case "deployment":
       return buildDeploymentPipeline({ env: deps.env, requestOidcToken: deps.requestOidcToken });
+    case "subscribers":
+      return buildSubscribersPipeline(deps.subscribers);
   }
 }

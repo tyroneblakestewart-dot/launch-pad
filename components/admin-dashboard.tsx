@@ -8,6 +8,7 @@ import {
   AdminOverview,
 } from "@/components/admin-operations-sections";
 import { AdminPagesSection } from "@/components/admin-pages-section";
+import { AdminSubscribersSection } from "@/components/admin-subscribers-section";
 import { AdminSystemHealth } from "@/components/admin-system-health";
 import type {
   AdminOperationsSnapshot,
@@ -21,6 +22,7 @@ type SectionId =
   | "money"
   | "issues"
   | "pages"
+  | "subscribers"
   | "system-health";
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
@@ -29,6 +31,7 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "money", label: "Money" },
   { id: "issues", label: "Issues" },
   { id: "pages", label: "Pages" },
+  { id: "subscribers", label: "Subscribers" },
   { id: "system-health", label: "System Health" },
 ];
 
@@ -200,7 +203,7 @@ export function AdminDashboard() {
           </p>
         ) : null}
 
-        {activeSection !== "system-health" && activeSection !== "pages" && !snapshot ? (
+        {activeSection !== "system-health" && activeSection !== "pages" && activeSection !== "subscribers" && !snapshot ? (
           <div className={styles.loadingPanel}>
             {loading ? "Loading admin operations…" : "No operations data is available."}
           </div>
@@ -224,6 +227,7 @@ export function AdminDashboard() {
           />
         ) : null}
         {activeSection === "pages" ? <AdminPagesSection /> : null}
+        {activeSection === "subscribers" ? <AdminSubscribersSection /> : null}
         {activeSection === "system-health" ? <AdminSystemHealth /> : null}
       </section>
     </main>

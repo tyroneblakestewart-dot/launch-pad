@@ -5,6 +5,7 @@ import {
   buildDatabasePipeline,
   buildDeploymentPipeline,
   buildServicePipeline,
+  buildSubscribersPipeline,
   buildWebsiteGenerationPipeline,
 } from "@/lib/server/system-health-pipeline";
 
@@ -346,6 +347,69 @@ describe("buildDeploymentPipeline", () => {
   });
 });
 
+describe("buildSubscribersPipeline", () => {
+  function fakePool(overrides: {
+    query?: (text: string, params?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>;
+  } = {}) {
+    return {
+      totalCount: 1,
+      idleCount: 1,
+      waitingCount: 0,
+      query:
+        overrides.query ??
+        (async (text: string) => {
+          if (text.includes("information_schema.tables")) {
+            return { rows: [{ table_name: "subscriptions" }] };
+          }
+          if (text.includes("COUNT(*)")) {
+            return { rows: [{ count: 3 }] };
+          }
+          return { rows: [] };
+        }),
+    };
+  }
+
+  it("reports every stage amber when DATABASE_URL is not configured", async () => {
+    const pipeline = await buildSubscribersPipeline({ databaseUrl: "" });
+    expect(pipeline.stages.every((stage) => stage.status === "amber")).toBe(true);
+  });
+
+  it("is green end to end when the table exists and the read query succeeds", async () => {
+    const pipeline = await buildSubscribersPipeline({ databaseUrl: "postgres://test", getPool: () => fakePool() });
+    expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "read-query")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "row-count")).toMatchObject({ status: "green", message: expect.stringContaining("3") });
+  });
+
+  it("is red on table-exists and does not probe the read query or row count when the migration has not been applied", async () => {
+    const pipeline = await buildSubscribersPipeline({
+      databaseUrl: "postgres://test",
+      getPool: () => fakePool({ query: async () => ({ rows: [] }) }),
+    });
+    expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "read-query")).toMatchObject({ status: "amber" });
+    expect(stageById(pipeline, "row-count")).toMatchObject({ status: "amber" });
+  });
+
+  it("reports a green, not amber or red, row count of zero as 'No subscribers yet'", async () => {
+    const pipeline = await buildSubscribersPipeline({
+      databaseUrl: "postgres://test",
+      getPool: () =>
+        fakePool({
+          query: async (text: string) => {
+            if (text.includes("information_schema.tables")) return { rows: [{ table_name: "subscriptions" }] };
+            if (text.includes("COUNT(*)")) return { rows: [{ count: 0 }] };
+            return { rows: [] };
+          },
+        }),
+    });
+    expect(stageById(pipeline, "row-count")).toMatchObject({
+      status: "green",
+      message: expect.stringContaining("No subscribers yet"),
+    });
+  });
+});
+
 describe("buildServicePipeline dispatch", () => {
   it("routes each id to the matching pipeline builder", async () => {
     const websiteGeneration = await buildServicePipeline("website-generation", {
@@ -364,5 +428,8 @@ describe("buildServicePipeline dispatch", () => {
 
     const deployment = await buildServicePipeline("deployment", { env: { NODE_ENV: "development" } });
     expect(deployment.id).toBe("deployment");
+
+    const subscribers = await buildServicePipeline("subscribers", { subscribers: { databaseUrl: "" } });
+    expect(subscribers.id).toBe("subscribers");
   });
 });
