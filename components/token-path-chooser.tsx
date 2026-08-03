@@ -72,7 +72,16 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
     return (
       <button
         type="button"
-        className={styles.resumeButton}
+        className={styles.continueButton}
+        style={{
+          position: "fixed",
+          left: "50%",
+          bottom: "calc(92px + env(safe-area-inset-bottom))",
+          zIndex: 1501,
+          width: "min(320px, calc(100% - 32px))",
+          margin: 0,
+          transform: "translateX(-50%)",
+        }}
         onClick={() => setDismissed(false)}
       >
         Choose a plan to continue
