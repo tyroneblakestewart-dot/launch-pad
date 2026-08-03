@@ -53,7 +53,6 @@ export function HoodlumsPlansSection() {
       className={styles.section}
       aria-labelledby="hoodlums-plans-title"
     >
-      <div className={styles.glow} aria-hidden="true" />
       <div className={styles.inner}>
         <header className={styles.heading}>
           <p className={styles.eyebrow}>PLANS · CHOOSE YOUR PATH</p>

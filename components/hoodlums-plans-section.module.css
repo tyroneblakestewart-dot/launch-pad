@@ -6,15 +6,6 @@
   color: #f4f7f1;
 }
 
-.glow {
-  position: absolute;
-  z-index: -1;
-  inset: -110px -20px auto;
-  height: 520px;
-  background: radial-gradient(78% 44% at 50% 0%, rgba(198, 245, 62, 0.11), transparent 62%);
-  pointer-events: none;
-}
-
 .inner {
   width: min(1180px, 100%);
   margin: 0 auto;
