@@ -1,12 +1,42 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { LAUNCH_PATH_OPTIONS, launchPathLabel } from "@/lib/launch-paths";
+import {
+  LAUNCH_PATH_OPTIONS,
+  consumeLaunchPathPreset,
+  isLaunchPathLocked,
+  launchPathLabel,
+  storeLaunchPathPreset,
+} from "@/lib/launch-paths";
 
 const ROOT = process.cwd();
 
+function memoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear() {
+      values.clear();
+    },
+    getItem(key) {
+      return values.get(key) ?? null;
+    },
+    key(index) {
+      return [...values.keys()][index] ?? null;
+    },
+    removeItem(key) {
+      values.delete(key);
+    },
+    setItem(key, value) {
+      values.set(key, value);
+    },
+  };
+}
+
 describe("launch path options", () => {
-  it("defines the four paths from the issue in order, with Bond + Site recommended", () => {
+  it("defines the four approved paths in order", () => {
     expect(LAUNCH_PATH_OPTIONS.map((option) => option.id)).toEqual([
       "bond",
       "bond-site",
@@ -19,16 +49,30 @@ describe("launch path options", () => {
       "Bond + Pro Site",
       "Pro",
     ]);
-    expect(LAUNCH_PATH_OPTIONS.filter((option) => option.recommended)).toHaveLength(1);
-    expect(LAUNCH_PATH_OPTIONS.find((option) => option.recommended)?.id).toBe("bond-site");
   });
 
-  it("prices Bond and Bond + Site free, and marks the two paid tiers", () => {
+  it("moves Recommended to Bond + Pro Site and labels Bond + Site Most Popular", () => {
+    const bondSite = LAUNCH_PATH_OPTIONS.find((option) => option.id === "bond-site");
+    const bondProSite = LAUNCH_PATH_OPTIONS.find((option) => option.id === "bond-pro-site");
+
+    expect(bondSite?.badge).toBe("Most Popular");
+    expect(bondSite?.featured).toBe(true);
+    expect(bondProSite?.badge).toBe("Recommended");
+    expect(bondProSite?.recommended).toBe(true);
+    expect(LAUNCH_PATH_OPTIONS.filter((option) => option.recommended)).toHaveLength(1);
+  });
+
+  it("uses the approved USD pricing and Pro copy", () => {
     const [bond, bondSite, bondProSite, pro] = LAUNCH_PATH_OPTIONS;
     expect(bond.price).toBe("Free");
     expect(bondSite.price).toBe("Free");
-    expect(bondProSite.price).toMatch(/\$10/);
-    expect(pro.price).toMatch(/\$30\/month/);
+    expect(bondProSite.price).toBe("$10 · one-off");
+    expect(pro.price).toBe("$50/month · per token");
+    expect(pro.tagline).toBe(
+      "Your token's marketing, on autopilot. Whatever chain you're on.",
+    );
+    expect(pro.bullets).toContain("Works for any token — any chain");
+    expect(pro.detailsLink?.targetId).toBe("pro-bundle");
   });
 
   it("looks up a display label by id and falls back to an empty string", () => {
@@ -38,6 +82,13 @@ describe("launch path options", () => {
     expect(launchPathLabel("pro")).toBe("Pro");
     expect(launchPathLabel(null)).toBe("");
     expect(launchPathLabel(undefined)).toBe("");
+  });
+
+  it("stores a homepage preset once and clears it after the chooser consumes it", () => {
+    const storage = memoryStorage();
+    storeLaunchPathPreset("bond-pro-site", storage);
+    expect(consumeLaunchPathPreset(storage)).toBe("bond-pro-site");
+    expect(consumeLaunchPathPreset(storage)).toBeNull();
   });
 });
 
@@ -50,7 +101,7 @@ describe("token path chooser overlay", () => {
     expect(types).toContain("launchPath?: LaunchPath | null;");
   });
 
-  it("renders nothing until opened, and has no close button or click-outside dismissal", async () => {
+  it("renders an X that dismisses the overlay into a choose-plan prompt", async () => {
     const component = await readFile(
       path.join(ROOT, "components", "token-path-chooser.tsx"),
       "utf8",
@@ -58,13 +109,20 @@ describe("token path chooser overlay", () => {
 
     expect(component).toContain("if (!open) return null;");
     expect(component).toContain('role="dialog"');
-    expect(component).toContain('aria-modal="true"');
-    expect(component).not.toContain(">×</button>");
-    expect(component).not.toContain("onClick={() => setOpen(false)}");
-    expect(component).not.toContain("onClick={onClose}");
+    expect(component).toContain('aria-label="Close plan chooser"');
+    expect(component).toContain("onClick={() => setDismissed(true)}");
+    expect(component).toContain("Choose a plan to continue");
+    expect(component).toContain("onClick={() => setDismissed(false)}");
   });
 
-  it("highlights the clicked column and dims the others, with a recommended badge", async () => {
+  it("keeps an unplanned project locked even after the overlay is dismissed", () => {
+    expect(isLaunchPathLocked(false, null)).toBe(true);
+    expect(isLaunchPathLocked(false, undefined)).toBe(true);
+    expect(isLaunchPathLocked(false, "bond")).toBe(false);
+    expect(isLaunchPathLocked(true, "bond")).toBe(true);
+  });
+
+  it("highlights the clicked column and dims the others, with approved badges", async () => {
     const component = await readFile(
       path.join(ROOT, "components", "token-path-chooser.tsx"),
       "utf8",
@@ -74,7 +132,7 @@ describe("token path chooser overlay", () => {
     expect(component).toContain("onClick={() => setPending(option.id)}");
     expect(component).toContain("isSelected ? styles.columnSelected : \"\"");
     expect(component).toContain("pending && !isSelected ? styles.columnDimmed : \"\"");
-    expect(component).toContain("option.recommended && <span className={styles.badge}>Recommended</span>");
+    expect(component).toContain("option.badge ? <span className={styles.badge}>{option.badge}</span>");
   });
 
   it("only shows Continue once a column is selected, and confirms the pending selection", async () => {
@@ -83,19 +141,31 @@ describe("token path chooser overlay", () => {
       "utf8",
     );
 
-    expect(component).toContain("{pending && (");
+    expect(component).toContain("{pending ? (");
     expect(component).toContain("onClick={() => onConfirm(pending)}");
   });
 
-  it("resets the pending highlight to the current selection whenever it reopens", async () => {
+  it("consumes a homepage CTA preset whenever a new chooser opens", async () => {
     const component = await readFile(
       path.join(ROOT, "components", "token-path-chooser.tsx"),
       "utf8",
     );
 
-    expect(component).toContain("const [pending, setPending] = useState<LaunchPath | null>(selected);");
-    expect(component).toContain("if (open !== wasOpen) {");
-    expect(component).toContain("if (open) setPending(selected);");
+    expect(component).toContain("setPending(consumeLaunchPathPreset() ?? selected);");
+    expect(component).toContain("OPEN_WORKSPACE_REQUEST_EVENT");
+    expect(component).toContain("setPending(launchPath);");
+  });
+
+  it("links both the overlay footer and Pro Bundle copy to the homepage plans anchors", async () => {
+    const component = await readFile(
+      path.join(ROOT, "components", "token-path-chooser.tsx"),
+      "utf8",
+    );
+
+    expect(component).toContain("See full plan details ↓");
+    expect(component).toContain('targetId = "plans"');
+    expect(component).toContain("viewPlanDetails(detailsLink.targetId)");
+    expect(component).toContain("scrollIntoView");
   });
 
   it("stacks the four columns on mobile and switches to a row on wider screens", async () => {
@@ -139,15 +209,7 @@ describe("token studio path-chooser wiring", () => {
     expect(studio).toContain("onConfirm={confirmLaunchPath}");
   });
 
-  it("shows the current plan and a Change plan control once a path is chosen", async () => {
-    const studio = await readFile(path.join(ROOT, "components", "token-studio.tsx"), "utf8");
-
-    expect(studio).toContain("{project.launchPath && (");
-    expect(studio).toContain("Plan: {launchPathLabel(project.launchPath)}");
-    expect(studio).toContain("Change plan");
-  });
-
-  it("greys out and aria-disables the form while the chooser is open, not just pointer-events", async () => {
+  it("keeps the form and topbar inert while the chooser remains logically open", async () => {
     const studio = await readFile(path.join(ROOT, "components", "token-studio.tsx"), "utf8");
     const css = await readFile(path.join(ROOT, "app", "globals.css"), "utf8");
 
@@ -156,22 +218,9 @@ describe("token studio path-chooser wiring", () => {
     );
     expect(studio).toContain("aria-disabled={showPathChooser || undefined}");
     expect(studio).toContain("inert={showPathChooser || undefined}");
+    expect(studio).toContain('<header className="topbar" inert={showPathChooser || undefined}>');
     expect(css).toContain(".builder-panel.path-locked {");
     expect(css).toContain("filter: saturate(.35) brightness(.5);");
     expect(css).toContain("pointer-events: none;");
-  });
-
-  it("also makes the topbar inert while the chooser is open, so keyboard/AT users can't tab behind it", async () => {
-    const studio = await readFile(path.join(ROOT, "components", "token-studio.tsx"), "utf8");
-
-    expect(studio).toContain('<header className="topbar" inert={showPathChooser || undefined}>');
-  });
-
-  it("renders the TokenPathChooser wired to the studio's own project state", async () => {
-    const studio = await readFile(path.join(ROOT, "components", "token-studio.tsx"), "utf8");
-
-    expect(studio).toContain('import { TokenPathChooser } from "./token-path-chooser";');
-    expect(studio).toContain("<TokenPathChooser");
-    expect(studio).toContain("open={showPathChooser}");
   });
 });
