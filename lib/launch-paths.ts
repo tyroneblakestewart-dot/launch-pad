@@ -82,6 +82,35 @@ export const LAUNCH_PATH_OPTIONS: readonly LaunchPathOption[] = [
   },
 ];
 
+export const LAUNCH_PATH_PRESET_STORAGE_KEY = "hoodlums:launch-path-preset";
+
+function browserSessionStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function storeLaunchPathPreset(
+  path: LaunchPath,
+  storage: Storage | null = browserSessionStorage(),
+): void {
+  storage?.setItem(LAUNCH_PATH_PRESET_STORAGE_KEY, path);
+}
+
+/** Reads a homepage CTA preset once, then clears it so normal New token clicks stay neutral. */
+export function consumeLaunchPathPreset(
+  storage: Storage | null = browserSessionStorage(),
+): LaunchPath | null {
+  const stored = storage?.getItem(LAUNCH_PATH_PRESET_STORAGE_KEY) ?? null;
+  storage?.removeItem(LAUNCH_PATH_PRESET_STORAGE_KEY);
+  return LAUNCH_PATH_OPTIONS.some((option) => option.id === stored)
+    ? (stored as LaunchPath)
+    : null;
+}
+
 export function launchPathLabel(id: LaunchPath | null | undefined): string {
   return LAUNCH_PATH_OPTIONS.find((option) => option.id === id)?.name ?? "";
 }
