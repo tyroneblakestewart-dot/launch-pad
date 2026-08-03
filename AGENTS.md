@@ -101,6 +101,15 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
    if a test seems wrong, say so in the PR instead.
 9. **Keep changes reviewable.** One concern per PR, plain-English
    description of what changed and why, note any trade-offs or caveats.
+10. **The `/admin` dashboard is kept in sync — non-negotiable, same weight
+    as rule 7.** Every time a new feature, page, or system integration is
+    built and merged, `/admin` must be updated in the same PR, or an
+    immediate follow-up PR opened right after. New public pages go in the
+    Pages CMS section. New system integrations (X posting, Telegram,
+    payment flow, etc.) go in System Health monitoring, each with its own
+    pipeline stages. New revenue streams go in the Money section. New
+    user-facing features go in the Activity log. A PR that ships a feature
+    without its admin-cockpit counterpart is not done.
 
 ## Current roadmap (update as milestones land)
 
