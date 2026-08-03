@@ -10,6 +10,7 @@ import styles from "./app-navigation.module.css";
 const NAV_ITEMS = [
   { href: "/", label: "Create & Bond", icon: "studio", step: "1", description: "Create a token, open its market" },
   { href: "/providers", label: "Providers", icon: "wallet", step: "2", description: "Choose the launch provider" },
+  { href: "/hoodchat", label: "Hoodchat", icon: "hoodchat", step: "◉", description: "Chat with the crew" },
   { href: "/allocations", label: "Allocations", icon: "allocate", step: "3", description: "Plan token distribution" },
   { href: "/liquidity-lab", label: "Liquidity Lab", icon: "liquidity", step: "4", description: "Test the token pool", testnetOnly: true },
   { href: "/bonding-curve", label: "Bonding Curve", icon: "curve", step: "5", description: "Track token graduation", testnetOnly: true },
@@ -40,6 +41,9 @@ function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
   }
   if (name === "liquidity") {
     return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v5.2c0 .5-.2 1-.6 1.4L4.8 11.2a4 4 0 0 0 0 5.6l2.4 2.4a4 4 0 0 0 5.6 0l6.4-6.4a4 4 0 0 0 0-5.6l-2.4-2.4a4 4 0 0 0-5.6 0L9.6 6.4M14 8l2 2M9 13l2 2" /></svg>;
+  }
+  if (name === "hoodchat") {
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 4v-4H5.5A1.5 1.5 0 0 1 4 14.5Z M8 9h8M8 12h5" /></svg>;
   }
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h16M5 16l4-5 3 2 5-7 2 2M17 6h2v2" /></svg>;
 }

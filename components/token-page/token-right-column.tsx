@@ -10,13 +10,14 @@ const TERMINAL_NOTES: Record<string, string> = {
 
 /**
  * Right column of the public token page (issue #225): referral-coded
- * "Trade on" links, a static about/story panel, and a "coming soon" chat
- * placeholder. Purely presentational (no wallet or live data), so this
- * stays a plain server component with no client directive. There's no stored
- * description for an arbitrary chain/address token page (private drafts
- * live in the browser, published sites are keyed by slug, not address —
- * see CLAUDE.md), so the about panel shows a plain fallback line instead of
- * inventing copy.
+ * "Trade on" links and a static about/story panel. Purely presentational (no
+ * wallet or live data), so this stays a plain server component with no
+ * client directive. There's no stored description for an arbitrary
+ * chain/address token page (private drafts live in the browser, published
+ * sites are keyed by slug, not address — see CLAUDE.md), so the about panel
+ * shows a plain fallback line instead of inventing copy. Live token chat now
+ * lives in the centre column's Hoodchat tab (issue #237), replacing the
+ * "coming soon" placeholder that used to sit here.
  */
 export function TokenRightColumn({ tradeLinks }: { tradeLinks: TradeTerminalLink[] }) {
   return (
@@ -46,16 +47,6 @@ export function TokenRightColumn({ tradeLinks }: { tradeLinks: TradeTerminalLink
         <p className={styles.storyText}>No description has been published for this token yet.</p>
         <div className={styles.storyTags}>
           <span className={styles.storyTag}>Bonding curve testnet launch</span>
-        </div>
-      </div>
-
-      <div className={styles.panel} style={{ padding: 0 }}>
-        <div className={styles.chatPanelHeader}>
-          <span className={styles.sectionLabel}>Crew chat</span>
-        </div>
-        <div className={styles.chatComingSoon}>
-          <span className={styles.chatComingSoonTitle}>Coming soon</span>
-          <p className={styles.chatComingSoonCopy}>Token holders will be able to chat here in a future update.</p>
         </div>
       </div>
     </>

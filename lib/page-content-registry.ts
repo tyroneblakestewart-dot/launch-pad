@@ -135,6 +135,24 @@ export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
     ],
   },
   {
+    id: "hoodchat",
+    label: "Hoodchat",
+    route: "/hoodchat",
+    elements: [
+      { id: "hero_eyebrow", type: "text", label: "Hero eyebrow", defaultValue: "COMMUNITY FEED" },
+      { id: "hero_title", type: "heading", label: "Hero title", defaultValue: "Hoodchat" },
+      {
+        id: "hero_intro",
+        type: "text",
+        label: "Hero intro copy",
+        defaultValue: "Talk launches, trading and projects with the rest of the crew.",
+      },
+      { id: "empty_state", type: "text", label: "Empty feed copy", defaultValue: "No messages yet. Be the first to post." },
+      { id: "composer_placeholder", type: "text", label: "Composer placeholder", defaultValue: "Say something to the crew…" },
+      { id: "connect_prompt", type: "text", label: "Disconnected composer prompt", defaultValue: "Connect wallet to post" },
+    ],
+  },
+  {
     id: "public-token-site",
     label: "Public token site chrome ([slug] / token page)",
     route: "/[slug]",

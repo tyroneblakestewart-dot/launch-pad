@@ -11,6 +11,16 @@ export const ADMIN_CHALLENGE_WINDOW_MS = 60 * 60 * 1000;
 export const ADMIN_LOGIN_LIMIT = 5;
 export const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000;
 
+// IP-level flood protection for the Hoodchat features (issue #237). This is
+// deliberately looser than the per-wallet "5 messages per hour" business
+// rule enforced in lib/server/hoodchat-store.ts / token-chat-store.ts — that
+// rule is the actual product limit; this just stops one IP from hammering
+// the endpoints with many wallets.
+export const CHAT_CHALLENGE_LIMIT = 30;
+export const CHAT_POST_LIMIT = 30;
+export const CHAT_REPORT_LIMIT = 20;
+export const CHAT_RATE_WINDOW_MS = 60 * 60 * 1000;
+
 type RateRecord = { count: number; resetAt: number };
 type RateStore = Map<string, RateRecord>;
 
@@ -67,6 +77,25 @@ function adminLoginRateStore(): RateStore {
     globalScope.__hoodlumsAdminLoginRateStore = new Map();
   }
   return globalScope.__hoodlumsAdminLoginRateStore;
+}
+
+type GlobalWithNamedRateStores = typeof globalThis & {
+  __hoodlumsNamedRateStores?: Map<string, RateStore>;
+};
+
+/** Generic named-store lookup, used for the six chat endpoint limiters below. */
+function namedRateStore(name: string): RateStore {
+  const globalScope = globalThis as GlobalWithNamedRateStores;
+  if (!globalScope.__hoodlumsNamedRateStores) {
+    globalScope.__hoodlumsNamedRateStores = new Map();
+  }
+  const stores = globalScope.__hoodlumsNamedRateStores;
+  let store = stores.get(name);
+  if (!store) {
+    store = new Map();
+    stores.set(name, store);
+  }
+  return store;
 }
 
 function safeEqual(left: string, right: string): boolean {
@@ -245,4 +274,39 @@ export function resetPublishRateLimitsForTests() {
 export function resetAdminRateLimitsForTests() {
   adminChallengeRateStore().clear();
   adminLoginRateStore().clear();
+}
+
+export function consumeHoodchatChallengeRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("hoodchat-challenge"), ip, CHAT_CHALLENGE_LIMIT, CHAT_RATE_WINDOW_MS, now);
+}
+
+export function consumeHoodchatPostRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("hoodchat-post"), ip, CHAT_POST_LIMIT, CHAT_RATE_WINDOW_MS, now);
+}
+
+export function consumeHoodchatReportRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("hoodchat-report"), ip, CHAT_REPORT_LIMIT, CHAT_RATE_WINDOW_MS, now);
+}
+
+export function consumeTokenChatChallengeRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("token-chat-challenge"), ip, CHAT_CHALLENGE_LIMIT, CHAT_RATE_WINDOW_MS, now);
+}
+
+export function consumeTokenChatPostRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("token-chat-post"), ip, CHAT_POST_LIMIT, CHAT_RATE_WINDOW_MS, now);
+}
+
+export function consumeTokenChatReportRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("token-chat-report"), ip, CHAT_REPORT_LIMIT, CHAT_RATE_WINDOW_MS, now);
+}
+
+export function resetChatRateLimitsForTests() {
+  [
+    "hoodchat-challenge",
+    "hoodchat-post",
+    "hoodchat-report",
+    "token-chat-challenge",
+    "token-chat-post",
+    "token-chat-report",
+  ].forEach((name) => namedRateStore(name).clear());
 }

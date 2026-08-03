@@ -27,7 +27,8 @@ export type TokenPageViewProps = {
 /**
  * Full pixel-accurate layout from public/design-refs/hoodlums-token-page.html
  * (issue #225): a three-column desktop grid — identity+swap / chart+activity
- * / trade terminals+about+chat — that stacks to a single column on mobile,
+ * (activity now includes the Hoodchat tab, issue #237) / trade terminals+about
+ * — that stacks to a single column on mobile,
  * with the swap panel replaced by a sticky bottom bar below 880px (handled
  * in `token-page.module.css`, matching the design reference's own
  * `.hd-swap` / `.hd-mobilebar` breakpoint). A server component: the only
@@ -98,7 +99,7 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
           </div>
 
           <div className={styles.center}>
-            <TokenCenterColumn address={address} marketStats={marketStats} />
+            <TokenCenterColumn chain={chain} address={address} marketStats={marketStats} />
           </div>
 
           <div className={styles.right}>
