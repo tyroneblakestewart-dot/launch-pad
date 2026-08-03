@@ -1,3 +1,4 @@
+import { consumeLaunchPathPreset, storeLaunchPathPreset } from "./launch-paths";
 import type { LaunchPath } from "./types";
 
 /**
@@ -19,6 +20,12 @@ export function requestWorkspaceOpen(
   launchPath?: LaunchPath,
   target?: EventTarget,
 ): void {
+  if (launchPath) {
+    storeLaunchPathPreset(launchPath);
+  } else {
+    consumeLaunchPathPreset();
+  }
+
   const eventTarget = target ?? (typeof window === "undefined" ? null : window);
   if (!eventTarget) return;
 
