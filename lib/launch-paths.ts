@@ -1,12 +1,21 @@
 import type { LaunchPath } from "./types";
 
+export interface LaunchPathLink {
+  label: string;
+  targetId: string;
+}
+
 export interface LaunchPathOption {
   id: LaunchPath;
   name: string;
   price: string;
   tagline: string;
   bullets: string[];
+  badge?: string;
+  featured?: boolean;
   recommended?: boolean;
+  foot?: string;
+  detailsLink?: LaunchPathLink;
 }
 
 export const LAUNCH_PATH_OPTIONS: readonly LaunchPathOption[] = [
@@ -14,7 +23,7 @@ export const LAUNCH_PATH_OPTIONS: readonly LaunchPathOption[] = [
     id: "bond",
     name: "Bond",
     price: "Free",
-    tagline: "Token launch on-chain with a bonding curve that graduates to locked liquidity.",
+    tagline: "Simple token launch on-chain.",
     bullets: [
       "Token launch on-chain",
       "Bonding curve",
@@ -26,40 +35,61 @@ export const LAUNCH_PATH_OPTIONS: readonly LaunchPathOption[] = [
     id: "bond-site",
     name: "Bond + Site",
     price: "Free",
-    tagline: "Everything in Bond, plus an AI-generated website built for your token.",
+    badge: "Most Popular",
+    featured: true,
+    tagline: "Launch your token with a real website.",
     bullets: [
       "Everything in Bond",
       "AI-generated website design",
       "Dexscreener chart",
       "Holder stats",
     ],
-    recommended: true,
   },
   {
     id: "bond-pro-site",
     name: "Bond + Pro Site",
-    price: "~$10 in ETH · one-off",
-    tagline: "Everything in Bond + Site, on your own subdomain with a premium bespoke design.",
+    price: "$10 · one-off",
+    badge: "Recommended",
+    recommended: true,
+    tagline: "Your token. Your domain. Your brand.",
     bullets: [
       "Everything in Bond + Site",
       "[token].hoodlums.dev subdomain",
-      "Premium bespoke AI generation",
+      "Premium bespoke AI design",
+      "Export your site — full HTML, host it anywhere, own it forever",
+      "Dexscreener chart + holder stats",
     ],
   },
   {
     id: "pro",
     name: "Pro",
-    price: "$30/month · USDT",
-    tagline: "Works for any token, including third-party launches you didn't create here.",
+    price: "$50/month · per token",
+    tagline: "Your token's marketing, on autopilot. Whatever chain you're on.",
     bullets: [
-      "Works for any token, including third-party",
-      "Telegram buy bot",
-      "X account AI posting",
-      "Holder analytics dashboard",
+      "Works for any token — any chain",
+      "5 posts/day · 2 AI images",
+      "Drop your style",
+      "Drop your mascot",
+      "Telegram buy alerts",
+      "Holder analytics",
+      "20% off 3 months upfront",
     ],
+    foot: "First of its kind. Quality over noise.",
+    detailsLink: {
+      label: "Got multiple tokens? Pro Bundle — 3 tokens for $120/month →",
+      targetId: "pro-bundle",
+    },
   },
 ];
 
 export function launchPathLabel(id: LaunchPath | null | undefined): string {
   return LAUNCH_PATH_OPTIONS.find((option) => option.id === id)?.name ?? "";
+}
+
+/** Closing the chooser never unlocks an unplanned project. */
+export function isLaunchPathLocked(
+  chooserOpen: boolean,
+  selectedPath: LaunchPath | null | undefined,
+): boolean {
+  return chooserOpen || !selectedPath;
 }
