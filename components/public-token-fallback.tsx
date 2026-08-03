@@ -3,7 +3,8 @@ import type { PublicGeneratedSite } from "@/lib/public-site";
 
 function formatSupply(value: string): string {
   const numeric = Number(value);
-  return Number.isFinite(numeric) && value ? numeric.toLocaleString("en-GB") : value;
+  if (Number.isFinite(numeric) && value) return numeric.toLocaleString("en-GB");
+  return "—";
 }
 
 /**

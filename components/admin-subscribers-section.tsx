@@ -28,8 +28,8 @@ type SubscribersResponse = {
 const TIER_LABEL: Record<SubscriberTier, string> = {
   free: "Free",
   bond: "Bond",
-  bond_site: "Bond+Site",
-  bond_pro_site: "Bond+Pro Site",
+  bond_site: "Bond + Site",
+  bond_pro_site: "Bond + Pro Site",
   pro: "Pro",
 };
 
@@ -181,7 +181,7 @@ export function AdminSubscribersSection() {
         </div>
         <div className={styles.summaryCard}>
           <p className={styles.summaryValue}>{summary.activeBondProSite}</p>
-          <p className={styles.summaryLabel}>active Bond+Pro Site</p>
+          <p className={styles.summaryLabel}>active Bond + Pro Site</p>
         </div>
         <div className={styles.summaryCard}>
           <p className={styles.summaryValue}>{summary.freeTier}</p>

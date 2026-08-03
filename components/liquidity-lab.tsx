@@ -199,8 +199,8 @@ export function LiquidityLab() {
         <article className={styles.card}>
           <h2>2. Register test AMM</h2>
           <p>
-            Deploy <code>contracts/HoodlumsTestLiquidityPool.sol</code> in Remix with the
-            HOODLUMS address as its constructor argument, then paste the new contract address.
+            This lab needs a test trading pool contract. If you don&apos;t have one, ask a
+            developer to deploy one.
           </p>
           <input
             aria-label="Test AMM address"
@@ -209,9 +209,6 @@ export function LiquidityLab() {
             onChange={(event) => setPoolInput(event.target.value.trim())}
           />
           <div className={styles.row}>
-            <a href="https://remix.ethereum.org" target="_blank" rel="noreferrer">
-              Open Remix ↗
-            </a>
             <button onClick={savePoolAddress} disabled={busy}>Save pool address</button>
           </div>
         </article>

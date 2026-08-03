@@ -17,7 +17,6 @@ import styles from "./provider-launcher.module.css";
 
 const PROJECT_STORAGE_KEY = "private-meme-token-studio-projects-v1";
 const LAUNCH_STORAGE_KEY = "private-meme-token-studio-provider-launches-v1";
-const NOXA_FACTORY = "0xD9eC2db5f3D1b236843925949fe5bd8a3836FCcB";
 
 const ERC20_ABI = parseAbi([
   "function name() view returns (string)",
@@ -27,7 +26,7 @@ const ERC20_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
 ]);
 
-type ProviderId = "noxa" | "pons";
+type ProviderId = "pons";
 
 type LaunchVerification = {
   provider: ProviderId;
@@ -42,18 +41,9 @@ type LaunchVerification = {
   verifiedAt: string;
 };
 
-const PROVIDERS = {
-  noxa: {
-    id: "noxa" as const,
-    name: "NOXA Fun",
-    launchUrl: "https://fun.noxa.fi/rh/launch",
-    label: "Launch + immediate buy handoff",
-    description:
-      "Prepare the launch pack here, complete the wallet-signed launch on NOXA, verify the token, then continue straight to the official provider for the creator buy.",
-    factory: NOXA_FACTORY,
-  },
+const PROVIDERS: Record<ProviderId, { id: ProviderId; name: string; launchUrl: string; label: string; description: string; factory: string | null }> = {
   pons: {
-    id: "pons" as const,
+    id: "pons",
     name: "Pons Family",
     launchUrl: "https://pons.family/launchpad/create",
     label: "Launch + immediate buy handoff",
@@ -108,7 +98,7 @@ export function ProviderLauncher({
 }: ProviderLauncherProps = {}) {
   const [projects, setProjects] = useState<TokenProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [providerId, setProviderId] = useState<ProviderId>("noxa");
+  const [providerId, setProviderId] = useState<ProviderId>("pons");
   const [name, setName] = useState("");
   const [ticker, setTicker] = useState("");
   const [description, setDescription] = useState("");
@@ -393,16 +383,10 @@ export function ProviderLauncher({
         await refreshBalanceFor(result, walletAddress, false);
       }
 
-      if (provider.id === "noxa" && transactionHash && !factoryConfirmed) {
-        setStatus(
-          "The ERC-20 is valid, but the transaction did not prove interaction with NOXA's factory. Immediate buy is blocked for safety.",
-        );
-      } else if (immediateBuyEnabled) {
+      if (immediateBuyEnabled) {
         setStatus(
           `Token verified and saved. BUY TOKEN is now active with ${developerBuy || "0"} ETH prefilled.`,
         );
-      } else if (provider.id === "noxa" && !transactionHash) {
-        setStatus("The ERC-20 is valid. Add the launch transaction hash to verify the NOXA factory as well.");
       } else if (provider.id === "pons") {
         setStatus(
           "The ERC-20 is valid and saved. Pons has not published a factory address here, so provider-origin verification remains unavailable.",

@@ -32,7 +32,7 @@ const launchTools = [
     href: "/providers",
     badge: "HANDOFF",
     title: "Open launch providers",
-    text: "Continue into the guided NOXA and Pons launch flow without hidden calls.",
+    text: "Continue into the guided Pons launch flow without hidden calls.",
     icon: "↗",
   },
   {
