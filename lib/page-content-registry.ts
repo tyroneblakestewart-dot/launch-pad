@@ -139,8 +139,6 @@ export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
     label: "Hoodchat",
     route: "/hoodchat",
     elements: [
-      { id: "hero_eyebrow", type: "text", label: "Hero eyebrow", defaultValue: "COMMUNITY FEED" },
-      { id: "hero_title", type: "heading", label: "Hero title", defaultValue: "Hoodchat" },
       {
         id: "hero_intro",
         type: "text",

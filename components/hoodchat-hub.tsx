@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -71,8 +72,6 @@ async function postMessage(category: HoodchatCategory, body: string): Promise<Ho
 }
 
 export type HoodchatHubProps = {
-  heroEyebrow: string;
-  heroTitle: string;
   heroIntro: string;
   emptyState: string;
   composerPlaceholder: string;
@@ -80,8 +79,6 @@ export type HoodchatHubProps = {
 };
 
 export function HoodchatHub({
-  heroEyebrow,
-  heroTitle,
   heroIntro,
   emptyState,
   composerPlaceholder,
@@ -186,8 +183,7 @@ export function HoodchatHub({
     <main className={styles.page}>
       <div className={styles.shell}>
         <header className={styles.hero}>
-          <p className={styles.eyebrow}>{heroEyebrow}</p>
-          <h1 className={styles.title}>{heroTitle}</h1>
+          <img src="/hoodchat-wordmark.png" alt="Hoodchat" className={styles.wordmark} width={1519} height={512} />
           <p className={styles.intro}>{heroIntro}</p>
         </header>
 
