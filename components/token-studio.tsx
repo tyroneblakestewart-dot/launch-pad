@@ -464,8 +464,36 @@ export function TokenStudio() {
                     setWallet(null);
                   }}
                 >
-                  <span className={`chain-dot ${item}`} />
+                  <span className={`chain-icon ${item}`} aria-hidden="true">
+                    {item === "robinhood" ? (
+                      <svg viewBox="0 0 24 24" width="19" height="19">
+                        <path
+                          d="M6.7 21.2c-.5-4.9.4-9 2.8-12.2C11.8 5.9 15.4 3.7 20.2 2.5c.6-.15.95.5.5.9-3.1 2.7-5.3 5.5-6.7 8.3-1.4 2.9-2.1 6-2.1 9.5 0 .55-.45 1-1 1H7.7c-.52 0-.95-.4-1-.99z"
+                          fill="#CCFF00"
+                        />
+                        <path
+                          d="M4 21.2c0-3.6.5-6.6 1.6-9 .2-.45.85-.4 1 .07.5 1.7.72 3.6.65 5.7-.03 1.05-.13 2.15-.3 3.3-.07.5-.5.87-1 .87H5c-.55 0-1-.45-1-.94z"
+                          fill="#8FD400"
+                        />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 20" width="19" height="16">
+                        <defs>
+                          <linearGradient id="chain-icon-solana" x1="0" y1="20" x2="24" y2="0" gradientUnits="userSpaceOnUse">
+                            <stop offset="0" stopColor="#9945FF" />
+                            <stop offset="1" stopColor="#14F195" />
+                          </linearGradient>
+                        </defs>
+                        <g fill="url(#chain-icon-solana)">
+                          <path d="M4.9 14.6a.9.9 0 0 1 .64-.27h17.1c.4 0 .6.48.32.76l-3.78 3.78a.9.9 0 0 1-.64.27H1.42c-.4 0-.6-.48-.32-.76z" />
+                          <path d="M4.9 1.13A.92.92 0 0 1 5.54.86h17.1c.4 0 .6.48.32.76l-3.78 3.79a.9.9 0 0 1-.64.26H1.42c-.4 0-.6-.48-.32-.76z" />
+                          <path d="M18.98 7.82a.9.9 0 0 0-.64-.27H1.42c-.4 0-.6.48-.32.76L4.9 12.1a.9.9 0 0 0 .64.26h16.92c.4 0 .6-.48.32-.76z" />
+                        </g>
+                      </svg>
+                    )}
+                  </span>
                   <span>{CHAIN_CONFIG[item].label}</span>
+                  <span className={`chain-dot ${item}`} />
                 </button>
               ))}
             </div>

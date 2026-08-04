@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  html, body { margin:0; padding:0; background:#0a0b09; }
+  * { box-sizing:border-box; }
+  a { color:#c6f53e; text-decoration:none; }
+  a:hover { color:#d9fa7d; }
+  ::selection { background:#c6f53e; color:#071008; }
+  input, textarea { font:inherit; color:#f4f7f1; }
+  input::placeholder, textarea::placeholder { color:#6b706a; }
+  input:focus, textarea:focus { border-color:#c6f53e !important; background:rgba(198,245,62,0.06) !important; box-shadow:0 0 0 1px #c6f53e !important; }
+  button { transition:border-color .16s ease, background .16s ease, opacity .16s ease, transform .16s ease, box-shadow .16s ease; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.12); border-radius:99px; }
+  @keyframes hd-sweep { from { background-position:200% 0 } to { background-position:-200% 0 } }
+  .hd-body { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; align-items:start; }
+  .hd-pair { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; }
+  .hd-trio { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
+  @media (min-width:620px) { .hd-pair { grid-template-columns:repeat(2,minmax(0,1fr)); } .hd-trio { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (min-width:1080px) { .hd-body { grid-template-columns:minmax(0,1fr) 400px; } .hd-trio { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+</style>
+<template id="__bundler_thumbnail" data-bg-color="#0a0b09"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#0a0b09"></rect><rect x="20" y="24" width="60" height="52" rx="8" fill="#121513" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"></rect><rect x="28" y="34" width="30" height="7" rx="3.5" fill="#c6f53e"></rect><rect x="28" y="47" width="44" height="5" rx="2.5" fill="#2c3327"></rect><rect x="28" y="58" width="36" height="5" rx="2.5" fill="#2c3327"></rect></svg></template>
+</helmet>
+<div style="min-height:100vh;background:#0a0b09;background-image:radial-gradient(78% 44% at 50% -6%, rgba(198,245,62,0.11), transparent 62%);color:#f4f7f1;font-family:Inter, system-ui, sans-serif;padding:20px 20px 56px">
+  <div style="max-width:1440px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:40px">
+
+    <sc-for list="{{ variants }}" as="v" hint-placeholder-count="2">
+      <div style="display:flex;flex-direction:column;gap:12px">
+
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="{{ v.tagStyle }}">{{ v.tag }}</span>
+          <span style="color:#929693;font:500 11px/1 'IBM Plex Mono',monospace">{{ v.tagNote }}</span>
+        </div>
+
+        <div style="border:1px solid rgba(255,255,255,0.09);border-radius:26px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -20px rgba(0,0,0,0.75), 0 8px 24px -8px rgba(0,0,0,0.6);overflow:hidden">
+
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:12px 22px;border-bottom:1px solid rgba(255,255,255,0.09);background:rgba(198,245,62,0.04)">
+            <span style="display:flex;align-items:center;gap:9px;color:#a8aaa9;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase"><span style="width:6px;height:6px;border-radius:50%;background:#c6f53e;box-shadow:0 0 10px #c6f53e"></span>Private workspace open</span>
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+              <button style="{{ v.ghostStyle }}" style-hover="border-color:rgba(198,245,62,0.45)">Saved launches</button>
+              <button style="{{ v.ghostStyle }}" style-hover="border-color:rgba(198,245,62,0.45)">Save &amp; close</button>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,0.09)">
+            <img src="assets/hoodlums-wordmark.png" alt="Hoodlums" style="height:46px;width:auto;display:block;filter:drop-shadow(0 0 14px rgba(198,245,62,0.18))">
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+              <span style="{{ v.safePillStyle }}"><span style="{{ v.safeDotStyle }}"></span>Safe mode</span>
+              <span style="display:inline-flex;align-items:center;gap:7px;padding:9px 13px;border:1px solid rgba(255,255,255,0.09);border-radius:999px;background:rgba(255,255,255,0.03);color:#a8aaa9;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase">Projects <b style="color:#c6f53e">{{ v.projects }}</b></span>
+              <button style="min-height:42px;padding:0 18px;border:0;border-radius:999px;background:#c6f53e;color:#071008;font-size:13px;font-weight:900;cursor:pointer;box-shadow:0 12px 32px rgba(198,245,62,0.16)">+ New token</button>
+            </div>
+          </div>
+
+          <div class="hd-body" style="padding:22px">
+
+            <div style="display:flex;flex-direction:column;gap:24px;padding:26px;border:1px solid rgba(255,255,255,0.09);border-radius:26px;background:rgba(255,255,255,0.03);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)">
+
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap">
+                <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+                  <span style="color:#c6f53e;font:800 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.18em;text-transform:uppercase">Build 01</span>
+                  <h2 style="margin:0;font-size:clamp(26px,3.2vw,34px);font-weight:800;letter-spacing:-0.04em;line-height:1">Token setup</h2>
+                  <span style="display:inline-flex;align-self:flex-start;align-items:center;gap:8px;padding:6px 12px;border:1px solid rgba(198,245,62,0.4);border-radius:999px;background:rgba(198,245,62,0.06);color:#c6f53e;font:800 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-transform:uppercase">Plan: {{ v.plan }}<span style="width:1px;height:10px;background:rgba(198,245,62,0.35)"></span><a href="#" style="text-decoration:underline;text-underline-offset:3px">Change plan</a></span>
+                  <p style="margin:6px 0 0;max-width:52ch;color:#a8aaa9;font-size:13.5px;line-height:1.6">The permanent bits — ticker, supply and decimals lock the moment you sign. Story and path stay editable.</p>
+                </div>
+                <span style="{{ v.countStyle }}">{{ v.count }}</span>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <span style="{{ v.labelStyle }}">Network</span>
+                <div class="hd-pair">
+                  <sc-for list="{{ v.networks }}" as="n" hint-placeholder-count="2">
+                    <button onClick="{{ n.apply }}" style="{{ n.style }}" style-hover="border-color:rgba(198,245,62,0.45)">
+                      <span style="{{ n.iconStyle }}">
+                        <sc-if value="{{ n.isRobinhood }}" hint-placeholder-val="{{ true }}">
+                          <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path d="M6.7 21.2c-.5-4.9.4-9 2.8-12.2C11.8 5.9 15.4 3.7 20.2 2.5c.6-.15.95.5.5.9-3.1 2.7-5.3 5.5-6.7 8.3-1.4 2.9-2.1 6-2.1 9.5 0 .55-.45 1-1 1H7.7c-.52 0-.95-.4-1-.99z" fill="#CCFF00"></path><path d="M4 21.2c0-3.6.5-6.6 1.6-9 .2-.45.85-.4 1 .07.5 1.7.72 3.6.65 5.7-.03 1.05-.13 2.15-.3 3.3-.07.5-.5.87-1 .87H5c-.55 0-1-.45-1-.94z" fill="#8FD400"></path></svg>
+                        </sc-if>
+                        <sc-if value="{{ n.isSolana }}" hint-placeholder-val="{{ false }}">
+                          <svg viewBox="0 0 24 20" width="19" height="16" aria-hidden="true"><defs><linearGradient id="hd-sol" x1="0" y1="20" x2="24" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9945FF"></stop><stop offset="1" stop-color="#14F195"></stop></linearGradient></defs><g fill="url(#hd-sol)"><path d="M4.9 14.6a.9.9 0 0 1 .64-.27h17.1c.4 0 .6.48.32.76l-3.78 3.78a.9.9 0 0 1-.64.27H1.42c-.4 0-.6-.48-.32-.76z"></path><path d="M4.9 1.13A.92.92 0 0 1 5.54.86h17.1c.4 0 .6.48.32.76l-3.78 3.79a.9.9 0 0 1-.64.26H1.42c-.4 0-.6-.48-.32-.76z"></path><path d="M18.98 7.82a.9.9 0 0 0-.64-.27H1.42c-.4 0-.6.48-.32.76L4.9 12.1a.9.9 0 0 0 .64.26h16.92c.4 0 .6-.48.32-.76z"></path></g></svg>
+                        </sc-if>
+                      </span>
+                      <span style="display:flex;flex-direction:column;gap:4px;text-align:left;min-width:0">
+                        <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                          <span style="font-size:14px;font-weight:800;letter-spacing:-0.02em">{{ n.name }}</span>
+                          <sc-if value="{{ n.soon }}" hint-placeholder-val="{{ false }}">
+                            <span style="padding:4px 8px;border-radius:999px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.04);color:#929693;font:800 8px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase">Coming soon</span>
+                          </sc-if>
+                        </span>
+                        <span style="color:#929693;font:500 10px/1 'IBM Plex Mono',monospace">{{ n.note }}</span>
+                      </span>
+                      <span style="{{ n.dotStyle }}"></span>
+                    </button>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div class="hd-pair">
+                <label style="display:flex;flex-direction:column;gap:9px">
+                  <span style="{{ v.labelStyle }}">Token name</span>
+                  <input value="{{ v.name }}" onChange="{{ v.onName }}" placeholder="Token name" maxlength="32" style="{{ v.inputStyle }}">
+                </label>
+                <label style="display:flex;flex-direction:column;gap:9px">
+                  <span style="{{ v.labelStyle }}">Ticker</span>
+                  <div style="{{ v.tickerWrapStyle }}">
+                    <span style="padding-left:15px;color:#c6f53e;font:800 15px/1 'IBM Plex Mono',monospace">$</span>
+                    <input value="{{ v.ticker }}" onChange="{{ v.onTicker }}" placeholder="TICKER" style="flex:1;min-width:0;height:50px;padding:0 14px;border:0;background:transparent;outline:none;box-shadow:none;font-size:15px;font-weight:600">
+                  </div>
+                </label>
+              </div>
+
+              <label style="display:flex;flex-direction:column;gap:9px">
+                <span style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+                  <span style="{{ v.labelStyle }}">Project story</span>
+                  <span style="color:#929693;font:500 10px/1 'IBM Plex Mono',monospace">{{ v.storyCount }}</span>
+                </span>
+                <textarea value="{{ v.story }}" onChange="{{ v.onStory }}" rows="4" maxlength="360" placeholder="What is the meme and why will people care?" style="{{ v.textareaStyle }}"></textarea>
+              </label>
+
+              <div class="hd-pair">
+                <label style="display:flex;flex-direction:column;gap:9px">
+                  <span style="{{ v.labelStyle }}">Total supply</span>
+                  <input value="{{ v.supply }}" onChange="{{ v.onSupply }}" inputmode="numeric" placeholder="1000000000" style="{{ v.inputStyle }}">
+                </label>
+                <label style="display:flex;flex-direction:column;gap:9px">
+                  <span style="{{ v.labelStyle }}">Decimals</span>
+                  <input value="{{ v.decimals }}" onChange="{{ v.onDecimals }}" inputmode="numeric" style="{{ v.inputStyle }}">
+                </label>
+              </div>
+
+              <label style="display:flex;flex-direction:column;gap:9px">
+                <span style="{{ v.labelStyle }}">Website path</span>
+                <div style="{{ v.pathWrapStyle }}">
+                  <span style="padding-left:15px;color:#929693;font:500 12px/1 'IBM Plex Mono',monospace;white-space:nowrap">hoodlums.dev/</span>
+                  <input value="{{ v.path }}" onChange="{{ v.onPath }}" placeholder="your-token-name" style="flex:1;min-width:0;height:50px;padding:0 14px;border:0;background:transparent;outline:none;box-shadow:none;font-size:15px">
+                </div>
+              </label>
+
+              <label style="display:flex;flex-direction:column;gap:9px">
+                <span style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                  <span style="{{ v.labelStyle }}">Inspiration website URL</span>
+                  <span style="{{ v.optionalStyle }}">Optional</span>
+                </span>
+                <input value="{{ v.inspiration }}" onChange="{{ v.onInspiration }}" placeholder="https://example.com" style="{{ v.inputStyle }}">
+                <span style="color:#929693;font-size:11.5px;line-height:1.55;max-width:64ch">Uploaded artwork/content is still required. This optional link only guides the visual direction.</span>
+              </label>
+
+              <div style="display:flex;align-items:center;gap:14px;padding:18px;border:1.5px dashed rgba(198,245,62,0.3);border-radius:18px;background:rgba(198,245,62,0.04);cursor:pointer">
+                <span style="width:44px;height:44px;flex:none;display:grid;place-items:center;border-radius:14px;background:rgba(198,245,62,0.1);border:1px solid rgba(198,245,62,0.3);color:#c6f53e;font:800 19px/1 'IBM Plex Mono',monospace">↑</span>
+                <span style="display:flex;flex-direction:column;gap:5px;min-width:0">
+                  <span style="font-size:14px;font-weight:800;letter-spacing:-0.02em">Upload token artwork</span>
+                  <span style="color:#929693;font-size:11.5px;line-height:1.5">PNG, JPG, WEBP, GIF or AVIF · up to 20 MB · large files auto-optimised</span>
+                </span>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:16px;padding:22px;border:1px solid rgba(198,245,62,0.28);border-radius:18px;background:rgba(198,245,62,0.05)">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                  <span style="color:#c6f53e;font:800 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.18em;text-transform:uppercase">Build 02</span>
+                  <span style="font-size:16px;font-weight:800;letter-spacing:-0.025em">Artwork-matched website</span>
+                </div>
+                <div style="display:grid;gap:8px">
+                  <sc-for list="{{ v.requirements }}" as="r" hint-placeholder-count="4">
+                    <span style="{{ r.style }}"><span style="{{ r.markStyle }}">{{ r.mark }}</span>{{ r.label }}</span>
+                  </sc-for>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <button disabled="{{ v.generateDisabled }}" style="{{ v.generateStyle }}">Generate site from artwork</button>
+                  <span style="color:#929693;font-size:11.5px;line-height:1.5">Upload content to define the site. An inspiration website is optional.</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <button style="{{ v.ghostWideStyle }}" style-hover="border-color:rgba(198,245,62,0.45)">Generate a bespoke AI site</button>
+                  <span style="color:#929693;font-size:11.5px;line-height:1.5">Takes longer and produces a one-off, fully custom AI design.</span>
+                </div>
+              </div>
+
+              <div class="hd-pair">
+                <label style="display:flex;flex-direction:column;gap:9px">
+                  <span style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                    <span style="{{ v.labelStyle }}">X handle</span>
+                    <span style="{{ v.optionalStyle }}">Optional</span>
+                  </span>
+                  <div style="{{ v.xWrapStyle }}">
+                    <span style="flex:none;width:50px;height:50px;display:grid;place-items:center;background:#000000;border-right:1px solid rgba(255,255,255,0.12)">
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="#ffffff" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
+                    </span>
+                    <input value="{{ v.xHandle }}" onChange="{{ v.onXHandle }}" placeholder="@hoodlums" style="flex:1;min-width:0;height:50px;padding:0 14px;border:0;background:transparent;outline:none;box-shadow:none;font-size:15px">
+                    <button style="{{ v.xBtnStyle }}">{{ v.xBtnLabel }}</button>
+                  </div>
+                </label>
+                <label style="display:flex;flex-direction:column;gap:9px">
+                  <span style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                    <span style="{{ v.labelStyle }}">Telegram</span>
+                    <span style="{{ v.optionalStyle }}">Optional</span>
+                  </span>
+                  <div style="{{ v.tgWrapStyle }}">
+                    <span style="flex:none;width:50px;height:50px;display:grid;place-items:center;background:#229ED9;border-right:1px solid rgba(255,255,255,0.12)">
+                      <svg viewBox="0 0 24 24" width="17" height="17" fill="#ffffff" aria-hidden="true"><path d="M21.94 4.3 18.9 19.06c-.23 1.02-.84 1.27-1.7.79l-4.7-3.47-2.27 2.18c-.25.25-.46.46-.94.46l.33-4.78 8.7-7.86c.38-.34-.08-.52-.58-.19L6.7 13.03l-4.62-1.45c-1-.31-1.02-1 .21-1.48l18.05-6.96c.84-.31 1.57.2 1.6 1.16z"></path></svg>
+                    </span>
+                    <input value="{{ v.telegram }}" onChange="{{ v.onTelegram }}" placeholder="t.me/hoodlums" style="flex:1;min-width:0;height:50px;padding:0 14px;border:0;background:transparent;outline:none;box-shadow:none;font-size:15px">
+                    <button style="{{ v.tgBtnStyle }}">{{ v.tgBtnLabel }}</button>
+                  </div>
+                </label>
+              </div>
+
+              <label style="display:flex;flex-direction:column;gap:9px">
+                <span style="{{ v.labelStyle }}">Contract / mint address</span>
+                <input value="{{ v.contract }}" onChange="{{ v.onContract }}" placeholder="Filled automatically after launch" style="{{ v.inputStyle }}">
+              </label>
+
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <span style="{{ v.labelStyle }}">Free site sections</span>
+                <div class="hd-trio">
+                  <sc-for list="{{ v.sections }}" as="sec" hint-placeholder-count="5">
+                    <button onClick="{{ sec.toggle }}" style="{{ sec.style }}" style-hover="border-color:rgba(198,245,62,0.45)">
+                      <span style="{{ sec.boxStyle }}">{{ sec.tick }}</span>
+                      <span style="{{ sec.labelStyle }}">{{ sec.label }}</span>
+                    </button>
+                  </sc-for>
+                </div>
+                <span style="color:#929693;font-size:11.5px;line-height:1.55;max-width:64ch">Hero always shows. Pick which other sections the free site generator writes — the rest are skipped instead of filled with invented copy.</span>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:14px;padding:22px;border:1px solid rgba(255,255,255,0.08);border-radius:18px;background:linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018));box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7)">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+                  <span style="{{ v.labelStyle }}">Launch checks</span>
+                  <span style="color:#c6f53e;font-size:17px;font-weight:800;letter-spacing:-0.03em">{{ v.readinessPct }}</span>
+                </div>
+                <div style="height:5px;border-radius:999px;background:rgba(255,255,255,0.09);overflow:hidden">
+                  <span style="{{ v.readinessBar }}"></span>
+                </div>
+                <div class="hd-trio">
+                  <sc-for list="{{ v.checks }}" as="c" hint-placeholder-count="6">
+                    <span style="{{ c.style }}"><span style="{{ c.markStyle }}">{{ c.mark }}</span>{{ c.label }}</span>
+                  </sc-for>
+                </div>
+              </div>
+
+              <button onClick="{{ v.connect }}" style="{{ v.walletStyle }}" style-hover="border-color:rgba(198,245,62,0.45)">{{ v.walletLabel }}</button>
+
+              <div style="display:flex;flex-direction:column;gap:12px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.09)">
+                <div class="hd-pair">
+                  <button style="{{ v.ghostWideStyle }}" style-hover="border-color:rgba(198,245,62,0.45)">Save project</button>
+                  <button style="min-height:58px;border:0;border-radius:999px;background:#c6f53e;color:#071008;font-size:16px;font-weight:900;cursor:pointer;box-shadow:0 16px 40px rgba(198,245,62,0.16)" style-active="transform:translateY(1px)">Prepare launch</button>
+                </div>
+                <button style="width:100%;padding:12px;border:0;border-radius:999px;background:transparent;color:#929693;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer" style-hover="color:#c6f53e">Export project JSON</button>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px;position:sticky;top:20px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                <span style="display:flex;align-items:center;gap:8px;color:#a8aaa9;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase"><span style="width:6px;height:6px;border-radius:50%;background:#c6f53e;box-shadow:0 0 10px #c6f53e"></span>Live preview</span>
+                <span style="color:#929693;font:500 10.5px/1 'IBM Plex Mono',monospace">/{{ v.slug }}</span>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;padding:26px 20px;border:1px solid rgba(198,245,62,0.28);border-radius:26px;background:radial-gradient(90% 70% at 50% 0%, rgba(198,245,62,0.12), transparent 68%), rgba(18,21,19,0.99);text-align:center">
+                <span style="color:#c6f53e;font:800 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase">Artwork website generator</span>
+                <span style="font-size:21px;font-weight:800;letter-spacing:-0.035em;line-height:1.1;text-wrap:balance">Your artwork should define the website</span>
+                <span style="margin:0 auto;max-width:34ch;color:#a8aaa9;font-size:12.5px;line-height:1.6">Enter the project details and upload content. You may also add an optional website for design inspiration.</span>
+              </div>
+
+              <div style="display:grid;gap:5px;padding:16px;border:1px solid rgba(255,255,255,0.08);border-radius:18px;background:linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018));box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7)">
+                <div style="{{ v.artStyle }}">{{ v.artGlyph }}</div>
+                <b style="{{ v.nameLineStyle }}">{{ v.nameLine }}</b>
+                <span style="{{ v.tickerLineStyle }}">{{ v.tickerLine }}</span>
+                <b style="margin-top:6px;color:#c6f53e;font:800 16px/1 'IBM Plex Mono',monospace">—</b>
+                <span style="margin-bottom:8px;color:#929693;font:600 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.06em;text-transform:uppercase">Market cap</span>
+                <div style="display:flex;align-items:center;justify-content:space-between;color:#929693;font:700 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.06em;text-transform:uppercase">
+                  <span>Graduation</span>
+                  <b style="color:#f4f7f1">0%</b>
+                </div>
+                <div style="height:3px;margin-top:6px;border-radius:999px;background:rgba(255,255,255,0.09);overflow:hidden">
+                  <span style="display:block;height:100%;width:0%;background:#c6f53e"></span>
+                </div>
+              </div>
+
+              <span style="color:#929693;font-size:11.5px;line-height:1.55">{{ v.previewNote }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;plan&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Bond&quot;,&quot;Bond + Site&quot;,&quot;Bond + Pro Site&quot;,&quot;Pro&quot;],&quot;default&quot;:&quot;Bond&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Workspace&quot;},&quot;safeMode&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Workspace&quot;}}">
+const NETWORKS = [
+  { id: 'robinhood', name: 'Robinhood', note: 'Testnet · 46630' },
+  { id: 'solana', name: 'Solana', note: 'Devnet · SPL', soon: true }
+];
+const SECTIONS = [
+  { key: 'about', label: 'About' },
+  { key: 'tokenomics', label: 'Tokenomics' },
+  { key: 'roadmap', label: 'Roadmap' },
+  { key: 'howToBuy', label: 'How to buy' },
+  { key: 'faq', label: 'FAQ' }
+];
+const SECTION_DEFAULTS = { about: true, tokenomics: true, roadmap: false, howToBuy: false, faq: false };
+const BASE = {
+  name: '', ticker: '', story: '', supply: '1000000000', decimals: '18', path: '', inspiration: '',
+  xHandle: '', telegram: '', contract: '', network: 'robinhood', wallet: '', sections: { ...SECTION_DEFAULTS }
+};
+const FILLED = {
+  ...BASE,
+  name: 'Sheriff Money', ticker: 'SHRF',
+  story: 'The Sheriff doesn\'t chase the bag — he collects it. Every buy funds the bounty pool, every graduation locks liquidity for good.',
+  path: 'sheriff-money'
+};
+const LINE = 'rgba(255,255,255,0.09)';
+const MONO = "'IBM Plex Mono',monospace";
+const GHOST = 'border:1px solid ' + LINE + ';background:linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 6px 16px -10px rgba(0,0,0,0.8);color:#f4f7f1;cursor:pointer;font-weight:800';
+
+class Component extends DCLogic {
+  state = {
+    empty: { ...BASE, sections: { ...SECTION_DEFAULTS } },
+    filled: { ...FILLED, sections: { ...SECTION_DEFAULTS } }
+  };
+
+  setField(which, key, value) { this.setState(s => ({ [which]: { ...s[which], [key]: value } })); }
+
+  build(which, meta) {
+    const d = this.state[which];
+    const has = k => String(d[k] || '').trim().length > 0;
+    const slugify = s => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const safe = this.props.safeMode ?? true;
+    const checks = [
+      { label: 'Token name', complete: d.name.trim().length >= 2 },
+      { label: 'Ticker', complete: /^[A-Za-z0-9]{2,12}$/.test(d.ticker.trim()) },
+      { label: 'Description', complete: d.story.trim().length >= 20 },
+      { label: 'Supply', complete: Number(d.supply) > 0 },
+      { label: 'Wallet', complete: !!d.wallet },
+      { label: 'Artwork', complete: false }
+    ];
+    const done = checks.filter(c => c.complete).length;
+    const pct = Math.round((done / checks.length) * 100);
+    const ghostBar = 'display:block;height:12px;border-radius:6px;background:linear-gradient(90deg, rgba(255,255,255,0.05), rgba(198,245,62,0.14), rgba(255,255,255,0.05));background-size:200% 100%;animation:hd-sweep 2.4s linear infinite';
+    const reqs = [
+      { label: 'Token name', ok: checks[0].complete },
+      { label: 'Ticker', ok: checks[1].complete },
+      { label: 'Description (20+ characters)', ok: checks[2].complete },
+      { label: 'Uploaded artwork/content', ok: false }
+    ];
+    const canGenerate = reqs.every(r => r.ok);
+
+    return {
+      tag: meta.tag,
+      tagNote: meta.tagNote,
+      tagStyle: 'padding:7px 12px;border-radius:999px;font:800 9.5px/1 ' + MONO + ';letter-spacing:0.12em;text-transform:uppercase;border:1px solid ' +
+        (which === 'filled' ? 'rgba(198,245,62,0.45);background:rgba(198,245,62,0.06);color:#c6f53e' : LINE + ';background:rgba(255,255,255,0.03);color:#a8aaa9'),
+      plan: this.props.plan ?? 'Bond',
+      projects: which === 'filled' ? '3' : '2',
+
+      ghostStyle: 'min-height:40px;padding:0 15px;border-radius:999px;font-size:12px;' + GHOST,
+      ghostWideStyle: 'width:100%;min-height:58px;border-radius:999px;font-size:15px;' + GHOST,
+      safePillStyle: 'display:inline-flex;align-items:center;gap:8px;padding:9px 13px;border-radius:999px;font:700 10px/1 ' + MONO + ';letter-spacing:0.12em;text-transform:uppercase;border:1px solid ' +
+        (safe ? 'rgba(198,245,62,0.4);background:rgba(198,245,62,0.06);color:#c6f53e' : LINE + ';background:rgba(255,255,255,0.03);color:#929693'),
+      safeDotStyle: 'width:6px;height:6px;border-radius:50%;background:' + (safe ? '#c6f53e;box-shadow:0 0 10px #c6f53e' : 'rgba(255,255,255,0.2)'),
+
+      count: done + '/6',
+      countStyle: 'display:grid;place-items:center;flex:none;width:52px;height:52px;border-radius:999px;border:1px solid rgba(198,245,62,0.4);background:rgba(198,245,62,0.06);color:#c6f53e;font:800 13px/1 ' + MONO,
+
+      labelStyle: 'display:block;color:#a8aaa9;font:700 10px/1 ' + MONO + ';letter-spacing:0.14em;text-transform:uppercase',
+      optionalStyle: 'color:#c6f53e;font:800 9px/1 ' + MONO + ';letter-spacing:0.12em;text-transform:uppercase',
+      inputStyle: 'width:100%;height:50px;padding:0 15px;border:1px solid ' + LINE + ';border-radius:14px;background:linear-gradient(180deg, rgba(0,0,0,0.32), rgba(255,255,255,0.03));box-shadow:0 2px 6px 0 rgba(0,0,0,0.45) inset;outline:none;font-size:15px;transition:border-color .15s ease, background .15s ease, box-shadow .15s ease',
+      textareaStyle: 'width:100%;min-height:106px;padding:14px 15px;border:1px solid ' + LINE + ';border-radius:14px;background:linear-gradient(180deg, rgba(0,0,0,0.32), rgba(255,255,255,0.03));box-shadow:0 2px 6px 0 rgba(0,0,0,0.45) inset;outline:none;resize:vertical;font-size:14.5px;line-height:1.6;transition:border-color .15s ease, background .15s ease, box-shadow .15s ease',
+      tickerWrapStyle: 'display:flex;align-items:center;border-radius:14px;overflow:hidden;background:rgba(255,255,255,0.03);border:1px solid ' + (has('ticker') ? 'rgba(198,245,62,0.4)' : LINE),
+      pathWrapStyle: 'display:flex;align-items:center;border-radius:14px;overflow:hidden;background:rgba(255,255,255,0.03);border:1px solid ' + (has('path') ? 'rgba(198,245,62,0.4)' : LINE),
+      xWrapStyle: 'display:flex;align-items:center;border-radius:14px;overflow:hidden;background:rgba(255,255,255,0.03);border:1px solid ' + (has('xHandle') ? 'rgba(198,245,62,0.4)' : LINE),
+      tgWrapStyle: 'display:flex;align-items:center;border-radius:14px;overflow:hidden;background:rgba(255,255,255,0.03);border:1px solid ' + (has('telegram') ? 'rgba(198,245,62,0.4)' : LINE),
+      xBtnLabel: has('xHandle') ? 'Linked' : 'Connect',
+      tgBtnLabel: has('telegram') ? 'Linked' : 'Connect',
+      xBtnStyle: 'flex:none;height:36px;margin-right:7px;padding:0 13px;border-radius:999px;font:800 10px/1 ' + MONO + ';letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;' +
+        (has('xHandle') ? 'border:1px solid rgba(198,245,62,0.45);background:rgba(198,245,62,0.06);color:#c6f53e' : 'border:0;background:#c6f53e;color:#071008'),
+      tgBtnStyle: 'flex:none;height:36px;margin-right:7px;padding:0 13px;border-radius:999px;font:800 10px/1 ' + MONO + ';letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;' +
+        (has('telegram') ? 'border:1px solid rgba(198,245,62,0.45);background:rgba(198,245,62,0.06);color:#c6f53e' : 'border:0;background:#c6f53e;color:#071008'),
+
+      networks: NETWORKS.map(n => {
+        const on = d.network === n.id;
+        return {
+          name: n.name, note: n.note, soon: !!n.soon,
+          apply: () => { if (!n.soon) this.setField(which, 'network', n.id); },
+          isRobinhood: n.id === 'robinhood', isSolana: n.id === 'solana',
+          iconStyle: 'flex:none;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:' +
+            (n.id === 'solana' ? '#0b0d10' : '#0a1200') + ';border:1px solid ' + (on ? 'rgba(198,245,62,0.4)' : 'rgba(255,255,255,0.12)'),
+          style: 'display:flex;align-items:center;gap:13px;min-height:66px;padding:0 16px;border-radius:18px;cursor:pointer;color:#f4f7f1;font-family:inherit;text-align:left;transition:border-color .16s ease, background .16s ease, box-shadow .16s ease;' +
+            (on
+              ? 'border:1px solid #c6f53e;background:linear-gradient(180deg, rgba(198,245,62,0.15) 0%, rgba(198,245,62,0.05) 42%, rgba(198,245,62,0.02) 100%);box-shadow:0 0 0 1px #c6f53e, 0 1px 0 0 rgba(198,245,62,0.28) inset, 0 18px 44px -18px rgba(198,245,62,0.35)'
+              : 'border:1px solid rgba(255,255,255,0.1);background:linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7)') +
+            (n.soon ? ';opacity:0.5;cursor:not-allowed' : ''),
+          dotStyle: 'margin-left:auto;width:10px;height:10px;flex:none;border-radius:50%;background:' + (on ? '#c6f53e' : 'transparent') +
+            ';border:1px solid ' + (on ? '#c6f53e' : 'rgba(255,255,255,0.22)') + (on ? ';box-shadow:0 0 12px rgba(198,245,62,0.7)' : '')
+        };
+      }),
+
+      name: d.name, ticker: d.ticker, story: d.story, supply: d.supply, decimals: d.decimals, path: d.path,
+      inspiration: d.inspiration, xHandle: d.xHandle, telegram: d.telegram, contract: d.contract,
+      storyCount: String(d.story || '').length + '/360',
+      onName: e => this.setField(which, 'name', e.target.value),
+      onTicker: e => this.setField(which, 'ticker', e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toUpperCase()),
+      onStory: e => this.setField(which, 'story', e.target.value.slice(0, 360)),
+      onSupply: e => this.setField(which, 'supply', e.target.value.replace(/\D/g, '')),
+      onDecimals: e => this.setField(which, 'decimals', e.target.value.replace(/\D/g, '')),
+      onPath: e => this.setField(which, 'path', slugify(e.target.value)),
+      onInspiration: e => this.setField(which, 'inspiration', e.target.value),
+      onXHandle: e => this.setField(which, 'xHandle', e.target.value),
+      onTelegram: e => this.setField(which, 'telegram', e.target.value),
+      onContract: e => this.setField(which, 'contract', e.target.value.trim()),
+
+      requirements: reqs.map(r => ({
+        label: r.label,
+        mark: r.ok ? '✓' : '·',
+        style: 'display:flex;align-items:center;gap:10px;color:' + (r.ok ? '#c3c9c4' : '#929693') + ';font-size:12.5px;line-height:1.5',
+        markStyle: 'width:17px;height:17px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:9.5px;font-weight:800;' +
+          (r.ok ? 'background:#c6f53e;color:#071008' : 'background:rgba(255,255,255,0.07);color:#929693')
+      })),
+      generateDisabled: !canGenerate,
+      generateStyle: 'width:100%;min-height:58px;border-radius:999px;font-size:15px;font-weight:900;' +
+        (canGenerate
+          ? 'border:0;background:#c6f53e;color:#071008;cursor:pointer;box-shadow:0 16px 40px rgba(198,245,62,0.16)'
+          : 'border:1px dashed rgba(255,255,255,0.14);background:transparent;color:#5f645e;cursor:not-allowed'),
+
+      sections: SECTIONS.map(s => {
+        const on = !!d.sections[s.key];
+        return {
+          label: s.label,
+          toggle: () => this.setField(which, 'sections', { ...d.sections, [s.key]: !on }),
+          tick: on ? '✓' : '',
+          style: 'display:flex;align-items:center;gap:10px;min-height:52px;padding:0 15px;border-radius:14px;cursor:pointer;text-align:left;font-family:inherit;transition:border-color .16s ease, background .16s ease;' +
+            (on
+              ? 'border:1px solid #c6f53e;background:linear-gradient(180deg, rgba(198,245,62,0.15) 0%, rgba(198,245,62,0.05) 42%, rgba(198,245,62,0.02) 100%);box-shadow:0 1px 0 0 rgba(198,245,62,0.24) inset, 0 8px 20px -12px rgba(0,0,0,0.7)'
+              : 'border:1px solid rgba(255,255,255,0.1);background:linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7)'),
+          boxStyle: 'width:18px;height:18px;flex:none;border-radius:6px;display:grid;place-items:center;font-size:10px;font-weight:800;' +
+            (on ? 'background:#c6f53e;color:#071008;border:1px solid #c6f53e' : 'background:transparent;color:transparent;border:1px solid rgba(255,255,255,0.2)'),
+          labelStyle: 'color:' + (on ? '#f4f7f1' : '#a8aaa9') + ';font:700 10px/1 ' + MONO + ';letter-spacing:0.12em;text-transform:uppercase'
+        };
+      }),
+
+      checks: checks.map(c => ({
+        label: c.label,
+        mark: c.complete ? '✓' : '·',
+        style: 'display:flex;align-items:center;gap:9px;color:' + (c.complete ? '#c3c9c4' : '#929693') + ';font-size:12px',
+        markStyle: 'width:16px;height:16px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:9px;font-weight:800;' +
+          (c.complete ? 'background:#c6f53e;color:#071008' : 'background:rgba(255,255,255,0.07);color:#929693')
+      })),
+      readinessPct: pct + '%',
+      readinessBar: 'display:block;height:100%;width:' + pct + '%;background:#c6f53e;box-shadow:0 0 12px rgba(198,245,62,0.6);transition:width .25s ease',
+
+      connect: () => this.setField(which, 'wallet', d.wallet ? '' : '0x9a4c…21bd'),
+      walletLabel: d.wallet
+        ? (d.network === 'solana' ? 'Phantom: ' : 'Robinhood Wallet: ') + d.wallet
+        : 'Connect ' + (d.network === 'solana' ? 'Phantom' : 'Robinhood Wallet'),
+      walletStyle: 'width:100%;min-height:56px;padding:0 16px;border-radius:999px;cursor:pointer;font:800 13px/1 Inter,sans-serif;transition:border-color .16s ease, background .16s ease;' +
+        (d.wallet
+          ? 'border:1px solid rgba(198,245,62,0.4);background:rgba(198,245,62,0.06);color:#c6f53e'
+          : 'border:1px solid ' + LINE + ';background:rgba(255,255,255,0.03);color:#f4f7f1'),
+
+      slug: d.path || slugify(d.name) || 'new-token',
+      artStyle: 'display:grid;place-items:center;height:104px;margin-bottom:10px;border-radius:14px;overflow:hidden;font:800 24px/1 ' + MONO + ';' +
+        (has('name')
+          ? 'background:linear-gradient(180deg, rgba(198,245,62,0.15) 0%, rgba(198,245,62,0.05) 42%, rgba(198,245,62,0.02) 100%);border:1px solid rgba(198,245,62,0.35);box-shadow:0 1px 0 0 rgba(198,245,62,0.2) inset;color:#c6f53e'
+          : 'background:linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%);border:1px dashed rgba(255,255,255,0.14);box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);color:#5f645e'),
+      artGlyph: has('name') ? d.name.trim().slice(0, 1).toUpperCase() : '?',
+      nameLine: has('name') ? d.name : '',
+      nameLineStyle: has('name') ? 'font-size:14px;font-weight:800;letter-spacing:-0.02em;color:#f4f7f1' : ghostBar + ';width:66%',
+      tickerLine: has('ticker') ? '$' + d.ticker : '',
+      tickerLineStyle: has('ticker') ? 'color:#929693;font:600 11.5px/1 ' + MONO : ghostBar + ';height:10px;width:34%',
+      previewNote: has('name')
+        ? 'This is the card holders see in the Hoodlums market feed.'
+        : 'Fill the form and the market card builds itself here.'
+    };
+  }
+
+  renderVals() {
+    return {
+      variants: [
+        this.build('empty', { tag: 'State A — empty', tagNote: 'first load, nothing entered' }),
+        this.build('filled', { tag: 'State B — partially filled', tagNote: 'name, ticker and story entered' })
+      ]
+    };
+  }
+}
+
+</script>
+</body>
+</html>

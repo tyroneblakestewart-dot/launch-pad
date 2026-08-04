@@ -3,17 +3,18 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  color: #bce759;
-  font: 700 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.12em;
+  color: #a8aaa9;
+  font: 700 10px/1.2 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .liveDot {
-  width: 9px;
-  height: 9px;
+  width: 6px;
+  height: 6px;
   border-radius: 999px;
-  background: #bce759;
-  box-shadow: 0 0 14px rgba(188, 231, 89, 0.9);
+  background: #c6f53e;
+  box-shadow: 0 0 10px #c6f53e;
 }
 
 .tokenRecord {
@@ -65,32 +66,33 @@
 }
 
 .workspaceActions button {
-  min-height: 46px;
-  padding: 0 18px;
+  min-height: 40px;
+  padding: 0 15px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  font-weight: 800;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.07) inset, 0 6px 16px -10px rgba(0, 0, 0, 0.8);
+  color: #f4f7f1;
+  font: 800 12px "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   text-decoration: none;
   cursor: pointer;
+  transition: border-color 0.16s ease;
 }
 
-.closeButton {
-  border: 1px solid #bce759;
-  color: #11160f;
-  background: #bce759;
+.workspaceActions button:hover {
+  border-color: rgba(198, 245, 62, 0.45);
 }
 
-.workspaceActions button:first-child {
-  border: 1px solid #303933;
-  color: #eef2ed;
-  background: #121713;
-}
+/* .closeButton intentionally has no rules of its own — the reference gives
+   "Save & close" the same ghost pill treatment as "Saved launches", styled
+   above via the shared ".workspaceActions button" selector. */
 
 .openWorkspace {
   position: relative;
-  background: #050706;
+  background: #0a0b09;
 }
 
 .workspaceBar {
@@ -98,14 +100,14 @@
   top: 0;
   z-index: 50;
   min-height: 58px;
-  padding: 8px 18px;
+  padding: 12px 22px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-top: 1px solid #202722;
-  border-bottom: 1px solid #202722;
-  background: rgba(5, 7, 6, 0.96);
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(198, 245, 62, 0.04);
   backdrop-filter: blur(14px);
 }
 

@@ -32,7 +32,15 @@ const eslintConfig = defineConfig([
       "react-hooks/set-state-in-effect": "off",
     },
   },
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    // Runtime helper for the standalone design-reference mockups in
+    // public/design-refs/*.html — not part of the Next.js app bundle.
+    "public/support.js",
+  ]),
 ]);
 
 export default eslintConfig;
