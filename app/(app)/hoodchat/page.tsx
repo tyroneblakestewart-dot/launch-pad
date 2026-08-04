@@ -1,10 +1,20 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { HoodchatHub } from "@/components/hoodchat-hub";
 import { CMS_PREVIEW_QUERY_PARAM, resolvePageContent } from "@/lib/server/page-content";
 
 export const metadata: Metadata = {
   title: "Hoodchat | HOODLUMS",
   description: "Live community chat for HOODLUMS launches, trading and projects.",
+};
+
+// maximumScale locks pinch-zoom on this page, which also removes Safari's
+// ~300ms tap-delay disambiguation on the composer's Send button and the
+// category filter tabs (touch-action: manipulation alone wasn't enough).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: "#030805",
 };
 
 type HoodchatPageProps = {

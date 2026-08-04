@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -186,6 +187,7 @@ export function HoodchatHub({
     <main className={styles.page}>
       <div className={styles.shell}>
         <header className={styles.hero}>
+          <img src="/hoodchat-wordmark.png" alt="Hoodchat" width={1519} height={512} className={styles.wordmark} />
           <p className={styles.eyebrow}>{heroEyebrow}</p>
           <h1 className={styles.title}>{heroTitle}</h1>
           <p className={styles.intro}>{heroIntro}</p>

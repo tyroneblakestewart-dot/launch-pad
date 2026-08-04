@@ -25,6 +25,16 @@
   padding: 4px 4px 6px;
 }
 
+.wordmark {
+  display: block;
+  height: 34px;
+  width: auto;
+  max-width: 220px;
+  object-fit: contain;
+  object-position: left center;
+  margin: 0 0 12px;
+}
+
 .eyebrow {
   margin: 0 0 6px;
   color: #c6f53e;
@@ -82,6 +92,7 @@
   letter-spacing: 0.04em;
   white-space: nowrap;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .filterTab:hover {
@@ -172,6 +183,7 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .reportButton:hover:not(:disabled) {
@@ -238,6 +250,7 @@
   color: #071008;
   font: 800 12px "IBM Plex Mono", monospace;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .composerSend:disabled {
@@ -255,6 +268,7 @@
   font: 700 12px "IBM Plex Mono", monospace;
   letter-spacing: 0.03em;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 @media (max-width: 1099px) {
