@@ -201,6 +201,7 @@ export function HoodchatHub({
                 aria-selected={filter === tab.id}
                 className={`${styles.filterTab} ${filter === tab.id ? styles.filterTabActive : ""}`}
                 onClick={() => setFilter(tab.id)}
+                onTouchStart={() => {}}
               >
                 {tab.label}
               </button>
