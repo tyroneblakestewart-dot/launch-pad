@@ -3,7 +3,9 @@ import {
   checkContractsHealth,
   checkDatabaseHealth,
   checkDeploymentHealth,
+  checkHoodchatHealth,
   checkSubscribersHealth,
+  checkTokenChatHealth,
   checkWebsiteGenerationHealth,
   getSystemHealth,
 } from "@/lib/server/system-health";
@@ -129,16 +131,56 @@ describe("checkSubscribersHealth", () => {
   });
 });
 
+describe("checkHoodchatHealth", () => {
+  it("is green when the hoodchat_messages table ping succeeds", async () => {
+    const result = await checkHoodchatHealth({ ping: async () => ({ rows: [] }) });
+    expect(result).toMatchObject({ id: "hoodchat", status: "green" });
+  });
+
+  it("is red when the ping rejects (e.g. the migration has not been applied)", async () => {
+    const result = await checkHoodchatHealth({
+      ping: async () => Promise.reject(new Error(`relation "hoodchat_messages" does not exist`)),
+    });
+    expect(result).toMatchObject({ id: "hoodchat", status: "red" });
+  });
+
+  it("is amber when DATABASE_URL is not configured", async () => {
+    const result = await checkHoodchatHealth({ databaseUrl: "" });
+    expect(result).toMatchObject({ id: "hoodchat", status: "amber" });
+  });
+});
+
+describe("checkTokenChatHealth", () => {
+  it("is green when the token_chat_messages table ping succeeds", async () => {
+    const result = await checkTokenChatHealth({ ping: async () => ({ rows: [] }) });
+    expect(result).toMatchObject({ id: "token-chat", status: "green" });
+  });
+
+  it("is red when the ping rejects (e.g. the migration has not been applied)", async () => {
+    const result = await checkTokenChatHealth({
+      ping: async () => Promise.reject(new Error(`relation "token_chat_messages" does not exist`)),
+    });
+    expect(result).toMatchObject({ id: "token-chat", status: "red" });
+  });
+
+  it("is amber when DATABASE_URL is not configured", async () => {
+    const result = await checkTokenChatHealth({ databaseUrl: "" });
+    expect(result).toMatchObject({ id: "token-chat", status: "amber" });
+  });
+});
+
 describe("getSystemHealth", () => {
-  it("returns all five checks, one per required area", async () => {
+  it("returns all seven checks, one per required area", async () => {
     const checks = await getSystemHealth({
       env: { NODE_ENV: "development" },
       database: { databaseUrl: "" },
       contracts: { chainId: 1 },
       subscribers: { databaseUrl: "" },
+      hoodchat: { databaseUrl: "" },
+      tokenChat: { databaseUrl: "" },
     });
     expect(checks.map((check) => check.id).sort()).toEqual(
-      ["contracts", "database", "deployment", "subscribers", "website-generation"].sort(),
+      ["contracts", "database", "deployment", "hoodchat", "subscribers", "token-chat", "website-generation"].sort(),
     );
   });
 

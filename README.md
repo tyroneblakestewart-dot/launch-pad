@@ -308,6 +308,7 @@ Loading a saved project (or clicking "Reopen generated site" in the preview tool
 | `/testnet` | Robinhood Chain Testnet and Solana devnet token creation | Test-only |
 | `/monad` | Monad Testnet ERC-20 deployment | Test-only |
 | `/social` | X handoff and Telegram publishing workspace | Available |
+| `/hoodchat` | Live, wallet-signed community chat feed with category filters and per-message reporting | Available after `DATABASE_URL` and migration setup |
 | `/account` | Account-provider interface preview | Coming later |
 | `/admin` | Private owner-only control panel; System Health and Pages (content CMS) sections | Requires `ADMIN_WALLET_ADDRESS` and/or `ADMIN_PASSWORD`; unauthenticated visitors see only a login screen |
 | `/api/publish/challenge` | Create a short-lived single-use wallet message challenge | Available after `DATABASE_URL` and migration setup |
@@ -318,8 +319,14 @@ Loading a saved project (or clicking "Reopen generated site" in the preview tool
 | `/api/admin/health` | Live System Health checks (generation, database, contracts, deployment); session-gated | Available |
 | `/api/admin/pages` | List registered page content (draft/published/default) and stage a draft edit; session-gated | Available after `DATABASE_URL` and migration setup |
 | `/api/admin/pages/actions` | Publish, publish-all, discard, or reset-to-default a page content draft; session-gated | Available after `DATABASE_URL` and migration setup |
+| `/api/hoodchat/challenge` | Create a short-lived single-use wallet message challenge for a Hoodchat post | Available after `DATABASE_URL` and migration setup |
+| `/api/hoodchat/messages` | List the live Hoodchat feed (GET) or verify a signature and post a message (POST) | GET always available; POST requires `DATABASE_URL` and migration setup |
+| `/api/hoodchat/report` | Report a Hoodchat message; auto-hides after 3 reports | Available after `DATABASE_URL` and migration setup |
+| `/api/token-chat/challenge` | Create a short-lived single-use wallet message challenge for a per-token chat post | Available after `DATABASE_URL` and migration setup |
+| `/api/token-chat/messages` | List a token's chat feed (GET) or verify a signature and post a message (POST) | GET always available; POST requires `DATABASE_URL` and migration setup |
+| `/api/token-chat/report` | Report a token chat message; auto-hides after 3 reports | Available after `DATABASE_URL` and migration setup |
 | `/[slug]` | Public generated token site, metadata, artwork and Dexscreener section | Reads durable published records; unknown slugs 404 |
-| `/token/[chain]/[address]` | Full three-column trade/chart/holder page for any token by contract address, launched through Hoodlums or not | No wallet signature, no DB write; unsupported chains and invalid addresses 404 |
+| `/token/[chain]/[address]` | Full three-column trade/chart/holder page for any token by contract address, launched through Hoodlums or not; centre column includes a live Hoodchat tab | No wallet signature/DB write for the page itself; unsupported chains and invalid addresses 404 |
 
 ### Any-token trade/chart/holder page
 

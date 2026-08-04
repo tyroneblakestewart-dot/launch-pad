@@ -33,12 +33,15 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
 
 - `app/` — routes: `/` studio, `/providers`, `/allocations`,
   `/liquidity-lab`, `/bonding-curve`, `/testnet`, `/monad`, `/social`,
-  `/account` (disabled preview), `/[slug]` (durable public generated site).
-  See README route table for status of each.
+  `/hoodchat` (live community chat feed), `/account` (disabled preview),
+  `/[slug]` (durable public generated site),
+  `/token/[chain]/[address]` (any-token trade/chart/holder page, including
+  the per-token Hoodchat tab). See README route table for status of each.
 - `app/api/` — server routes: `generate-site-style` / `generate-site-page`
   (OpenAI-backed), `publish/challenge` and `publish` (single-use wallet-signed
-  public publishing), `dexscreener-pair`, `generation-status`, and
-  `social/telegram`.
+  public publishing), `dexscreener-pair`, `generation-status`,
+  `social/telegram`, and `hoodchat/*` / `token-chat/*` (single-use
+  wallet-signed chat posting, reading and reporting).
 - `app/[slug]/artwork/route.ts` — HTTP-fetchable OG/artwork image for a
   public generated site; not under `app/api`, so it is not part of
   `backend-inventory.test.ts`'s API route inventory.
@@ -144,3 +147,16 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   user accounts were added. Production migration and first write enablement
   must remain deliberate and owner-reviewed; this first write-endpoint PR
   must not be auto-merged.
+- Hoodchat (issue #237) is implemented for review as two features sharing
+  wallet-signed posting auth (`lib/server/chat-auth.ts`) and moderation
+  rules (`lib/server/chat-moderation.ts`, 280-char cap, link rejection,
+  auto-hide at 3 reports): the main `/hoodchat` feed
+  (migration `008_hoodchat.sql`, `hoodchat_messages`) with category filters,
+  and a per-token chat tab on `/token/[chain]/[address]`
+  (migration `009_token_chat.sql`, `token_chat_messages`) with Holder/Dev
+  badges. Posting challenges are held in memory (5-minute TTL) rather than
+  in a durable table — reasonable for a chat feature, unlike site
+  publishing. Both features are wired into System Health and the
+  `hoodchat` service-isolation switch; the main feed's headings are in the
+  Pages CMS. Production migration and first write enablement must remain
+  deliberate and owner-reviewed.

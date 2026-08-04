@@ -8,7 +8,7 @@ import { getPostgresPool } from "@/lib/server/postgres";
 export type SystemHealthStatus = "green" | "amber" | "red";
 
 export type SystemHealthCheck = {
-  id: "website-generation" | "database" | "contracts" | "deployment" | "subscribers";
+  id: "website-generation" | "database" | "contracts" | "deployment" | "subscribers" | "hoodchat" | "token-chat";
   label: string;
   status: SystemHealthStatus;
   message: string;
@@ -240,12 +240,50 @@ export async function checkSubscribersHealth(deps: {
   }
 }
 
+export type ChatTablePing = () => Promise<unknown>;
+
+async function checkChatTableHealth(
+  id: "hoodchat" | "token-chat",
+  label: string,
+  tableName: string,
+  deps: { databaseUrl?: string; ping?: ChatTablePing } = {},
+): Promise<SystemHealthCheck> {
+  const databaseUrl = deps.databaseUrl ?? process.env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl && !deps.ping) {
+    return { id, label, status: "amber", message: "DATABASE_URL is not configured." };
+  }
+  const ping = deps.ping ?? (() => getPostgresPool(databaseUrl).query(`SELECT 1 FROM ${tableName} LIMIT 1`));
+  try {
+    await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, `${label} health check timed out.`);
+    return { id, label, status: "green", message: `The ${tableName} table is reachable.` };
+  } catch {
+    return {
+      id,
+      label,
+      status: "red",
+      message: `The ${tableName} table is not reachable. Apply the migration that creates it.`,
+    };
+  }
+}
+
+/** Reports whether the `hoodchat_messages` table backing the main /hoodchat feed is reachable. */
+export async function checkHoodchatHealth(deps: { databaseUrl?: string; ping?: ChatTablePing } = {}): Promise<SystemHealthCheck> {
+  return checkChatTableHealth("hoodchat", "Hoodchat", "hoodchat_messages", deps);
+}
+
+/** Reports whether the `token_chat_messages` table backing the per-token chat tab is reachable. */
+export async function checkTokenChatHealth(deps: { databaseUrl?: string; ping?: ChatTablePing } = {}): Promise<SystemHealthCheck> {
+  return checkChatTableHealth("token-chat", "Token chat", "token_chat_messages", deps);
+}
+
 export type SystemHealthDeps = {
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
   database?: Parameters<typeof checkDatabaseHealth>[0];
   contracts?: Parameters<typeof checkContractsHealth>[0];
   subscribers?: Parameters<typeof checkSubscribersHealth>[0];
+  hoodchat?: Parameters<typeof checkHoodchatHealth>[0];
+  tokenChat?: Parameters<typeof checkTokenChatHealth>[0];
 };
 
 /**
@@ -254,12 +292,14 @@ export type SystemHealthDeps = {
  * the others or the response as a whole.
  */
 export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<SystemHealthCheck[]> {
-  const [websiteGeneration, database, contracts, deployment, subscribers] = await Promise.all([
+  const [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat] = await Promise.all([
     checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
     checkDatabaseHealth(deps.database),
     checkContractsHealth(deps.contracts),
     checkDeploymentHealth(deps.env),
     checkSubscribersHealth(deps.subscribers),
+    checkHoodchatHealth(deps.hoodchat),
+    checkTokenChatHealth(deps.tokenChat),
   ]);
-  return [websiteGeneration, database, contracts, deployment, subscribers];
+  return [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat];
 }

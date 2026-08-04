@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
+import { TokenChatPanel } from "@/components/token-page/token-chat-panel";
 import {
   formatHolderPercent,
   formatPriceChange,
@@ -9,13 +10,15 @@ import {
   shortenAddress,
 } from "@/lib/token-page-format";
 import type { TokenMarketStats } from "@/lib/server/token-market-stats";
+import type { SupportedChain } from "@/lib/types";
 import styles from "./token-page.module.css";
 
-type ActivityTab = "trades" | "holders";
+type ActivityTab = "trades" | "holders" | "hoodchat";
 
 const TABS: { id: ActivityTab; label: string }[] = [
   { id: "trades", label: "Recent trades" },
   { id: "holders", label: "Holders" },
+  { id: "hoodchat", label: "Hoodchat" },
 ];
 
 function formatTokenAmount(amountRaw: string, decimals: number | null): string {
@@ -33,7 +36,15 @@ function formatTokenAmount(amountRaw: string, decimals: number | null): string {
  * `PublicDexscreenerSection` keeps its own chrome/styling since it's shared
  * with `app/[slug]/page.tsx`'s public generated site.
  */
-export function TokenCenterColumn({ address, marketStats }: { address: string; marketStats: TokenMarketStats }) {
+export function TokenCenterColumn({
+  chain,
+  address,
+  marketStats,
+}: {
+  chain: SupportedChain;
+  address: string;
+  marketStats: TokenMarketStats;
+}) {
   const [tab, setTab] = useState<ActivityTab>("trades");
 
   const priceUsd = marketStats.supported ? marketStats.priceUsd : null;
@@ -41,6 +52,7 @@ export function TokenCenterColumn({ address, marketStats }: { address: string; m
   const trades = marketStats.supported ? marketStats.trades : [];
   const holders = marketStats.supported ? marketStats.holders : [];
   const decimals = marketStats.supported ? marketStats.decimals : null;
+  const symbol = marketStats.supported && marketStats.symbol ? marketStats.symbol : null;
 
   return (
     <>
@@ -100,33 +112,37 @@ export function TokenCenterColumn({ address, marketStats }: { address: string; m
               ))}
             </div>
           )
-        ) : holders.length === 0 ? (
-          <p className={styles.emptyState}>No holder data found for this token yet.</p>
-        ) : (
-          <div>
-            <div className={`${styles.activityHeaderRow} ${styles.holdersGridCols}`}>
-              <span>Rank</span>
-              <span>Wallet</span>
-              <span>% supply</span>
-              <span>Share</span>
-            </div>
-            {holders.map((holder, index) => (
-              <div key={holder.address} className={`${styles.activityRow} ${styles.holdersGridCols}`}>
-                <span className={styles.rankText}>#{index + 1}</span>
-                <span className={styles.dimText}>{shortenAddress(holder.address)}</span>
-                <span className={styles.bodyText}>{formatHolderPercent(holder.percent)}</span>
-                <span className={styles.shareBarTrack}>
-                  <span
-                    className={styles.shareBarFill}
-                    style={{ width: `${Math.min(100, Math.max(2, holder.percent || 0))}%` }}
-                  />
-                </span>
+        ) : tab === "holders" ? (
+          holders.length === 0 ? (
+            <p className={styles.emptyState}>No holder data found for this token yet.</p>
+          ) : (
+            <div>
+              <div className={`${styles.activityHeaderRow} ${styles.holdersGridCols}`}>
+                <span>Rank</span>
+                <span>Wallet</span>
+                <span>% supply</span>
+                <span>Share</span>
               </div>
-            ))}
-            <p className={styles.mutedNote} style={{ padding: "11px 16px" }}>
-              Liquidity pool address excluded from this list.
-            </p>
-          </div>
+              {holders.map((holder, index) => (
+                <div key={holder.address} className={`${styles.activityRow} ${styles.holdersGridCols}`}>
+                  <span className={styles.rankText}>#{index + 1}</span>
+                  <span className={styles.dimText}>{shortenAddress(holder.address)}</span>
+                  <span className={styles.bodyText}>{formatHolderPercent(holder.percent)}</span>
+                  <span className={styles.shareBarTrack}>
+                    <span
+                      className={styles.shareBarFill}
+                      style={{ width: `${Math.min(100, Math.max(2, holder.percent || 0))}%` }}
+                    />
+                  </span>
+                </div>
+              ))}
+              <p className={styles.mutedNote} style={{ padding: "11px 16px" }}>
+                Liquidity pool address excluded from this list.
+              </p>
+            </div>
+          )
+        ) : (
+          <TokenChatPanel chain={chain} address={address} symbol={symbol} holders={holders} />
         )}
       </div>
     </>

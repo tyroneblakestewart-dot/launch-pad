@@ -23,6 +23,18 @@ export const ADMIN_SERVICE_DEFINITIONS = [
     description: "Owner-approved posts sent through the Telegram publishing endpoint.",
     affectedRoutes: "/api/social/telegram",
   },
+  {
+    key: "hoodchat",
+    label: "Hoodchat",
+    description: "Wallet-signed posting, reading and reporting on the main /hoodchat feed.",
+    affectedRoutes: "/api/hoodchat/challenge, /api/hoodchat/messages, /api/hoodchat/report",
+  },
+  {
+    key: "token-chat",
+    label: "Token chat",
+    description: "Wallet-signed posting, reading and reporting on the per-token Hoodchat tab.",
+    affectedRoutes: "/api/token-chat/challenge, /api/token-chat/messages, /api/token-chat/report",
+  },
 ] as const;
 
 export type AdminServiceKey = (typeof ADMIN_SERVICE_DEFINITIONS)[number]["key"];
@@ -61,6 +73,8 @@ export const SYSTEM_HEALTH_CHECK_IDS = [
   "contracts",
   "deployment",
   "subscribers",
+  "hoodchat",
+  "token-chat",
 ] as const;
 
 export type SystemHealthCheckId = (typeof SYSTEM_HEALTH_CHECK_IDS)[number];

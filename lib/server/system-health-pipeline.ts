@@ -440,6 +440,137 @@ export async function buildSubscribersPipeline(deps: SubscribersPipelineDeps = {
 }
 
 // ---------------------------------------------------------------------------
+// Hoodchat / token chat
+// ---------------------------------------------------------------------------
+
+export type ChatPipelineDeps = {
+  databaseUrl?: string;
+  getPool?: (databaseUrl: string) => PoolLike;
+  getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
+};
+
+async function chatIsolationStage(
+  serviceKey: AdminServiceKey,
+  getServiceControl: (key: AdminServiceKey) => Promise<AdminServiceControl>,
+): Promise<AdminPipelineStage> {
+  const id = "endpoint-reachable";
+  const label = "Endpoint reachable";
+  try {
+    const control = await getServiceControl(serviceKey);
+    if (control.isolated) {
+      return stage(
+        id,
+        label,
+        "amber",
+        `Isolated by an administrator: ${control.reason || "no reason given"}.`,
+        control.updatedAt,
+      );
+    }
+    return stage(id, label, "green", "Not isolated; the endpoint accepts requests.", control.updatedAt);
+  } catch {
+    return stage(
+      id,
+      label,
+      "amber",
+      "Isolation state could not be read; the circuit breaker fails open and requests are treated as reachable.",
+    );
+  }
+}
+
+async function buildChatPipeline(
+  id: Extract<SystemHealthCheckId, "hoodchat" | "token-chat">,
+  label: string,
+  tableName: string,
+  serviceKey: AdminServiceKey,
+  deps: ChatPipelineDeps,
+): Promise<AdminServicePipeline> {
+  const getServiceControl =
+    deps.getServiceControl ?? ((key: AdminServiceKey) => getAdminOperationsStore().getServiceControl(key));
+  const databaseUrl = deps.databaseUrl ?? process.env.DATABASE_URL?.trim() ?? "";
+
+  const isolationStage = await chatIsolationStage(serviceKey, getServiceControl);
+
+  if (!databaseUrl) {
+    const message = "DATABASE_URL is not configured.";
+    return {
+      id,
+      label,
+      stages: [
+        isolationStage,
+        stage("table-exists", `${tableName} table exists`, "amber", message),
+        stage("read-query", "Feed read query", "amber", message),
+        stage("row-count", "Message row count", "amber", message),
+      ],
+    };
+  }
+
+  const pool = (deps.getPool ?? ((url: string) => getPostgresPool(url) as unknown as PoolLike))(databaseUrl);
+
+  let tableExists = false;
+  let tableExistsStage: AdminPipelineStage;
+  try {
+    const result = await withTimeout(
+      pool.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1`,
+        [tableName],
+      ),
+      HEALTH_CHECK_TIMEOUT_MS,
+      "timed out",
+    );
+    tableExists = result.rows.length > 0;
+    tableExistsStage = tableExists
+      ? stage("table-exists", `${tableName} table exists`, "green", `The ${tableName} table is present.`)
+      : stage(
+          "table-exists",
+          `${tableName} table exists`,
+          "red",
+          `The migration that creates ${tableName} has not been applied yet.`,
+        );
+  } catch {
+    tableExistsStage = stage(
+      "table-exists",
+      `${tableName} table exists`,
+      "red",
+      `Could not check whether the ${tableName} table exists.`,
+    );
+  }
+
+  let readQueryStage: AdminPipelineStage;
+  let rowCountStage: AdminPipelineStage;
+  if (!tableExists) {
+    readQueryStage = stage("read-query", "Feed read query", "amber", `Not probed; the ${tableName} table does not exist yet.`);
+    rowCountStage = stage("row-count", "Message row count", "amber", `Not probed; the ${tableName} table does not exist yet.`);
+  } else {
+    try {
+      const result = await withTimeout(
+        pool.query<{ count: number | string }>(`SELECT COUNT(*)::int AS count FROM ${tableName}`),
+        HEALTH_CHECK_TIMEOUT_MS,
+        "timed out",
+      );
+      const count = Number(result.rows[0]?.count ?? 0);
+      readQueryStage = stage("read-query", "Feed read query", "green", "The feed read query succeeded.");
+      rowCountStage =
+        count === 0
+          ? stage("row-count", "Message row count", "green", "0 messages. The feed shows an empty state, not an error.")
+          : stage("row-count", "Message row count", "green", `${count} message row(s).`);
+    } catch {
+      readQueryStage = stage("read-query", "Feed read query", "red", "The feed read query failed.");
+      rowCountStage = stage("row-count", "Message row count", "red", "Could not count message rows.");
+    }
+  }
+
+  return { id, label, stages: [isolationStage, tableExistsStage, readQueryStage, rowCountStage] };
+}
+
+export async function buildHoodchatPipeline(deps: ChatPipelineDeps = {}): Promise<AdminServicePipeline> {
+  return buildChatPipeline("hoodchat", "Hoodchat", "hoodchat_messages", "hoodchat", deps);
+}
+
+export async function buildTokenChatPipeline(deps: ChatPipelineDeps = {}): Promise<AdminServicePipeline> {
+  return buildChatPipeline("token-chat", "Token chat", "token_chat_messages", "token-chat", deps);
+}
+
+// ---------------------------------------------------------------------------
 // On-chain contracts
 // ---------------------------------------------------------------------------
 
@@ -680,6 +811,8 @@ export type SystemHealthPipelineDeps = {
   database?: DatabasePipelineDeps;
   contracts?: ContractsPipelineDeps;
   subscribers?: SubscribersPipelineDeps;
+  hoodchat?: ChatPipelineDeps;
+  tokenChat?: ChatPipelineDeps;
 };
 
 /** Builds a single service's pipeline on demand — used by the drill-down endpoint. */
@@ -702,5 +835,9 @@ export async function buildServicePipeline(
       return buildDeploymentPipeline({ env: deps.env, requestOidcToken: deps.requestOidcToken });
     case "subscribers":
       return buildSubscribersPipeline(deps.subscribers);
+    case "hoodchat":
+      return buildHoodchatPipeline(deps.hoodchat);
+    case "token-chat":
+      return buildTokenChatPipeline(deps.tokenChat);
   }
 }

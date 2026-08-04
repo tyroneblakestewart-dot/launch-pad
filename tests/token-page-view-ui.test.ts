@@ -108,6 +108,12 @@ describe("token page centre column (chart + activity)", () => {
     const component = await source("components/token-page/token-center-column.tsx");
     expect(component).toContain("Liquidity pool address excluded from this list.");
   });
+
+  it("adds a live Hoodchat tab alongside Recent trades and Holders (issue #237)", async () => {
+    const component = await source("components/token-page/token-center-column.tsx");
+    expect(component).toContain('{ id: "hoodchat", label: "Hoodchat" }');
+    expect(component).toContain("<TokenChatPanel");
+  });
 });
 
 describe("token page right column (trade terminals, about, chat)", () => {
@@ -116,9 +122,9 @@ describe("token page right column (trade terminals, about, chat)", () => {
     expect(component).not.toContain('"use client"');
   });
 
-  it("shows a coming-soon chat placeholder instead of a fake working chat", async () => {
+  it("no longer shows a coming-soon chat placeholder now that live Hoodchat lives in the centre column", async () => {
     const component = await source("components/token-page/token-right-column.tsx");
-    expect(component).toContain("Coming soon");
+    expect(component).not.toContain("Coming soon");
   });
 
   it("degrades gracefully instead of inventing a description for tokens with no published copy", async () => {
