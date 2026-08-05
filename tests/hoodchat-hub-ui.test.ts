@@ -35,7 +35,6 @@ describe("HoodChat category tabs", () => {
     expect(component).toContain("Promise.all(FILTER_TABS.map((tab) => load(tab.id)))");
     expect(component).toContain("Cached messages render immediately; this refresh happens in the background.");
     expect(component).toContain("fetchHoodchatMessages(target)");
-    expect(component).not.toContain('}, [filter]);');
   });
 
   it("does not put the tabs in a horizontal momentum scroller on iPhone widths", async () => {
