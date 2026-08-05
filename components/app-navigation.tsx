@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./app-navigation.module.css";
 
@@ -92,6 +92,11 @@ export function AppNavigation() {
 
 export function MobileBottomNavigation() {
   const pathname = usePathname();
+  const [pendingTarget, setPendingTarget] = useState<{ href: string; fromPathname: string } | null>(null);
+
+  function markPending(href: string) {
+    setPendingTarget({ href, fromPathname: pathname });
+  }
 
   return (
     <nav
@@ -99,11 +104,29 @@ export function MobileBottomNavigation() {
       aria-label="Mobile launch workflow"
       style={{ "--nav-count": VISIBLE_NAV_ITEMS.length } as CSSProperties}
     >
-      {VISIBLE_NAV_ITEMS.map((item) => (
-        <Link key={item.href} href={item.href} aria-label={item.label} title={item.label} className={isActive(pathname, item.href) ? styles.active : ""}>
-          <NavIcon name={item.icon} />
-        </Link>
-      ))}
+      {VISIBLE_NAV_ITEMS.map((item) => {
+        const optimisticActive = pendingTarget?.href === item.href && pendingTarget.fromPathname === pathname;
+        const active = isActive(pathname, item.href) || optimisticActive;
+
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            prefetch={true}
+            aria-label={item.label}
+            aria-current={active ? "page" : undefined}
+            title={item.label}
+            className={active ? styles.active : ""}
+            onPointerDown={(event) => {
+              if (event.pointerType === "touch" || event.pointerType === "pen") markPending(item.href);
+            }}
+            onPointerCancel={() => setPendingTarget(null)}
+            onClick={() => markPending(item.href)}
+          >
+            <NavIcon name={item.icon} />
+          </Link>
+        );
+      })}
     </nav>
   );
 }
