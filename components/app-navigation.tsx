@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import styles from "./app-navigation.module.css";
 
@@ -92,6 +92,16 @@ export function AppNavigation() {
 
 export function MobileBottomNavigation() {
   const pathname = usePathname();
+  const [pendingTarget, setPendingTarget] = useState<{ href: string; fromPathname: string } | null>(null);
+
+  function markPending(href: string) {
+    setPendingTarget({ href, fromPathname: pathname });
+  }
+
+  function itemIsActive(href: string) {
+    const optimisticActive = pendingTarget?.href === href && pendingTarget.fromPathname === pathname;
+    return isActive(pathname, href) || optimisticActive;
+  }
 
   return (
     <nav
@@ -100,7 +110,20 @@ export function MobileBottomNavigation() {
       style={{ "--nav-count": VISIBLE_NAV_ITEMS.length } as CSSProperties}
     >
       {VISIBLE_NAV_ITEMS.map((item) => (
-        <Link key={item.href} href={item.href} aria-label={item.label} title={item.label} className={isActive(pathname, item.href) ? styles.active : ""}>
+        <Link
+          key={item.href}
+          href={item.href}
+          prefetch={true}
+          aria-label={item.label}
+          aria-current={itemIsActive(item.href) ? "page" : undefined}
+          title={item.label}
+          className={itemIsActive(item.href) ? styles.active : ""}
+          onPointerDown={(event) => {
+            if (event.pointerType === "touch" || event.pointerType === "pen") markPending(item.href);
+          }}
+          onPointerCancel={() => setPendingTarget(null)}
+          onClick={() => markPending(item.href)}
+        >
           <NavIcon name={item.icon} />
         </Link>
       ))}

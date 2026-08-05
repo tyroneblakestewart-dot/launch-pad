@@ -1,8 +1,9 @@
 /* Design tokens transcribed from public/design-refs/hoodlums-hoodchat.html:
    #0a0b09 background + ambient lime glow, rgba(18,21,19,0.99) panels,
    #c6f53e lime accent, Archivo body font, IBM Plex Mono labels. Mobile-first
-   per AGENTS.md: category filters scroll horizontally, composer stays
-   sticky above the bottom nav bar. */
+   per AGENTS.md: category filters use a two-row grid on narrow screens so
+   iPhone Safari does not have to arbitrate taps inside a horizontal momentum
+   scroller; the composer stays sticky above the bottom nav bar. */
 
 .page {
   min-height: 100vh;
@@ -59,16 +60,10 @@
 
 .filterTabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-
-.filterTabs::-webkit-scrollbar {
-  display: none;
 }
 
 .filterTab {
@@ -84,9 +79,15 @@
   cursor: pointer;
 }
 
-.filterTab:hover {
-  border-color: rgba(198, 245, 62, 0.4);
-  color: #f4f7f1;
+.filterTab:hover:not(:disabled) {
+  transform: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .filterTab:hover:not(:disabled) {
+    border-color: rgba(198, 245, 62, 0.4);
+    color: #f4f7f1;
+  }
 }
 
 .filterTabActive {
@@ -255,6 +256,25 @@
   font: 700 12px "IBM Plex Mono", monospace;
   letter-spacing: 0.03em;
   cursor: pointer;
+}
+
+@media (max-width: 639px) {
+  .filterTabs {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .filterTab {
+    grid-column: span 2;
+    width: 100%;
+    min-width: 0;
+    padding-inline: 8px;
+    text-align: center;
+  }
+
+  .filterTab:nth-child(-n + 2) {
+    grid-column: span 3;
+  }
 }
 
 @media (max-width: 1099px) {
