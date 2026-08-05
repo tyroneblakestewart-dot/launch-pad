@@ -13,12 +13,13 @@ describe("mobile bottom navigation responsiveness", () => {
     const component = await source("components/app-navigation.tsx");
 
     expect(component).toContain("const [pendingTarget, setPendingTarget]");
-    expect(component).toContain("pendingTarget?.href === item.href");
+    expect(component).toContain("pendingTarget?.href === href");
     expect(component).toContain("pendingTarget.fromPathname === pathname");
+    expect(component).toContain("itemIsActive(item.href)");
     expect(component).toContain("onPointerDown={(event) => {");
     expect(component).toContain('event.pointerType === "touch"');
     expect(component).toContain("markPending(item.href)");
-    expect(component).toContain('aria-current={active ? "page" : undefined}');
+    expect(component).toContain('aria-current={itemIsActive(item.href) ? "page" : undefined}');
   });
 
   it("fully prefetches bottom-navigation destinations in production", async () => {
