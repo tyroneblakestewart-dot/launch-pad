@@ -71,8 +71,6 @@ async function postMessage(category: HoodchatCategory, body: string): Promise<Ho
 }
 
 export type HoodchatHubProps = {
-  heroEyebrow: string;
-  heroTitle: string;
   heroIntro: string;
   emptyState: string;
   composerPlaceholder: string;
@@ -80,8 +78,6 @@ export type HoodchatHubProps = {
 };
 
 export function HoodchatHub({
-  heroEyebrow,
-  heroTitle,
   heroIntro,
   emptyState,
   composerPlaceholder,
@@ -186,8 +182,8 @@ export function HoodchatHub({
     <main className={styles.page}>
       <div className={styles.shell}>
         <header className={styles.hero}>
-          <p className={styles.eyebrow}>{heroEyebrow}</p>
-          <h1 className={styles.title}>{heroTitle}</h1>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/hoodchat-wordmark.png" alt="Hoodchat" className={styles.wordmark} />
           <p className={styles.intro}>{heroIntro}</p>
         </header>
 
@@ -201,6 +197,7 @@ export function HoodchatHub({
                 aria-selected={filter === tab.id}
                 className={`${styles.filterTab} ${filter === tab.id ? styles.filterTabActive : ""}`}
                 onClick={() => setFilter(tab.id)}
+                onTouchStart={() => {}}
               >
                 {tab.label}
               </button>
