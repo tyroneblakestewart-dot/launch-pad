@@ -27,14 +27,30 @@ describe("HoodChat category tabs", () => {
     expect(component).not.toContain("onTouchStart");
   });
 
-  it("warms and caches every category so a tab change does not wait for the category request", async () => {
+  it("paints the selected tab before reconciling the message feed", async () => {
     const component = await source("components/hoodchat-hub.tsx");
 
-    expect(component).toContain("type FilterMessageCache = Partial<Record<FilterTab, HoodchatMessage[]>>;");
-    expect(component).toContain("const activeMessages = messagesByFilter[filter];");
-    expect(component).toContain("Promise.all(FILTER_TABS.map((tab) => load(tab.id)))");
-    expect(component).toContain("Cached messages render immediately; this refresh happens in the background.");
-    expect(component).toContain("fetchHoodchatMessages(target)");
+    expect(component).toContain("useDeferredValue");
+    expect(component).toContain("const deferredFilter = useDeferredValue(filter);");
+    expect(component).toContain("const activeMessages = messagesByFilter[deferredFilter];");
+    expect(component).toContain("aria-busy={deferredFilter !== filter || activeMessages === undefined}");
+  });
+
+  it("loads one all-message feed and builds every category cache locally", async () => {
+    const component = await source("components/hoodchat-hub.tsx");
+
+    expect(component).toContain('fetch("/api/hoodchat/messages", { cache: "no-store" })');
+    expect(component).toContain("function buildFilterMessageCache(messages: HoodchatMessage[])");
+    expect(component).toContain("setMessagesByFilter(buildFilterMessageCache(loadedMessages));");
+    expect(component).not.toContain("?category=${filter}");
+    expect(component).not.toContain("Promise.all(FILTER_TABS.map");
+  });
+
+  it("never scrolls the whole iPhone viewport while changing category", async () => {
+    const component = await source("components/hoodchat-hub.tsx");
+
+    expect(component).toContain("feed.scrollTop = feed.scrollHeight;");
+    expect(component).not.toContain("scrollIntoView");
   });
 
   it("does not put the tabs in a horizontal momentum scroller on iPhone widths", async () => {
