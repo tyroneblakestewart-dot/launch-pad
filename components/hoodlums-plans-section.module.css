@@ -234,12 +234,16 @@
 .bundleCta,
 .bottomCta button,
 .mobileStickyCta button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: 48px;
   border: 0;
   border-radius: 999px;
   background: #c6f53e;
   color: #061006;
   cursor: pointer;
+  text-decoration: none;
   font-weight: 900;
   box-shadow: 0 16px 40px rgba(198, 245, 62, 0.16);
 }

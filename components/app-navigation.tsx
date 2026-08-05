@@ -9,9 +9,16 @@ import styles from "./app-navigation.module.css";
 
 const NAV_ITEMS = [
   { href: "/", label: "Create & Bond", icon: "studio", step: "1", description: "Create a token, open its market" },
-  { href: "/providers", label: "Providers", icon: "wallet", step: "2", description: "Choose the launch provider" },
+  { href: "/manager", label: "Manager", icon: "wallet", step: "2", description: "Grow your token after launch" },
   { href: "/hoodchat", label: "Hoodchat", icon: "hoodchat", step: "◉", description: "Chat with the crew" },
-  { href: "/allocations", label: "Allocations", icon: "allocate", step: "3", description: "Plan token distribution" },
+  // Providers (the provider launch/handoff desk) is hidden from the nav per
+  // issue #248 — comment/flag only. The route, component and its tests stay
+  // fully intact; it remains reachable directly at /providers.
+  { href: "/providers", label: "Providers", icon: "wallet", step: "2", description: "Choose the launch provider", hidden: true },
+  // Allocations is hidden from the nav per issue #248 — comment/flag only.
+  // The route, component and its tests stay fully intact; it remains
+  // reachable directly at /allocations.
+  { href: "/allocations", label: "Allocations", icon: "allocate", step: "3", description: "Plan token distribution", hidden: true },
   { href: "/liquidity-lab", label: "Liquidity Lab", icon: "liquidity", step: "4", description: "Test the token pool", testnetOnly: true },
   { href: "/bonding-curve", label: "Bonding Curve", icon: "curve", step: "5", description: "Track token graduation", testnetOnly: true },
 ] as const;
@@ -20,9 +27,11 @@ const NAV_ITEMS = [
 // their routes but are hidden from the public nav unless this flag is on.
 const SHOW_TESTNET_TOOLS = process.env.NEXT_PUBLIC_SHOW_TESTNET_TOOLS === "true";
 
-const VISIBLE_NAV_ITEMS = SHOW_TESTNET_TOOLS
+const NAV_ITEMS_AFTER_TESTNET_FILTER = SHOW_TESTNET_TOOLS
   ? NAV_ITEMS
   : NAV_ITEMS.filter((item) => !("testnetOnly" in item && item.testnetOnly));
+
+const VISIBLE_NAV_ITEMS = NAV_ITEMS_AFTER_TESTNET_FILTER.filter((item) => !("hidden" in item && item.hidden));
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";

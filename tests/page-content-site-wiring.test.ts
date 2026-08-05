@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Link from "next/link";
 import HomePage from "@/app/(app)/page";
 import ProvidersPage from "@/app/(app)/providers/page";
+import ManagerPage from "@/app/(app)/manager/page";
 import BondingCurvePage from "@/app/(app)/bonding-curve/page";
 import AllocationsPage from "@/app/(app)/allocations/page";
 import AccountPage from "@/app/(app)/account/page";
 import PublicGeneratedSitePage from "@/app/[slug]/page";
 import { HoodlumsMarketHome } from "@/components/hoodlums-market-home";
 import { ProviderLauncher } from "@/components/provider-launcher";
+import { ManagerPlans } from "@/components/manager-plans";
 import { TokenAllocationDesk } from "@/components/token-allocation-desk";
 import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
 import type { PublicGeneratedSite } from "@/lib/public-site";
@@ -187,6 +189,40 @@ describe("providers page content wiring", () => {
     const withPreview = await ProvidersPage({ searchParams: Promise.resolve({ cms_preview: "1" }) });
     const [providersWithPreview] = findAll(withPreview, (el) => el.type === ProviderLauncher);
     expect(providersWithPreview.props.headerIntro).toBe("Draft intro");
+  });
+});
+
+describe("manager page content wiring", () => {
+  it("passes the registered defaults into ManagerPlans as props", async () => {
+    const tree = await ManagerPage({ searchParams: undefined });
+    const [manager] = findAll(tree, (el) => el.type === ManagerPlans);
+    expect(manager.props.headerEyebrow).toBe("MANAGER · PLANS");
+    expect(manager.props.headerTitle).toBe("Grow your token after launch.");
+    expect(manager.props.headerIntro).toBe(
+      "Pro runs the marketing for one token. Pro Bundle runs it for up to three from a single dashboard.",
+    );
+  });
+
+  it("passes a published override through to ManagerPlans", async () => {
+    await publishOverride("manager", "header_title", "heading", "Manage every launch");
+    const tree = await ManagerPage({ searchParams: undefined });
+    const [manager] = findAll(tree, (el) => el.type === ManagerPlans);
+    expect(manager.props.headerTitle).toBe("Manage every launch");
+  });
+
+  it("only shows a staged draft to an authenticated preview request", async () => {
+    await authenticatePreviewSession();
+    const store = createMemoryPageContentStore();
+    setPageContentStoreForTests(store);
+    await store.saveDraft({ pageId: "manager", elementId: "header_intro", elementType: "text", value: "Draft intro", actor: "admin" });
+
+    const withoutPreview = await ManagerPage({ searchParams: Promise.resolve({}) });
+    const [managerWithoutPreview] = findAll(withoutPreview, (el) => el.type === ManagerPlans);
+    expect(managerWithoutPreview.props.headerIntro).not.toBe("Draft intro");
+
+    const withPreview = await ManagerPage({ searchParams: Promise.resolve({ cms_preview: "1" }) });
+    const [managerWithPreview] = findAll(withPreview, (el) => el.type === ManagerPlans);
+    expect(managerWithPreview.props.headerIntro).toBe("Draft intro");
   });
 });
 
