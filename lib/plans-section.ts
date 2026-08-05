@@ -93,3 +93,10 @@ export function proBundlePriceForBilling(billing: PlansBilling): {
         note: "Up to 3 tokens · 20% off paid 3 months upfront",
       };
 }
+
+/** Single-line Pro Bundle price, matching the format `planPriceForBilling` uses for Pro's plan card. */
+export function proBundlePlanPriceForBilling(billing: PlansBilling): string {
+  return billing === "upfront"
+    ? "$288 / 3 months · up to 3 tokens"
+    : "$120/month · up to 3 tokens";
+}

@@ -286,7 +286,7 @@ The migration command reads `DATABASE_URL`, applies every SQL file in `db/migrat
 - lowercase ASCII letters, digits and single hyphens only;
 - 48 characters maximum;
 - no leading/trailing hyphen, no repeated hyphens;
-- reserved and rejected outright: `api`, `account`, `testnet`, `providers`, `allocations`, `liquidity-lab`, `monad`, `social`, `bonding-curve`, `admin`, `www`.
+- reserved and rejected outright: `api`, `account`, `testnet`, `providers`, `allocations`, `manager`, `liquidity-lab`, `monad`, `social`, `bonding-curve`, `admin`, `www`.
 
 The browser-local collision check remains a convenience, while the authoritative uniqueness guarantee is the Postgres `published_sites_slug_unique` constraint.
 
@@ -301,8 +301,9 @@ Loading a saved project (or clicking "Reopen generated site" in the preview tool
 | Route | Purpose | Status |
 | --- | --- | --- |
 | `/` | Project studio, artwork upload, site generation, and Dexscreener preview | Available |
-| `/providers` | Robinhood provider handoff, contract verification, and creator-buy tracking | Available; external actions require a provider and wallet |
-| `/allocations` | Allocation planning and wallet-approved testnet distribution | Available |
+| `/manager` | Pro and Pro Bundle plan cards with a Monthly / 3-months billing toggle | Available; the launch-flow nav's step-2 tab (issue #248) |
+| `/providers` | Robinhood provider handoff, contract verification, and creator-buy tracking | Available; external actions require a provider and wallet. Hidden from the nav (issue #248) — reachable by direct URL only, mechanics unchanged |
+| `/allocations` | Allocation planning and wallet-approved testnet distribution | Available. Hidden from the nav (issue #248) — reachable by direct URL only, mechanics unchanged |
 | `/liquidity-lab` | Register and fund a separately deployed test AMM | Test-only; nav tab hidden unless `NEXT_PUBLIC_SHOW_TESTNET_TOOLS=true` |
 | `/bonding-curve` | Review the full-supply curve and automatic pool-graduation lifecycle, plus live read-only graduation status for a configured curve | Foundation page; live trading not active; nav tab hidden unless `NEXT_PUBLIC_SHOW_TESTNET_TOOLS=true` |
 | `/testnet` | Robinhood Chain Testnet and Solana devnet token creation | Test-only |
@@ -400,19 +401,20 @@ table (migration `006_page_content_registry.sql`; see
   ever staged as a draft, and every publish is recorded in the Activity log
   with the old and new value.
 - **Currently registered:** `/` (hero copy and its two CTAs), `/providers`
-  (header copy and the "Back to studio" label), `/allocations` (header copy
-  plus the liquidity-lab CTA), `/account` (header copy, section titles, and
-  each sign-in provider's descriptive note), `/bonding-curve` (hero copy,
+  (header copy and the "Back to studio" label), `/manager` (header copy for
+  the Pro / Pro Bundle plan cards), `/allocations` (header copy plus the
+  liquidity-lab CTA), `/account` (header copy, section titles, and each
+  sign-in provider's descriptive note), `/bonding-curve` (hero copy,
   next-milestone section and its two CTAs), and the public `/[slug]` token
-  page's Dexscreener chrome. Home, Providers and Allocations resolve this
-  content server-side at the page-chrome level and pass it down as plain
+  page's Dexscreener chrome. Home, Providers, Manager and Allocations resolve
+  this content server-side at the page-chrome level and pass it down as plain
   props into the large stateful client components that own the rest of each
-  page (`HoodlumsMarketHome`, `ProviderLauncher`, `TokenAllocationDesk`) —
-  those components' internal state, wallet flows and effects are never
-  restructured, so a bad edit can never destabilise the primary mobile-Safari
-  workspace. The sign-in provider *names* themselves (Google, MetaMask, etc.)
-  are intentionally not editable, since they select each row's logo and CSS
-  class.
+  page (`HoodlumsMarketHome`, `ProviderLauncher`, `ManagerPlans`,
+  `TokenAllocationDesk`) — those components' internal state, wallet flows and
+  effects are never restructured, so a bad edit can never destabilise the
+  primary mobile-Safari workspace. The sign-in provider *names* themselves
+  (Google, MetaMask, etc.) are intentionally not editable, since they select
+  each row's logo and CSS class.
 
 ## Safety model and limitations
 

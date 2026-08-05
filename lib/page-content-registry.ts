@@ -35,11 +35,12 @@ export type PageContentPageDefinition = {
  * The registered public pages/tabs and their editable elements. Every page
  * listed here has its live rendering wired to read published values with a
  * hardcoded-default fallback (see the per-page `getPage*Content` callers).
- * Home, Providers and Allocations resolve their content server-side at the
- * page-chrome level and pass it down as plain props/strings into the large
- * stateful client components that own the rest of each page (ProviderLauncher,
- * TokenAllocationDesk) — those components' internal state, effects and wallet
- * flows are never restructured, per the PR #118 mobile-Safari rules.
+ * Home, Providers, Allocations and Manager resolve their content server-side
+ * at the page-chrome level and pass it down as plain props/strings into the
+ * large stateful client components that own the rest of each page
+ * (ProviderLauncher, TokenAllocationDesk, ManagerPlans) — those components'
+ * internal state, effects and wallet flows are never restructured, per the
+ * PR #118 mobile-Safari rules.
  */
 export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
   {
@@ -75,6 +76,21 @@ export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
         defaultValue: "Launch through the provider, verify the token, then continue straight into the creator buy.",
       },
       { id: "back_to_studio_label", type: "button_label", label: "“Back to studio” link label", defaultValue: "Back to studio" },
+    ],
+  },
+  {
+    id: "manager",
+    label: "Manager",
+    route: "/manager",
+    elements: [
+      { id: "header_eyebrow", type: "text", label: "Header eyebrow", defaultValue: "MANAGER · PLANS" },
+      { id: "header_title", type: "heading", label: "Header title", defaultValue: "Grow your token after launch." },
+      {
+        id: "header_intro",
+        type: "text",
+        label: "Header intro copy",
+        defaultValue: "Pro runs the marketing for one token. Pro Bundle runs it for up to three from a single dashboard.",
+      },
     ],
   },
   {
