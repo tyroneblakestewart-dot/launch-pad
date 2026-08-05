@@ -98,35 +98,35 @@ export function MobileBottomNavigation() {
     setPendingTarget({ href, fromPathname: pathname });
   }
 
+  function itemIsActive(href: string) {
+    const optimisticActive = pendingTarget?.href === href && pendingTarget.fromPathname === pathname;
+    return isActive(pathname, href) || optimisticActive;
+  }
+
   return (
     <nav
       className={styles.bottomNav}
       aria-label="Mobile launch workflow"
       style={{ "--nav-count": VISIBLE_NAV_ITEMS.length } as CSSProperties}
     >
-      {VISIBLE_NAV_ITEMS.map((item) => {
-        const optimisticActive = pendingTarget?.href === item.href && pendingTarget.fromPathname === pathname;
-        const active = isActive(pathname, item.href) || optimisticActive;
-
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            prefetch={true}
-            aria-label={item.label}
-            aria-current={active ? "page" : undefined}
-            title={item.label}
-            className={active ? styles.active : ""}
-            onPointerDown={(event) => {
-              if (event.pointerType === "touch" || event.pointerType === "pen") markPending(item.href);
-            }}
-            onPointerCancel={() => setPendingTarget(null)}
-            onClick={() => markPending(item.href)}
-          >
-            <NavIcon name={item.icon} />
-          </Link>
-        );
-      })}
+      {VISIBLE_NAV_ITEMS.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          prefetch={true}
+          aria-label={item.label}
+          aria-current={itemIsActive(item.href) ? "page" : undefined}
+          title={item.label}
+          className={itemIsActive(item.href) ? styles.active : ""}
+          onPointerDown={(event) => {
+            if (event.pointerType === "touch" || event.pointerType === "pen") markPending(item.href);
+          }}
+          onPointerCancel={() => setPendingTarget(null)}
+          onClick={() => markPending(item.href)}
+        >
+          <NavIcon name={item.icon} />
+        </Link>
+      ))}
     </nav>
   );
 }
