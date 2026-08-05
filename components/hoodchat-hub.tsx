@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
 import { createWalletClient, custom } from "viem";
 import { HOODCHAT_CATEGORY_LABELS, type HoodchatCategory } from "@/lib/hoodchat-categories";
 import { shortenAddress } from "@/lib/token-page-format";
@@ -37,11 +37,27 @@ async function readJsonResponse<T>(response: Response, fallback: string): Promis
   return payload as T;
 }
 
-async function fetchHoodchatMessages(filter: FilterTab): Promise<HoodchatMessage[]> {
-  const url = filter === "all" ? "/api/hoodchat/messages" : `/api/hoodchat/messages?category=${filter}`;
-  const response = await fetch(url, { cache: "no-store" });
+async function fetchHoodchatMessages(): Promise<HoodchatMessage[]> {
+  const response = await fetch("/api/hoodchat/messages", { cache: "no-store" });
   const payload = await readJsonResponse<{ messages: HoodchatMessage[] }>(response, "The feed could not be loaded.");
   return payload.messages;
+}
+
+function buildFilterMessageCache(messages: HoodchatMessage[]): FilterMessageCache {
+  const cache: FilterMessageCache = {
+    all: messages,
+    "new-launches": [],
+    trading: [],
+    projects: [],
+    general: [],
+  };
+
+  for (const message of messages) {
+    const categoryMessages = cache[message.category];
+    if (categoryMessages) categoryMessages.push(message);
+  }
+
+  return cache;
 }
 
 function formatTimestamp(iso: string): string {
@@ -96,15 +112,15 @@ export function HoodchatHub({
   connectPrompt,
 }: HoodchatHubProps) {
   const [filter, setFilter] = useState<FilterTab>("all");
+  const deferredFilter = useDeferredValue(filter);
   const [messagesByFilter, setMessagesByFilter] = useState<FilterMessageCache>({});
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reportedIds, setReportedIds] = useState<Set<string>>(new Set());
-  const filterRef = useRef<FilterTab>("all");
-  const feedEndRef = useRef<HTMLDivElement | null>(null);
-  const activeMessages = messagesByFilter[filter];
+  const feedRef = useRef<HTMLDivElement | null>(null);
+  const activeMessages = messagesByFilter[deferredFilter];
   const activeMessageCount = activeMessages?.length ?? 0;
 
   useEffect(() => {
@@ -125,22 +141,17 @@ export function HoodchatHub({
   useEffect(() => {
     let cancelled = false;
 
-    async function load(target: FilterTab) {
+    async function load() {
       try {
-        const loadedMessages = await fetchHoodchatMessages(target);
-        if (!cancelled) {
-          setMessagesByFilter((current) => ({ ...current, [target]: loadedMessages }));
-        }
+        const loadedMessages = await fetchHoodchatMessages();
+        if (!cancelled) setMessagesByFilter(buildFilterMessageCache(loadedMessages));
       } catch {
-        // A failed warm-up or poll leaves the last cached feed in place.
+        // A failed poll leaves the last cached feed in place.
       }
     }
 
-    // Warm every category once so switching tabs never waits for a request.
-    void Promise.all(FILTER_TABS.map((tab) => load(tab.id)));
-    const interval = window.setInterval(() => {
-      void load(filterRef.current);
-    }, POLL_INTERVAL_MS);
+    void load();
+    const interval = window.setInterval(load, POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
@@ -149,21 +160,13 @@ export function HoodchatHub({
   }, []);
 
   useEffect(() => {
-    feedEndRef.current?.scrollIntoView({ block: "nearest" });
-  }, [filter, activeMessageCount]);
+    const feed = feedRef.current;
+    if (!feed || feed.scrollHeight <= feed.clientHeight) return;
+    feed.scrollTop = feed.scrollHeight;
+  }, [deferredFilter, activeMessageCount]);
 
   const activateFilter = useCallback((target: FilterTab) => {
-    if (filterRef.current === target) return;
-
-    filterRef.current = target;
-    setFilter(target);
-
-    // Cached messages render immediately; this refresh happens in the background.
-    void fetchHoodchatMessages(target)
-      .then((loadedMessages) => {
-        setMessagesByFilter((current) => ({ ...current, [target]: loadedMessages }));
-      })
-      .catch(() => {});
+    setFilter((current) => (current === target ? current : target));
   }, []);
 
   const connectWallet = useCallback(async () => {
@@ -258,7 +261,11 @@ export function HoodchatHub({
             ))}
           </div>
 
-          <div className={styles.feed}>
+          <div
+            ref={feedRef}
+            className={styles.feed}
+            aria-busy={deferredFilter !== filter || activeMessages === undefined}
+          >
             {activeMessages === undefined ? (
               <p className={styles.emptyState}>Loading Hoodchat…</p>
             ) : activeMessages.length === 0 ? (
@@ -283,7 +290,6 @@ export function HoodchatHub({
                 </article>
               ))
             )}
-            <div ref={feedEndRef} />
           </div>
         </div>
 
