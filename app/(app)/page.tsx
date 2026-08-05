@@ -15,9 +15,11 @@ type HomePageProps = {
 };
 
 export default async function Home({ searchParams }: HomePageProps) {
-  const [liveSites, { content }] = await Promise.all([
+  const previewFlag = (await searchParams)?.[CMS_PREVIEW_QUERY_PARAM];
+  const [liveSites, { content }, { content: pathChooserContent }] = await Promise.all([
     listLiveGeneratedSites(),
-    resolvePageContent("home", (await searchParams)?.[CMS_PREVIEW_QUERY_PARAM]),
+    resolvePageContent("home", previewFlag),
+    resolvePageContent("path-chooser", previewFlag),
   ]);
 
   return (
@@ -40,7 +42,15 @@ export default async function Home({ searchParams }: HomePageProps) {
         showPlans
       />
       <div id="launch-studio" style={{ scrollMarginTop: 16 }}>
-        <TokenStudioWorkspace />
+        <TokenStudioWorkspace
+          pathChooserContent={{
+            eyebrow: pathChooserContent.eyebrow,
+            title: pathChooserContent.title,
+            subheading: pathChooserContent.subheading,
+            dismissedContinueLabel: pathChooserContent.dismissed_continue_label,
+            fullDetailsLabel: pathChooserContent.full_details_label,
+          }}
+        />
       </div>
     </>
   );

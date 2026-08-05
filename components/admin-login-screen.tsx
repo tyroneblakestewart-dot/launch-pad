@@ -77,8 +77,26 @@ function showAuthenticatedDashboard(): void {
   window.location.replace("/admin");
 }
 
+type AdminLoginScreenProps = {
+  headerTitle?: string;
+  headerSubtitle?: string;
+  walletTabLabel?: string;
+  passwordTabLabel?: string;
+  walletButtonLabel?: string;
+  passwordPlaceholder?: string;
+  passwordButtonLabel?: string;
+};
+
 /** Private admin sign-in: owner wallet signature or a fallback password. */
-export function AdminLoginScreen() {
+export function AdminLoginScreen({
+  headerTitle = "HOODLUMS Admin",
+  headerSubtitle = "Private control panel. Sign in with the owner wallet, or with the fallback password.",
+  walletTabLabel = "Wallet",
+  passwordTabLabel = "Password",
+  walletButtonLabel = "Connect wallet & sign in",
+  passwordPlaceholder = "Admin password",
+  passwordButtonLabel = "Sign in",
+}: AdminLoginScreenProps = {}) {
   const [method, setMethod] = useState<LoginMethod>("wallet");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -115,11 +133,8 @@ export function AdminLoginScreen() {
   return (
     <main className={styles.screen}>
       <div className={styles.card}>
-        <h1 className={styles.title}>HOODLUMS Admin</h1>
-        <p className={styles.subtitle}>
-          Private control panel. Sign in with the owner wallet, or with the
-          fallback password.
-        </p>
+        <h1 className={styles.title}>{headerTitle}</h1>
+        <p className={styles.subtitle}>{headerSubtitle}</p>
 
         <div className={styles.tabs} role="tablist">
           <button
@@ -129,7 +144,7 @@ export function AdminLoginScreen() {
             className={method === "wallet" ? styles.tabActive : styles.tab}
             onClick={() => setMethod("wallet")}
           >
-            Wallet
+            {walletTabLabel}
           </button>
           <button
             type="button"
@@ -138,7 +153,7 @@ export function AdminLoginScreen() {
             className={method === "password" ? styles.tabActive : styles.tab}
             onClick={() => setMethod("password")}
           >
-            Password
+            {passwordTabLabel}
           </button>
         </div>
 
@@ -149,7 +164,7 @@ export function AdminLoginScreen() {
             disabled={busy}
             onClick={() => void handleWalletSignIn()}
           >
-            {busy ? "Signing in…" : "Connect wallet & sign in"}
+            {busy ? "Signing in…" : walletButtonLabel}
           </button>
         ) : (
           <form
@@ -159,7 +174,7 @@ export function AdminLoginScreen() {
             <input
               type="password"
               autoComplete="current-password"
-              placeholder="Admin password"
+              placeholder={passwordPlaceholder}
               className={styles.input}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -170,7 +185,7 @@ export function AdminLoginScreen() {
               className={styles.primaryButton}
               disabled={busy || !password}
             >
-              {busy ? "Signing in…" : "Sign in"}
+              {busy ? "Signing in…" : passwordButtonLabel}
             </button>
           </form>
         )}

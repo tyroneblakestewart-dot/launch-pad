@@ -49,7 +49,19 @@ function shortAddress(value: string): string {
   return value.length > 18 ? `${value.slice(0, 9)}…${value.slice(-7)}` : value;
 }
 
-export function MonadTestnetLauncher() {
+type MonadTestnetLauncherProps = {
+  heroEyebrow?: string;
+  heroTitleLine1?: string;
+  heroTitleLine2?: string;
+  heroIntro?: string;
+};
+
+export function MonadTestnetLauncher({
+  heroEyebrow = "MONAD SAFE-MODE LAB",
+  heroTitleLine1 = "Launch fast.",
+  heroTitleLine2 = "Test safely.",
+  heroIntro = "Deploy a fixed-supply ERC-20 test token on Monad Testnet using your selected EVM wallet. The app never receives or stores your private key.",
+}: MonadTestnetLauncherProps = {}) {
   const [name, setName] = useState("Hoodlums Monad Test");
   const [symbol, setSymbol] = useState("HOODMON");
   const [supply, setSupply] = useState("1000000000");
@@ -165,12 +177,9 @@ export function MonadTestnetLauncher() {
 
       <section className={styles.content}>
         <div className={styles.intro}>
-          <p>MONAD SAFE-MODE LAB</p>
-          <h1>Launch fast.<br />Test safely.</h1>
-          <p className={styles.lead}>
-            Deploy a fixed-supply ERC-20 test token on Monad Testnet using your selected EVM wallet.
-            The app never receives or stores your private key.
-          </p>
+          <p>{heroEyebrow}</p>
+          <h1>{heroTitleLine1}<br />{heroTitleLine2}</h1>
+          <p className={styles.lead}>{heroIntro}</p>
         </div>
 
         <div className={styles.card}>

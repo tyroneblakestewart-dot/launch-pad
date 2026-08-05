@@ -18,9 +18,23 @@ interface TokenPathChooserProps {
   open: boolean;
   selected: LaunchPath | null;
   onConfirm: (path: LaunchPath) => void;
+  eyebrow?: string;
+  title?: string;
+  subheading?: string;
+  dismissedContinueLabel?: string;
+  fullDetailsLabel?: string;
 }
 
-export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooserProps) {
+export function TokenPathChooser({
+  open,
+  selected,
+  onConfirm,
+  eyebrow = "CHOOSE YOUR PATH",
+  title = "How do you want to launch?",
+  subheading = "Pick a path for this token. You can change it any time before launch.",
+  dismissedContinueLabel = "Choose a plan to continue",
+  fullDetailsLabel = "See full plan details ↓",
+}: TokenPathChooserProps) {
   const [pending, setPending] = useState<LaunchPath | null>(selected);
   const [wasOpen, setWasOpen] = useState(open);
   const [dismissed, setDismissed] = useState(false);
@@ -84,7 +98,7 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
         }}
         onClick={() => setDismissed(false)}
       >
-        Choose a plan to continue
+        {dismissedContinueLabel}
       </button>
     );
   }
@@ -111,11 +125,9 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
               maskImage: `url(${HOODLUMS_WORDMARK_IMAGE})`,
             }}
           />
-          <p className={styles.eyebrow}>CHOOSE YOUR PATH</p>
-          <h2 id="token-path-chooser-title">How do you want to launch?</h2>
-          <p className={styles.subheading}>
-            Pick a path for this token. You can change it any time before launch.
-          </p>
+          <p className={styles.eyebrow}>{eyebrow}</p>
+          <h2 id="token-path-chooser-title">{title}</h2>
+          <p className={styles.subheading}>{subheading}</p>
         </div>
 
         <div className={styles.columns}>
@@ -179,7 +191,7 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
         ) : null}
 
         <button type="button" className={styles.fullDetailsLink} onClick={() => viewPlanDetails()}>
-          See full plan details ↓
+          {fullDetailsLabel}
         </button>
       </section>
     </div>

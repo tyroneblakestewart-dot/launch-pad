@@ -12,7 +12,7 @@ import {
   OPEN_WORKSPACE_REQUEST_EVENT,
   type OpenWorkspaceRequestDetail,
 } from "@/lib/workspace-open-request";
-import { TokenStudio } from "./token-studio";
+import { TokenStudio, type TokenStudioPathChooserContent } from "./token-studio";
 import styles from "./token-studio-workspace.module.css";
 
 const STORAGE_KEY = "private-meme-token-studio-projects-v1";
@@ -73,7 +73,9 @@ function focusNewProjectEditor() {
   }, 180);
 }
 
-export function TokenStudioWorkspace() {
+export function TokenStudioWorkspace({
+  pathChooserContent = {},
+}: { pathChooserContent?: TokenStudioPathChooserContent } = {}) {
   const [isOpen, setIsOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const awaitingSaveAndClose = useRef(false);
@@ -174,7 +176,7 @@ export function TokenStudioWorkspace() {
         </div>
       </div>
       <div className={pendingAction ? styles.preparing : undefined}>
-        <TokenStudio />
+        <TokenStudio pathChooserContent={pathChooserContent} />
       </div>
     </div>
   );

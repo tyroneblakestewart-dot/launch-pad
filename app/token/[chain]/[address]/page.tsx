@@ -4,6 +4,7 @@ import type { Address } from "viem";
 import { TokenPageView } from "@/components/token-page/token-page-view";
 import { CHAIN_CONFIG, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { getBondingCurveAddress } from "@/lib/bonding-curve-config";
+import { CMS_PREVIEW_QUERY_PARAM, resolvePageContent } from "@/lib/server/page-content";
 import { isValidDexAddress } from "@/lib/server/dexscreener";
 import { fetchTokenMarketStats } from "@/lib/server/token-market-stats";
 import { getTradeTerminalLinks } from "@/lib/trade-terminal-links";
@@ -18,7 +19,10 @@ export const revalidate = 0;
 const SUPPORTED_CHAINS: SupportedChain[] = ["solana", "robinhood"];
 
 type TokenPageParams = { chain: string; address: string };
-type TokenPageProps = { params: Promise<TokenPageParams> };
+type TokenPageProps = {
+  params: Promise<TokenPageParams>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
 
 function parseChain(value: string): SupportedChain | null {
   return (SUPPORTED_CHAINS as string[]).includes(value) ? (value as SupportedChain) : null;
@@ -41,13 +45,16 @@ export async function generateMetadata({ params }: TokenPageProps): Promise<Meta
   };
 }
 
-export default async function TokenPage({ params }: TokenPageProps) {
+export default async function TokenPage({ params, searchParams }: TokenPageProps) {
   const { chain, address } = await params;
   const parsedChain = parseChain(chain);
   if (!parsedChain || !isValidDexAddress(address)) notFound();
 
   const tradeLinks = getTradeTerminalLinks(parsedChain, address);
-  const marketStats = await fetchTokenMarketStats(parsedChain, address);
+  const [marketStats, { content }] = await Promise.all([
+    fetchTokenMarketStats(parsedChain, address),
+    resolvePageContent("token-page", (await searchParams)?.[CMS_PREVIEW_QUERY_PARAM]),
+  ]);
   const chainInfo = CHAIN_CONFIG[parsedChain];
   // Only one bonding curve is configured per chain today (see
   // lib/bonding-curve-config.ts), so this reads that single curve's
@@ -64,6 +71,18 @@ export default async function TokenPage({ params }: TokenPageProps) {
       marketStats={marketStats}
       tradeLinks={tradeLinks}
       curveAddress={curveAddress}
+      content={{
+        tradesTabLabel: content.trades_tab_label,
+        holdersTabLabel: content.holders_tab_label,
+        emptyTradesText: content.empty_trades_text,
+        emptyHoldersText: content.empty_holders_text,
+        tradeOnLabel: content.trade_on_label,
+        emptyTerminalsText: content.empty_terminals_text,
+        aboutLabel: content.about_label,
+        emptyDescriptionText: content.empty_description_text,
+        chatEmptyState: content.chat_empty_state,
+        chatConnectPrompt: content.chat_connect_prompt,
+      }}
     />
   );
 }

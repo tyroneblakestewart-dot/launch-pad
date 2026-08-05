@@ -19,13 +19,25 @@ const TERMINAL_NOTES: Record<string, string> = {
  * lives in the centre column's Hoodchat tab (issue #237), replacing the
  * "coming soon" placeholder that used to sit here.
  */
-export function TokenRightColumn({ tradeLinks }: { tradeLinks: TradeTerminalLink[] }) {
+export function TokenRightColumn({
+  tradeLinks,
+  tradeOnLabel = "Trade on",
+  emptyTerminalsText = "No trade terminals are available for this chain yet.",
+  aboutLabel = "About",
+  emptyDescriptionText = "No description has been published for this token yet.",
+}: {
+  tradeLinks: TradeTerminalLink[];
+  tradeOnLabel?: string;
+  emptyTerminalsText?: string;
+  aboutLabel?: string;
+  emptyDescriptionText?: string;
+}) {
   return (
     <>
       <div className={styles.panel}>
-        <span className={styles.sectionLabel}>Trade on</span>
+        <span className={styles.sectionLabel}>{tradeOnLabel}</span>
         {tradeLinks.length === 0 ? (
-          <p className={styles.mutedNote}>No trade terminals are available for this chain yet.</p>
+          <p className={styles.mutedNote}>{emptyTerminalsText}</p>
         ) : (
           <div className={styles.terminalGrid}>
             {tradeLinks.map((link) => (
@@ -43,8 +55,8 @@ export function TokenRightColumn({ tradeLinks }: { tradeLinks: TradeTerminalLink
       </div>
 
       <div className={styles.panel}>
-        <span className={styles.sectionLabel}>About</span>
-        <p className={styles.storyText}>No description has been published for this token yet.</p>
+        <span className={styles.sectionLabel}>{aboutLabel}</span>
+        <p className={styles.storyText}>{emptyDescriptionText}</p>
         <div className={styles.storyTags}>
           <span className={styles.storyTag}>Bonding curve testnet launch</span>
         </div>

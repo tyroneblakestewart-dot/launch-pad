@@ -22,7 +22,7 @@ describe("Studio workspace simplicity", () => {
     expect(workspace).not.toContain("Create new token");
     expect(workspace).not.toContain("Open saved launches");
     expect(workspace).toContain("Saved launches");
-    expect(workspace).toContain("<TokenStudio />");
+    expect(workspace).toContain("<TokenStudio pathChooserContent={pathChooserContent} />");
     expect(studio).toContain("Token setup");
     expect(studio).toContain("Prepare launch");
 

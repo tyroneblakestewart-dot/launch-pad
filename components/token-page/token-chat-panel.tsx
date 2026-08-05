@@ -36,10 +36,18 @@ export type TokenChatPanelProps = {
   address: string;
   symbol: string | null;
   holders: TokenHolder[];
+  emptyState?: string;
   connectPrompt?: string;
 };
 
-export function TokenChatPanel({ chain, address, symbol, holders, connectPrompt = "Connect wallet to post" }: TokenChatPanelProps) {
+export function TokenChatPanel({
+  chain,
+  address,
+  symbol,
+  holders,
+  emptyState = "No messages yet. Be the first to post.",
+  connectPrompt = "Connect wallet to post",
+}: TokenChatPanelProps) {
   const [messages, setMessages] = useState<TokenChatMessage[]>([]);
   const [creatorWalletAddress, setCreatorWalletAddress] = useState<string | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
@@ -178,7 +186,7 @@ export function TokenChatPanel({ chain, address, symbol, holders, connectPrompt 
     <div className={styles.chatFeedShell}>
       <div className={styles.chatFeed}>
         {messages.length === 0 ? (
-          <p className={styles.emptyState}>No messages yet. Be the first to post.</p>
+          <p className={styles.emptyState}>{emptyState}</p>
         ) : (
           messages.map((item) => (
             <article key={item.id} className={styles.chatMessage}>

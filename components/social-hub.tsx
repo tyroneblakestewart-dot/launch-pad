@@ -124,7 +124,17 @@ function shortAddress(value: string): string {
   return value.length > 14 ? `${value.slice(0, 7)}…${value.slice(-5)}` : value;
 }
 
-export function SocialHub() {
+type SocialHubProps = {
+  headerEyebrow?: string;
+  headerTitle?: string;
+  headerIntro?: string;
+};
+
+export function SocialHub({
+  headerEyebrow = "SOCIAL OPERATIONS",
+  headerTitle = "Project Social Hub",
+  headerIntro = "Prepare once. Review every destination. Publish without sharing passwords.",
+}: SocialHubProps = {}) {
   const [projects, setProjects] = useState<TokenProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [templateId, setTemplateId] = useState<TemplateId>("launch");
@@ -284,9 +294,9 @@ export function SocialHub() {
     <main className={styles.shell}>
       <header className={styles.topbar}>
         <div>
-          <p>SOCIAL OPERATIONS</p>
-          <h1>Project Social Hub</h1>
-          <span>Prepare once. Review every destination. Publish without sharing passwords.</span>
+          <p>{headerEyebrow}</p>
+          <h1>{headerTitle}</h1>
+          <span>{headerIntro}</span>
         </div>
         <nav>
           <Link href="/">← Studio</Link>

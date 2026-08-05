@@ -6,12 +6,25 @@ import ManagerPage from "@/app/(app)/manager/page";
 import BondingCurvePage from "@/app/(app)/bonding-curve/page";
 import AllocationsPage from "@/app/(app)/allocations/page";
 import AccountPage from "@/app/(app)/account/page";
+import LiquidityLabPage from "@/app/(app)/liquidity-lab/page";
+import MonadTestnetPage from "@/app/(app)/monad/page";
+import TestnetPage from "@/app/(app)/testnet/page";
+import SocialPage from "@/app/(app)/social/page";
+import AdminPage from "@/app/admin/page";
+import TokenPage from "@/app/token/[chain]/[address]/page";
 import PublicGeneratedSitePage from "@/app/[slug]/page";
 import { HoodlumsMarketHome } from "@/components/hoodlums-market-home";
 import { ProviderLauncher } from "@/components/provider-launcher";
 import { ManagerPlans } from "@/components/manager-plans";
 import { TokenAllocationDesk } from "@/components/token-allocation-desk";
 import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
+import { LiquidityLab } from "@/components/liquidity-lab";
+import { MonadTestnetLauncher } from "@/components/monad-testnet-launcher";
+import { TestnetLauncher } from "@/components/testnet-launcher";
+import { SocialHub } from "@/components/social-hub";
+import { AdminLoginScreen } from "@/components/admin-login-screen";
+import { TokenStudioWorkspace } from "@/components/token-studio-workspace";
+import { TokenPageView } from "@/components/token-page/token-page-view";
 import type { PublicGeneratedSite } from "@/lib/public-site";
 import { hashAdminSessionToken } from "@/lib/server/admin-auth";
 import {
@@ -372,5 +385,155 @@ describe("account page content wiring", () => {
 
     const withPreview = await AccountPage({ searchParams: Promise.resolve({ cms_preview: "1" }) });
     expect(collectText(withPreview)).toContain("Draft footer copy");
+  });
+});
+
+describe("liquidity-lab page content wiring", () => {
+  it("passes the registered defaults into LiquidityLab as props", async () => {
+    const tree = await LiquidityLabPage({ searchParams: undefined });
+    expect(tree.type).toBe(LiquidityLab);
+    expect(tree.props.heroEyebrow).toBe("ROBINHOOD CHAIN TESTNET · 46630");
+    expect(tree.props.heroTitle).toBe("Liquidity Lab");
+  });
+
+  it("passes a published override through to LiquidityLab", async () => {
+    await publishOverride("liquidity-lab", "hero_title", "heading", "Liquidity Lab V2");
+    const tree = await LiquidityLabPage({ searchParams: undefined });
+    expect(tree.props.heroTitle).toBe("Liquidity Lab V2");
+  });
+});
+
+describe("monad page content wiring", () => {
+  it("passes the registered defaults into MonadTestnetLauncher as props", async () => {
+    const tree = await MonadTestnetPage({ searchParams: undefined });
+    expect(tree.type).toBe(MonadTestnetLauncher);
+    expect(tree.props.heroEyebrow).toBe("MONAD SAFE-MODE LAB");
+    expect(tree.props.heroTitleLine1).toBe("Launch fast.");
+    expect(tree.props.heroTitleLine2).toBe("Test safely.");
+  });
+
+  it("passes a published override through to MonadTestnetLauncher", async () => {
+    await publishOverride("monad", "hero_title_line1", "heading", "Ship it fast.");
+    const tree = await MonadTestnetPage({ searchParams: undefined });
+    expect(tree.props.heroTitleLine1).toBe("Ship it fast.");
+  });
+});
+
+describe("testnet page content wiring", () => {
+  it("passes the registered defaults into TestnetLauncher as props", async () => {
+    const tree = await TestnetPage({ searchParams: undefined });
+    expect(tree.type).toBe(TestnetLauncher);
+    expect(tree.props.heroEyebrow).toBe("WALLET-SIGNED TEST LAB");
+    expect(tree.props.heroTitleLine1).toBe("Prove the launch");
+    expect(tree.props.heroTitleLine2).toBe("before mainnet.");
+  });
+
+  it("passes a published override through to TestnetLauncher", async () => {
+    await publishOverride("testnet", "hero_title_line2", "heading", "before it counts.");
+    const tree = await TestnetPage({ searchParams: undefined });
+    expect(tree.props.heroTitleLine2).toBe("before it counts.");
+  });
+});
+
+describe("social page content wiring", () => {
+  it("passes the registered defaults into SocialHub as props", async () => {
+    const tree = await SocialPage({ searchParams: undefined });
+    expect(tree.type).toBe(SocialHub);
+    expect(tree.props.headerEyebrow).toBe("SOCIAL OPERATIONS");
+    expect(tree.props.headerTitle).toBe("Project Social Hub");
+  });
+
+  it("passes a published override through to SocialHub", async () => {
+    await publishOverride("social", "header_title", "heading", "Social Hub V2");
+    const tree = await SocialPage({ searchParams: undefined });
+    expect(tree.props.headerTitle).toBe("Social Hub V2");
+  });
+});
+
+describe("admin login page content wiring", () => {
+  it("passes the registered defaults into AdminLoginScreen as props for an unauthenticated visitor", async () => {
+    const tree = await AdminPage({ searchParams: undefined });
+    expect(tree.type).toBe(AdminLoginScreen);
+    expect(tree.props.headerTitle).toBe("HOODLUMS Admin");
+    expect(tree.props.walletButtonLabel).toBe("Connect wallet & sign in");
+  });
+
+  it("passes a published override through to AdminLoginScreen", async () => {
+    await publishOverride("admin-login", "header_title", "heading", "HOODLUMS Control Room");
+    const tree = await AdminPage({ searchParams: undefined });
+    expect(tree.props.headerTitle).toBe("HOODLUMS Control Room");
+  });
+});
+
+describe("path chooser overlay content wiring", () => {
+  it("passes the registered defaults into TokenStudioWorkspace's pathChooserContent prop", async () => {
+    const tree = await HomePage({ searchParams: undefined });
+    const [workspace] = findAll(tree, (el) => el.type === TokenStudioWorkspace);
+    expect(workspace.props.pathChooserContent).toMatchObject({
+      eyebrow: "CHOOSE YOUR PATH",
+      title: "How do you want to launch?",
+      subheading: "Pick a path for this token. You can change it any time before launch.",
+      dismissedContinueLabel: "Choose a plan to continue",
+      fullDetailsLabel: "See full plan details ↓",
+    });
+  });
+
+  it("passes a published override through to the pathChooserContent prop", async () => {
+    await publishOverride("path-chooser", "title", "heading", "Pick your launch path");
+    const tree = await HomePage({ searchParams: undefined });
+    const [workspace] = findAll(tree, (el) => el.type === TokenStudioWorkspace);
+    expect((workspace.props.pathChooserContent as { title: string }).title).toBe("Pick your launch path");
+  });
+});
+
+const TOKEN_PAGE_ADDRESS = "0x3bf7447cd055f1475a8b09090c7b062abc9d3798";
+
+function stubTokenPageFetch() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("api.dexscreener.com")) {
+        return new Response(JSON.stringify({ pairs: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(null, { status: 404 });
+    }),
+  );
+}
+
+describe("token page content wiring", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("passes the registered defaults into TokenPageView's content prop", async () => {
+    stubTokenPageFetch();
+    const element = await TokenPage({
+      params: Promise.resolve({ chain: "robinhood", address: TOKEN_PAGE_ADDRESS }),
+      searchParams: undefined,
+    });
+    if (element.type !== TokenPageView) throw new Error("expected TokenPage to render TokenPageView");
+    expect(element.props.content).toMatchObject({
+      tradesTabLabel: "Recent trades",
+      holdersTabLabel: "Holders",
+      emptyTradesText: "No trades recorded yet.",
+      emptyHoldersText: "No holder data found for this token yet.",
+      tradeOnLabel: "Trade on",
+      aboutLabel: "About",
+    });
+  });
+
+  it("passes a published override through to TokenPageView's content prop", async () => {
+    stubTokenPageFetch();
+    await publishOverride("token-page", "trade_on_label", "heading", "Trade it on");
+    const element = await TokenPage({
+      params: Promise.resolve({ chain: "robinhood", address: TOKEN_PAGE_ADDRESS }),
+      searchParams: undefined,
+    });
+    if (element.type !== TokenPageView) throw new Error("expected TokenPage to render TokenPageView");
+    expect((element.props.content as { tradeOnLabel: string }).tradeOnLabel).toBe("Trade it on");
   });
 });

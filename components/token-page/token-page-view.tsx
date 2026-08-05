@@ -15,6 +15,19 @@ type ChainInfo = {
   explorerBaseUrl: string;
 };
 
+export type TokenPageContent = {
+  tradesTabLabel?: string;
+  holdersTabLabel?: string;
+  emptyTradesText?: string;
+  emptyHoldersText?: string;
+  tradeOnLabel?: string;
+  emptyTerminalsText?: string;
+  aboutLabel?: string;
+  emptyDescriptionText?: string;
+  chatEmptyState?: string;
+  chatConnectPrompt?: string;
+};
+
 export type TokenPageViewProps = {
   chain: SupportedChain;
   address: string;
@@ -22,6 +35,7 @@ export type TokenPageViewProps = {
   marketStats: TokenMarketStats;
   tradeLinks: TradeTerminalLink[];
   curveAddress: Address | null;
+  content?: TokenPageContent;
 };
 
 /**
@@ -35,7 +49,15 @@ export type TokenPageViewProps = {
  * interactive pieces (copy button, swap panel, chart tabs) are isolated in
  * their own client-only children.
  */
-export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLinks, curveAddress }: TokenPageViewProps) {
+export function TokenPageView({
+  chain,
+  address,
+  chainInfo,
+  marketStats,
+  tradeLinks,
+  curveAddress,
+  content = {},
+}: TokenPageViewProps) {
   const name = (marketStats.supported && marketStats.name) || `${address.slice(0, 6)}…${address.slice(-4)}`;
   const symbol = marketStats.supported && marketStats.symbol ? marketStats.symbol : null;
   const dexPairUrl = marketStats.supported && marketStats.chart.found ? marketStats.chart.pairUrl : null;
@@ -99,11 +121,27 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
           </div>
 
           <div className={styles.center}>
-            <TokenCenterColumn chain={chain} address={address} marketStats={marketStats} />
+            <TokenCenterColumn
+              chain={chain}
+              address={address}
+              marketStats={marketStats}
+              tradesTabLabel={content.tradesTabLabel}
+              holdersTabLabel={content.holdersTabLabel}
+              emptyTradesText={content.emptyTradesText}
+              emptyHoldersText={content.emptyHoldersText}
+              chatEmptyState={content.chatEmptyState}
+              chatConnectPrompt={content.chatConnectPrompt}
+            />
           </div>
 
           <div className={styles.right}>
-            <TokenRightColumn tradeLinks={tradeLinks} />
+            <TokenRightColumn
+              tradeLinks={tradeLinks}
+              tradeOnLabel={content.tradeOnLabel}
+              emptyTerminalsText={content.emptyTerminalsText}
+              aboutLabel={content.aboutLabel}
+              emptyDescriptionText={content.emptyDescriptionText}
+            />
           </div>
         </div>
       </div>

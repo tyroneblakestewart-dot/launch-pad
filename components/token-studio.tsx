@@ -135,7 +135,17 @@ const IDENTITY_KEYS = new Set<keyof TokenProject>([
   "heroImage",
 ]);
 
-export function TokenStudio() {
+export type TokenStudioPathChooserContent = {
+  eyebrow?: string;
+  title?: string;
+  subheading?: string;
+  dismissedContinueLabel?: string;
+  fullDetailsLabel?: string;
+};
+
+export function TokenStudio({
+  pathChooserContent = {},
+}: { pathChooserContent?: TokenStudioPathChooserContent } = {}) {
   const [project, setProject] = useState<TokenProject>(DEFAULT_PROJECT);
   const [projects, setProjects] = useState<TokenProject[]>([]);
   const [wallet, setWallet] = useState<WalletState | null>(null);
@@ -864,6 +874,11 @@ export function TokenStudio() {
         open={showPathChooser}
         selected={project.launchPath ?? null}
         onConfirm={confirmLaunchPath}
+        eyebrow={pathChooserContent.eyebrow}
+        title={pathChooserContent.title}
+        subheading={pathChooserContent.subheading}
+        dismissedContinueLabel={pathChooserContent.dismissedContinueLabel}
+        fullDetailsLabel={pathChooserContent.fullDetailsLabel}
       />
     </main>
   );

@@ -15,11 +15,13 @@ import styles from "./token-page.module.css";
 
 type ActivityTab = "trades" | "holders" | "hoodchat";
 
-const TABS: { id: ActivityTab; label: string }[] = [
-  { id: "trades", label: "Recent trades" },
-  { id: "holders", label: "Holders" },
-  { id: "hoodchat", label: "Hoodchat" },
-];
+function buildTabs(tradesLabel: string, holdersLabel: string): { id: ActivityTab; label: string }[] {
+  return [
+    { id: "trades", label: tradesLabel },
+    { id: "holders", label: holdersLabel },
+    { id: "hoodchat", label: "Hoodchat" },
+  ];
+}
 
 function formatTokenAmount(amountRaw: string, decimals: number | null): string {
   const value = Number(amountRaw) / 10 ** (decimals ?? 18);
@@ -40,12 +42,25 @@ export function TokenCenterColumn({
   chain,
   address,
   marketStats,
+  tradesTabLabel = "Recent trades",
+  holdersTabLabel = "Holders",
+  emptyTradesText = "No trades recorded yet.",
+  emptyHoldersText = "No holder data found for this token yet.",
+  chatEmptyState,
+  chatConnectPrompt,
 }: {
   chain: SupportedChain;
   address: string;
   marketStats: TokenMarketStats;
+  tradesTabLabel?: string;
+  holdersTabLabel?: string;
+  emptyTradesText?: string;
+  emptyHoldersText?: string;
+  chatEmptyState?: string;
+  chatConnectPrompt?: string;
 }) {
   const [tab, setTab] = useState<ActivityTab>("trades");
+  const tabs = buildTabs(tradesTabLabel, holdersTabLabel);
 
   const priceUsd = marketStats.supported ? marketStats.priceUsd : null;
   const priceChange = formatPriceChange(marketStats.supported ? marketStats.priceChange24hPercent : null);
@@ -77,7 +92,7 @@ export function TokenCenterColumn({
 
       <div className={styles.activityPanel}>
         <div className={styles.activityTabs}>
-          {TABS.map((item) => (
+          {tabs.map((item) => (
             <button
               key={item.id}
               type="button"
@@ -91,7 +106,7 @@ export function TokenCenterColumn({
 
         {tab === "trades" ? (
           trades.length === 0 ? (
-            <p className={styles.emptyState}>No trades recorded yet.</p>
+            <p className={styles.emptyState}>{emptyTradesText}</p>
           ) : (
             <div>
               <div className={`${styles.activityHeaderRow} ${styles.tradesGridCols}`}>
@@ -114,7 +129,7 @@ export function TokenCenterColumn({
           )
         ) : tab === "holders" ? (
           holders.length === 0 ? (
-            <p className={styles.emptyState}>No holder data found for this token yet.</p>
+            <p className={styles.emptyState}>{emptyHoldersText}</p>
           ) : (
             <div>
               <div className={`${styles.activityHeaderRow} ${styles.holdersGridCols}`}>
@@ -142,7 +157,14 @@ export function TokenCenterColumn({
             </div>
           )
         ) : (
-          <TokenChatPanel chain={chain} address={address} symbol={symbol} holders={holders} />
+          <TokenChatPanel
+            chain={chain}
+            address={address}
+            symbol={symbol}
+            holders={holders}
+            emptyState={chatEmptyState}
+            connectPrompt={chatConnectPrompt}
+          />
         )}
       </div>
     </>

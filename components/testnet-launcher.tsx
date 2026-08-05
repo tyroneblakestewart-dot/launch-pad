@@ -87,7 +87,19 @@ function getPhantomProvider(): PhantomProvider | undefined {
   return browserWindow.phantom?.solana || browserWindow.solana;
 }
 
-export function TestnetLauncher() {
+type TestnetLauncherProps = {
+  heroEyebrow?: string;
+  heroTitleLine1?: string;
+  heroTitleLine2?: string;
+  heroIntro?: string;
+};
+
+export function TestnetLauncher({
+  heroEyebrow = "WALLET-SIGNED TEST LAB",
+  heroTitleLine1 = "Prove the launch",
+  heroTitleLine2 = "before mainnet.",
+  heroIntro = "This page creates a real test token without receiving or storing your private key. It does not create liquidity, metadata or a public sale.",
+}: TestnetLauncherProps = {}) {
   const [network, setNetwork] = useState<Network>("robinhood-testnet");
   const [name, setName] = useState("Hoodlums Test");
   const [symbol, setSymbol] = useState("HOODT");
@@ -342,12 +354,9 @@ export function TestnetLauncher() {
 
       <section className={styles.content}>
         <div className={styles.intro}>
-          <p>WALLET-SIGNED TEST LAB</p>
-          <h1>Prove the launch<br />before mainnet.</h1>
-          <p className={styles.lead}>
-            This page creates a real test token without receiving or storing your private key.
-            It does not create liquidity, metadata or a public sale.
-          </p>
+          <p>{heroEyebrow}</p>
+          <h1>{heroTitleLine1}<br />{heroTitleLine2}</h1>
+          <p className={styles.lead}>{heroIntro}</p>
         </div>
 
         <div className={styles.card}>

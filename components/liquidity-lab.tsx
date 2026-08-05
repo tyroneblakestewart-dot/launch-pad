@@ -47,7 +47,17 @@ function deadline() {
   return BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
 }
 
-export function LiquidityLab() {
+type LiquidityLabProps = {
+  heroEyebrow?: string;
+  heroTitle?: string;
+  heroIntro?: string;
+};
+
+export function LiquidityLab({
+  heroEyebrow = "ROBINHOOD CHAIN TESTNET · 46630",
+  heroTitle = "Liquidity Lab",
+  heroIntro = "Deploy a private, test-only constant-product AMM for HOODLUMS. This contract is unaudited and must never be used on mainnet.",
+}: LiquidityLabProps = {}) {
   const [account, setAccount] = useState<Address | null>(null);
   const [pool, setPool] = useState<Address | null>(null);
   const [poolInput, setPoolInput] = useState("");
@@ -182,12 +192,9 @@ export function LiquidityLab() {
   return (
     <main className={styles.page}>
       <section className={styles.hero}>
-        <p>ROBINHOOD CHAIN TESTNET · 46630</p>
-        <h1>Liquidity Lab</h1>
-        <span>
-          Deploy a private, test-only constant-product AMM for HOODLUMS. This contract is
-          unaudited and must never be used on mainnet.
-        </span>
+        <p>{heroEyebrow}</p>
+        <h1>{heroTitle}</h1>
+        <span>{heroIntro}</span>
       </section>
       <section className={styles.grid}>
         <article className={styles.card}>
