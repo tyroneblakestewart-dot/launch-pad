@@ -1,0 +1,11 @@
+.loadingScreen {
+  opacity: 0;
+  animation: loading-appear 0.2s ease forwards;
+  animation-delay: 0.4s;
+}
+
+@keyframes loading-appear {
+  to {
+    opacity: 1;
+  }
+}
