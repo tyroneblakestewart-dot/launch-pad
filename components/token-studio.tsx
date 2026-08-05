@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   REOPEN_GENERATED_SITE_EVENT,
   type PublishableSitePayload,
@@ -11,8 +11,25 @@ import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
 import { launchPathLabel } from "@/lib/launch-paths";
 import { PROJECT_SAVE_RESULT_EVENT } from "@/lib/project-save-result";
 import { findSlugCollision, slugify, validateSlug } from "@/lib/slug";
+import {
+  OAUTH_RESULT_MESSAGE_TYPE,
+  type TelegramWidgetUser,
+  type TwitterOAuthResultMessage,
+} from "@/lib/social-oauth";
 import type { LaunchPath, SupportedChain, TokenProject, WalletState } from "@/lib/types";
 import { TokenPathChooser } from "./token-path-chooser";
+
+const TELEGRAM_LOGIN_BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_USERNAME?.trim() || "";
+// Must match the literal used in the data-onauth attribute below — the
+// widget's iframe calls this by name on window, so it cannot be indirected
+// through a variable.
+const TELEGRAM_WIDGET_CALLBACK_NAME = "hoodlumsTelegramAuth";
+
+declare global {
+  interface Window {
+    hoodlumsTelegramAuth?: (user: TelegramWidgetUser) => void;
+  }
+}
 
 const SECTION_TOGGLE_FIELDS: ReadonlyArray<{ key: FreeSiteSectionKey; label: string }> = [
   { key: "about", label: "About" },
@@ -146,6 +163,7 @@ export function TokenStudio() {
   const [showProjects, setShowProjects] = useState(false);
   const [showLaunchSummary, setShowLaunchSummary] = useState(false);
   const [showPathChooser, setShowPathChooser] = useState(false);
+  const telegramWidgetRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     try {
@@ -174,6 +192,31 @@ export function TokenStudio() {
 
     window.addEventListener("launchpad:site-generated", onSiteGenerated);
     return () => window.removeEventListener("launchpad:site-generated", onSiteGenerated);
+  }, []);
+
+  // The X "Connect" button opens /api/auth/twitter/start in a popup; the
+  // popup's callback page posts the verified handle back here and closes
+  // itself (see lib/server/twitter-oauth.ts buildOAuthResultHtml).
+  useEffect(() => {
+    function onOAuthMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as Partial<TwitterOAuthResultMessage> | undefined;
+      if (!data || data.type !== OAUTH_RESULT_MESSAGE_TYPE || data.provider !== "twitter") return;
+      if (data.ok && data.handle) {
+        const handle = data.handle;
+        setProject((current) => ({
+          ...current,
+          xHandle: `@${handle}`,
+          updatedAt: new Date().toISOString(),
+        }));
+        setNotice(`Connected X: @${handle}`);
+      } else {
+        setNotice(("error" in data && data.error) || "X connection failed. Try again.");
+      }
+    }
+
+    window.addEventListener("message", onOAuthMessage);
+    return () => window.removeEventListener("message", onOAuthMessage);
   }, []);
 
   const chain = CHAIN_CONFIG[project.chain];
@@ -327,6 +370,55 @@ export function TokenStudio() {
     reader.readAsDataURL(file);
   }
 
+  function connectTwitter() {
+    const width = 500;
+    const height = 650;
+    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+    const popup = window.open(
+      "/api/auth/twitter/start",
+      "hoodlums-twitter-oauth",
+      `width=${width},height=${height},left=${left},top=${top}`,
+    );
+    if (!popup) {
+      setNotice("Allow pop-ups for this site to connect your X account.");
+    }
+  }
+
+  function disconnectTwitter() {
+    updateProject("xHandle", "");
+    setNotice("X account disconnected.");
+  }
+
+  async function handleTelegramAuth(user: TelegramWidgetUser) {
+    try {
+      const response = await fetch("/api/auth/telegram/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(user),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { ok: true; username: string }
+        | { ok: false; error: string }
+        | null;
+      if (!response.ok || !payload || !payload.ok) {
+        setNotice(
+          (payload && !payload.ok && payload.error) || "Telegram connection failed. Try again.",
+        );
+        return;
+      }
+      updateProject("telegram", `@${payload.username}`);
+      setNotice(`Connected Telegram: @${payload.username}`);
+    } catch {
+      setNotice("Telegram connection failed. Try again.");
+    }
+  }
+
+  function disconnectTelegram() {
+    updateProject("telegram", "");
+    setNotice("Telegram account disconnected.");
+  }
+
   async function connectWallet() {
     setIsConnecting(true);
     try {
@@ -401,6 +493,36 @@ export function TokenStudio() {
     URL.revokeObjectURL(url);
     setNotice("Project JSON exported.");
   }
+
+  // Injects Telegram's official widget script (it renders its own iframe
+  // button in place of the script tag), only while disconnected and only
+  // when a bot username is configured — otherwise it would render a broken
+  // button (rule: mobile Safari must never be left with a half-loaded
+  // third-party embed).
+  useEffect(() => {
+    const container = telegramWidgetRef.current;
+    if (!container || project.telegram || !TELEGRAM_LOGIN_BOT_USERNAME) return;
+
+    window.hoodlumsTelegramAuth = (user: TelegramWidgetUser) => {
+      void handleTelegramAuth(user);
+    };
+
+    const script = document.createElement("script");
+    script.src = "https://telegram.org/js/telegram-widget.js?22";
+    script.async = true;
+    script.setAttribute("data-telegram-login", TELEGRAM_LOGIN_BOT_USERNAME);
+    script.setAttribute("data-size", "large");
+    script.setAttribute("data-radius", "8");
+    script.setAttribute("data-onauth", `${TELEGRAM_WIDGET_CALLBACK_NAME}(user)`);
+    script.setAttribute("data-request-access", "write");
+    container.appendChild(script);
+
+    return () => {
+      container.innerHTML = "";
+      delete window.hoodlumsTelegramAuth;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.telegram]);
 
   return (
     <main className="app-shell">
@@ -594,22 +716,38 @@ export function TokenStudio() {
           </label>
 
           <div className="two-column-fields">
-            <label>
-              <span className="field-label">X handle</span>
-              <input
-                value={project.xHandle}
-                onChange={(event) => updateProject("xHandle", event.target.value)}
-                placeholder="@hoodlums"
-              />
-            </label>
-            <label>
+            <div>
+              <span className="field-label">X (Twitter)</span>
+              {project.xHandle ? (
+                <div className="social-connected">
+                  <span className="social-connected-dot" aria-hidden="true" />
+                  <span className="social-connected-handle">Connected: {project.xHandle}</span>
+                  <button type="button" className="social-disconnect-button" onClick={disconnectTwitter}>
+                    Disconnect
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="social-connect-button" onClick={connectTwitter}>
+                  Connect X
+                </button>
+              )}
+            </div>
+            <div>
               <span className="field-label">Telegram</span>
-              <input
-                value={project.telegram}
-                onChange={(event) => updateProject("telegram", event.target.value)}
-                placeholder="t.me/hoodlums"
-              />
-            </label>
+              {project.telegram ? (
+                <div className="social-connected">
+                  <span className="social-connected-dot" aria-hidden="true" />
+                  <span className="social-connected-handle">Connected: {project.telegram}</span>
+                  <button type="button" className="social-disconnect-button" onClick={disconnectTelegram}>
+                    Disconnect
+                  </button>
+                </div>
+              ) : TELEGRAM_LOGIN_BOT_USERNAME ? (
+                <div ref={telegramWidgetRef} className="telegram-widget-mount" />
+              ) : (
+                <p className="social-connect-unavailable">Telegram sign-in isn&apos;t configured yet.</p>
+              )}
+            </div>
           </div>
 
           <label>

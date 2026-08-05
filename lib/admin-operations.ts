@@ -35,6 +35,19 @@ export const ADMIN_SERVICE_DEFINITIONS = [
     description: "Wallet-signed posting, reading and reporting on the per-token Hoodchat tab.",
     affectedRoutes: "/api/token-chat/challenge, /api/token-chat/messages, /api/token-chat/report",
   },
+  {
+    key: "twitter-oauth",
+    label: "X (Twitter) sign-in",
+    description: "OAuth 2.0 PKCE sign-in used to verify a project's X handle in the token studio.",
+    affectedRoutes: "/api/auth/twitter/start, /api/auth/twitter/callback",
+  },
+  {
+    key: "telegram-oauth",
+    label: "Telegram sign-in",
+    description:
+      "Telegram Login Widget verification used to verify a project's Telegram username in the token studio.",
+    affectedRoutes: "/api/auth/telegram/verify",
+  },
 ] as const;
 
 export type AdminServiceKey = (typeof ADMIN_SERVICE_DEFINITIONS)[number]["key"];

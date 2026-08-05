@@ -160,3 +160,16 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   `hoodchat` service-isolation switch; the main feed's headings are in the
   Pages CMS. Production migration and first write enablement must remain
   deliberate and owner-reviewed.
+- Verified social handles (issue #246) are implemented for review: the
+  studio's X and Telegram fields are now OAuth "Connect" buttons instead of
+  free-text inputs. X uses OAuth 2.0 + PKCE
+  (`app/api/auth/twitter/start`/`callback`, popup + `postMessage`,
+  `TWITTER_CLIENT_ID`/`TWITTER_CLIENT_SECRET`); Telegram uses the official
+  Login Widget verified server-side against `TELEGRAM_LOGIN_BOT_TOKEN`
+  (`app/api/auth/telegram/verify`). Both write only into the existing
+  `TokenProject.xHandle`/`telegram` fields (no new table) and are wired into
+  the admin System Health service-isolation switches
+  (`twitter-oauth`/`telegram-oauth`), matching the `telegram-publishing`
+  pattern. Migration `010_social_oauth_service_controls.sql` extends the
+  `admin_service_controls`/`admin_activity_log` CHECK constraints for the two
+  new keys; production migration remains deliberate and owner-reviewed.

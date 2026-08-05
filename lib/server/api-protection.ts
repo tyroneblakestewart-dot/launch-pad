@@ -310,3 +310,23 @@ export function resetChatRateLimitsForTests() {
     "token-chat-report",
   ].forEach((name) => namedRateStore(name).clear());
 }
+
+// Social account verification for the token studio (issue #246). Both
+// providers are stateless per-request flows (no durable table), so a single
+// generous per-IP window is enough to blunt abuse without needing the
+// dedicated stores above.
+export const SOCIAL_OAUTH_WINDOW_MS = 60 * 60 * 1000;
+export const TWITTER_OAUTH_LIMIT = 20;
+export const TELEGRAM_OAUTH_LIMIT = 30;
+
+export function consumeTwitterOAuthRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("twitter-oauth"), ip, TWITTER_OAUTH_LIMIT, SOCIAL_OAUTH_WINDOW_MS, now);
+}
+
+export function consumeTelegramOAuthRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("telegram-oauth"), ip, TELEGRAM_OAUTH_LIMIT, SOCIAL_OAUTH_WINDOW_MS, now);
+}
+
+export function resetSocialOAuthRateLimitsForTests() {
+  ["twitter-oauth", "telegram-oauth"].forEach((name) => namedRateStore(name).clear());
+}

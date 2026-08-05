@@ -40,6 +40,9 @@ describe("admin operations dashboard", () => {
       "app/api/publish/visibility/route.ts": "public-publishing",
       "app/api/trending-robinhood/route.ts": "market-feed",
       "app/api/social/telegram/route.ts": "telegram-publishing",
+      "app/api/auth/twitter/start/route.ts": "twitter-oauth",
+      "app/api/auth/twitter/callback/route.ts": "twitter-oauth",
+      "app/api/auth/telegram/verify/route.ts": "telegram-oauth",
     };
 
     for (const [file, service] of Object.entries(expected)) {

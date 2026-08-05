@@ -37,6 +37,9 @@ describe("backend test inventory", () => {
       "app/api/admin/pages/actions/route.ts",
       "app/api/admin/pages/route.ts",
       "app/api/admin/subscribers/route.ts",
+      "app/api/auth/telegram/verify/route.ts",
+      "app/api/auth/twitter/callback/route.ts",
+      "app/api/auth/twitter/start/route.ts",
       "app/api/dexscreener-pair/route.ts",
       "app/api/generate-free-site/route.ts",
       "app/api/generate-site-page/route.ts",
@@ -75,6 +78,9 @@ describe("backend test inventory", () => {
       "app/api/admin/pages/actions/route.ts": ["POST"],
       "app/api/admin/pages/route.ts": ["GET", "PATCH"],
       "app/api/admin/subscribers/route.ts": ["GET"],
+      "app/api/auth/telegram/verify/route.ts": ["POST"],
+      "app/api/auth/twitter/callback/route.ts": ["GET"],
+      "app/api/auth/twitter/start/route.ts": ["GET"],
       "app/api/dexscreener-pair/route.ts": ["GET"],
       "app/api/generate-free-site/route.ts": ["POST"],
       "app/api/generate-site-page/route.ts": ["POST"],
@@ -130,11 +136,13 @@ describe("backend test inventory", () => {
       "lib/server/subscribers.ts",
       "lib/server/system-health-pipeline.ts",
       "lib/server/system-health.ts",
+      "lib/server/telegram-oauth.ts",
       "lib/server/telegram.ts",
       "lib/server/token-chat-creator.ts",
       "lib/server/token-chat-store.ts",
       "lib/server/token-holders.ts",
       "lib/server/token-market-stats.ts",
+      "lib/server/twitter-oauth.ts",
     ]);
   });
 });

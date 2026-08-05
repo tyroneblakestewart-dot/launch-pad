@@ -18,6 +18,16 @@ The application is intentionally **testnet-first**. It does not offer an unatten
 
 Private project records and draft generated-site state remain local to the current browser; cross-device accounts and hosted private-draft synchronization are not active. A project becomes durable only when its generated site is explicitly published through the signed server endpoint described below.
 
+### Verified social handles (X and Telegram)
+
+The studio's X and Telegram fields are "Connect" buttons rather than free-text inputs, so the saved handle is verified by the provider instead of typed by hand (issue #246):
+
+- **X (Twitter):** clicking **Connect X** opens `/api/auth/twitter/start` in a popup, which runs an OAuth 2.0 Authorization Code + PKCE flow (`tweet.read users.read` scope). `/api/auth/twitter/callback` exchanges the code for a token using the server-only `TWITTER_CLIENT_ID`/`TWITTER_CLIENT_SECRET`, looks up the authenticated handle, and posts it back to the opener window via `postMessage` (same-origin only) before closing itself. The PKCE state and code verifier live in short-lived, `httpOnly` cookies scoped to `/api/auth/twitter`, checked with a constant-time comparison — that is the flow's CSRF defense, since top-level navigations do not reliably carry an `Origin` header.
+- **Telegram:** clicking **Connect Telegram** renders the official [Telegram Login Widget](https://core.telegram.org/widgets/login) inline (no popup). The widget calls back into the page with a signed payload, which is posted to `POST /api/auth/telegram/verify`; the server recomputes the widget's HMAC-SHA256 signature with the server-only `TELEGRAM_LOGIN_BOT_TOKEN` and rejects anything older than 24 hours or with a bad signature.
+- Both flows only ever write into the existing `TokenProject.xHandle` / `TokenProject.telegram` fields — the same browser-local project state the old text inputs wrote into — so saved/exported projects are unaffected. A connected state shows "Connected: @handle" with a green indicator and a **Disconnect** control that clears the field back to empty.
+- Neither endpoint stores anything server-side beyond the short-lived OAuth cookies; there is no new database table. Both are wired into the admin dashboard's System Health → Issues service-isolation switches (`twitter-oauth`, `telegram-oauth`) the same way `telegram-publishing` is, and are rate-limited per IP.
+- Configure `TWITTER_CLIENT_ID`, `TWITTER_CLIENT_SECRET`, `NEXT_PUBLIC_TELEGRAM_LOGIN_BOT_USERNAME`, and `TELEGRAM_LOGIN_BOT_TOKEN` per `.env.example`. Until Telegram's variables are set, the studio shows "Telegram sign-in isn't configured yet" instead of a broken widget; until Twitter's are set, the popup reports the same "not configured" state instead of erroring.
+
 ### Artwork-driven site generation
 
 The **Generate site from artwork** flow becomes available after the required project details and artwork are present. Site style analysis can use OpenAI vision, and the full-page generator returns a self-contained landing-page preview based on the project rather than fixed demo copy.

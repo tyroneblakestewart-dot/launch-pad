@@ -268,6 +268,64 @@ label small { display: block; margin-top: 5px; color: #5f6a61; font: 10px var(--
 .upload-box small { margin: 0; text-align: left; }
 .upload-box img { width: 51px; height: 51px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
 
+.social-connect-button {
+  width: 100%;
+  min-height: 43px;
+  padding: 0 12px;
+  color: var(--paper);
+  background: #111713;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: 700 12px var(--mono);
+  transition: border-color .16s ease, transform .16s ease;
+}
+.social-connect-button:hover { border-color: rgba(85,255,120,.55); transform: translateY(-1px); }
+.social-connected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 43px;
+  padding: 0 12px;
+  border: 1px solid rgba(85,255,120,.35);
+  border-radius: 6px;
+  background: rgba(85,255,120,.06);
+}
+.social-connected-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+}
+.social-connected-handle {
+  flex: 1;
+  overflow: hidden;
+  color: var(--paper);
+  font: 600 11px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.social-disconnect-button {
+  padding: 0;
+  color: #849087;
+  background: transparent;
+  font: 600 10px var(--mono);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+.social-disconnect-button:hover { color: var(--green); }
+.telegram-widget-mount { min-height: 43px; display: flex; align-items: center; }
+.social-connect-unavailable {
+  margin: 0;
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  color: #5f6a61;
+  font: 500 11px var(--mono);
+}
+
 .readiness-card {
   padding: 14px;
   margin: 7px 0 16px;
