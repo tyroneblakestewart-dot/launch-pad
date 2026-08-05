@@ -18,6 +18,7 @@ type HoodchatMessage = {
 };
 
 type FilterTab = HoodchatCategory | "all";
+type FilterMessageCache = Partial<Record<FilterTab, HoodchatMessage[]>>;
 
 const FILTER_TABS: { id: FilterTab; label: string }[] = [
   { id: "all", label: "All" },
@@ -34,6 +35,13 @@ async function readJsonResponse<T>(response: Response, fallback: string): Promis
   const payload = (await response.json().catch(() => ({}))) as { error?: string } & Partial<T>;
   if (!response.ok) throw new Error(payload.error || fallback);
   return payload as T;
+}
+
+async function fetchHoodchatMessages(filter: FilterTab): Promise<HoodchatMessage[]> {
+  const url = filter === "all" ? "/api/hoodchat/messages" : `/api/hoodchat/messages?category=${filter}`;
+  const response = await fetch(url, { cache: "no-store" });
+  const payload = await readJsonResponse<{ messages: HoodchatMessage[] }>(response, "The feed could not be loaded.");
+  return payload.messages;
 }
 
 function formatTimestamp(iso: string): string {
@@ -88,13 +96,16 @@ export function HoodchatHub({
   connectPrompt,
 }: HoodchatHubProps) {
   const [filter, setFilter] = useState<FilterTab>("all");
-  const [messages, setMessages] = useState<HoodchatMessage[]>([]);
+  const [messagesByFilter, setMessagesByFilter] = useState<FilterMessageCache>({});
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reportedIds, setReportedIds] = useState<Set<string>>(new Set());
+  const filterRef = useRef<FilterTab>("all");
   const feedEndRef = useRef<HTMLDivElement | null>(null);
+  const activeMessages = messagesByFilter[filter];
+  const activeMessageCount = activeMessages?.length ?? 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -114,28 +125,46 @@ export function HoodchatHub({
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
+    async function load(target: FilterTab) {
       try {
-        const url = filter === "all" ? "/api/hoodchat/messages" : `/api/hoodchat/messages?category=${filter}`;
-        const response = await fetch(url, { cache: "no-store" });
-        const payload = await readJsonResponse<{ messages: HoodchatMessage[] }>(response, "The feed could not be loaded.");
-        if (!cancelled) setMessages(payload.messages);
+        const loadedMessages = await fetchHoodchatMessages(target);
+        if (!cancelled) {
+          setMessagesByFilter((current) => ({ ...current, [target]: loadedMessages }));
+        }
       } catch {
-        // A failed poll leaves the previously loaded feed in place.
+        // A failed warm-up or poll leaves the last cached feed in place.
       }
     }
 
-    void load();
-    const interval = window.setInterval(load, POLL_INTERVAL_MS);
+    // Warm every category once so switching tabs never waits for a request.
+    void Promise.all(FILTER_TABS.map((tab) => load(tab.id)));
+    const interval = window.setInterval(() => {
+      void load(filterRef.current);
+    }, POLL_INTERVAL_MS);
+
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [filter]);
+  }, []);
 
   useEffect(() => {
     feedEndRef.current?.scrollIntoView({ block: "nearest" });
-  }, [messages.length]);
+  }, [filter, activeMessageCount]);
+
+  const activateFilter = useCallback((target: FilterTab) => {
+    if (filterRef.current === target) return;
+
+    filterRef.current = target;
+    setFilter(target);
+
+    // Cached messages render immediately; this refresh happens in the background.
+    void fetchHoodchatMessages(target)
+      .then((loadedMessages) => {
+        setMessagesByFilter((current) => ({ ...current, [target]: loadedMessages }));
+      })
+      .catch(() => {});
+  }, []);
 
   const connectWallet = useCallback(async () => {
     const provider = getInjectedEvmProvider();
@@ -158,7 +187,14 @@ export function HoodchatHub({
     setError(null);
     try {
       const message = await postMessage(POST_CATEGORY, body);
-      setMessages((current) => [...current, message]);
+      setMessagesByFilter((current) => {
+        const next = { ...current };
+        for (const target of ["all", message.category] as const) {
+          const cached = next[target] ?? [];
+          next[target] = cached.some((item) => item.id === message.id) ? cached : [...cached, message];
+        }
+        return next;
+      });
       setDraft("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "The message could not be posted.");
@@ -176,7 +212,16 @@ export function HoodchatHub({
         body: JSON.stringify({ messageId: id }),
       });
       const result = await readJsonResponse<{ hidden: boolean }>(response, "The report could not be recorded.");
-      if (result.hidden) setMessages((current) => current.filter((item) => item.id !== id));
+      if (result.hidden) {
+        setMessagesByFilter((current) => {
+          const next = { ...current };
+          for (const tab of FILTER_TABS) {
+            const cached = next[tab.id];
+            if (cached) next[tab.id] = cached.filter((item) => item.id !== id);
+          }
+          return next;
+        });
+      }
     } catch {
       // Reporting is best-effort from the visitor's point of view.
     }
@@ -200,7 +245,13 @@ export function HoodchatHub({
                 role="tab"
                 aria-selected={filter === tab.id}
                 className={`${styles.filterTab} ${filter === tab.id ? styles.filterTabActive : ""}`}
-                onClick={() => setFilter(tab.id)}
+                onPointerUp={(event) => {
+                  if (event.pointerType === "touch" || event.pointerType === "pen") {
+                    event.preventDefault();
+                    activateFilter(tab.id);
+                  }
+                }}
+                onClick={() => activateFilter(tab.id)}
               >
                 {tab.label}
               </button>
@@ -208,10 +259,12 @@ export function HoodchatHub({
           </div>
 
           <div className={styles.feed}>
-            {messages.length === 0 ? (
+            {activeMessages === undefined ? (
+              <p className={styles.emptyState}>Loading Hoodchat…</p>
+            ) : activeMessages.length === 0 ? (
               <p className={styles.emptyState}>{emptyState}</p>
             ) : (
-              messages.map((item) => (
+              activeMessages.map((item) => (
                 <article key={item.id} className={styles.message}>
                   <div className={styles.messageMeta}>
                     <span className={styles.messageWallet}>{shortenAddress(item.walletAddress)}</span>
