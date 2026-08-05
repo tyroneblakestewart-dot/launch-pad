@@ -1,8 +1,11 @@
+import styles from "./loading.module.css";
+
 export default function AppRouteLoading() {
   return (
     <main
       aria-live="polite"
       aria-busy="true"
+      className={styles.loadingScreen}
       style={{
         minHeight: "calc(100vh - 72px)",
         display: "grid",
