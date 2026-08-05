@@ -6,6 +6,7 @@ import {
   type PublishableSitePayload,
 } from "@/components/full-website-generator";
 import { CHAIN_CONFIG, ROBINHOOD_MAINNET } from "@/lib/chains";
+import { TelegramIcon, XIcon } from "@/components/icons/social-icons";
 import { FREE_SITE_SECTION_DEFAULTS, type FreeSiteSectionKey } from "@/lib/free-site-sections";
 import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
 import { launchPathLabel } from "@/lib/launch-paths";
@@ -596,19 +597,25 @@ export function TokenStudio() {
           <div className="two-column-fields">
             <label>
               <span className="field-label">X handle</span>
-              <input
-                value={project.xHandle}
-                onChange={(event) => updateProject("xHandle", event.target.value)}
-                placeholder="@hoodlums"
-              />
+              <div className="social-input">
+                <XIcon className="social-input-icon" />
+                <input
+                  value={project.xHandle}
+                  onChange={(event) => updateProject("xHandle", event.target.value)}
+                  placeholder="@hoodlums"
+                />
+              </div>
             </label>
             <label>
               <span className="field-label">Telegram</span>
-              <input
-                value={project.telegram}
-                onChange={(event) => updateProject("telegram", event.target.value)}
-                placeholder="t.me/hoodlums"
-              />
+              <div className="social-input">
+                <TelegramIcon className="social-input-icon" />
+                <input
+                  value={project.telegram}
+                  onChange={(event) => updateProject("telegram", event.target.value)}
+                  placeholder="t.me/hoodlums"
+                />
+              </div>
             </label>
           </div>
 
