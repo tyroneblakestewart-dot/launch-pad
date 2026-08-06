@@ -80,22 +80,19 @@ export function PlanCheckout({
   const [paymentSignature, setPaymentSignature] = useState("");
   const [verification, setVerification] = useState<PlanPaymentVerification | null>(null);
   const mounted = useRef(true);
+  const expectedBilling = subscription ? billingPeriod : "one_off";
+  const currentQuote =
+    quote?.plan === plan && quote.billingPeriod === expectedBilling ? quote : null;
+  const busy = phase === "loading" || phase === "sending" || phase === "verifying";
+  const billingLocked = busy || Boolean(transactionHash);
+  const needsWalletInteraction = !transactionHash || !paymentSignature;
 
   useEffect(() => {
     mounted.current = true;
     const controller = new AbortController();
-    const billing = subscription ? billingPeriod : "one_off";
-
-    setQuote(null);
-    setPhase("loading");
-    setMessage("Loading the server-verified payment quote…");
-    setTransactionHash("");
-    setPaymentWalletAddress("");
-    setPaymentSignature("");
-    setVerification(null);
 
     fetch(
-      `/api/plan-payments/quote?plan=${encodeURIComponent(plan)}&billing=${encodeURIComponent(billing)}`,
+      `/api/plan-payments/quote?plan=${encodeURIComponent(plan)}&billing=${encodeURIComponent(expectedBilling)}`,
       {
         cache: "no-store",
         signal: controller.signal,
@@ -106,7 +103,7 @@ export function PlanCheckout({
         return (await response.json()) as PlanPaymentQuote;
       })
       .then((nextQuote) => {
-        if (!mounted.current) return;
+        if (!mounted.current || controller.signal.aborted) return;
         setQuote(nextQuote);
         setPhase("ready");
         setMessage(
@@ -125,21 +122,33 @@ export function PlanCheckout({
       mounted.current = false;
       controller.abort();
     };
-  }, [billingPeriod, plan, subscription]);
+  }, [expectedBilling, plan]);
+
+  function changeBillingPeriod(nextBilling: SubscriptionBillingPeriod): void {
+    if (billingLocked || nextBilling === billingPeriod) return;
+    setQuote(null);
+    setPhase("loading");
+    setMessage("Loading the server-verified payment quote…");
+    setTransactionHash("");
+    setPaymentWalletAddress("");
+    setPaymentSignature("");
+    setVerification(null);
+    setBillingPeriod(nextBilling);
+  }
 
   async function requestWalletProof(
     provider: EthereumProvider,
     walletAddress: string,
     hash: string,
   ): Promise<string> {
-    if (!quote) throw new Error("The payment quote is not ready.");
+    if (!currentQuote) throw new Error("The payment quote is not ready.");
     setPhase("sending");
     setMessage(
       "Payment submitted. Sign the confirmation message to prove you control the paying wallet. This signature sends no funds.",
     );
     const proofMessage = buildPlanPaymentProofMessage({
       plan,
-      billingPeriod: quote.billingPeriod,
+      billingPeriod: currentQuote.billingPeriod,
       walletAddress,
       transactionHash: hash,
       origin: window.location.origin,
@@ -158,7 +167,7 @@ export function PlanCheckout({
     hash: string,
     walletSignature: string,
   ): Promise<PlanPaymentVerification> {
-    if (!quote) throw new Error("The payment quote is not ready.");
+    if (!currentQuote) throw new Error("The payment quote is not ready.");
     for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt += 1) {
       const response = await fetch("/api/plan-payments/verify", {
         method: "POST",
@@ -166,7 +175,7 @@ export function PlanCheckout({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           plan,
-          billingPeriod: quote.billingPeriod,
+          billingPeriod: currentQuote.billingPeriod,
           walletAddress,
           transactionHash: hash,
           walletSignature,
@@ -204,7 +213,7 @@ export function PlanCheckout({
   }
 
   async function pay() {
-    if (!quote || phase === "sending" || phase === "verifying") return;
+    if (!currentQuote || phase === "sending" || phase === "verifying") return;
 
     try {
       if (transactionHash && paymentWalletAddress && paymentSignature) {
@@ -238,7 +247,7 @@ export function PlanCheckout({
       try {
         await provider.request({
           method: "wallet_switchEthereumChain",
-          params: [{ chainId: quote.chainIdHex }],
+          params: [{ chainId: currentQuote.chainIdHex }],
         });
       } catch (switchError) {
         const code = (switchError as { code?: number })?.code;
@@ -247,11 +256,11 @@ export function PlanCheckout({
           method: "wallet_addEthereumChain",
           params: [
             {
-              chainId: quote.chainIdHex,
-              chainName: quote.chainName,
+              chainId: currentQuote.chainIdHex,
+              chainName: currentQuote.chainName,
               nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-              rpcUrls: [quote.rpcUrl],
-              blockExplorerUrls: [quote.explorerBaseUrl],
+              rpcUrls: [currentQuote.rpcUrl],
+              blockExplorerUrls: [currentQuote.explorerBaseUrl],
             },
           ],
         });
@@ -266,9 +275,9 @@ export function PlanCheckout({
         params: [
           {
             from: walletAddress,
-            to: quote.transactionTo,
-            value: quote.transactionValue,
-            data: quote.transactionData,
+            to: currentQuote.transactionTo,
+            value: currentQuote.transactionValue,
+            data: currentQuote.transactionData,
           },
         ],
       })) as string;
@@ -320,10 +329,6 @@ export function PlanCheckout({
     );
   }
 
-  const busy = phase === "loading" || phase === "sending" || phase === "verifying";
-  const billingLocked = busy || Boolean(transactionHash);
-  const needsWalletInteraction = !transactionHash || !paymentSignature;
-
   return (
     <div className={styles.shell}>
       {subscription ? (
@@ -332,7 +337,7 @@ export function PlanCheckout({
             type="button"
             className={billingPeriod === "monthly" ? styles.billingActive : styles.billingButton}
             aria-pressed={billingPeriod === "monthly"}
-            onClick={() => setBillingPeriod("monthly")}
+            onClick={() => changeBillingPeriod("monthly")}
             disabled={billingLocked}
           >
             Monthly · 32 days
@@ -341,7 +346,7 @@ export function PlanCheckout({
             type="button"
             className={billingPeriod === "upfront" ? styles.billingActive : styles.billingButton}
             aria-pressed={billingPeriod === "upfront"}
-            onClick={() => setBillingPeriod("upfront")}
+            onClick={() => changeBillingPeriod("upfront")}
             disabled={billingLocked}
           >
             3 months upfront · 96 days
@@ -353,9 +358,9 @@ export function PlanCheckout({
         <span>SECURE PLAN PAYMENT</span>
         <h3>{definition.label}</h3>
         <div className={styles.price}>
-          <strong>{quote ? formatUsdCents(quote.usdCents) : "—"}</strong>
+          <strong>{currentQuote ? formatUsdCents(currentQuote.usdCents) : "—"}</strong>
           <small>
-            {quote?.billingPeriod === "upfront"
+            {currentQuote?.billingPeriod === "upfront"
               ? "one manual payment · 20% saving"
               : subscription
                 ? "one manual payment · 32 days"
@@ -363,8 +368,8 @@ export function PlanCheckout({
           </small>
         </div>
         <p>
-          {quote
-            ? `${quote.amountDisplay} ${quote.asset} on ${quote.chainName}`
+          {currentQuote
+            ? `${currentQuote.amountDisplay} ${currentQuote.asset} on ${currentQuote.chainName}`
             : "The exact payment transaction is supplied by the server."}
         </p>
       </section>
@@ -383,7 +388,7 @@ export function PlanCheckout({
           type="button"
           className={`${needsWalletInteraction ? "wallet-button " : ""}${styles.payButton}`}
           onClick={() => void pay()}
-          disabled={!quote || busy}
+          disabled={!currentQuote || busy}
         >
           {phase === "sending"
             ? transactionHash
@@ -395,7 +400,7 @@ export function PlanCheckout({
                 ? paymentSignature
                   ? "RETRY VERIFICATION"
                   : "SIGN & VERIFY PAYMENT"
-                : quote?.asset === "USDT"
+                : currentQuote?.asset === "USDT"
                   ? "PAY USDT WITH WALLET"
                   : "PAY WITH WALLET"}
         </button>
