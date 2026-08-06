@@ -5,11 +5,23 @@ import type {
   AdminOperationsSnapshot,
   AdminServiceKey,
 } from "@/lib/admin-operations";
+import { launchPathLabel } from "@/lib/launch-paths";
 import styles from "./admin-operations-sections.module.css";
 
 function formatTimestamp(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function formatUsd(cents: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(cents / 100);
+}
+
+function shortValue(value: string): string {
+  return value.length > 18 ? `${value.slice(0, 10)}…${value.slice(-6)}` : value;
 }
 
 function healthSummary(snapshot: AdminOperationsSnapshot): string {
@@ -100,7 +112,7 @@ export function AdminActivity({
         <div>
           <h2 className={styles.sectionTitle}>Activity</h2>
           <p className={styles.sectionIntro}>
-            Successful admin sign-ins, sign-outs, isolations and restorations. Passwords, signatures and raw session tokens are never recorded.
+            Successful admin sign-ins, sign-outs, isolations, restorations and verified revenue events. Passwords, signatures and raw session tokens are never recorded.
           </p>
         </div>
         <p className={styles.timestamp}>Latest {snapshot.activity.length}</p>
@@ -136,7 +148,7 @@ export function AdminMoney({
         <div>
           <h2 className={styles.sectionTitle}>Money</h2>
           <p className={styles.sectionIntro}>
-            Live read-only values from the deployed Hoodlums token factory. This screen cannot move funds or change fees.
+            Read-only factory values plus server-verified plan payment events. This screen cannot move funds or change fees.
           </p>
         </div>
         <p className={styles.timestamp}>{money.chainLabel}</p>
@@ -163,9 +175,52 @@ export function AdminMoney({
           <p className={styles.cardLabel}>Recipient wallet balance</p>
           <p className={styles.cardValue}>{money.feeRecipientBalance}</p>
         </article>
+        <article className={styles.moneyCard}>
+          <p className={styles.cardLabel}>Verified plan revenue</p>
+          <p className={styles.cardValue}>
+            {money.planRevenueStatus === "ready"
+              ? formatUsd(money.planRevenueUsdCents)
+              : "—"}
+          </p>
+        </article>
+        <article className={styles.moneyCard}>
+          <p className={styles.cardLabel}>Verified plan payments</p>
+          <p className={styles.cardValue}>
+            {money.planRevenueStatus === "ready" ? money.planPaymentCount : "—"}
+          </p>
+        </article>
       </div>
 
       <p className={styles.note}>{money.message}</p>
+      {money.planRevenueStatus === "unavailable" ? (
+        <p className={styles.error} role="alert">{money.planRevenueMessage}</p>
+      ) : (
+        <p className={styles.note}>{money.planRevenueMessage}</p>
+      )}
+
+      <h3 className={styles.subheading}>Recent verified plan payments</h3>
+      {money.recentPlanPayments.length === 0 ? (
+        <p className={styles.empty}>No verified plan payments yet.</p>
+      ) : (
+        <ol className={styles.activityList}>
+          {money.recentPlanPayments.map((payment) => (
+            <li key={payment.transactionHash} className={styles.activityItem}>
+              <div className={styles.activityTop}>
+                <p className={styles.activityMessage}>
+                  <b>{launchPathLabel(payment.planId)}</b>{" "}
+                  {formatUsd(payment.amountUsdCents)} · {payment.amountEth} ETH ·{" "}
+                  <span className={styles.address}>{shortValue(payment.walletAddress)}</span>
+                </p>
+                <p className={styles.activityTime}>{formatTimestamp(payment.confirmedAt)}</p>
+              </div>
+              <p className={styles.cardDetail}>
+                Tx {shortValue(payment.transactionHash)}
+                {payment.paidUntil ? ` · paid until ${formatTimestamp(payment.paidUntil)}` : " · one-off"}
+              </p>
+            </li>
+          ))}
+        </ol>
+      )}
     </section>
   );
 }
