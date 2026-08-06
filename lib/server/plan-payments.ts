@@ -109,7 +109,7 @@ export async function verifyPlanPaymentTransaction(
       getTransaction: (hash: Hash) => client!.getTransaction({ hash }),
       getReceipt: (hash: Hash) => client!.getTransactionReceipt({ hash }),
       getConfirmations: (hash: Hash) =>
-        client!.getTransactionConfirmations({ transactionHash: hash }),
+        client!.getTransactionConfirmations({ hash }),
     } satisfies VerifyChainDeps);
 
   let chainId: number;
