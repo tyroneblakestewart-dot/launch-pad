@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -97,12 +97,29 @@ describe("scheduled reminders and Telegram integration", () => {
     expect(pipeline).toContain("subscription_reminder_events");
     expect(pipeline).toContain("Last daily lifecycle run");
     expect(pipeline).toContain("Last Telegram renewal reminder");
+    expect(pipeline).toContain("010_subscription_lifecycle.sql");
   });
 });
 
 describe("data retention and admin standing rule", () => {
+  it("keeps migration numbering unique and applies lifecycle after token chat", async () => {
+    const migrations = (await readdir(path.join(ROOT, "db", "migrations")))
+      .filter((file) => file.endsWith(".sql"))
+      .sort();
+    const prefixes = migrations.map((file) => file.match(/^(\d{3})_/)?.[1]);
+    const runner = await source("scripts", "migrate-database.mjs");
+
+    expect(migrations).toContain("009_token_chat.sql");
+    expect(migrations).toContain("010_subscription_lifecycle.sql");
+    expect(migrations).not.toContain("009_subscription_lifecycle.sql");
+    expect(prefixes.every(Boolean)).toBe(true);
+    expect(new Set(prefixes).size).toBe(prefixes.length);
+    expect(runner).toContain("Duplicate migration prefix");
+    expect(runner).toContain('left.localeCompare(right, "en", { numeric: true })');
+  });
+
   it("extends the existing schema without deleting expired subscriber data", async () => {
-    const migration = await source("db", "migrations", "009_subscription_lifecycle.sql");
+    const migration = await source("db", "migrations", "010_subscription_lifecycle.sql");
 
     expect(migration).toContain("paid_from TIMESTAMPTZ");
     expect(migration).toContain("paid_until TIMESTAMPTZ");
