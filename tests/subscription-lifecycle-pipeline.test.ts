@@ -9,14 +9,30 @@ const TABLES = [
   "telegram_link_codes",
 ];
 
+const PAYMENT_TOKENS = JSON.stringify([
+  {
+    symbol: "USDG",
+    contractAddress: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    decimals: 6,
+    enabled: true,
+    note: "Paxos-issued Global Dollar",
+  },
+  {
+    symbol: "USDT",
+    contractAddress: null,
+    decimals: null,
+    enabled: false,
+    note: "Disabled: no canonical liquid USDT verified on Robinhood Chain",
+  },
+]);
+
 function environment(overrides: Record<string, string | undefined> = {}) {
   return {
     DATABASE_URL: "postgres://example",
     CRON_SECRET: "cron-secret",
     HOODLUMS_TREASURY_ADDRESS: "0x1111111111111111111111111111111111111111",
-    HOODLUMS_PAYMENT_RPC_URL: "https://rpc.example",
-    HOODLUMS_USDT_TOKEN_ADDRESS: "0x2222222222222222222222222222222222222222",
-    HOODLUMS_USDT_DECIMALS: "6",
+    HOODLUMS_PAYMENT_RPC_URL: "https://rpc.mainnet.chain.robinhood.com",
+    HOODLUMS_PAYMENT_TOKENS_JSON: PAYMENT_TOKENS,
     TELEGRAM_BOT_TOKEN: "123456:abcdefghijklmnopqrstuvwxyzABCDE",
     TELEGRAM_BOT_USERNAME: "HoodlumsBot",
     TELEGRAM_WEBHOOK_SECRET: "telegram-secret",
@@ -77,7 +93,7 @@ function getPool(options: {
 }
 
 describe("Subscribers and renewals System Health pipeline", () => {
-  it("reports healthy lifecycle tables, a fresh cron run and a sent reminder", async () => {
+  it("reports enabled and disabled stablecoins with healthy lifecycle services", async () => {
     const pipeline = await buildSubscriptionLifecyclePipeline({
       databaseUrl: "postgres://example",
       environment: environment(),
@@ -86,9 +102,10 @@ describe("Subscribers and renewals System Health pipeline", () => {
     });
 
     expect(pipeline.label).toBe("Subscribers and renewals");
-    expect(pipeline.stages.find((item) => item.id === "lifecycle-configuration")).toMatchObject({
-      status: "green",
-    });
+    const configuration = pipeline.stages.find((item) => item.id === "lifecycle-configuration");
+    expect(configuration).toMatchObject({ status: "green" });
+    expect(configuration?.message).toContain("USDG stablecoin payments");
+    expect(configuration?.message).toContain("Disabled token(s): USDT");
     expect(pipeline.stages.find((item) => item.id === "lifecycle-tables")).toMatchObject({
       status: "green",
     });
@@ -100,13 +117,10 @@ describe("Subscribers and renewals System Health pipeline", () => {
     });
   });
 
-  it("fails health when required USDT or cron configuration is missing", async () => {
+  it("fails health when required cron configuration is missing", async () => {
     const pipeline = await buildSubscriptionLifecyclePipeline({
       databaseUrl: "postgres://example",
-      environment: environment({
-        CRON_SECRET: undefined,
-        HOODLUMS_USDT_TOKEN_ADDRESS: undefined,
-      }),
+      environment: environment({ CRON_SECRET: undefined }),
       now: NOW,
       getPool: getPool(),
     });
@@ -114,7 +128,29 @@ describe("Subscribers and renewals System Health pipeline", () => {
     const configuration = pipeline.stages.find((item) => item.id === "lifecycle-configuration");
     expect(configuration).toMatchObject({ status: "red" });
     expect(configuration?.message).toContain("CRON_SECRET");
-    expect(configuration?.message).toContain("HOODLUMS_USDT_TOKEN_ADDRESS");
+  });
+
+  it("fails health when the stablecoin catalog has no enabled token", async () => {
+    const pipeline = await buildSubscriptionLifecyclePipeline({
+      databaseUrl: "postgres://example",
+      environment: environment({
+        HOODLUMS_PAYMENT_TOKENS_JSON: JSON.stringify([
+          {
+            symbol: "USDT",
+            contractAddress: null,
+            decimals: null,
+            enabled: false,
+            note: "Not verified",
+          },
+        ]),
+      }),
+      now: NOW,
+      getPool: getPool(),
+    });
+
+    const configuration = pipeline.stages.find((item) => item.id === "lifecycle-configuration");
+    expect(configuration).toMatchObject({ status: "red" });
+    expect(configuration?.message).toContain("At least one payment token must be enabled");
   });
 
   it("keeps Telegram optional but clearly amber when in-app reminders are the only channel", async () => {
