@@ -217,7 +217,7 @@ export function TokenStudioWorkspace() {
               className={styles.createLaunchButton}
               onClick={() => openWorkspace("new")}
             >
-              + Create new token
+              + Start new launch
             </button>
           </div>
         </div>
