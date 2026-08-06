@@ -73,9 +73,10 @@ function positiveBigInt(value: string, key: string): bigint {
   return amount;
 }
 
-function tokenDecimals(value: string | undefined): number {
-  const decimals = Number(value?.trim() || "");
-  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
+function tokenDecimals(environment: PaymentEnvironment): number {
+  const raw = required(environment, "HOODLUMS_USDT_DECIMALS");
+  const decimals = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
     throw new PlanPaymentConfigurationError(
       "HOODLUMS_USDT_DECIMALS must be an integer from 0 to 18.",
     );
@@ -167,7 +168,7 @@ export function getPlanPaymentQuote(
   }
 
   const usdtAddress = configuredAddress(environment, "HOODLUMS_USDT_TOKEN_ADDRESS");
-  const decimals = tokenDecimals(environment.HOODLUMS_USDT_DECIMALS);
+  const decimals = tokenDecimals(environment);
   const wholeUsdt = (catalog.usdCents / 100).toString();
   const amount = parseUnits(wholeUsdt, decimals);
   const transferData = encodeFunctionData({
