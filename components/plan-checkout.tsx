@@ -72,6 +72,7 @@ export function PlanCheckout({
   const definition = planPaymentDefinition(plan);
   const subscription = isSubscriptionPlan(plan);
   const [billingPeriod, setBillingPeriod] = useState<SubscriptionBillingPeriod>(initialBilling);
+  const [paymentToken, setPaymentToken] = useState("");
   const [quote, setQuote] = useState<PlanPaymentQuote | null>(null);
   const [phase, setPhase] = useState<CheckoutPhase>("loading");
   const [message, setMessage] = useState("Loading the server-verified payment quote…");
@@ -82,17 +83,24 @@ export function PlanCheckout({
   const mounted = useRef(true);
   const expectedBilling = subscription ? billingPeriod : "one_off";
   const currentQuote =
-    quote?.plan === plan && quote.billingPeriod === expectedBilling ? quote : null;
+    quote?.plan === plan &&
+    quote.billingPeriod === expectedBilling &&
+    (!subscription || !paymentToken || quote.asset === paymentToken)
+      ? quote
+      : null;
   const busy = phase === "loading" || phase === "sending" || phase === "verifying";
-  const billingLocked = busy || Boolean(transactionHash);
+  const selectionLocked = busy || Boolean(transactionHash);
   const needsWalletInteraction = !transactionHash || !paymentSignature;
 
   useEffect(() => {
     mounted.current = true;
     const controller = new AbortController();
+    const tokenQuery = subscription && paymentToken
+      ? `&token=${encodeURIComponent(paymentToken)}`
+      : "";
 
     fetch(
-      `/api/plan-payments/quote?plan=${encodeURIComponent(plan)}&billing=${encodeURIComponent(expectedBilling)}`,
+      `/api/plan-payments/quote?plan=${encodeURIComponent(plan)}&billing=${encodeURIComponent(expectedBilling)}${tokenQuery}`,
       {
         cache: "no-store",
         signal: controller.signal,
@@ -105,10 +113,13 @@ export function PlanCheckout({
       .then((nextQuote) => {
         if (!mounted.current || controller.signal.aborted) return;
         setQuote(nextQuote);
+        if (subscription && paymentToken !== nextQuote.asset) {
+          setPaymentToken(nextQuote.asset);
+        }
         setPhase("ready");
         setMessage(
-          nextQuote.asset === "USDT"
-            ? "Your confirmed wallet sends USDT to the configured Hoodlums treasury. Access unlocks only after the server verifies the wallet proof, token transfer and confirmed receipt."
+          nextQuote.tokenAddress
+            ? `Your confirmed wallet sends ${nextQuote.asset} to the configured Hoodlums treasury. Access unlocks only after the server verifies the selected token contract, wallet proof, transfer and confirmed receipt.`
             : "Your confirmed wallet sends ETH to the configured Hoodlums treasury. Access unlocks only after the server verifies the wallet proof and confirmed receipt.",
         );
       })
@@ -122,10 +133,9 @@ export function PlanCheckout({
       mounted.current = false;
       controller.abort();
     };
-  }, [expectedBilling, plan]);
+  }, [expectedBilling, paymentToken, plan, subscription]);
 
-  function changeBillingPeriod(nextBilling: SubscriptionBillingPeriod): void {
-    if (billingLocked || nextBilling === billingPeriod) return;
+  function resetForSelection(): void {
     setQuote(null);
     setPhase("loading");
     setMessage("Loading the server-verified payment quote…");
@@ -133,7 +143,18 @@ export function PlanCheckout({
     setPaymentWalletAddress("");
     setPaymentSignature("");
     setVerification(null);
+  }
+
+  function changeBillingPeriod(nextBilling: SubscriptionBillingPeriod): void {
+    if (selectionLocked || nextBilling === billingPeriod) return;
+    resetForSelection();
     setBillingPeriod(nextBilling);
+  }
+
+  function changePaymentToken(nextToken: string): void {
+    if (selectionLocked || nextToken === paymentToken) return;
+    resetForSelection();
+    setPaymentToken(nextToken);
   }
 
   async function requestWalletProof(
@@ -149,6 +170,7 @@ export function PlanCheckout({
     const proofMessage = buildPlanPaymentProofMessage({
       plan,
       billingPeriod: currentQuote.billingPeriod,
+      paymentToken: currentQuote.asset,
       walletAddress,
       transactionHash: hash,
       origin: window.location.origin,
@@ -176,6 +198,7 @@ export function PlanCheckout({
         body: JSON.stringify({
           plan,
           billingPeriod: currentQuote.billingPeriod,
+          paymentToken: currentQuote.asset,
           walletAddress,
           transactionHash: hash,
           walletSignature,
@@ -305,7 +328,7 @@ export function PlanCheckout({
           {verification.paidUntil
             ? ` until ${new Date(verification.paidUntil).toLocaleDateString()}.`
             : "."}
-          {" "}Renewal is manual and your saved data is retained if the window expires.
+          {" "}Paid with {verification.asset}. Renewal is manual and your saved data is retained if the window expires.
         </p>
         <code className={styles.receipt}>{verification.transactionHash}</code>
         {verification.telegramLinkUrl ? (
@@ -338,7 +361,7 @@ export function PlanCheckout({
             className={billingPeriod === "monthly" ? styles.billingActive : styles.billingButton}
             aria-pressed={billingPeriod === "monthly"}
             onClick={() => changeBillingPeriod("monthly")}
-            disabled={billingLocked}
+            disabled={selectionLocked}
           >
             Monthly · 32 days
           </button>
@@ -347,10 +370,28 @@ export function PlanCheckout({
             className={billingPeriod === "upfront" ? styles.billingActive : styles.billingButton}
             aria-pressed={billingPeriod === "upfront"}
             onClick={() => changeBillingPeriod("upfront")}
-            disabled={billingLocked}
+            disabled={selectionLocked}
           >
             3 months upfront · 96 days
           </button>
+        </div>
+      ) : null}
+
+      {subscription && currentQuote?.paymentTokens.length ? (
+        <div className={styles.billingToggle} aria-label="Stablecoin payment token">
+          {currentQuote.paymentTokens.map((token) => (
+            <button
+              key={token.symbol}
+              type="button"
+              className={paymentToken === token.symbol ? styles.billingActive : styles.billingButton}
+              aria-pressed={paymentToken === token.symbol}
+              onClick={() => changePaymentToken(token.symbol)}
+              disabled={selectionLocked}
+              title={token.note || `Pay with ${token.symbol}`}
+            >
+              Pay with {token.symbol}
+            </button>
+          ))}
         </div>
       ) : null}
 
@@ -400,8 +441,8 @@ export function PlanCheckout({
                 ? paymentSignature
                   ? "RETRY VERIFICATION"
                   : "SIGN & VERIFY PAYMENT"
-                : currentQuote?.asset === "USDT"
-                  ? "PAY USDT WITH WALLET"
+                : currentQuote?.tokenAddress
+                  ? `PAY ${currentQuote.asset} WITH WALLET`
                   : "PAY WITH WALLET"}
         </button>
       </div>
