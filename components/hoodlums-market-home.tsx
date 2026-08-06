@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import type { MouseEvent } from "react";
 import type { PublicGeneratedSite } from "@/lib/public-site";
 import { HoodlumsPlansSection } from "@/components/hoodlums-plans-section";
@@ -53,9 +52,6 @@ export function HoodlumsMarketHome({
           >
             Open saved launches
           </button>
-          <Link href="/account" className={styles.accountButton}>
-            Account
-          </Link>
         </div>
       </header>
 
