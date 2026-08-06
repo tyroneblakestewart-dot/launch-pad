@@ -60,9 +60,17 @@ export function AccountOverlay({ initialContent }: { initialContent: AccountOver
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("account") === "open") setOpen(true);
+    const openFrame =
+      params.get("account") === "open"
+        ? window.requestAnimationFrame(() => setOpen(true))
+        : null;
 
-    if (params.get("cms_preview") !== "1") return;
+    if (params.get("cms_preview") !== "1") {
+      return () => {
+        if (openFrame !== null) window.cancelAnimationFrame(openFrame);
+      };
+    }
+
     const controller = new AbortController();
 
     fetch("/api/account-content?cms_preview=1", {
@@ -77,7 +85,10 @@ export function AccountOverlay({ initialContent }: { initialContent: AccountOver
         // Published content already supplied by the server remains the fallback.
       });
 
-    return () => controller.abort();
+    return () => {
+      if (openFrame !== null) window.cancelAnimationFrame(openFrame);
+      controller.abort();
+    };
   }, []);
 
   useEffect(() => {
