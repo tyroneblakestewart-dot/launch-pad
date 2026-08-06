@@ -204,7 +204,7 @@ async function getPlanRevenueSnapshot(): Promise<PlanRevenueSnapshot> {
       planPaymentCount: 0,
       recentPlanPayments: [],
       planRevenueMessage:
-        "Plan revenue could not be loaded. Apply migrations through 010_subscription_lifecycle.sql and try again.",
+        "Plan revenue could not be loaded. Apply migrations through 011_plan_payments.sql and try again.",
     };
   }
 }
