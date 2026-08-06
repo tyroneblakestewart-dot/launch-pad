@@ -1,11 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   encodeAbiParameters,
   encodeEventTopics,
   encodeFunctionData,
   type Address,
   type Hash,
-  type Hex,
 } from "viem";
 import { buildPlanPaymentProofMessage } from "@/lib/plan-payment-proof";
 import {
@@ -46,7 +45,7 @@ function tokenJson(usdtEnabled = false): string {
   ]);
 }
 
-function environment(usdtEnabled = false) {
+function environment(usdtEnabled = false): Record<string, string | undefined> {
   return {
     HOODLUMS_TREASURY_ADDRESS: TREASURY,
     HOODLUMS_PAYMENT_RPC_URL: "https://rpc.mainnet.chain.robinhood.com",
@@ -57,20 +56,6 @@ function environment(usdtEnabled = false) {
     HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI: "1000000000000000",
   };
 }
-
-beforeEach(() => {
-  Object.assign(process.env, environment(true));
-});
-
-afterEach(() => {
-  delete process.env.HOODLUMS_TREASURY_ADDRESS;
-  delete process.env.HOODLUMS_PAYMENT_RPC_URL;
-  delete process.env.HOODLUMS_PAYMENT_CHAIN_ID;
-  delete process.env.HOODLUMS_PAYMENT_CHAIN_NAME;
-  delete process.env.HOODLUMS_PAYMENT_EXPLORER_URL;
-  delete process.env.HOODLUMS_PAYMENT_TOKENS_JSON;
-  delete process.env.HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI;
-});
 
 describe("multi-stablecoin configuration", () => {
   it("exposes only enabled tokens and defaults subscriptions to USDG", () => {
@@ -155,6 +140,7 @@ describe("token-bound proof and on-chain verification", () => {
           transactionHash: HASH,
         },
         {
+          environment: environment(true),
           getChainId: async () => 4663,
           getTransaction: async () => ({
             from: WALLET,
@@ -191,6 +177,7 @@ describe("token-bound proof and on-chain verification", () => {
           transactionHash: HASH,
         },
         {
+          environment: environment(true),
           getChainId: async () => 4663,
           getTransaction: async () => ({
             from: WALLET,
