@@ -11,12 +11,13 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const plan = url.searchParams.get("plan");
   const billing = url.searchParams.get("billing");
+  const paymentToken = url.searchParams.get("token");
   if (!isPaidLaunchPath(plan)) {
     return NextResponse.json({ error: "Unknown paid plan." }, { status: 400 });
   }
 
   try {
-    return NextResponse.json(getPlanPaymentQuote(plan, billing), {
+    return NextResponse.json(getPlanPaymentQuote(plan, billing, paymentToken), {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {
