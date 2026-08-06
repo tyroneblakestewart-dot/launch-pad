@@ -6,6 +6,7 @@ This change handles real-value payment verification and must remain unmerged unt
 
 - Apply migrations through `011_plan_payments.sql`; the runner preserves its legacy dependency position before `010_subscription_lifecycle.sql`.
 - Confirm `hoodlums_schema_migrations` records `011_plan_payments.sql`. Existing databases with the old `008_plan_payments.sql` schema are remapped without re-running the payment SQL.
+- Confirm `tests/subscription-lifecycle-wiring.test.ts` reports one unique file for each three-digit migration prefix.
 - Configure the treasury, Robinhood Chain RPC and approved USDT contract/decimals.
 - Configure `CRON_SECRET` for Vercel cron authentication.
 - Optionally configure the Telegram bot username, token and webhook secret.
