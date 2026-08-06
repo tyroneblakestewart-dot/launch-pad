@@ -29,24 +29,40 @@ describe("shared plan purchase flow", () => {
       chooser.indexOf("onConfirm(pending)"),
     );
     expect(checkout).toContain('fetch("/api/plan-payments/verify"');
+    expect(checkout).toContain("walletSignature");
     expect(checkout).toContain('if (result.destination === "builder")');
     expect(checkout).toContain("onBuilderUnlocked(plan)");
-    expect(checkout.indexOf("verifyUntilConfirmed(walletAddress, hash)")).toBeLessThan(
+    expect(checkout.indexOf("verifyUntilConfirmed(walletAddress, hash, walletSignature)")).toBeLessThan(
       checkout.indexOf("onBuilderUnlocked(plan)"),
     );
   });
 
   it("retries the exact transaction hash without sending a second transaction", async () => {
     const checkout = await source("components", "plan-checkout.tsx");
-    const retryBranch = checkout.slice(
-      checkout.indexOf("if (transactionHash && paymentWalletAddress)"),
-      checkout.indexOf('setPhase("sending")'),
+    const retryStart = checkout.indexOf(
+      "if (transactionHash && paymentWalletAddress && paymentSignature)",
     );
+    const retryEnd = checkout.indexOf("const browserWindow", retryStart);
+    const retryBranch = checkout.slice(retryStart, retryEnd);
 
-    expect(retryBranch).toContain("finishVerification(paymentWalletAddress, transactionHash)");
+    expect(retryBranch).toContain("paymentWalletAddress");
+    expect(retryBranch).toContain("transactionHash");
+    expect(retryBranch).toContain("paymentSignature");
     expect(retryBranch).toContain("return;");
     expect(retryBranch).not.toContain("eth_sendTransaction");
     expect(checkout).toContain('method: "eth_sendTransaction"');
+  });
+
+  it("requires a wallet proof tied to the payer, transaction, plan and origin", async () => {
+    const checkout = await source("components", "plan-checkout.tsx");
+    const route = await source("app", "api", "plan-payments", "verify", "route.ts");
+    const proof = await source("lib", "server", "plan-payment-proof.ts");
+
+    expect(checkout).toContain('method: "personal_sign"');
+    expect(checkout).toContain("buildPlanPaymentProofMessage");
+    expect(route).toContain("verifyPlanPaymentWalletProof");
+    expect(route).toContain("walletSignature");
+    expect(proof).toContain("verifyMessage");
   });
 
   it("uses the exact selected EIP-6963 provider and a mobile-safe wallet button", async () => {
@@ -54,7 +70,7 @@ describe("shared plan purchase flow", () => {
     const css = await source("components", "plan-checkout.module.css");
 
     expect(checkout).toContain("browserWindow.__launchpadEthereum || browserWindow.ethereum");
-    expect(checkout).toContain('className={`wallet-button ${styles.payButton}`}');
+    expect(checkout).toContain('needsWalletInteraction ? "wallet-button " : ""');
     expect(css).toContain("@media (max-width: 480px)");
     expect(css).toContain("grid-template-columns: 1fr;");
     expect(css).toContain("touch-action: manipulation;");
