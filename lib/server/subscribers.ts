@@ -131,11 +131,23 @@ function paymentFromQueryRow(row: SubscribersPaymentQueryRow): AdminSubscriberPa
   };
 }
 
+function subscriberStatus(
+  tier: AdminSubscriberTier,
+  paidUntil: string | null,
+  now: Date,
+): AdminSubscriberRow["status"] {
+  if (tier === "free") return "free";
+  if (tier === "pro" || tier === "pro_bundle") {
+    return subscriptionStatusAt(paidUntil, now);
+  }
+  return "active";
+}
+
 function rowFromQueryRow(row: SubscribersQueryRow, now: Date): AdminSubscriberRow {
   const hasSubscription = Boolean(row.tier);
   const paidUntil = asIso(row.paid_until ?? row.expires_at);
   const tier = (hasSubscription ? row.tier : "free") as AdminSubscriberTier;
-  const status = !hasSubscription ? "free" : subscriptionStatusAt(paidUntil, now);
+  const status = subscriberStatus(tier, paidUntil, now);
   const slugs = [...new Set((row.slugs || []).filter((slug): slug is string => Boolean(slug)))].sort((a, b) =>
     a.localeCompare(b),
   );
