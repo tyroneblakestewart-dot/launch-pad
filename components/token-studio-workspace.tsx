@@ -84,10 +84,12 @@ export function TokenStudioWorkspace() {
 
   useEffect(() => {
     cleanUpSeededHoodlumsLaunch();
+  }, []);
 
-    // Manager plan cards navigate back to the homepage after storing the
-    // selected plan in sessionStorage. Open the workspace automatically,
-    // but leave the preset untouched for TokenPathChooser to consume once.
+  useEffect(() => {
+    // Manager plan cards return home with the chosen plan stored as a
+    // browser-session preset. Open the workspace but leave that preset for
+    // TokenPathChooser to consume exactly once.
     if (!hasLaunchPathPreset()) return;
     const timer = window.setTimeout(() => {
       setPendingAction("new");
