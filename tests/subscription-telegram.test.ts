@@ -149,14 +149,14 @@ describe("Telegram link consumption", () => {
     ).toBe(true);
   });
 
-  it("handles the Telegram /start update and sends a confirmation", async () => {
+  it("handles a private Telegram /start update and sends a confirmation", async () => {
     const fixture = clientFor({ codeExists: true });
     const send = vi.fn(async () => ({ message_id: 77 }));
     const result = await handleSubscriptionTelegramUpdate(
       {
         message: {
           text: "/start link_test_code",
-          chat: { id: 654321 },
+          chat: { id: 123456, type: "private" },
           from: { id: 123456, username: "crew_member" },
         },
       },
@@ -171,8 +171,32 @@ describe("Telegram link consumption", () => {
     expect(result).toEqual({ handled: true, linked: true });
     expect(send).toHaveBeenCalledWith(
       "123456:abcdefghijklmnopqrstuvwxyzABCDE",
-      "654321",
+      "123456",
       expect.stringContaining("Telegram renewal reminders are linked"),
     );
+  });
+
+  it("rejects a link code pasted into a group so reminders cannot leak there", async () => {
+    const fixture = clientFor({ codeExists: true });
+    const send = vi.fn(async () => ({ message_id: 77 }));
+    const result = await handleSubscriptionTelegramUpdate(
+      {
+        message: {
+          text: "/start link_test_code",
+          chat: { id: -100987654321, type: "supergroup" },
+          from: { id: 123456, username: "crew_member" },
+        },
+      },
+      {
+        botToken: "123456:abcdefghijklmnopqrstuvwxyzABCDE",
+        now: NOW,
+        connect: async () => fixture.client,
+        send,
+      },
+    );
+
+    expect(result).toEqual({ handled: false, linked: false });
+    expect(fixture.statements).toHaveLength(0);
+    expect(send).not.toHaveBeenCalled();
   });
 });
