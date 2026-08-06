@@ -41,6 +41,18 @@ describe("Hoodlums bonding-market studio home (issue #185)", () => {
     expect(component).toContain("RobinhoodTrendingPanel");
   });
 
+  it("orders token status tabs by lifecycle and defaults to New", async () => {
+    const component = await source("components", "hoodlums-token-grid.tsx");
+    const newIndex = component.indexOf('{ key: "new", label: "New" }');
+    const bondingIndex = component.indexOf('{ key: "bonding", label: "Bonding" }');
+    const graduatedIndex = component.indexOf('{ key: "graduated", label: "Graduated" }');
+
+    expect(component).toContain('useState<Tab>("new")');
+    expect(newIndex).toBeGreaterThan(-1);
+    expect(bondingIndex).toBeGreaterThan(newIndex);
+    expect(graduatedIndex).toBeGreaterThan(bondingIndex);
+  });
+
   it("shows tabs, a graduation bar and an honest empty state on the token grid", async () => {
     const component = await source("components", "hoodlums-token-grid.tsx");
 
