@@ -78,7 +78,7 @@ export function SubscriptionLifecycleBanner() {
     <aside className={styles.banner} data-status={access.status} role="status" aria-live="polite">
       <span className={styles.dot} aria-hidden="true" />
       <p>{message}</p>
-      <button type="button" onClick={renew}>Renew with USDT</button>
+      <button type="button" onClick={renew}>Renew with stablecoin</button>
     </aside>
   );
 }
