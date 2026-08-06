@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { LAUNCH_PATH_OPTIONS } from "@/lib/launch-paths";
+import {
+  LAUNCH_PATH_OPTIONS,
+  PRO_BUNDLE_OPTION,
+} from "@/lib/launch-paths";
 import {
   PRO_BUNDLE_FEATURES,
   planPriceForBilling,
@@ -18,6 +21,7 @@ async function source(file: string): Promise<string> {
 
 describe("Manager plan pricing", () => {
   it("formats the Pro Bundle price to match Pro's plan-card price format", () => {
+    expect(PRO_BUNDLE_OPTION.price).toBe("$120/month · up to 3 tokens");
     expect(proBundlePlanPriceForBilling("monthly")).toBe("$120/month · up to 3 tokens");
     expect(proBundlePlanPriceForBilling("upfront")).toBe("$288 / 3 months · up to 3 tokens");
   });
@@ -30,6 +34,7 @@ describe("Manager plan pricing", () => {
   });
 
   it("keeps the approved Pro Bundle feature list intact", () => {
+    expect(PRO_BUNDLE_FEATURES).toEqual(PRO_BUNDLE_OPTION.bullets);
     expect(PRO_BUNDLE_FEATURES).toContain("Everything in Pro for each of your 3 tokens");
     expect(PRO_BUNDLE_FEATURES).toContain(
       "20% off when you pay 3 months upfront ($288 instead of $360)",
@@ -47,6 +52,14 @@ describe("Manager page markup", () => {
     expect(component).toContain("planStyles.planCard");
     expect(component).toContain("Get started with Pro");
     expect(component).toContain("Get Pro Bundle");
+  });
+
+  it("presets Pro and Pro Bundle as separate shared chooser paths", async () => {
+    const component = await source("components/manager-plans.tsx");
+
+    expect(component).toContain('storeLaunchPathPreset("pro")');
+    expect(component).toContain('storeLaunchPathPreset("pro-bundle")');
+    expect(component).not.toContain('onClick={() => storeLaunchPathPreset("pro")}\n            >\n              Get Pro Bundle');
   });
 
   it("does not show Bond, Bond + Site, or Bond + Pro Site on the Manager page", async () => {
