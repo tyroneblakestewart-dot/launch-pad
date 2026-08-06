@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { stringToHex } from "viem";
+import { buildPlanPaymentProofMessage } from "@/lib/plan-payment-proof";
 import {
   formatUsdCents,
   planPaymentDefinition,
@@ -63,6 +65,7 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
   const [message, setMessage] = useState("Loading the server-verified payment quote…");
   const [transactionHash, setTransactionHash] = useState("");
   const [paymentWalletAddress, setPaymentWalletAddress] = useState("");
+  const [paymentSignature, setPaymentSignature] = useState("");
   const [verification, setVerification] = useState<PlanPaymentVerification | null>(null);
   const mounted = useRef(true);
 
@@ -83,7 +86,7 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
         setQuote(nextQuote);
         setPhase("ready");
         setMessage(
-          "Your wallet sends ETH directly to the configured Hoodlums treasury. Access unlocks only after the server verifies the confirmed chain transaction.",
+          "Your wallet sends ETH directly to the configured Hoodlums treasury. Access unlocks only after the server verifies the payer signature and confirmed chain transaction.",
         );
       })
       .catch((error) => {
@@ -98,16 +101,46 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
     };
   }, [plan]);
 
+  async function requestWalletProof(
+    provider: EthereumProvider,
+    walletAddress: string,
+    hash: string,
+  ): Promise<string> {
+    setPhase("sending");
+    setMessage(
+      "Payment submitted. Sign the confirmation message to prove you control the paying wallet. This signature sends no funds.",
+    );
+    const proofMessage = buildPlanPaymentProofMessage({
+      plan,
+      walletAddress,
+      transactionHash: hash,
+      origin: window.location.origin,
+    });
+    const signature = (await provider.request({
+      method: "personal_sign",
+      params: [stringToHex(proofMessage), walletAddress],
+    })) as string;
+    if (!signature) throw new Error("The wallet did not return a payment proof signature.");
+    setPaymentSignature(signature);
+    return signature;
+  }
+
   async function verifyUntilConfirmed(
     walletAddress: string,
     hash: string,
+    walletSignature: string,
   ): Promise<PlanPaymentVerification> {
     for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt += 1) {
       const response = await fetch("/api/plan-payments/verify", {
         method: "POST",
         cache: "no-store",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, walletAddress, transactionHash: hash }),
+        body: JSON.stringify({
+          plan,
+          walletAddress,
+          transactionHash: hash,
+          walletSignature,
+        }),
       });
 
       if (response.ok) return (await response.json()) as PlanPaymentVerification;
@@ -120,10 +153,14 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
     );
   }
 
-  async function finishVerification(walletAddress: string, hash: string) {
+  async function finishVerification(
+    walletAddress: string,
+    hash: string,
+    walletSignature: string,
+  ) {
     setPhase("verifying");
-    setMessage("Payment submitted. Verifying it on the server…");
-    const result = await verifyUntilConfirmed(walletAddress, hash);
+    setMessage("Payment submitted. Verifying wallet ownership and the chain transaction…");
+    const result = await verifyUntilConfirmed(walletAddress, hash, walletSignature);
     if (!mounted.current) return;
 
     setVerification(result);
@@ -140,19 +177,33 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
     if (!quote || phase === "sending" || phase === "verifying") return;
 
     try {
-      if (transactionHash && paymentWalletAddress) {
-        await finishVerification(paymentWalletAddress, transactionHash);
+      if (transactionHash && paymentWalletAddress && paymentSignature) {
+        await finishVerification(
+          paymentWalletAddress,
+          transactionHash,
+          paymentSignature,
+        );
         return;
       }
-
-      setPhase("sending");
-      setMessage("Opening your confirmed wallet…");
 
       const browserWindow = window as PaymentWindow;
       const provider = browserWindow.__launchpadEthereum || browserWindow.ethereum;
       if (!provider) {
         throw new Error("No EVM wallet was found. Install or unlock MetaMask, Rabby or Phantom.");
       }
+
+      if (transactionHash && paymentWalletAddress) {
+        const signature = await requestWalletProof(
+          provider,
+          paymentWalletAddress,
+          transactionHash,
+        );
+        await finishVerification(paymentWalletAddress, transactionHash, signature);
+        return;
+      }
+
+      setPhase("sending");
+      setMessage("Opening your confirmed wallet…");
 
       try {
         await provider.request({
@@ -194,7 +245,8 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
 
       setPaymentWalletAddress(walletAddress);
       setTransactionHash(hash);
-      await finishVerification(walletAddress, hash);
+      const signature = await requestWalletProof(provider, walletAddress, hash);
+      await finishVerification(walletAddress, hash, signature);
     } catch (error) {
       if (!mounted.current) return;
       setPhase("error");
@@ -223,6 +275,7 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
   }
 
   const busy = phase === "loading" || phase === "sending" || phase === "verifying";
+  const needsWalletInteraction = !transactionHash || !paymentSignature;
 
   return (
     <div className={styles.shell}>
@@ -252,16 +305,20 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
         </button>
         <button
           type="button"
-          className={`wallet-button ${styles.payButton}`}
+          className={`${needsWalletInteraction ? "wallet-button " : ""}${styles.payButton}`}
           onClick={() => void pay()}
           disabled={!quote || busy}
         >
           {phase === "sending"
-            ? "OPENING WALLET…"
+            ? transactionHash
+              ? "SIGNING…"
+              : "OPENING WALLET…"
             : phase === "verifying"
               ? "VERIFYING…"
               : transactionHash
-                ? "RETRY VERIFICATION"
+                ? paymentSignature
+                  ? "RETRY VERIFICATION"
+                  : "SIGN & VERIFY PAYMENT"
                 : "PAY WITH WALLET"}
         </button>
       </div>
