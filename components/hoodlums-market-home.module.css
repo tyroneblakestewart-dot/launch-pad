@@ -55,25 +55,15 @@
   margin-left: auto;
 }
 
-.savedLaunchesButton,
-.accountButton {
-  padding: 9px 16px;
-  border-radius: 999px;
-  font: 800 11px var(--mono);
-  text-decoration: none;
-  white-space: nowrap;
-  border: none;
-  cursor: pointer;
-}
-
 .savedLaunchesButton {
-  background: #bce759;
+  padding: 9px 16px;
+  border: none;
+  border-radius: 999px;
   color: #071008;
-}
-
-.accountButton {
-  border: 1px solid rgba(188, 231, 89, 0.16);
-  color: #f4f7ef;
+  background: #bce759;
+  font: 800 11px var(--mono);
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .layout {
