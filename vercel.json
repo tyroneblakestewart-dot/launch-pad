@@ -6,6 +6,15 @@
   "functions": {
     "app/api/generate-site-page/route.ts": {
       "maxDuration": 180
+    },
+    "app/api/cron/subscription-lifecycle/route.ts": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/subscription-lifecycle",
+      "schedule": "0 9 * * *"
+    }
+  ]
 }
