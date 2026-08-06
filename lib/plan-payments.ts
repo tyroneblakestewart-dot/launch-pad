@@ -1,4 +1,11 @@
 import type { LaunchPath } from "@/lib/types";
+import {
+  isSubscriptionBillingPeriod,
+  isSubscriptionPlan,
+  subscriptionPurchaseDefinition,
+  type SubscriptionBillingPeriod,
+  type SubscriptionStatus,
+} from "@/lib/subscription-lifecycle";
 
 export const PAID_LAUNCH_PATHS = [
   "bond-pro-site",
@@ -10,61 +17,58 @@ export type PaidLaunchPath = (typeof PAID_LAUNCH_PATHS)[number];
 export type PaymentSubscriptionTier = "bond_pro_site" | "pro" | "pro_bundle";
 export type PaymentKind = "one_off" | "subscription";
 export type PaymentDestination = "builder" | "subscription-confirmation";
+export type PaymentAsset = "ETH" | "USDT";
+export type PaymentBillingPeriod = "one_off" | SubscriptionBillingPeriod;
 
 export type PlanPaymentDefinition = {
   id: PaidLaunchPath;
   label: string;
-  usdCents: number;
   kind: PaymentKind;
   subscriptionTier: PaymentSubscriptionTier;
-  subscriptionDays: number | null;
   destination: PaymentDestination;
-  amountWeiEnvironmentKey:
-    | "HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI"
-    | "HOODLUMS_PRO_AMOUNT_WEI"
-    | "HOODLUMS_PRO_BUNDLE_AMOUNT_WEI";
+  nativeAmountWeiEnvironmentKey?: "HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI";
 };
 
 export const PLAN_PAYMENT_DEFINITIONS: Record<PaidLaunchPath, PlanPaymentDefinition> = {
   "bond-pro-site": {
     id: "bond-pro-site",
     label: "Bond + Pro Site",
-    usdCents: 1_000,
     kind: "one_off",
     subscriptionTier: "bond_pro_site",
-    subscriptionDays: null,
     destination: "builder",
-    amountWeiEnvironmentKey: "HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI",
+    nativeAmountWeiEnvironmentKey: "HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI",
   },
   pro: {
     id: "pro",
     label: "Pro",
-    usdCents: 5_000,
     kind: "subscription",
     subscriptionTier: "pro",
-    subscriptionDays: 30,
     destination: "subscription-confirmation",
-    amountWeiEnvironmentKey: "HOODLUMS_PRO_AMOUNT_WEI",
   },
   "pro-bundle": {
     id: "pro-bundle",
     label: "Pro Bundle",
-    usdCents: 12_000,
     kind: "subscription",
     subscriptionTier: "pro_bundle",
-    subscriptionDays: 30,
     destination: "subscription-confirmation",
-    amountWeiEnvironmentKey: "HOODLUMS_PRO_BUNDLE_AMOUNT_WEI",
   },
 };
 
 export type PlanPaymentQuote = {
   plan: PaidLaunchPath;
   label: string;
+  billingPeriod: PaymentBillingPeriod;
+  subscriptionDays: number | null;
   usdCents: number;
-  amountWei: `0x${string}`;
-  amountEth: string;
+  asset: PaymentAsset;
+  amountAtomic: `0x${string}`;
+  amountDisplay: string;
   treasuryAddress: `0x${string}`;
+  tokenAddress: `0x${string}` | null;
+  tokenDecimals: number | null;
+  transactionTo: `0x${string}`;
+  transactionValue: `0x${string}`;
+  transactionData: `0x${string}`;
   chainId: number;
   chainIdHex: `0x${string}`;
   chainName: string;
@@ -75,13 +79,19 @@ export type PlanPaymentQuote = {
 export type PlanPaymentVerification = {
   verified: true;
   plan: PaidLaunchPath;
+  billingPeriod: PaymentBillingPeriod;
   walletAddress: `0x${string}`;
   transactionHash: `0x${string}`;
-  amountEth: string;
+  asset: PaymentAsset;
+  amountDisplay: string;
+  amountEth: string | null;
   usdCents: number;
+  paidFrom: string | null;
   paidUntil: string | null;
+  subscriptionStatus: SubscriptionStatus | null;
   destination: PaymentDestination;
   alreadyRecorded: boolean;
+  telegramLinkUrl: string | null;
 };
 
 export function isPaidLaunchPath(value: unknown): value is PaidLaunchPath {
@@ -93,6 +103,24 @@ export function isPaidLaunchPath(value: unknown): value is PaidLaunchPath {
 
 export function planPaymentDefinition(plan: PaidLaunchPath): PlanPaymentDefinition {
   return PLAN_PAYMENT_DEFINITIONS[plan];
+}
+
+export function resolvePaymentBillingPeriod(
+  plan: PaidLaunchPath,
+  value: unknown,
+): PaymentBillingPeriod {
+  if (!isSubscriptionPlan(plan)) return "one_off";
+  return isSubscriptionBillingPeriod(value) ? value : "monthly";
+}
+
+export function paymentCatalogPrice(
+  plan: PaidLaunchPath,
+  billingPeriod: PaymentBillingPeriod,
+): { usdCents: number; subscriptionDays: number | null } {
+  if (plan === "bond-pro-site") return { usdCents: 1_000, subscriptionDays: null };
+  const period = billingPeriod === "upfront" ? "upfront" : "monthly";
+  const purchase = subscriptionPurchaseDefinition(plan, period);
+  return { usdCents: purchase.usdCents, subscriptionDays: purchase.windowDays };
 }
 
 export function formatUsdCents(cents: number): string {
