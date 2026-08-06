@@ -1,7 +1,18 @@
-import { formatEther, isAddress, toHex } from "viem";
 import {
+  encodeFunctionData,
+  formatEther,
+  formatUnits,
+  isAddress,
+  parseUnits,
+  toHex,
+  type Address,
+} from "viem";
+import {
+  paymentCatalogPrice,
   planPaymentDefinition,
+  resolvePaymentBillingPeriod,
   type PaidLaunchPath,
+  type PaymentBillingPeriod,
   type PlanPaymentQuote,
 } from "@/lib/plan-payments";
 
@@ -13,6 +24,35 @@ export class PlanPaymentConfigurationError extends Error {
 }
 
 type PaymentEnvironment = Record<string, string | undefined>;
+
+export const USDT_TRANSFER_ABI = [
+  {
+    type: "function",
+    name: "transfer",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "value", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "decimals",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+  {
+    type: "event",
+    name: "Transfer",
+    inputs: [
+      { name: "from", type: "address", indexed: true },
+      { name: "to", type: "address", indexed: true },
+      { name: "value", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
 
 function required(environment: PaymentEnvironment, key: string): string {
   const value = environment[key]?.trim() || "";
@@ -31,6 +71,16 @@ function positiveBigInt(value: string, key: string): bigint {
     throw new PlanPaymentConfigurationError(`${key} must be greater than zero.`);
   }
   return amount;
+}
+
+function tokenDecimals(value: string | undefined): number {
+  const decimals = Number(value?.trim() || "");
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
+    throw new PlanPaymentConfigurationError(
+      "HOODLUMS_USDT_DECIMALS must be an integer from 0 to 18.",
+    );
+  }
+  return decimals;
 }
 
 function positiveChainId(value: string | undefined): number {
@@ -53,22 +103,26 @@ function absoluteUrl(value: string, key: string): string {
   }
 }
 
+function configuredAddress(
+  environment: PaymentEnvironment,
+  key: string,
+): Address {
+  const address = required(environment, key);
+  if (!isAddress(address)) {
+    throw new PlanPaymentConfigurationError(`${key} must be a valid EVM address.`);
+  }
+  return address;
+}
+
 export function getPlanPaymentQuote(
   plan: PaidLaunchPath,
+  billingInput: unknown = "monthly",
   environment: PaymentEnvironment = process.env,
 ): PlanPaymentQuote {
   const definition = planPaymentDefinition(plan);
-  const treasuryAddress = required(environment, "HOODLUMS_TREASURY_ADDRESS");
-  if (!isAddress(treasuryAddress)) {
-    throw new PlanPaymentConfigurationError(
-      "HOODLUMS_TREASURY_ADDRESS must be a valid EVM address.",
-    );
-  }
-
-  const amount = positiveBigInt(
-    required(environment, definition.amountWeiEnvironmentKey),
-    definition.amountWeiEnvironmentKey,
-  );
+  const billingPeriod = resolvePaymentBillingPeriod(plan, billingInput);
+  const catalog = paymentCatalogPrice(plan, billingPeriod);
+  const treasuryAddress = configuredAddress(environment, "HOODLUMS_TREASURY_ADDRESS");
   const chainId = positiveChainId(environment.HOODLUMS_PAYMENT_CHAIN_ID);
   const rpcUrl = absoluteUrl(
     required(environment, "HOODLUMS_PAYMENT_RPC_URL"),
@@ -79,18 +133,65 @@ export function getPlanPaymentQuote(
       "https://explorer.testnet.chain.robinhood.com",
     "HOODLUMS_PAYMENT_EXPLORER_URL",
   );
-
-  return {
+  const common = {
     plan,
     label: definition.label,
-    usdCents: definition.usdCents,
-    amountWei: toHex(amount),
-    amountEth: formatEther(amount),
+    billingPeriod,
+    subscriptionDays: catalog.subscriptionDays,
+    usdCents: catalog.usdCents,
     treasuryAddress,
     chainId,
     chainIdHex: toHex(chainId),
     chainName: environment.HOODLUMS_PAYMENT_CHAIN_NAME?.trim() || "Robinhood Chain",
     rpcUrl,
     explorerBaseUrl,
+  } as const;
+
+  if (definition.kind === "one_off") {
+    const key = definition.nativeAmountWeiEnvironmentKey;
+    if (!key) {
+      throw new PlanPaymentConfigurationError("The native payment amount is not configured.");
+    }
+    const amount = positiveBigInt(required(environment, key), key);
+    return {
+      ...common,
+      asset: "ETH",
+      amountAtomic: toHex(amount),
+      amountDisplay: formatEther(amount),
+      tokenAddress: null,
+      tokenDecimals: null,
+      transactionTo: treasuryAddress,
+      transactionValue: toHex(amount),
+      transactionData: "0x",
+    };
+  }
+
+  const usdtAddress = configuredAddress(environment, "HOODLUMS_USDT_TOKEN_ADDRESS");
+  const decimals = tokenDecimals(environment.HOODLUMS_USDT_DECIMALS);
+  const wholeUsdt = (catalog.usdCents / 100).toString();
+  const amount = parseUnits(wholeUsdt, decimals);
+  const transferData = encodeFunctionData({
+    abi: USDT_TRANSFER_ABI,
+    functionName: "transfer",
+    args: [treasuryAddress, amount],
+  });
+
+  return {
+    ...common,
+    asset: "USDT",
+    amountAtomic: toHex(amount),
+    amountDisplay: formatUnits(amount, decimals),
+    tokenAddress: usdtAddress,
+    tokenDecimals: decimals,
+    transactionTo: usdtAddress,
+    transactionValue: "0x0",
+    transactionData: transferData,
   };
+}
+
+export function normalisePaymentBillingPeriod(
+  plan: PaidLaunchPath,
+  billing: unknown,
+): PaymentBillingPeriod {
+  return resolvePaymentBillingPeriod(plan, billing);
 }
