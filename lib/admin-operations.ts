@@ -55,7 +55,8 @@ export type AdminActivityKind =
   | "admin-login-wallet"
   | "admin-login-password"
   | "admin-logout"
-  | "page-content-published";
+  | "page-content-published"
+  | "payment-received";
 
 export type AdminActivityItem = {
   id: string;
@@ -90,13 +91,6 @@ export type AdminHealthCheck = {
   message: string;
 };
 
-/**
- * One stage in a service's request pipeline. `observedAt` is set only when
- * the status reflects a recorded/observed fact (a database timestamp, an
- * isolation change) rather than a check that ran live just now — a stage
- * that cannot be live-probed and has never been observed reports amber with
- * `observedAt: null` instead of guessing at green.
- */
 export type AdminPipelineStage = {
   id: string;
   label: string;
@@ -119,6 +113,16 @@ export type AdminSiteStats = {
   message: string;
 };
 
+export type AdminRevenueEvent = {
+  transactionHash: string;
+  walletAddress: string;
+  planId: "bond-pro-site" | "pro" | "pro-bundle";
+  amountEth: string;
+  amountUsdCents: number;
+  paidUntil: string | null;
+  confirmedAt: string;
+};
+
 export type AdminMoneySnapshot = {
   status: "ready" | "unavailable";
   chainLabel: string;
@@ -127,6 +131,11 @@ export type AdminMoneySnapshot = {
   feeRecipient: string;
   feeRecipientBalance: string;
   message: string;
+  planRevenueStatus: "ready" | "unavailable";
+  planRevenueUsdCents: number;
+  planPaymentCount: number;
+  recentPlanPayments: AdminRevenueEvent[];
+  planRevenueMessage: string;
 };
 
 export type AdminOperationsIssue = {
@@ -156,6 +165,7 @@ export const SUBSCRIBER_TIERS = [
   "bond_site",
   "bond_pro_site",
   "pro",
+  "pro_bundle",
 ] as const;
 
 export type AdminSubscriberTier = (typeof SUBSCRIBER_TIERS)[number];
@@ -170,6 +180,7 @@ export const SUBSCRIBER_TIER_LABEL: Record<AdminSubscriberTier, string> = {
   bond_site: "Bond+Site",
   bond_pro_site: "Bond+Pro Site",
   pro: "Pro",
+  pro_bundle: "Pro Bundle",
 };
 
 export type AdminSubscriberRow = {
