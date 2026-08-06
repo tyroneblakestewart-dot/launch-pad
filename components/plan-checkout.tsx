@@ -321,6 +321,7 @@ export function PlanCheckout({
   }
 
   const busy = phase === "loading" || phase === "sending" || phase === "verifying";
+  const billingLocked = busy || Boolean(transactionHash);
   const needsWalletInteraction = !transactionHash || !paymentSignature;
 
   return (
@@ -332,7 +333,7 @@ export function PlanCheckout({
             className={billingPeriod === "monthly" ? styles.billingActive : styles.billingButton}
             aria-pressed={billingPeriod === "monthly"}
             onClick={() => setBillingPeriod("monthly")}
-            disabled={busy}
+            disabled={billingLocked}
           >
             Monthly · 32 days
           </button>
@@ -341,7 +342,7 @@ export function PlanCheckout({
             className={billingPeriod === "upfront" ? styles.billingActive : styles.billingButton}
             aria-pressed={billingPeriod === "upfront"}
             onClick={() => setBillingPeriod("upfront")}
-            disabled={busy}
+            disabled={billingLocked}
           >
             3 months upfront · 96 days
           </button>
