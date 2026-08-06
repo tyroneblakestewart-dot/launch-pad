@@ -126,15 +126,29 @@ export function storeLaunchPathPreset(
   storage?.setItem(LAUNCH_PATH_PRESET_STORAGE_KEY, path);
 }
 
-/** Reads a homepage CTA preset once, then clears it so normal New token clicks stay neutral. */
-export function consumeLaunchPathPreset(
+/** Reads a valid preset without clearing it, so a cross-route CTA can open the workspace first. */
+export function readLaunchPathPreset(
   storage: Storage | null = browserSessionStorage(),
 ): LaunchPath | null {
   const stored = storage?.getItem(LAUNCH_PATH_PRESET_STORAGE_KEY) ?? null;
-  storage?.removeItem(LAUNCH_PATH_PRESET_STORAGE_KEY);
   return PLAN_CHOOSER_OPTIONS.some((option) => option.id === stored)
     ? (stored as LaunchPath)
     : null;
+}
+
+export function hasLaunchPathPreset(
+  storage: Storage | null = browserSessionStorage(),
+): boolean {
+  return readLaunchPathPreset(storage) !== null;
+}
+
+/** Reads a CTA preset once, then clears it so normal New token clicks stay neutral. */
+export function consumeLaunchPathPreset(
+  storage: Storage | null = browserSessionStorage(),
+): LaunchPath | null {
+  const stored = readLaunchPathPreset(storage);
+  storage?.removeItem(LAUNCH_PATH_PRESET_STORAGE_KEY);
+  return stored;
 }
 
 export function launchPathLabel(id: LaunchPath | null | undefined): string {
