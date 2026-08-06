@@ -1,0 +1,74 @@
+.banner {
+  position: fixed;
+  top: 68px;
+  left: 50%;
+  z-index: 1450;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: min(760px, calc(100% - 36px));
+  padding: 10px 12px;
+  border: 1px solid rgba(198, 245, 62, 0.35);
+  border-radius: 14px;
+  background: rgba(7, 13, 8, 0.97);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38);
+  color: #eef4ea;
+  transform: translateX(-50%);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+.banner[data-status="expired"] {
+  border-color: rgba(255, 142, 112, 0.48);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c6f53e;
+  box-shadow: 0 0 12px rgba(198, 245, 62, 0.72);
+}
+
+.banner[data-status="expired"] .dot {
+  background: #ff8e70;
+  box-shadow: 0 0 12px rgba(255, 142, 112, 0.62);
+}
+
+.banner p {
+  margin: 0;
+  color: #c8d1c9;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.banner button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: #c6f53e;
+  color: #071006;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  font: 900 10px/1 "IBM Plex Mono", monospace;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .banner {
+    top: calc(62px + env(safe-area-inset-top));
+    grid-template-columns: auto minmax(0, 1fr);
+    width: calc(100% - 20px);
+    padding: 11px 12px;
+    border-radius: 12px;
+  }
+
+  .banner button {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 44px;
+  }
+}

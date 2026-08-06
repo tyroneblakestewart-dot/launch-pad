@@ -3,8 +3,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "./admin-subscribers-section.module.css";
 
-type SubscriberTier = "free" | "bond" | "bond_site" | "bond_pro_site" | "pro";
-type SubscriberStatus = "active" | "expired" | "free";
+type SubscriberTier = "free" | "bond" | "bond_site" | "bond_pro_site" | "pro" | "pro_bundle";
+type SubscriberStatus = "active" | "expiring" | "expired" | "free";
+
+type SubscriberPayment = {
+  transactionHash: string;
+  planId: "bond-pro-site" | "pro" | "pro-bundle";
+  billingPeriod: "one_off" | "monthly" | "upfront";
+  asset: string;
+  amountDisplay: string;
+  amountUsdCents: number;
+  paidFrom: string | null;
+  paidUntil: string | null;
+  confirmedAt: string;
+};
 
 type SubscriberRow = {
   walletAddress: string;
@@ -13,10 +25,16 @@ type SubscriberRow = {
   slugs: string[];
   xHandle: string | null;
   telegram: string | null;
+  telegramLinked: boolean;
   startedAt: string | null;
   expiresAt: string | null;
+  paidFrom: string | null;
+  paidUntil: string | null;
+  lastPaymentAsset: string | null;
+  lastPaymentAmount: string | null;
   lastPaymentAmountEth: string | null;
   lastPaymentAt: string | null;
+  paymentHistory: SubscriberPayment[];
 };
 
 type SubscribersResponse = {
@@ -31,28 +49,24 @@ const TIER_LABEL: Record<SubscriberTier, string> = {
   bond_site: "Bond + Site",
   bond_pro_site: "Bond + Pro Site",
   pro: "Pro",
+  pro_bundle: "Pro Bundle",
 };
 
 const STATUS_LABEL: Record<SubscriberStatus, string> = {
   active: "Active",
+  expiring: "Expiring",
   expired: "Expired",
   free: "Free tier",
 };
 
 const TIER_FILTERS: Array<{ id: SubscriberTier | "all"; label: string }> = [
   { id: "all", label: "All tiers" },
-  { id: "free", label: TIER_LABEL.free },
-  { id: "bond", label: TIER_LABEL.bond },
-  { id: "bond_site", label: TIER_LABEL.bond_site },
-  { id: "bond_pro_site", label: TIER_LABEL.bond_pro_site },
-  { id: "pro", label: TIER_LABEL.pro },
+  ...Object.entries(TIER_LABEL).map(([id, label]) => ({ id: id as SubscriberTier, label })),
 ];
 
 const STATUS_FILTERS: Array<{ id: SubscriberStatus | "all"; label: string }> = [
   { id: "all", label: "All statuses" },
-  { id: "active", label: STATUS_LABEL.active },
-  { id: "expired", label: STATUS_LABEL.expired },
-  { id: "free", label: STATUS_LABEL.free },
+  ...Object.entries(STATUS_LABEL).map(([id, label]) => ({ id: id as SubscriberStatus, label })),
 ];
 
 async function readError(response: Response, fallback: string): Promise<string> {
@@ -71,12 +85,15 @@ function formatDate(value: string | null): string {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
 }
 
-/** Ascending by expiry, soonest first; rows with no expiry (free tier, no set expiry) sort last. */
+function formatUsd(cents: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+}
+
 function compareByExpiry(a: SubscriberRow, b: SubscriberRow): number {
-  if (!a.expiresAt && !b.expiresAt) return a.walletAddress.localeCompare(b.walletAddress);
-  if (!a.expiresAt) return 1;
-  if (!b.expiresAt) return -1;
-  return new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime();
+  if (!a.paidUntil && !b.paidUntil) return a.walletAddress.localeCompare(b.walletAddress);
+  if (!a.paidUntil) return 1;
+  if (!b.paidUntil) return -1;
+  return new Date(a.paidUntil).getTime() - new Date(b.paidUntil).getTime();
 }
 
 export function AdminSubscribersSection() {
@@ -117,12 +134,11 @@ export function AdminSubscribersSection() {
     queueMicrotask(() => void loadSubscribers());
   }, [loadSubscribers]);
 
-  const summary = useMemo(() => {
-    const activePro = rows.filter((row) => row.tier === "pro" && row.status === "active").length;
-    const activeBondProSite = rows.filter((row) => row.tier === "bond_pro_site" && row.status === "active").length;
-    const freeTier = rows.filter((row) => row.tier === "free").length;
-    return { activePro, activeBondProSite, freeTier };
-  }, [rows]);
+  const summary = useMemo(() => ({
+    active: rows.filter((row) => row.status === "active").length,
+    expiring: rows.filter((row) => row.status === "expiring").length,
+    expired: rows.filter((row) => row.status === "expired").length,
+  }), [rows]);
 
   const visibleRows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -143,7 +159,7 @@ export function AdminSubscribersSection() {
       setCopiedWallet(address);
       setTimeout(() => setCopiedWallet((current) => (current === address ? null : current)), 1500);
     } catch {
-      // Clipboard access can be denied by the browser; the address is still visible to copy manually.
+      // Address remains visible for manual copying.
     }
   }
 
@@ -153,8 +169,7 @@ export function AdminSubscribersSection() {
         <div>
           <h2 className={styles.sectionTitle}>Subscribers</h2>
           <p className={styles.sectionIntro}>
-            Paywall management — every wallet on the platform, its tier and subscription status. Read-only; no
-            payment controls here.
+            Manual-renewal lifecycle for every wallet: active, expiring or expired, with all verified payment history retained.
           </p>
         </div>
         <button type="button" className={styles.refreshButton} onClick={() => void loadSubscribers()} disabled={loading}>
@@ -162,31 +177,13 @@ export function AdminSubscribersSection() {
         </button>
       </div>
 
-      {loadError ? (
-        <p className={styles.error} role="alert">
-          {loadError}
-        </p>
-      ) : null}
-
-      {dataStatus === "unavailable" ? (
-        <p className={styles.notice} role="status">
-          {message}
-        </p>
-      ) : null}
+      {loadError ? <p className={styles.error} role="alert">{loadError}</p> : null}
+      {dataStatus === "unavailable" ? <p className={styles.notice} role="status">{message}</p> : null}
 
       <div className={styles.summaryRow}>
-        <div className={styles.summaryCard}>
-          <p className={styles.summaryValue}>{summary.activePro}</p>
-          <p className={styles.summaryLabel}>active Pro subscribers</p>
-        </div>
-        <div className={styles.summaryCard}>
-          <p className={styles.summaryValue}>{summary.activeBondProSite}</p>
-          <p className={styles.summaryLabel}>active Bond + Pro Site</p>
-        </div>
-        <div className={styles.summaryCard}>
-          <p className={styles.summaryValue}>{summary.freeTier}</p>
-          <p className={styles.summaryLabel}>free tier</p>
-        </div>
+        <div className={styles.summaryCard}><p className={styles.summaryValue}>{summary.active}</p><p className={styles.summaryLabel}>active</p></div>
+        <div className={styles.summaryCard}><p className={styles.summaryValue}>{summary.expiring}</p><p className={styles.summaryLabel}>expiring within 5 days</p></div>
+        <div className={styles.summaryCard}><p className={styles.summaryValue}>{summary.expired}</p><p className={styles.summaryLabel}>expired · data retained</p></div>
       </div>
 
       <div className={styles.controls}>
@@ -198,38 +195,16 @@ export function AdminSubscribersSection() {
           onChange={(event) => setSearch(event.target.value)}
           aria-label="Search subscribers by wallet address or slug"
         />
-        <select
-          className={styles.filterSelect}
-          value={tierFilter}
-          onChange={(event) => setTierFilter(event.target.value as SubscriberTier | "all")}
-          aria-label="Filter by tier"
-        >
-          {TIER_FILTERS.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
+        <select className={styles.filterSelect} value={tierFilter} onChange={(event) => setTierFilter(event.target.value as SubscriberTier | "all")} aria-label="Filter by tier">
+          {TIER_FILTERS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
         </select>
-        <select
-          className={styles.filterSelect}
-          value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value as SubscriberStatus | "all")}
-          aria-label="Filter by status"
-        >
-          {STATUS_FILTERS.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
+        <select className={styles.filterSelect} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as SubscriberStatus | "all")} aria-label="Filter by status">
+          {STATUS_FILTERS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
         </select>
       </div>
 
-      {!loading && visibleRows.length === 0 && rows.length === 0 ? (
-        <p className={styles.empty}>No subscribers yet.</p>
-      ) : null}
-      {!loading && visibleRows.length === 0 && rows.length > 0 ? (
-        <p className={styles.empty}>No subscribers match this search and filters.</p>
-      ) : null}
+      {!loading && visibleRows.length === 0 && rows.length === 0 ? <p className={styles.empty}>No subscribers yet.</p> : null}
+      {!loading && visibleRows.length === 0 && rows.length > 0 ? <p className={styles.empty}>No subscribers match this search and filters.</p> : null}
 
       <ul className={styles.rowList}>
         {visibleRows.map((row) => (
@@ -237,52 +212,41 @@ export function AdminSubscribersSection() {
             <div className={styles.rowTop}>
               <div className={styles.walletGroup}>
                 <span className={styles.wallet}>{truncateWallet(row.walletAddress)}</span>
-                <button
-                  type="button"
-                  className={styles.copyButton}
-                  onClick={() => void copyWallet(row.walletAddress)}
-                >
+                <button type="button" className={styles.copyButton} onClick={() => void copyWallet(row.walletAddress)}>
                   {copiedWallet === row.walletAddress ? "Copied" : "Copy"}
                 </button>
               </div>
-              <span className={styles.badge} data-status={row.status}>
-                {STATUS_LABEL[row.status]}
-              </span>
+              <span className={styles.badge} data-status={row.status}>{STATUS_LABEL[row.status]}</span>
             </div>
 
             <div className={styles.rowGrid}>
-              <div>
-                <p className={styles.fieldLabel}>Tier</p>
-                <p className={styles.fieldValue}>{TIER_LABEL[row.tier]}</p>
-              </div>
-              <div>
-                <p className={styles.fieldLabel}>Website slug(s)</p>
-                <p className={styles.fieldValue}>{row.slugs.length > 0 ? row.slugs.join(", ") : "—"}</p>
-              </div>
-              <div>
-                <p className={styles.fieldLabel}>X handle</p>
-                <p className={styles.fieldValue}>{row.xHandle || "—"}</p>
-              </div>
-              <div>
-                <p className={styles.fieldLabel}>Telegram</p>
-                <p className={styles.fieldValue}>{row.telegram || "—"}</p>
-              </div>
-              <div>
-                <p className={styles.fieldLabel}>Subscription start</p>
-                <p className={styles.fieldValue}>{formatDate(row.startedAt)}</p>
-              </div>
-              <div>
-                <p className={styles.fieldLabel}>Expiry</p>
-                <p className={styles.fieldValue}>{formatDate(row.expiresAt)}</p>
-              </div>
-              <div>
-                <p className={styles.fieldLabel}>Last payment</p>
-                <p className={styles.fieldValue}>
-                  {row.lastPaymentAmountEth ? `${row.lastPaymentAmountEth} ETH` : "—"}
-                  {row.lastPaymentAt ? ` · ${formatDate(row.lastPaymentAt)}` : ""}
-                </p>
-              </div>
+              <div><p className={styles.fieldLabel}>Plan</p><p className={styles.fieldValue}>{TIER_LABEL[row.tier]}</p></div>
+              <div><p className={styles.fieldLabel}>Paid from</p><p className={styles.fieldValue}>{formatDate(row.paidFrom)}</p></div>
+              <div><p className={styles.fieldLabel}>Paid until</p><p className={styles.fieldValue}>{formatDate(row.paidUntil)}</p></div>
+              <div><p className={styles.fieldLabel}>Last payment</p><p className={styles.fieldValue}>{row.lastPaymentAmount ? `${row.lastPaymentAmount} ${row.lastPaymentAsset || ""}` : "—"}{row.lastPaymentAt ? ` · ${formatDate(row.lastPaymentAt)}` : ""}</p></div>
+              <div><p className={styles.fieldLabel}>Telegram reminders</p><p className={styles.fieldValue}>{row.telegramLinked ? row.telegram || "Linked" : "Not linked"}</p></div>
+              <div><p className={styles.fieldLabel}>Website slug(s)</p><p className={styles.fieldValue}>{row.slugs.length ? row.slugs.join(", ") : "—"}</p></div>
+              <div><p className={styles.fieldLabel}>X handle</p><p className={styles.fieldValue}>{row.xHandle || "—"}</p></div>
+              <div><p className={styles.fieldLabel}>Subscription start</p><p className={styles.fieldValue}>{formatDate(row.startedAt)}</p></div>
             </div>
+
+            <details className={styles.history}>
+              <summary>Payment history ({row.paymentHistory.length})</summary>
+              {row.paymentHistory.length === 0 ? (
+                <p className={styles.empty}>No verified payment history.</p>
+              ) : (
+                <ol className={styles.historyList}>
+                  {row.paymentHistory.map((payment) => (
+                    <li key={payment.transactionHash}>
+                      <b>{payment.billingPeriod === "upfront" ? "3 months upfront" : payment.billingPeriod === "monthly" ? "Monthly renewal" : "One-off"}</b>
+                      <span>{payment.amountDisplay} {payment.asset} · {formatUsd(payment.amountUsdCents)}</span>
+                      <small>{formatDate(payment.confirmedAt)} · {formatDate(payment.paidFrom)} → {formatDate(payment.paidUntil)}</small>
+                      <code>{payment.transactionHash}</code>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </details>
           </li>
         ))}
       </ul>

@@ -108,8 +108,12 @@ type RevenueQueryRow = {
   payment_tx_hash: string;
   wallet_address: string;
   plan_id: AdminRevenueEvent["planId"];
-  amount_eth: string;
+  billing_period: AdminRevenueEvent["billingPeriod"] | null;
+  asset_symbol: string | null;
+  amount_display: string | null;
+  amount_eth: string | null;
   amount_usd_cents: number | string;
+  paid_from: Date | string | null;
   paid_until: Date | string | null;
   confirmed_at: Date | string;
 };
@@ -155,8 +159,12 @@ async function getPlanRevenueSnapshot(): Promise<PlanRevenueSnapshot> {
              payment_tx_hash,
              wallet_address,
              plan_id,
+             billing_period,
+             asset_symbol,
+             amount_display,
              amount_eth,
              amount_usd_cents,
+             paid_from,
              paid_until,
              confirmed_at
            FROM plan_payment_events
@@ -175,12 +183,19 @@ async function getPlanRevenueSnapshot(): Promise<PlanRevenueSnapshot> {
         transactionHash: row.payment_tx_hash,
         walletAddress: row.wallet_address,
         planId: row.plan_id,
-        amountEth: row.amount_eth,
+        billingPeriod:
+          row.billing_period ??
+          (row.plan_id === "bond-pro-site" ? "one_off" : "monthly"),
+        asset: row.asset_symbol || (row.amount_eth ? "ETH" : "—"),
+        amountDisplay: row.amount_display || row.amount_eth || "—",
+        amountEth: row.amount_eth || null,
         amountUsdCents: Number(row.amount_usd_cents),
+        paidFrom: asIso(row.paid_from),
         paidUntil: asIso(row.paid_until),
         confirmedAt: asIso(row.confirmed_at)!,
       })),
-      planRevenueMessage: "Server-verified plan payments from Postgres.",
+      planRevenueMessage:
+        "Server-verified ETH and USDT plan-payment events from Postgres.",
     };
   } catch {
     return {
@@ -189,7 +204,7 @@ async function getPlanRevenueSnapshot(): Promise<PlanRevenueSnapshot> {
       planPaymentCount: 0,
       recentPlanPayments: [],
       planRevenueMessage:
-        "Plan revenue could not be loaded. Apply migration 008_plan_payments.sql and try again.",
+        "Plan revenue could not be loaded. Apply migrations through 011_plan_payments.sql and try again.",
     };
   }
 }
@@ -357,15 +372,21 @@ export async function getAdminOperationsSnapshot(
   deps: AdminOperationsSnapshotDeps = {},
 ): Promise<AdminOperationsSnapshot> {
   const store = getAdminOperationsStore();
-  const [healthResult, servicesResult, activityResult, sitesResult, sessionsResult, moneyResult] =
-    await Promise.allSettled([
-      getSystemHealth({ requestOidcToken: deps.requestOidcToken }),
-      store.listServiceControls(),
-      store.listActivity(40),
-      getSiteStats(),
-      getActiveAdminSessionCount(),
-      getMoneySnapshot(),
-    ]);
+  const [
+    healthResult,
+    servicesResult,
+    activityResult,
+    sitesResult,
+    sessionsResult,
+    moneyResult,
+  ] = await Promise.allSettled([
+    getSystemHealth({ requestOidcToken: deps.requestOidcToken }),
+    store.listServiceControls(),
+    store.listActivity(40),
+    getSiteStats(),
+    getActiveAdminSessionCount(),
+    getMoneySnapshot(),
+  ]);
 
   const sectionErrors: string[] = [];
   const health =

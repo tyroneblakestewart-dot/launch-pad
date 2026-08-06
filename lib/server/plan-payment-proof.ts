@@ -6,7 +6,7 @@ import {
   type Hex,
 } from "viem";
 import { buildPlanPaymentProofMessage } from "@/lib/plan-payment-proof";
-import type { PaidLaunchPath } from "@/lib/plan-payments";
+import type { PaidLaunchPath, PaymentBillingPeriod } from "@/lib/plan-payments";
 
 export class PlanPaymentProofError extends Error {
   constructor(message: string) {
@@ -17,6 +17,7 @@ export class PlanPaymentProofError extends Error {
 
 export type VerifyPlanPaymentProofInput = {
   plan: PaidLaunchPath;
+  billingPeriod: PaymentBillingPeriod;
   walletAddress: string;
   transactionHash: string;
   walletSignature: string;
@@ -50,6 +51,7 @@ export async function verifyPlanPaymentWalletProof(
     address: input.walletAddress,
     message: buildPlanPaymentProofMessage({
       plan: input.plan,
+      billingPeriod: input.billingPeriod,
       walletAddress: input.walletAddress,
       transactionHash: input.transactionHash,
       origin,

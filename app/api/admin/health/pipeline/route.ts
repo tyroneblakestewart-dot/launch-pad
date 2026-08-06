@@ -9,6 +9,7 @@ import {
   isAdminSessionValid,
 } from "@/lib/server/admin-session-store";
 import { getVercelOidcToken } from "@/lib/server/ai-responses-runtime";
+import { buildSubscriptionLifecyclePipeline } from "@/lib/server/subscription-lifecycle-pipeline";
 import { buildServicePipeline } from "@/lib/server/system-health-pipeline";
 
 export const runtime = "nodejs";
@@ -22,8 +23,7 @@ async function isAuthenticated(request: Request): Promise<boolean> {
 
 /**
  * Read-only per-service pipeline drill-down. Fetched on demand when an
- * admin expands a System Health card, not on the 30-second summary poll, so
- * the AI-provider reachability probe below isn't fired every refresh.
+ * admin expands a System Health card, not on the 30-second summary poll.
  */
 export async function GET(request: Request) {
   try {
@@ -42,9 +42,11 @@ export async function GET(request: Request) {
       );
     }
 
-    const pipeline = await buildServicePipeline(service, {
-      requestOidcToken: getVercelOidcToken(request),
-    });
+    const pipeline = service === "subscribers"
+      ? await buildSubscriptionLifecyclePipeline()
+      : await buildServicePipeline(service, {
+          requestOidcToken: getVercelOidcToken(request),
+        });
     return NextResponse.json(
       { pipeline, checkedAt: new Date().toISOString() },
       { status: 200, headers: { "Cache-Control": "no-store" } },

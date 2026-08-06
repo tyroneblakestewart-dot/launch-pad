@@ -23,25 +23,42 @@ describe("admin Subscribers section UI", () => {
     expect(component).not.toContain('"POST"');
   });
 
-  it("supports searching by wallet address or slug", async () => {
+  it("supports searching, tier filters and lifecycle status filters", async () => {
     const component = await source("components/admin-subscribers-section.tsx");
     expect(component).toContain("Search wallet address or slug");
     expect(component).toContain("row.walletAddress.toLowerCase().includes(query)");
     expect(component).toContain("row.slugs.some((slug) => slug.toLowerCase().includes(query))");
-  });
-
-  it("supports filtering by tier and status", async () => {
-    const component = await source("components/admin-subscribers-section.tsx");
     expect(component).toContain("tierFilter");
     expect(component).toContain("statusFilter");
-    expect(component).toContain("Filter by tier");
-    expect(component).toContain("Filter by status");
+    expect(component).toContain('expiring: "Expiring"');
+    expect(component).toContain('pro_bundle: "Pro Bundle"');
   });
 
-  it("sorts by expiry date, soonest first by default", async () => {
+  it("sorts by paid_until, soonest first", async () => {
     const component = await source("components/admin-subscribers-section.tsx");
     expect(component).toContain("compareByExpiry");
+    expect(component).toContain("a.paidUntil");
     expect(component).toContain(".sort(compareByExpiry)");
+  });
+
+  it("shows active, expiring and expired counts while retaining expired data", async () => {
+    const component = await source("components/admin-subscribers-section.tsx");
+    expect(component).toContain("expiring within 5 days");
+    expect(component).toContain("expired · data retained");
+    expect(component).toContain('row.status === "active"');
+    expect(component).toContain('row.status === "expiring"');
+    expect(component).toContain('row.status === "expired"');
+  });
+
+  it("shows paid window, Telegram status and complete payment history", async () => {
+    const component = await source("components/admin-subscribers-section.tsx");
+    expect(component).toContain("Paid from");
+    expect(component).toContain("Paid until");
+    expect(component).toContain("Telegram reminders");
+    expect(component).toContain("Payment history");
+    expect(component).toContain("payment.amountDisplay");
+    expect(component).toContain("payment.asset");
+    expect(component).toContain("payment.billingPeriod");
   });
 
   it("shows a copy button for the truncated wallet address", async () => {
@@ -51,14 +68,7 @@ describe("admin Subscribers section UI", () => {
     expect(component).toContain("Copy");
   });
 
-  it("shows a summary of active Pro, active Bond + Pro Site and free-tier counts", async () => {
-    const component = await source("components/admin-subscribers-section.tsx");
-    expect(component).toContain("active Pro subscribers");
-    expect(component).toContain("active Bond + Pro Site");
-    expect(component).toContain("free tier");
-  });
-
-  it("degrades gracefully to 'No subscribers yet' instead of an error when the list is empty", async () => {
+  it("degrades gracefully to 'No subscribers yet' when the list is empty", async () => {
     const component = await source("components/admin-subscribers-section.tsx");
     expect(component).toContain("No subscribers yet");
   });

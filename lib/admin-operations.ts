@@ -56,7 +56,8 @@ export type AdminActivityKind =
   | "admin-login-password"
   | "admin-logout"
   | "page-content-published"
-  | "payment-received";
+  | "payment-received"
+  | "subscription-reminder-sent";
 
 export type AdminActivityItem = {
   id: string;
@@ -117,8 +118,12 @@ export type AdminRevenueEvent = {
   transactionHash: string;
   walletAddress: string;
   planId: "bond-pro-site" | "pro" | "pro-bundle";
-  amountEth: string;
+  billingPeriod: "one_off" | "monthly" | "upfront";
+  asset: string;
+  amountDisplay: string;
+  amountEth: string | null;
   amountUsdCents: number;
+  paidFrom: string | null;
   paidUntil: string | null;
   confirmedAt: string;
 };
@@ -170,7 +175,7 @@ export const SUBSCRIBER_TIERS = [
 
 export type AdminSubscriberTier = (typeof SUBSCRIBER_TIERS)[number];
 
-export const SUBSCRIBER_STATUSES = ["active", "expired", "free"] as const;
+export const SUBSCRIBER_STATUSES = ["active", "expiring", "expired", "free"] as const;
 
 export type AdminSubscriberStatus = (typeof SUBSCRIBER_STATUSES)[number];
 
@@ -183,6 +188,18 @@ export const SUBSCRIBER_TIER_LABEL: Record<AdminSubscriberTier, string> = {
   pro_bundle: "Pro Bundle",
 };
 
+export type AdminSubscriberPayment = {
+  transactionHash: string;
+  planId: "bond-pro-site" | "pro" | "pro-bundle";
+  billingPeriod: "one_off" | "monthly" | "upfront";
+  asset: string;
+  amountDisplay: string;
+  amountUsdCents: number;
+  paidFrom: string | null;
+  paidUntil: string | null;
+  confirmedAt: string;
+};
+
 export type AdminSubscriberRow = {
   walletAddress: string;
   tier: AdminSubscriberTier;
@@ -190,10 +207,16 @@ export type AdminSubscriberRow = {
   slugs: string[];
   xHandle: string | null;
   telegram: string | null;
+  telegramLinked: boolean;
   startedAt: string | null;
   expiresAt: string | null;
+  paidFrom: string | null;
+  paidUntil: string | null;
+  lastPaymentAsset: string | null;
+  lastPaymentAmount: string | null;
   lastPaymentAmountEth: string | null;
   lastPaymentAt: string | null;
+  paymentHistory: AdminSubscriberPayment[];
 };
 
 export type AdminSubscribersSnapshot = {

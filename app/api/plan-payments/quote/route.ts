@@ -8,13 +8,15 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const plan = new URL(request.url).searchParams.get("plan");
+  const url = new URL(request.url);
+  const plan = url.searchParams.get("plan");
+  const billing = url.searchParams.get("billing");
   if (!isPaidLaunchPath(plan)) {
     return NextResponse.json({ error: "Unknown paid plan." }, { status: 400 });
   }
 
   try {
-    return NextResponse.json(getPlanPaymentQuote(plan), {
+    return NextResponse.json(getPlanPaymentQuote(plan, billing), {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {

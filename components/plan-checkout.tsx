@@ -10,6 +10,10 @@ import {
   type PlanPaymentQuote,
   type PlanPaymentVerification,
 } from "@/lib/plan-payments";
+import {
+  isSubscriptionPlan,
+  type SubscriptionBillingPeriod,
+} from "@/lib/subscription-lifecycle";
 import styles from "./plan-checkout.module.css";
 
 type EthereumProvider = {
@@ -26,6 +30,7 @@ type PaymentWindow = Window & {
 
 type PlanCheckoutProps = {
   plan: PaidLaunchPath;
+  initialBilling?: SubscriptionBillingPeriod;
   onBuilderUnlocked: (plan: PaidLaunchPath) => void;
   onClose: () => void;
 };
@@ -58,8 +63,15 @@ async function responseError(response: Response): Promise<string> {
   }
 }
 
-export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutProps) {
+export function PlanCheckout({
+  plan,
+  initialBilling = "monthly",
+  onBuilderUnlocked,
+  onClose,
+}: PlanCheckoutProps) {
   const definition = planPaymentDefinition(plan);
+  const subscription = isSubscriptionPlan(plan);
+  const [billingPeriod, setBillingPeriod] = useState<SubscriptionBillingPeriod>(initialBilling);
   const [quote, setQuote] = useState<PlanPaymentQuote | null>(null);
   const [phase, setPhase] = useState<CheckoutPhase>("loading");
   const [message, setMessage] = useState("Loading the server-verified payment quote…");
@@ -68,25 +80,36 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
   const [paymentSignature, setPaymentSignature] = useState("");
   const [verification, setVerification] = useState<PlanPaymentVerification | null>(null);
   const mounted = useRef(true);
+  const expectedBilling = subscription ? billingPeriod : "one_off";
+  const currentQuote =
+    quote?.plan === plan && quote.billingPeriod === expectedBilling ? quote : null;
+  const busy = phase === "loading" || phase === "sending" || phase === "verifying";
+  const billingLocked = busy || Boolean(transactionHash);
+  const needsWalletInteraction = !transactionHash || !paymentSignature;
 
   useEffect(() => {
     mounted.current = true;
     const controller = new AbortController();
 
-    fetch(`/api/plan-payments/quote?plan=${encodeURIComponent(plan)}`, {
-      cache: "no-store",
-      signal: controller.signal,
-    })
+    fetch(
+      `/api/plan-payments/quote?plan=${encodeURIComponent(plan)}&billing=${encodeURIComponent(expectedBilling)}`,
+      {
+        cache: "no-store",
+        signal: controller.signal,
+      },
+    )
       .then(async (response) => {
         if (!response.ok) throw new Error(await responseError(response));
         return (await response.json()) as PlanPaymentQuote;
       })
       .then((nextQuote) => {
-        if (!mounted.current) return;
+        if (!mounted.current || controller.signal.aborted) return;
         setQuote(nextQuote);
         setPhase("ready");
         setMessage(
-          "Your wallet sends ETH directly to the configured Hoodlums treasury. Access unlocks only after the server verifies the payer signature and confirmed chain transaction.",
+          nextQuote.asset === "USDT"
+            ? "Your confirmed wallet sends USDT to the configured Hoodlums treasury. Access unlocks only after the server verifies the wallet proof, token transfer and confirmed receipt."
+            : "Your confirmed wallet sends ETH to the configured Hoodlums treasury. Access unlocks only after the server verifies the wallet proof and confirmed receipt.",
         );
       })
       .catch((error) => {
@@ -99,19 +122,33 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
       mounted.current = false;
       controller.abort();
     };
-  }, [plan]);
+  }, [expectedBilling, plan]);
+
+  function changeBillingPeriod(nextBilling: SubscriptionBillingPeriod): void {
+    if (billingLocked || nextBilling === billingPeriod) return;
+    setQuote(null);
+    setPhase("loading");
+    setMessage("Loading the server-verified payment quote…");
+    setTransactionHash("");
+    setPaymentWalletAddress("");
+    setPaymentSignature("");
+    setVerification(null);
+    setBillingPeriod(nextBilling);
+  }
 
   async function requestWalletProof(
     provider: EthereumProvider,
     walletAddress: string,
     hash: string,
   ): Promise<string> {
+    if (!currentQuote) throw new Error("The payment quote is not ready.");
     setPhase("sending");
     setMessage(
       "Payment submitted. Sign the confirmation message to prove you control the paying wallet. This signature sends no funds.",
     );
     const proofMessage = buildPlanPaymentProofMessage({
       plan,
+      billingPeriod: currentQuote.billingPeriod,
       walletAddress,
       transactionHash: hash,
       origin: window.location.origin,
@@ -130,6 +167,7 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
     hash: string,
     walletSignature: string,
   ): Promise<PlanPaymentVerification> {
+    if (!currentQuote) throw new Error("The payment quote is not ready.");
     for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt += 1) {
       const response = await fetch("/api/plan-payments/verify", {
         method: "POST",
@@ -137,6 +175,7 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           plan,
+          billingPeriod: currentQuote.billingPeriod,
           walletAddress,
           transactionHash: hash,
           walletSignature,
@@ -174,7 +213,7 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
   }
 
   async function pay() {
-    if (!quote || phase === "sending" || phase === "verifying") return;
+    if (!currentQuote || phase === "sending" || phase === "verifying") return;
 
     try {
       if (transactionHash && paymentWalletAddress && paymentSignature) {
@@ -208,7 +247,7 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
       try {
         await provider.request({
           method: "wallet_switchEthereumChain",
-          params: [{ chainId: quote.chainIdHex }],
+          params: [{ chainId: currentQuote.chainIdHex }],
         });
       } catch (switchError) {
         const code = (switchError as { code?: number })?.code;
@@ -217,11 +256,11 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
           method: "wallet_addEthereumChain",
           params: [
             {
-              chainId: quote.chainIdHex,
-              chainName: quote.chainName,
+              chainId: currentQuote.chainIdHex,
+              chainName: currentQuote.chainName,
               nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-              rpcUrls: [quote.rpcUrl],
-              blockExplorerUrls: [quote.explorerBaseUrl],
+              rpcUrls: [currentQuote.rpcUrl],
+              blockExplorerUrls: [currentQuote.explorerBaseUrl],
             },
           ],
         });
@@ -236,8 +275,9 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
         params: [
           {
             from: walletAddress,
-            to: quote.treasuryAddress,
-            value: quote.amountWei,
+            to: currentQuote.transactionTo,
+            value: currentQuote.transactionValue,
+            data: currentQuote.transactionData,
           },
         ],
       })) as string;
@@ -265,8 +305,23 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
           {verification.paidUntil
             ? ` until ${new Date(verification.paidUntil).toLocaleDateString()}.`
             : "."}
+          {" "}Renewal is manual and your saved data is retained if the window expires.
         </p>
         <code className={styles.receipt}>{verification.transactionHash}</code>
+        {verification.telegramLinkUrl ? (
+          <a
+            className={styles.telegramButton}
+            href={verification.telegramLinkUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Link Telegram for renewal reminders
+          </a>
+        ) : (
+          <p className={styles.telegramUnavailable}>
+            Telegram linking is not configured on this deployment. In-app reminders remain active.
+          </p>
+        )}
         <button type="button" className={styles.doneButton} onClick={onClose}>
           Done
         </button>
@@ -274,22 +329,48 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
     );
   }
 
-  const busy = phase === "loading" || phase === "sending" || phase === "verifying";
-  const needsWalletInteraction = !transactionHash || !paymentSignature;
-
   return (
     <div className={styles.shell}>
+      {subscription ? (
+        <div className={styles.billingToggle} aria-label="Subscription payment period">
+          <button
+            type="button"
+            className={billingPeriod === "monthly" ? styles.billingActive : styles.billingButton}
+            aria-pressed={billingPeriod === "monthly"}
+            onClick={() => changeBillingPeriod("monthly")}
+            disabled={billingLocked}
+          >
+            Monthly · 32 days
+          </button>
+          <button
+            type="button"
+            className={billingPeriod === "upfront" ? styles.billingActive : styles.billingButton}
+            aria-pressed={billingPeriod === "upfront"}
+            onClick={() => changeBillingPeriod("upfront")}
+            disabled={billingLocked}
+          >
+            3 months upfront · 96 days
+          </button>
+        </div>
+      ) : null}
+
       <section className={styles.summary}>
         <span>SECURE PLAN PAYMENT</span>
         <h3>{definition.label}</h3>
         <div className={styles.price}>
-          <strong>{formatUsdCents(definition.usdCents)}</strong>
-          <small>{definition.kind === "subscription" ? "30 days" : "one-off"}</small>
+          <strong>{currentQuote ? formatUsdCents(currentQuote.usdCents) : "—"}</strong>
+          <small>
+            {currentQuote?.billingPeriod === "upfront"
+              ? "one manual payment · 20% saving"
+              : subscription
+                ? "one manual payment · 32 days"
+                : "one-off"}
+          </small>
         </div>
         <p>
-          {quote
-            ? `${quote.amountEth} ETH on ${quote.chainName}`
-            : "The exact ETH amount is supplied by the server."}
+          {currentQuote
+            ? `${currentQuote.amountDisplay} ${currentQuote.asset} on ${currentQuote.chainName}`
+            : "The exact payment transaction is supplied by the server."}
         </p>
       </section>
 
@@ -307,7 +388,7 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
           type="button"
           className={`${needsWalletInteraction ? "wallet-button " : ""}${styles.payButton}`}
           onClick={() => void pay()}
-          disabled={!quote || busy}
+          disabled={!currentQuote || busy}
         >
           {phase === "sending"
             ? transactionHash
@@ -319,7 +400,9 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
                 ? paymentSignature
                   ? "RETRY VERIFICATION"
                   : "SIGN & VERIFY PAYMENT"
-                : "PAY WITH WALLET"}
+                : currentQuote?.asset === "USDT"
+                  ? "PAY USDT WITH WALLET"
+                  : "PAY WITH WALLET"}
         </button>
       </div>
     </div>

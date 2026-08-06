@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { isPaidLaunchPath } from "@/lib/plan-payments";
+import {
+  isPaidLaunchPath,
+  resolvePaymentBillingPeriod,
+} from "@/lib/plan-payments";
 import { isAdminRequestOriginAllowed } from "@/lib/server/api-protection";
 import { PlanPaymentConfigurationError } from "@/lib/server/plan-payment-config";
 import {
@@ -27,6 +30,7 @@ export async function POST(request: Request) {
 
   const input = body as {
     plan?: unknown;
+    billingPeriod?: unknown;
     walletAddress?: unknown;
     transactionHash?: unknown;
     walletSignature?: unknown;
@@ -46,9 +50,12 @@ export async function POST(request: Request) {
     );
   }
 
+  const billingPeriod = resolvePaymentBillingPeriod(input.plan, input.billingPeriod);
+
   try {
     await verifyPlanPaymentWalletProof({
       plan: input.plan,
+      billingPeriod,
       walletAddress: input.walletAddress,
       transactionHash: input.transactionHash,
       walletSignature: input.walletSignature,
@@ -57,6 +64,7 @@ export async function POST(request: Request) {
 
     const result = await verifyAndRecordPlanPayment({
       plan: input.plan,
+      billingPeriod,
       walletAddress: input.walletAddress,
       transactionHash: input.transactionHash,
     });

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { listSubscribers, type SubscribersQueryRow } from "@/lib/server/subscribers";
+import {
+  listSubscribers,
+  type SubscribersPaymentQueryRow,
+  type SubscribersQueryRow,
+} from "@/lib/server/subscribers";
 
 function row(overrides: Partial<SubscribersQueryRow> = {}): SubscribersQueryRow {
   return {
@@ -8,12 +12,37 @@ function row(overrides: Partial<SubscribersQueryRow> = {}): SubscribersQueryRow 
     status: null,
     started_at: null,
     expires_at: null,
+    paid_from: null,
+    paid_until: null,
     payment_tx_hash: null,
     amount_eth: null,
+    last_payment_asset: null,
+    last_payment_amount: null,
+    telegram_user_id: null,
+    telegram_username: null,
     created_at: null,
     slugs: null,
     x_handles: null,
     telegrams: null,
+    payment_history: null,
+    ...overrides,
+  };
+}
+
+function payment(
+  overrides: Partial<SubscribersPaymentQueryRow> = {},
+): SubscribersPaymentQueryRow {
+  return {
+    payment_tx_hash: `0x${"ab".repeat(32)}`,
+    plan_id: "pro",
+    billing_period: "monthly",
+    asset_symbol: "USDT",
+    amount_display: "50",
+    amount_eth: null,
+    amount_usd_cents: 5_000,
+    paid_from: "2026-06-01T00:00:00.000Z",
+    paid_until: "2026-07-03T00:00:00.000Z",
+    confirmed_at: "2026-06-01T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -24,18 +53,18 @@ describe("listSubscribers", () => {
     expect(snapshot).toMatchObject({ status: "unavailable", rows: [] });
   });
 
-  it("degrades gracefully instead of throwing when the query fails (e.g. subscriptions table missing)", async () => {
+  it("degrades gracefully when lifecycle migrations are not applied", async () => {
     const snapshot = await listSubscribers({
       databaseUrl: "postgres://example",
       query: async () => {
-        throw new Error(`relation "subscriptions" does not exist`);
+        throw new Error(`column "paid_until" does not exist`);
       },
     });
     expect(snapshot).toMatchObject({ status: "unavailable", rows: [] });
-    expect(snapshot.message).toContain("007_subscriptions.sql");
+    expect(snapshot.message).toContain("011_plan_payments.sql");
   });
 
-  it("reports 'No subscribers yet' as a ready, empty snapshot when both tables are empty", async () => {
+  it("returns a ready empty snapshot when there are no subscribers", async () => {
     const snapshot = await listSubscribers({
       databaseUrl: "postgres://example",
       query: async () => ({ rows: [] }),
@@ -43,84 +72,164 @@ describe("listSubscribers", () => {
     expect(snapshot).toMatchObject({ status: "ready", rows: [] });
   });
 
-  it("marks a wallet with no subscription row as free tier, even if it published a site", async () => {
+  it("marks a publisher with no subscription row as free tier", async () => {
     const snapshot = await listSubscribers({
       databaseUrl: "postgres://example",
       query: async () => ({
         rows: [row({ slugs: ["my-token"], x_handles: ["@myhandle"], telegrams: [null] })],
       }),
     });
-    expect(snapshot.rows).toHaveLength(1);
     expect(snapshot.rows[0]).toMatchObject({
       tier: "free",
       status: "free",
       slugs: ["my-token"],
       xHandle: "@myhandle",
       telegram: null,
+      telegramLinked: false,
+      paymentHistory: [],
     });
   });
 
-  it("reports an active paid subscription that has not expired yet", async () => {
-    const now = new Date("2026-06-01T00:00:00.000Z");
+  it("keeps permanent one-off paid tiers active when they have no paid_until", async () => {
     const snapshot = await listSubscribers({
+      databaseUrl: "postgres://example",
+      now: new Date("2030-01-01T00:00:00.000Z"),
+      query: async () => ({
+        rows: [
+          row({
+            tier: "bond_pro_site",
+            status: "active",
+            paid_until: null,
+            expires_at: null,
+            last_payment_asset: "ETH",
+            last_payment_amount: "0.001",
+          }),
+        ],
+      }),
+    });
+    expect(snapshot.rows[0]).toMatchObject({
+      tier: "bond_pro_site",
+      status: "active",
+      paidUntil: null,
+      lastPaymentAsset: "ETH",
+      lastPaymentAmount: "0.001",
+    });
+  });
+
+  it("derives active and expiring states from paid_until rather than trusting stored status", async () => {
+    const now = new Date("2026-06-01T00:00:00.000Z");
+    const active = await listSubscribers({
       databaseUrl: "postgres://example",
       now,
       query: async () => ({
         rows: [
           row({
             tier: "pro",
+            status: "expired",
+            started_at: "2026-05-01T00:00:00.000Z",
+            paid_from: "2026-05-20T00:00:00.000Z",
+            paid_until: "2026-07-01T00:00:00.000Z",
+            last_payment_asset: "USDT",
+            last_payment_amount: "50",
+            created_at: "2026-05-20T00:00:00.000Z",
+          }),
+        ],
+      }),
+    });
+    expect(active.rows[0]).toMatchObject({
+      tier: "pro",
+      status: "active",
+      paidFrom: "2026-05-20T00:00:00.000Z",
+      paidUntil: "2026-07-01T00:00:00.000Z",
+      lastPaymentAsset: "USDT",
+      lastPaymentAmount: "50",
+    });
+
+    const expiring = await listSubscribers({
+      databaseUrl: "postgres://example",
+      now,
+      query: async () => ({
+        rows: [row({ tier: "pro_bundle", status: "active", paid_until: "2026-06-05T00:00:00.000Z" })],
+      }),
+    });
+    expect(expiring.rows[0]).toMatchObject({
+      tier: "pro_bundle",
+      status: "expiring",
+    });
+  });
+
+  it("derives expired from paid_until and retains the row and history", async () => {
+    const snapshot = await listSubscribers({
+      databaseUrl: "postgres://example",
+      now: new Date("2026-06-10T00:00:00.000Z"),
+      query: async () => ({
+        rows: [
+          row({
+            tier: "pro",
             status: "active",
-            started_at: "2026-01-01T00:00:00.000Z",
-            expires_at: "2026-12-01T00:00:00.000Z",
-            amount_eth: "0.5",
-            created_at: "2026-01-01T00:00:00.000Z",
+            paid_until: "2026-06-01T00:00:00.000Z",
+            payment_history: [payment({ paid_until: "2026-06-01T00:00:00.000Z" })],
           }),
         ],
       }),
     });
     expect(snapshot.rows[0]).toMatchObject({
       tier: "pro",
-      status: "active",
-      lastPaymentAmountEth: "0.5",
+      status: "expired",
+      paidUntil: "2026-06-01T00:00:00.000Z",
     });
+    expect(snapshot.rows[0].paymentHistory).toHaveLength(1);
   });
 
-  it("derives 'expired' from the expiry date even if the stored status column says active — the source of truth is the date", async () => {
-    const now = new Date("2026-06-01T00:00:00.000Z");
+  it("shows linked Telegram identity and complete USDT/upfront payment history", async () => {
     const snapshot = await listSubscribers({
       databaseUrl: "postgres://example",
-      now,
       query: async () => ({
         rows: [
           row({
-            tier: "bond_pro_site",
-            status: "active",
-            started_at: "2025-01-01T00:00:00.000Z",
-            expires_at: "2026-01-01T00:00:00.000Z",
+            tier: "pro_bundle",
+            paid_until: "2027-01-01T00:00:00.000Z",
+            telegram_user_id: 12345,
+            telegram_username: "hoodlum_user",
+            payment_history: [
+              payment({
+                plan_id: "pro-bundle",
+                billing_period: "upfront",
+                amount_display: "288",
+                amount_usd_cents: 28_800,
+                paid_until: "2027-01-01T00:00:00.000Z",
+              }),
+            ],
           }),
         ],
       }),
     });
-    expect(snapshot.rows[0]).toMatchObject({ tier: "bond_pro_site", status: "expired" });
+    expect(snapshot.rows[0]).toMatchObject({
+      telegramLinked: true,
+      telegram: "@hoodlum_user",
+    });
+    expect(snapshot.rows[0].paymentHistory[0]).toMatchObject({
+      planId: "pro-bundle",
+      billingPeriod: "upfront",
+      asset: "USDT",
+      amountDisplay: "288",
+      amountUsdCents: 28_800,
+    });
   });
 
-  it("includes subscribers who have paid but not published a site", async () => {
-    const snapshot = await listSubscribers({
+  it("includes paid wallets without a published site and de-duplicates slugs", async () => {
+    const paid = await listSubscribers({
       databaseUrl: "postgres://example",
       query: async () => ({
-        rows: [row({ tier: "bond", status: "active", started_at: "2026-01-01T00:00:00.000Z", slugs: null })],
+        rows: [row({ tier: "pro", paid_until: "2027-01-01T00:00:00.000Z", slugs: null })],
       }),
     });
-    expect(snapshot.rows[0]).toMatchObject({ tier: "bond", slugs: [] });
-  });
+    expect(paid.rows[0]).toMatchObject({ tier: "pro", slugs: [] });
 
-  it("de-duplicates and sorts multiple slugs for a wallet with more than one published site", async () => {
-    const snapshot = await listSubscribers({
+    const published = await listSubscribers({
       databaseUrl: "postgres://example",
-      query: async () => ({
-        rows: [row({ slugs: ["zeta", "alpha", "alpha"] })],
-      }),
+      query: async () => ({ rows: [row({ slugs: ["zeta", "alpha", "alpha"] })] }),
     });
-    expect(snapshot.rows[0].slugs).toEqual(["alpha", "zeta"]);
+    expect(published.rows[0].slugs).toEqual(["alpha", "zeta"]);
   });
 });
