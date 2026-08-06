@@ -106,7 +106,8 @@ describe("Saved launches", () => {
     expect(resumeBlock).toContain("parseSavedTokenProjects(");
     expect(resumeBlock).toContain("setStudioInstanceKey((current) => current + 1);");
     expect(resumeBlock).toContain('setPendingAction("saved");');
-    expect(workspace).toContain("<TokenStudio key={studioInstanceKey} />");
+    expect(workspace).toContain("key={studioInstanceKey}");
+    expect(workspace).toContain("<TokenStudio />");
   });
 
   it("handles missing or corrupt local storage as an empty vault", () => {
