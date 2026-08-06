@@ -21,12 +21,15 @@ describe("Hoodlums bonding-market studio home (issue #185)", () => {
 
   it("renders the topbar pulse indicator, hero copy and fact pills", async () => {
     const component = await source("components", "hoodlums-market-home.tsx");
+    const accountShell = await source("components", "account-overlay-shell.tsx");
 
     expect(component).toContain("5-MIN ROBINHOOD MARKET PULSE");
     expect(component).not.toContain("+ Create");
     expect(component).toContain("Open saved launches");
     expect(component).toContain("requestWorkspaceOpen(\"saved\")");
-    expect(component).toContain("Account");
+    expect(component).not.toContain('href="/account"');
+    expect(accountShell).toContain("AccountOverlay");
+    expect(accountShell).toContain("styles.accountDock");
     expect(component).toContain("BUILD. TEST. LAUNCH.");
     expect(component).toContain("Launch a meme token");
     expect(component).toContain("without the clutter.");
