@@ -88,10 +88,12 @@ export function TokenStudioWorkspace() {
     // Manager plan cards navigate back to the homepage after storing the
     // selected plan in sessionStorage. Open the workspace automatically,
     // but leave the preset untouched for TokenPathChooser to consume once.
-    if (hasLaunchPathPreset()) {
+    if (!hasLaunchPathPreset()) return;
+    const timer = window.setTimeout(() => {
       setPendingAction("new");
       setIsOpen(true);
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
