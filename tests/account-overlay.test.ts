@@ -33,6 +33,24 @@ describe("Account overlay restructure", () => {
     expect(tokenLayout).toContain("<AccountOverlayShell />");
   });
 
+  it("reserves a dedicated desktop dock instead of covering page actions", async () => {
+    const shell = await source("components", "account-overlay-shell.tsx");
+    const overlayCss = await source("components", "account-overlay.module.css");
+    const home = await source("components", "hoodlums-market-home.tsx");
+    const homeCss = await source("components", "hoodlums-market-home.module.css");
+
+    expect(shell).toContain("styles.accountDock");
+    expect(overlayCss).toContain(".accountDock {");
+    expect(overlayCss).toContain("min-height: 58px;");
+    expect(overlayCss).toContain(".launcher {\n  position: static;");
+    expect(overlayCss).toContain("@media (max-width: 1099px)");
+    expect(overlayCss).toContain("position: fixed;");
+    expect(home).not.toContain('href="/account"');
+    expect(home).not.toContain("styles.accountButton");
+    expect(homeCss).not.toContain(".accountButton");
+    expect(home).toContain("Open saved launches");
+  });
+
   it("shows Account when disconnected and a green-dot truncated address when connected", async () => {
     const overlay = await source("components", "account-overlay.tsx");
     const css = await source("components", "account-overlay.module.css");
