@@ -6,8 +6,11 @@ import {
   ACCOUNT_WALLET_STORAGE_KEY,
   parseStoredAccountWallet,
 } from "@/lib/account-wallet-state";
-import type { SubscriptionAccess } from "@/lib/server/subscription-lifecycle";
-import { subscriptionPlanLabel } from "@/lib/subscription-lifecycle";
+import { storeLaunchPathPreset } from "@/lib/launch-paths";
+import {
+  subscriptionPlanLabel,
+  type SubscriptionAccess,
+} from "@/lib/subscription-lifecycle";
 import { requestWorkspaceOpen } from "@/lib/workspace-open-request";
 import styles from "./subscription-lifecycle-banner.module.css";
 
@@ -67,7 +70,7 @@ export function SubscriptionLifecycleBanner() {
       requestWorkspaceOpen("new", access.plan);
       return;
     }
-    window.sessionStorage.setItem("hoodlums:launch-path-preset", access.plan);
+    storeLaunchPathPreset(access.plan);
     window.location.assign("/");
   }
 
