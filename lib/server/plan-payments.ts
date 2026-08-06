@@ -102,6 +102,7 @@ export type ChainReceipt = {
 };
 
 export type VerifyChainDeps = {
+  environment?: Record<string, string | undefined>;
   getChainId: () => Promise<number>;
   getTransaction: (hash: Hash) => Promise<ChainTransaction>;
   getReceipt: (hash: Hash) => Promise<ChainReceipt>;
@@ -218,6 +219,7 @@ export async function verifyPlanPaymentTransaction(
     input.plan,
     billingPeriod,
     input.paymentToken,
+    deps?.environment ?? process.env,
   );
   const client = deps
     ? null
