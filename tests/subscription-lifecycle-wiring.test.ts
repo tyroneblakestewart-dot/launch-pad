@@ -109,9 +109,10 @@ describe("data retention and admin standing rule", () => {
     const prefixes = migrations.map((file) => file.match(/^(\d{3})_/)?.[1]);
     const runner = await source("scripts", "migrate-database.mjs");
 
-    expect(migrations).toContain("009_token_chat.sql");
+    expect(migrations.filter((file) => file.startsWith("009_"))).toEqual([
+      "009_token_chat.sql",
+    ]);
     expect(migrations).toContain("010_subscription_lifecycle.sql");
-    expect(migrations).not.toContain("009_subscription_lifecycle.sql");
     expect(prefixes.every(Boolean)).toBe(true);
     expect(new Set(prefixes).size).toBe(prefixes.length);
     expect(runner).toContain("Duplicate migration prefix");
