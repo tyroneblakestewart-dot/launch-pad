@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { AccountOverlayContent } from "@/lib/account-overlay-content";
 import {
   ACCOUNT_WALLET_CHANGE_EVENT,
   ACCOUNT_WALLET_STORAGE_KEY,
@@ -10,23 +11,6 @@ import {
 } from "@/lib/account-wallet-state";
 import { AccountWalletBridge } from "./account-wallet-bridge";
 import styles from "./account-overlay.module.css";
-
-export type AccountOverlayContent = {
-  header_eyebrow: string;
-  header_title: string;
-  header_intro: string;
-  web_accounts_title: string;
-  web_accounts_subtitle: string;
-  google_note: string;
-  github_note: string;
-  x_note: string;
-  wallet_title: string;
-  wallet_subtitle: string;
-  metamask_note: string;
-  rabby_note: string;
-  phantom_note: string;
-  footer_copy: string;
-};
 
 type ProviderName = "Google" | "GitHub" | "X" | "MetaMask" | "Rabby" | "Phantom";
 
