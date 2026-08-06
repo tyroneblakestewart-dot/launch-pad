@@ -12,7 +12,23 @@ if (!databaseUrl) {
 const migrationsDirectory = path.join(process.cwd(), "db", "migrations");
 const files = (await readdir(migrationsDirectory))
   .filter((file) => file.endsWith(".sql"))
-  .sort();
+  .sort((left, right) => left.localeCompare(right, "en", { numeric: true }));
+
+const migrationsByPrefix = new Map();
+for (const file of files) {
+  const match = /^(\d{3})_/.exec(file);
+  if (!match) {
+    throw new Error(`Migration file must start with a three-digit prefix: ${file}`);
+  }
+  const prefix = match[1];
+  const existing = migrationsByPrefix.get(prefix);
+  if (existing) {
+    throw new Error(
+      `Duplicate migration prefix ${prefix}: ${existing} and ${file}`,
+    );
+  }
+  migrationsByPrefix.set(prefix, file);
+}
 
 const pool = new pg.Pool({
   connectionString: databaseUrl,
