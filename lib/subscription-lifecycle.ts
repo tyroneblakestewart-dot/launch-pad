@@ -97,14 +97,21 @@ export function subscriptionStatusAt(
   return remaining <= SUBSCRIPTION_EXPIRING_DAYS * DAY_MS ? "expiring" : "active";
 }
 
+/**
+ * Returns the most urgent reminder currently due. Using threshold windows
+ * instead of an exact clock instant lets a failed daily send retry on the
+ * following run without duplicating messages already protected by the
+ * database uniqueness boundary.
+ */
 export function dueSubscriptionReminder(
   paidUntil: Date | string,
   now = new Date(),
 ): SubscriptionReminderKind | null {
-  const remaining = subscriptionDaysRemaining(paidUntil, now);
-  if (remaining === 5) return "five_days";
-  if (remaining === 2) return "two_days";
-  if (remaining === 0 && new Date(paidUntil).getTime() <= now.getTime()) return "expiry";
+  const expiry = new Date(paidUntil);
+  const remaining = subscriptionDaysRemaining(expiry, now);
+  if (expiry.getTime() <= now.getTime()) return "expiry";
+  if (remaining <= 2) return "two_days";
+  if (remaining <= 5) return "five_days";
   return null;
 }
 
