@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LAUNCH_PATH_OPTIONS } from "@/lib/launch-paths";
+import {
+  LAUNCH_PATH_OPTIONS,
+  PRO_BUNDLE_OPTION,
+} from "@/lib/launch-paths";
 import {
   PLAN_CALLOUTS,
   PLAN_FAQS,
   PLANS_BILLING_OPTIONS,
-  PRO_BUNDLE_FEATURES,
   planPriceForBilling,
   proBundlePriceForBilling,
   togglePlanFaq,
@@ -42,6 +44,11 @@ export function HoodlumsPlansSection() {
     return () => observer.disconnect();
   }, []);
 
+  /**
+   * Every homepage CTA enters the same TokenPathChooser used by + New token.
+   * Free and paid routing therefore live in one place instead of being
+   * duplicated in this section.
+   */
   function openWorkspaceWithPlan(path: LaunchPath): void {
     requestWorkspaceOpen("new", path);
   }
@@ -64,7 +71,7 @@ export function HoodlumsPlansSection() {
 
         <div className={styles.plansBlock}>
           <div className={styles.plansToolbar}>
-            <span>Four ways in</span>
+            <span>Five ways in</span>
             <div className={styles.billingToggle} aria-label="Plan billing period">
               {PLANS_BILLING_OPTIONS.map((option) => (
                 <button
@@ -126,8 +133,8 @@ export function HoodlumsPlansSection() {
         <article id="pro-bundle" className={styles.bundleCard}>
           <div className={styles.bundleGlow} aria-hidden="true" />
           <div className={styles.bundleCopy}>
-            <span className={styles.bundleBadge}>Pro Bundle</span>
-            <h2>Run your whole portfolio. One dashboard. One payment.</h2>
+            <span className={styles.bundleBadge}>{PRO_BUNDLE_OPTION.name}</span>
+            <h2>{PRO_BUNDLE_OPTION.tagline}</h2>
             <p>
               Three tokens, all active, all growing — without tripling your workload. Built for
               the builders who don&apos;t stop at one.
@@ -140,21 +147,18 @@ export function HoodlumsPlansSection() {
             <button
               type="button"
               className={styles.bundleCta}
-              onClick={() => openWorkspaceWithPlan("pro")}
+              onClick={() => openWorkspaceWithPlan(PRO_BUNDLE_OPTION.id)}
             >
               Get Pro Bundle
             </button>
           </div>
           <div className={styles.bundleFeaturesWrap}>
             <ul className={styles.bundleFeatures}>
-              {PRO_BUNDLE_FEATURES.map((feature) => (
+              {PRO_BUNDLE_OPTION.bullets.map((feature) => (
                 <li key={feature}>{feature}</li>
               ))}
             </ul>
-            <p>
-              Serious builders run more than one token. Now they don&apos;t need three times the
-              effort.
-            </p>
+            <p>{PRO_BUNDLE_OPTION.foot}</p>
           </div>
         </article>
 

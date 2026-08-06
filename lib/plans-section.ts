@@ -1,4 +1,9 @@
-import type { LaunchPathOption } from "./launch-paths";
+import {
+  PRO_BUNDLE_FEATURES,
+  type LaunchPathOption,
+} from "./launch-paths";
+
+export { PRO_BUNDLE_FEATURES };
 
 export type PlansBilling = "monthly" | "upfront";
 
@@ -9,16 +14,6 @@ export const PLANS_BILLING_OPTIONS: ReadonlyArray<{
   { id: "monthly", label: "Monthly" },
   { id: "upfront", label: "3 months · −20%" },
 ];
-
-export const PRO_BUNDLE_FEATURES = [
-  "Everything in Pro for each of your 3 tokens",
-  "15 posts/day · 6 AI images — allocate across your tokens however you like",
-  "Cross-token analytics — instantly see which project is gaining traction fastest",
-  "Drop your style and mascot for each token — three distinct voices, three distinct characters",
-  "One dashboard to manage it all",
-  "Priority support",
-  "20% off when you pay 3 months upfront ($288 instead of $360)",
-] as const;
 
 export const PLAN_CALLOUTS = [
   {
@@ -72,6 +67,9 @@ export function planPriceForBilling(
 ): string {
   if (option.id === "pro" && billing === "upfront") {
     return "$120 / 3 months · per token";
+  }
+  if (option.id === "pro-bundle" && billing === "upfront") {
+    return "$288 / 3 months · up to 3 tokens";
   }
   return option.price;
 }

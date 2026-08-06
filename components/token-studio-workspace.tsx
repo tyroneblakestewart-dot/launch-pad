@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { removeSeededHoodlumsLaunch } from "@/lib/hoodlums-seed-cleanup";
+import { hasLaunchPathPreset } from "@/lib/launch-paths";
 import {
   PROJECT_SAVE_RESULT_EVENT,
   shouldCloseWorkspaceAfterSave,
@@ -83,6 +84,18 @@ export function TokenStudioWorkspace() {
 
   useEffect(() => {
     cleanUpSeededHoodlumsLaunch();
+  }, []);
+
+  useEffect(() => {
+    // Manager plan cards return home with the chosen plan stored as a
+    // browser-session preset. Open the workspace but leave that preset for
+    // TokenPathChooser to consume exactly once.
+    if (!hasLaunchPathPreset()) return;
+    const timer = window.setTimeout(() => {
+      setPendingAction("new");
+      setIsOpen(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {

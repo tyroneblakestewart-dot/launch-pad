@@ -12,7 +12,7 @@
 
 .panel {
   position: relative;
-  width: min(1080px, 100%);
+  width: min(1240px, 100%);
   max-height: calc(100svh - 32px);
   overflow: auto;
   padding: 30px 26px 32px;
@@ -295,13 +295,64 @@
 
 @media (min-width: 720px) {
   .columns {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 1000px) {
   .columns {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .column {
+    padding: 18px 12px 20px;
+    border-radius: 15px;
+  }
+
+  .badge {
+    left: 12px;
+    padding: 4px 8px;
+    font-size: 8px;
+  }
+
+  .columnName {
+    font-size: 15px;
+  }
+
+  .columnPrice {
+    font-size: 10px;
+    line-height: 1.35;
+  }
+
+  .columnTagline {
+    font-size: 10.5px;
+    line-height: 1.45;
+  }
+
+  .columnBullets {
+    gap: 5px;
+  }
+
+  .bullet {
+    padding-left: 13px;
+    font-size: 9.5px;
+    line-height: 1.45;
+  }
+
+  .bullet::before {
+    top: 5px;
+    width: 5px;
+    height: 5px;
+  }
+
+  .columnFoot,
+  .columnDetailLink {
+    font-size: 8.5px;
+  }
+
+  .columnFoot {
+    padding: 7px 8px;
   }
 
   .continueButton {

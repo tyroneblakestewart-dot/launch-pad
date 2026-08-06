@@ -2,20 +2,19 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { LAUNCH_PATH_OPTIONS, storeLaunchPathPreset } from "@/lib/launch-paths";
+import {
+  LAUNCH_PATH_OPTIONS,
+  PRO_BUNDLE_OPTION,
+  storeLaunchPathPreset,
+} from "@/lib/launch-paths";
 import {
   PLANS_BILLING_OPTIONS,
-  PRO_BUNDLE_FEATURES,
   planPriceForBilling,
   proBundlePlanPriceForBilling,
   type PlansBilling,
 } from "@/lib/plans-section";
 import planStyles from "./hoodlums-plans-section.module.css";
 import styles from "./manager-plans.module.css";
-
-const PRO_BUNDLE_TAGLINE = "Run your whole portfolio. One dashboard. One payment.";
-const PRO_BUNDLE_FOOT =
-  "Serious builders run more than one token. Now they don't need three times the effort.";
 
 type ManagerPlansProps = {
   headerEyebrow: string;
@@ -74,19 +73,19 @@ export function ManagerPlans({ headerEyebrow, headerTitle, headerIntro }: Manage
           </article>
 
           <article className={planStyles.planCard} data-launch-path="pro-bundle">
-            <h3>Pro Bundle</h3>
+            <h3>{PRO_BUNDLE_OPTION.name}</h3>
             <span className={planStyles.planPrice}>{proBundlePlanPriceForBilling(billing)}</span>
-            <p className={planStyles.planTagline}>{PRO_BUNDLE_TAGLINE}</p>
+            <p className={planStyles.planTagline}>{PRO_BUNDLE_OPTION.tagline}</p>
             <ul className={planStyles.featureList}>
-              {PRO_BUNDLE_FEATURES.map((feature) => (
+              {PRO_BUNDLE_OPTION.bullets.map((feature) => (
                 <li key={feature}>{feature}</li>
               ))}
             </ul>
-            <p className={planStyles.planFoot}>{PRO_BUNDLE_FOOT}</p>
+            <p className={planStyles.planFoot}>{PRO_BUNDLE_OPTION.foot}</p>
             <Link
               href="/"
               className={planStyles.planCta}
-              onClick={() => storeLaunchPathPreset("pro")}
+              onClick={() => storeLaunchPathPreset("pro-bundle")}
             >
               Get Pro Bundle
             </Link>

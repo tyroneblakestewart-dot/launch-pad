@@ -4,6 +4,7 @@ import {
   type AdminMoneySnapshot,
   type AdminOperationsIssue,
   type AdminOperationsSnapshot,
+  type AdminRevenueEvent,
   type AdminServiceKey,
   type AdminSiteStats,
 } from "@/lib/admin-operations";
@@ -103,7 +104,98 @@ async function getActiveAdminSessionCount(): Promise<number | null> {
   }
 }
 
+type RevenueQueryRow = {
+  payment_tx_hash: string;
+  wallet_address: string;
+  plan_id: AdminRevenueEvent["planId"];
+  amount_eth: string;
+  amount_usd_cents: number | string;
+  paid_until: Date | string | null;
+  confirmed_at: Date | string;
+};
+
+type PlanRevenueSnapshot = Pick<
+  AdminMoneySnapshot,
+  | "planRevenueStatus"
+  | "planRevenueUsdCents"
+  | "planPaymentCount"
+  | "recentPlanPayments"
+  | "planRevenueMessage"
+>;
+
+function asIso(value: Date | string | null): string | null {
+  if (!value) return null;
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+async function getPlanRevenueSnapshot(): Promise<PlanRevenueSnapshot> {
+  const databaseUrl = process.env.DATABASE_URL?.trim() || "";
+  if (!databaseUrl) {
+    return {
+      planRevenueStatus: "unavailable",
+      planRevenueUsdCents: 0,
+      planPaymentCount: 0,
+      recentPlanPayments: [],
+      planRevenueMessage: "DATABASE_URL is not configured.",
+    };
+  }
+
+  try {
+    const pool = getPostgresPool(databaseUrl);
+    const [totals, recent] = await withTimeout(
+      Promise.all([
+        pool.query<{ count: number | string; usd_cents: number | string }>(
+          `SELECT
+             COUNT(*)::int AS count,
+             COALESCE(SUM(amount_usd_cents), 0)::bigint AS usd_cents
+           FROM plan_payment_events`,
+        ),
+        pool.query<RevenueQueryRow>(
+          `SELECT
+             payment_tx_hash,
+             wallet_address,
+             plan_id,
+             amount_eth,
+             amount_usd_cents,
+             paid_until,
+             confirmed_at
+           FROM plan_payment_events
+           ORDER BY confirmed_at DESC
+           LIMIT 20`,
+        ),
+      ]),
+      "Plan revenue snapshot timed out.",
+    );
+    const total = totals.rows[0];
+    return {
+      planRevenueStatus: "ready",
+      planRevenueUsdCents: Number(total?.usd_cents || 0),
+      planPaymentCount: Number(total?.count || 0),
+      recentPlanPayments: recent.rows.map((row) => ({
+        transactionHash: row.payment_tx_hash,
+        walletAddress: row.wallet_address,
+        planId: row.plan_id,
+        amountEth: row.amount_eth,
+        amountUsdCents: Number(row.amount_usd_cents),
+        paidUntil: asIso(row.paid_until),
+        confirmedAt: asIso(row.confirmed_at)!,
+      })),
+      planRevenueMessage: "Server-verified plan payments from Postgres.",
+    };
+  } catch {
+    return {
+      planRevenueStatus: "unavailable",
+      planRevenueUsdCents: 0,
+      planPaymentCount: 0,
+      recentPlanPayments: [],
+      planRevenueMessage:
+        "Plan revenue could not be loaded. Apply migration 008_plan_payments.sql and try again.",
+    };
+  }
+}
+
 async function getMoneySnapshot(): Promise<AdminMoneySnapshot> {
+  const revenue = await getPlanRevenueSnapshot();
   const chainLabel = "Robinhood Chain Testnet";
   const factoryAddress = getFactoryAddress(
     ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL,
@@ -117,6 +209,7 @@ async function getMoneySnapshot(): Promise<AdminMoneySnapshot> {
       feeRecipient: "—",
       feeRecipientBalance: "—",
       message: "No factory address is configured for this chain.",
+      ...revenue,
     };
   }
 
@@ -166,6 +259,7 @@ async function getMoneySnapshot(): Promise<AdminMoneySnapshot> {
       feeRecipientBalance: `${formatEther(balance)} ${ROBINHOOD_TESTNET.nativeCurrency.symbol}`,
       message:
         "Live factory values. The wallet balance is not an audited revenue total and may include unrelated funds.",
+      ...revenue,
     };
   } catch {
     return {
@@ -176,6 +270,7 @@ async function getMoneySnapshot(): Promise<AdminMoneySnapshot> {
       feeRecipient: factoryAddress,
       feeRecipientBalance: "—",
       message: "Live factory money data could not be read from the chain.",
+      ...revenue,
     };
   }
 }
@@ -222,8 +317,19 @@ function buildIssues(input: {
     issues.push({
       id: "operations:money",
       severity: "amber",
-      title: "Money data unavailable",
+      title: "Factory money data unavailable",
       message: input.money.message,
+      source: "operations",
+      serviceKey: null,
+    });
+  }
+
+  if (input.money.planRevenueStatus === "unavailable") {
+    issues.push({
+      id: "operations:plan-revenue",
+      severity: "amber",
+      title: "Plan revenue data unavailable",
+      message: input.money.planRevenueMessage,
       source: "operations",
       serviceKey: null,
     });
@@ -247,11 +353,6 @@ export type AdminOperationsSnapshotDeps = {
   requestOidcToken?: string;
 };
 
-/**
- * Builds every admin section independently. A failure in activity, money or
- * service controls is returned as a section error instead of blanking the
- * rest of the dashboard.
- */
 export async function getAdminOperationsSnapshot(
   deps: AdminOperationsSnapshotDeps = {},
 ): Promise<AdminOperationsSnapshot> {
@@ -314,6 +415,11 @@ export async function getAdminOperationsSnapshot(
           feeRecipient: "—",
           feeRecipientBalance: "—",
           message: "Money data could not be loaded.",
+          planRevenueStatus: "unavailable" as const,
+          planRevenueUsdCents: 0,
+          planPaymentCount: 0,
+          recentPlanPayments: [],
+          planRevenueMessage: "Plan revenue data could not be loaded.",
         };
 
   const issues = buildIssues({ health, services, money, sectionErrors });
