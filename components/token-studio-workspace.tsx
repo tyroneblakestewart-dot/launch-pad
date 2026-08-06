@@ -191,8 +191,8 @@ export function TokenStudioWorkspace() {
           </button>
         </div>
       </div>
-      <div className={pendingAction ? styles.preparing : undefined}>
-        <TokenStudio key={studioInstanceKey} />
+      <div key={studioInstanceKey} className={pendingAction ? styles.preparing : undefined}>
+        <TokenStudio />
       </div>
 
       {showEmptySavedLaunches && (
