@@ -191,12 +191,14 @@ export function AccountWalletBridge({ embedded = false }: { embedded?: boolean }
     const storedWallet = parseStoredAccountWallet(
       localStorage.getItem(ACCOUNT_WALLET_STORAGE_KEY),
     );
-    if (storedWallet) {
-      setConfirmedWallet(
-        `${storedWallet.walletName} · ${truncateAccountAddress(storedWallet.account)}`,
-      );
-      setStatus("This wallet address was previously confirmed for your Hoodlums account.");
-    }
+    const restoreFrame = storedWallet
+      ? window.requestAnimationFrame(() => {
+          setConfirmedWallet(
+            `${storedWallet.walletName} · ${truncateAccountAddress(storedWallet.account)}`,
+          );
+          setStatus("This wallet address was previously confirmed for your Hoodlums account.");
+        })
+      : null;
 
     const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("button"));
     const walletButtons = buttons.filter((button) => WALLET_NAMES.some((name) => button.textContent?.includes(name)));
@@ -248,6 +250,7 @@ export function AccountWalletBridge({ embedded = false }: { embedded?: boolean }
     });
 
     return () => {
+      if (restoreFrame !== null) window.cancelAnimationFrame(restoreFrame);
       cleanups.forEach((cleanup) => cleanup());
       clearAccountListener();
     };
