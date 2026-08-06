@@ -291,7 +291,7 @@ export async function buildSubscriptionLifecyclePipeline(
           "lifecycle-tables",
           "Lifecycle tables",
           "red",
-          `Missing table(s): ${missing.join(", ")}. Apply migration 010_subscription_lifecycle.sql.`,
+          `Missing table(s): ${missing.join(", ")}. Apply migrations through 011_plan_payments.sql.`,
         );
     lastRun = runs.rows[0];
     lastReminder = reminders.rows[0];
@@ -300,7 +300,7 @@ export async function buildSubscriptionLifecyclePipeline(
       "lifecycle-tables",
       "Lifecycle tables",
       "red",
-      "Lifecycle health data could not be read. Apply migration 010_subscription_lifecycle.sql.",
+      "Lifecycle health data could not be read. Apply migrations through 011_plan_payments.sql.",
     );
   }
 
