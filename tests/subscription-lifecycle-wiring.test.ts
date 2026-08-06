@@ -97,26 +97,40 @@ describe("scheduled reminders and Telegram integration", () => {
     expect(pipeline).toContain("subscription_reminder_events");
     expect(pipeline).toContain("Last daily lifecycle run");
     expect(pipeline).toContain("Last Telegram renewal reminder");
-    expect(pipeline).toContain("010_subscription_lifecycle.sql");
+    expect(pipeline).toContain("011_plan_payments.sql");
   });
 });
 
 describe("data retention and admin standing rule", () => {
-  it("keeps migration numbering unique and applies lifecycle after token chat", async () => {
+  it("keeps every migration prefix unique and preserves the legacy plan-payment dependency order", async () => {
     const migrations = (await readdir(path.join(ROOT, "db", "migrations")))
       .filter((file) => file.endsWith(".sql"))
       .sort();
     const prefixes = migrations.map((file) => file.match(/^(\d{3})_/)?.[1]);
     const runner = await source("scripts", "migrate-database.mjs");
 
+    expect(migrations.filter((file) => file.startsWith("008_"))).toEqual([
+      "008_hoodchat.sql",
+    ]);
     expect(migrations.filter((file) => file.startsWith("009_"))).toEqual([
       "009_token_chat.sql",
     ]);
-    expect(migrations).toContain("010_subscription_lifecycle.sql");
+    expect(migrations.filter((file) => file.startsWith("010_"))).toEqual([
+      "010_subscription_lifecycle.sql",
+    ]);
+    expect(migrations.filter((file) => file.startsWith("011_"))).toEqual([
+      "011_plan_payments.sql",
+    ]);
+    expect(migrations).not.toContain("008_plan_payments.sql");
     expect(prefixes.every(Boolean)).toBe(true);
     expect(new Set(prefixes).size).toBe(prefixes.length);
     expect(runner).toContain("Duplicate migration prefix");
-    expect(runner).toContain('left.localeCompare(right, "en", { numeric: true })');
+    expect(runner).toContain('"011_plan_payments.sql"');
+    expect(runner).toContain('legacyFilename: "008_plan_payments.sql"');
+    expect(runner).toContain("order: 8.5");
+    expect(runner).toContain("hoodlums_schema_migrations");
+    expect(runner).toContain("to_regclass('public.plan_payment_events')");
+    expect(runner).toContain("remapped_from");
   });
 
   it("extends the existing schema without deleting expired subscriber data", async () => {
@@ -142,5 +156,6 @@ describe("data retention and admin standing rule", () => {
     expect(money).toContain("payment.asset");
     expect(server).toContain("asset_symbol");
     expect(server).toContain("paid_from");
+    expect(server).toContain("011_plan_payments.sql");
   });
 });
