@@ -7,6 +7,10 @@ import {
   shouldCloseWorkspaceAfterSave,
   type ProjectSaveResultDetail,
 } from "@/lib/project-save-result";
+import {
+  parseSavedTokenProjects,
+  TOKEN_STUDIO_PROJECTS_STORAGE_KEY,
+} from "@/lib/token-project-storage";
 import type { TokenProject } from "@/lib/types";
 import {
   OPEN_WORKSPACE_REQUEST_EVENT,
@@ -15,20 +19,17 @@ import {
 import { TokenStudio } from "./token-studio";
 import styles from "./token-studio-workspace.module.css";
 
-const STORAGE_KEY = "private-meme-token-studio-projects-v1";
-
 type PendingAction = "new" | "saved" | null;
 
 function cleanUpSeededHoodlumsLaunch() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY);
     if (!raw) return;
-    const parsed = JSON.parse(raw) as TokenProject[];
-    if (!Array.isArray(parsed)) return;
+    const parsed = parseSavedTokenProjects(raw);
 
     const cleaned = removeSeededHoodlumsLaunch(parsed);
     if (cleaned.length !== parsed.length) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+      localStorage.setItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY, JSON.stringify(cleaned));
     }
   } catch {
     // If storage can't be read there is nothing to clean up.
@@ -76,6 +77,8 @@ function focusNewProjectEditor() {
 export function TokenStudioWorkspace() {
   const [isOpen, setIsOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [studioInstanceKey, setStudioInstanceKey] = useState(0);
+  const [showEmptySavedLaunches, setShowEmptySavedLaunches] = useState(false);
   const awaitingSaveAndClose = useRef(false);
 
   useEffect(() => {
@@ -89,6 +92,7 @@ export function TokenStudioWorkspace() {
       awaitingSaveAndClose.current = false;
       if (!shouldCloseWorkspaceAfterSave(detail)) return;
       setPendingAction(null);
+      setShowEmptySavedLaunches(false);
       setIsOpen(false);
     }
 
@@ -118,7 +122,7 @@ export function TokenStudioWorkspace() {
     }, 50);
 
     return () => window.clearInterval(timer);
-  }, [isOpen, pendingAction]);
+  }, [isOpen, pendingAction, studioInstanceKey]);
 
   useEffect(() => {
     function onOpenWorkspaceRequest(event: Event) {
@@ -135,17 +139,31 @@ export function TokenStudioWorkspace() {
   }, [isOpen]);
 
   function openWorkspace(action: Exclude<PendingAction, null>) {
+    setShowEmptySavedLaunches(false);
     setPendingAction(action);
     setIsOpen(true);
   }
 
   function openSavedLaunches() {
-    if (!isOpen) {
-      openWorkspace("saved");
+    const savedLaunches = parseSavedTokenProjects(
+      localStorage.getItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY),
+    );
+
+    if (savedLaunches.length === 0) {
+      setPendingAction(null);
+      setShowEmptySavedLaunches(true);
+      setIsOpen(true);
       return;
     }
 
-    findStudioButton("projects")?.click();
+    // Remount the Studio before opening its project vault. The saved
+    // TokenProject remains the source of truth, while transient UI from the
+    // launch being left (for example an open plan chooser) is discarded so
+    // it cannot cover or alter the project the user resumes.
+    setShowEmptySavedLaunches(false);
+    setStudioInstanceKey((current) => current + 1);
+    setPendingAction("saved");
+    setIsOpen(true);
   }
 
   function saveAndClose() {
@@ -174,8 +192,36 @@ export function TokenStudioWorkspace() {
         </div>
       </div>
       <div className={pendingAction ? styles.preparing : undefined}>
-        <TokenStudio />
+        <TokenStudio key={studioInstanceKey} />
       </div>
+
+      {showEmptySavedLaunches && (
+        <div className={styles.savedLaunchBackdrop} role="dialog" aria-modal="true" aria-labelledby="saved-launches-title">
+          <div className={styles.savedLaunchPanel}>
+            <div className={styles.savedLaunchHeading}>
+              <div>
+                <span>LOCAL VAULT</span>
+                <h2 id="saved-launches-title">Saved launches</h2>
+              </div>
+              <button
+                type="button"
+                aria-label="Close saved launches"
+                onClick={() => setShowEmptySavedLaunches(false)}
+              >
+                ×
+              </button>
+            </div>
+            <p className={styles.savedLaunchEmpty}>No saved launches</p>
+            <button
+              type="button"
+              className={styles.createLaunchButton}
+              onClick={() => openWorkspace("new")}
+            >
+              + Create new token
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
