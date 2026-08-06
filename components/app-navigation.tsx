@@ -78,10 +78,6 @@ export function AppNavigation() {
             );
           })}
         </nav>
-        <Link href="/account" className={`${styles.accountLink} ${isActive(pathname, "/account") ? styles.accountLinkActive : ""}`}>
-          <span>◉</span>
-          <span><b>Account</b><small>Sign in and connect accounts</small></span>
-        </Link>
         {SHOW_TESTNET_TOOLS && (
           <div className={styles.sidebarNote}><b>Testnet mode</b><span>Robinhood Chain · 46630</span></div>
         )}
@@ -90,9 +86,6 @@ export function AppNavigation() {
       <header className={styles.mobileHeader}>
         <Link href="/" className={styles.mobileBrand} aria-label="HOODLUMS home">
           <img src={HOODLUMS_WORDMARK_IMAGE} alt="HOODLUMS" width={1200} height={438} />
-        </Link>
-        <Link href="/account" className={styles.accountButton} aria-label="Open account">
-          Account
         </Link>
       </header>
     </>
