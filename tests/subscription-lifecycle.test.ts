@@ -9,6 +9,7 @@ import {
 import {
   getSubscriptionAccess,
   isSubscriptionActive,
+  type SubscriptionQuery,
 } from "@/lib/server/subscription-lifecycle";
 
 const WALLET = "0x1111111111111111111111111111111111111111";
@@ -112,7 +113,7 @@ describe("lifecycle states and reminders", () => {
 describe("server-side entitlement source", () => {
   it("returns an active entitlement only from the durable paid_until value", async () => {
     const now = new Date("2026-08-06T09:00:00.000Z");
-    const query = async () => ({
+    const query = (async () => ({
       rows: [{
         wallet_address: WALLET,
         tier: "pro",
@@ -121,7 +122,7 @@ describe("server-side entitlement source", () => {
         expires_at: null,
         telegram_chat_id: 12345,
       }],
-    });
+    })) as SubscriptionQuery;
 
     await expect(getSubscriptionAccess(WALLET, { query, now })).resolves.toMatchObject({
       walletAddress: WALLET,
@@ -137,7 +138,7 @@ describe("server-side entitlement source", () => {
 
   it("fails closed for expired, unknown, invalid or unavailable wallets", async () => {
     const now = new Date("2026-08-06T09:00:00.000Z");
-    const expiredQuery = async () => ({
+    const expiredQuery = (async () => ({
       rows: [{
         wallet_address: WALLET,
         tier: "pro_bundle",
@@ -146,16 +147,15 @@ describe("server-side entitlement source", () => {
         expires_at: null,
         telegram_chat_id: null,
       }],
-    });
+    })) as SubscriptionQuery;
     await expect(isSubscriptionActive(WALLET, { query: expiredQuery, now })).resolves.toBe(false);
     await expect(isSubscriptionActive("not-a-wallet", { query: expiredQuery, now })).resolves.toBe(false);
+
+    const unavailable = (async () => {
+      throw new Error("database unavailable");
+    }) as SubscriptionQuery;
     await expect(
-      isSubscriptionActive(WALLET, {
-        now,
-        query: async () => {
-          throw new Error("database unavailable");
-        },
-      }),
+      isSubscriptionActive(WALLET, { now, query: unavailable }),
     ).resolves.toBe(false);
   });
 });
