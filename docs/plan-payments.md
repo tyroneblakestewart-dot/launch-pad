@@ -54,7 +54,8 @@ Apply migrations in order, including:
 ```text
 db/migrations/007_subscriptions.sql
 db/migrations/008_plan_payments.sql
-db/migrations/009_subscription_lifecycle.sql
+db/migrations/009_token_chat.sql
+db/migrations/010_subscription_lifecycle.sql
 ```
 
 - `subscriptions` stores each wallet's current plan, lifecycle state, `paid_from`, `paid_until` and optional Telegram link.
