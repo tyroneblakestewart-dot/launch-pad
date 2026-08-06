@@ -11,6 +11,17 @@ export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 
 export type SubscriptionReminderKind = "five_days" | "two_days" | "expiry";
 
+export type SubscriptionAccess = {
+  walletAddress: string;
+  plan: SubscriptionPlan | null;
+  status: SubscriptionStatus;
+  active: boolean;
+  paidFrom: string | null;
+  paidUntil: string | null;
+  daysRemaining: number;
+  telegramLinked: boolean;
+};
+
 export const SUBSCRIPTION_MONTHLY_DAYS = 32;
 export const SUBSCRIPTION_UPFRONT_DAYS = 96;
 export const SUBSCRIPTION_EXPIRING_DAYS = 5;
@@ -98,10 +109,9 @@ export function subscriptionStatusAt(
 }
 
 /**
- * Returns the most urgent reminder currently due. Using threshold windows
- * instead of an exact clock instant lets a failed daily send retry on the
- * following run without duplicating messages already protected by the
- * database uniqueness boundary.
+ * Returns the most urgent reminder currently due. Threshold windows let a
+ * failed daily send retry without duplicating a reminder already protected
+ * by the database uniqueness boundary.
  */
 export function dueSubscriptionReminder(
   paidUntil: Date | string,
