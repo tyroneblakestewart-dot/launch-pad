@@ -63,7 +63,7 @@ export async function createSubscriptionTelegramLink(input: {
 export type TelegramWebhookUpdate = {
   message?: {
     text?: string;
-    chat?: { id?: number };
+    chat?: { id?: number; type?: string };
     from?: { id?: number; username?: string };
   };
 };
@@ -158,8 +158,15 @@ export async function handleSubscriptionTelegramUpdate(
   const text = update.message?.text?.trim() || "";
   const match = /^\/start(?:@[A-Za-z0-9_]+)?\s+([A-Za-z0-9_-]{8,64})$/.exec(text);
   const chatId = update.message?.chat?.id;
+  const chatType = update.message?.chat?.type;
   const userId = update.message?.from?.id;
-  if (!match || !chatId || !userId) return { handled: false, linked: false };
+  const privateChat =
+    Boolean(chatId && userId) &&
+    chatId === userId &&
+    (!chatType || chatType === "private");
+  if (!match || !privateChat || !chatId || !userId) {
+    return { handled: false, linked: false };
+  }
 
   const result = await consumeTelegramLinkCode({
     code: match[1],
