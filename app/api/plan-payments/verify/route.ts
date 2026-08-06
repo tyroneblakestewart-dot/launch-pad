@@ -3,6 +3,10 @@ import { isPaidLaunchPath } from "@/lib/plan-payments";
 import { isAdminRequestOriginAllowed } from "@/lib/server/api-protection";
 import { PlanPaymentConfigurationError } from "@/lib/server/plan-payment-config";
 import {
+  PlanPaymentProofError,
+  verifyPlanPaymentWalletProof,
+} from "@/lib/server/plan-payment-proof";
+import {
   PlanPaymentError,
   verifyAndRecordPlanPayment,
 } from "@/lib/server/plan-payments";
@@ -25,19 +29,32 @@ export async function POST(request: Request) {
     plan?: unknown;
     walletAddress?: unknown;
     transactionHash?: unknown;
+    walletSignature?: unknown;
   };
   if (
     !isPaidLaunchPath(input.plan) ||
     typeof input.walletAddress !== "string" ||
-    typeof input.transactionHash !== "string"
+    typeof input.transactionHash !== "string" ||
+    typeof input.walletSignature !== "string"
   ) {
     return NextResponse.json(
-      { error: "Plan, walletAddress and transactionHash are required." },
+      {
+        error:
+          "Plan, walletAddress, transactionHash and walletSignature are required.",
+      },
       { status: 400 },
     );
   }
 
   try {
+    await verifyPlanPaymentWalletProof({
+      plan: input.plan,
+      walletAddress: input.walletAddress,
+      transactionHash: input.transactionHash,
+      walletSignature: input.walletSignature,
+      origin: new URL(request.url).origin,
+    });
+
     const result = await verifyAndRecordPlanPayment({
       plan: input.plan,
       walletAddress: input.walletAddress,
@@ -47,6 +64,9 @@ export async function POST(request: Request) {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {
+    if (error instanceof PlanPaymentProofError) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
+    }
     if (error instanceof PlanPaymentConfigurationError) {
       return NextResponse.json({ error: error.message }, { status: 503 });
     }
