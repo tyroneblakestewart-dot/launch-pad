@@ -37,7 +37,7 @@ describe("shared plan purchase flow", () => {
     );
   });
 
-  it("offers monthly and 3-month subscription choices but keeps one-off plans one-off", async () => {
+  it("offers monthly, upfront and server-supplied stablecoin choices", async () => {
     const checkout = await source("components", "plan-checkout.tsx");
     const catalog = await source("lib", "subscription-lifecycle.ts");
 
@@ -45,21 +45,24 @@ describe("shared plan purchase flow", () => {
     expect(checkout).toContain("3 months upfront · 96 days");
     expect(checkout).toContain('changeBillingPeriod("monthly")');
     expect(checkout).toContain('changeBillingPeriod("upfront")');
-    expect(checkout).toContain("setBillingPeriod(nextBilling)");
+    expect(checkout).toContain("currentQuote.paymentTokens.map");
+    expect(checkout).toContain("changePaymentToken(token.symbol)");
+    expect(checkout).toContain("Pay with {token.symbol}");
     expect(catalog).toContain('usdCents: 12_000, windowDays: 96');
     expect(catalog).toContain('usdCents: 28_800, windowDays: 96');
   });
 
-  it("sends the server-supplied USDT token call rather than constructing payment details in the browser", async () => {
+  it("sends only the server-supplied transaction rather than constructing payment details in the browser", async () => {
     const checkout = await source("components", "plan-checkout.tsx");
     const config = await source("lib", "server", "plan-payment-config.ts");
 
     expect(checkout).toContain("to: currentQuote.transactionTo");
     expect(checkout).toContain("value: currentQuote.transactionValue");
     expect(checkout).toContain("data: currentQuote.transactionData");
-    expect(checkout).not.toContain("HOODLUMS_USDT_TOKEN_ADDRESS");
+    expect(checkout).not.toContain("HOODLUMS_PAYMENT_TOKENS_JSON");
     expect(checkout).not.toContain("HOODLUMS_TREASURY_ADDRESS");
-    expect(config).toContain('configuredAddress(environment, "HOODLUMS_USDT_TOKEN_ADDRESS")');
+    expect(config).toContain("HOODLUMS_PAYMENT_TOKENS_JSON");
+    expect(config).toContain("getEnabledPaymentTokenOptions");
     expect(config).toContain("encodeFunctionData");
     expect(config).toContain('functionName: "transfer"');
   });
@@ -80,31 +83,38 @@ describe("shared plan purchase flow", () => {
     expect(checkout).toContain('method: "eth_sendTransaction"');
   });
 
-  it("requires a wallet proof tied to payer, transaction, plan, billing period and origin", async () => {
+  it("binds the wallet proof to payer, transaction, plan, billing period, token and origin", async () => {
     const checkout = await source("components", "plan-checkout.tsx");
     const route = await source("app", "api", "plan-payments", "verify", "route.ts");
     const proof = await source("lib", "plan-payment-proof.ts");
 
     expect(checkout).toContain('method: "personal_sign"');
     expect(checkout).toContain("billingPeriod: currentQuote.billingPeriod");
+    expect(checkout).toContain("paymentToken: currentQuote.asset");
     expect(route).toContain("verifyPlanPaymentWalletProof");
-    expect(route).toContain("billingPeriod");
-    expect(route).toContain("walletSignature");
+    expect(route).toContain("paymentToken: quote.asset");
     expect(proof).toContain("`Billing: ${billingPeriod}`");
+    expect(proof).toContain("`Token: ${paymentToken");
   });
 
-  it("resets quote state from the billing click rather than synchronously inside the fetch effect", async () => {
+  it("resets quote state from selection handlers rather than synchronously inside the fetch effect", async () => {
     const checkout = await source("components", "plan-checkout.tsx");
     const effectStart = checkout.indexOf("useEffect(() => {");
-    const effectEnd = checkout.indexOf("function changeBillingPeriod", effectStart);
+    const effectEnd = checkout.indexOf("function resetForSelection", effectStart);
     const effect = checkout.slice(effectStart, effectEnd);
-    const change = checkout.slice(effectEnd, checkout.indexOf("async function requestWalletProof"));
+    const handlers = checkout.slice(
+      effectEnd,
+      checkout.indexOf("async function requestWalletProof"),
+    );
 
     expect(effect).not.toContain("setQuote(null)");
     expect(effect).not.toContain('setPhase("loading")');
-    expect(change).toContain("setQuote(null)");
-    expect(change).toContain('setPhase("loading")');
-    expect(checkout).toContain("quote?.plan === plan && quote.billingPeriod === expectedBilling");
+    expect(handlers).toContain("setQuote(null)");
+    expect(handlers).toContain('setPhase("loading")');
+    expect(handlers).toContain("setPaymentToken(nextToken)");
+    expect(checkout).toContain("quote?.plan === plan");
+    expect(checkout).toContain("quote.billingPeriod === expectedBilling");
+    expect(checkout).toContain("quote.asset === paymentToken");
   });
 
   it("uses the exact selected EIP-6963 provider and a mobile-safe wallet button", async () => {
@@ -120,7 +130,7 @@ describe("shared plan purchase flow", () => {
 });
 
 describe("server verification and admin revenue standing rule", () => {
-  it("requires decoded USDT calldata and a matching Transfer event before recording", async () => {
+  it("requires decoded selected-token calldata and a matching Transfer event before recording", async () => {
     const server = await source("lib", "server", "plan-payments.ts");
 
     expect(server).toContain("decodeFunctionData");
@@ -128,6 +138,7 @@ describe("server verification and admin revenue standing rule", () => {
     expect(server).toContain('event.eventName !== "Transfer"');
     expect(server).toContain("missing-transfer-log");
     expect(server).toContain("getTokenDecimals");
+    expect(server).toContain("symbol: quote.asset");
   });
 
   it("writes every verified payment to subscriptions, history and admin activity", async () => {
@@ -136,6 +147,8 @@ describe("server verification and admin revenue standing rule", () => {
     const adminMoney = await source("components", "admin-money-section.tsx");
 
     expect(server).toContain("INSERT INTO plan_payment_events");
+    expect(server).toContain("asset_symbol");
+    expect(server).toContain("asset_contract");
     expect(server).toContain("INSERT INTO subscriptions");
     expect(server).toContain("payment-received");
     expect(adminServer).toContain("FROM plan_payment_events");
@@ -146,15 +159,15 @@ describe("server verification and admin revenue standing rule", () => {
     expect(adminMoney).toContain("payment.asset");
   });
 
-  it("keeps all treasury, USDT and native price configuration server-only", async () => {
+  it("keeps treasury, token catalog and native price configuration server-only", async () => {
     const config = await source("lib", "server", "plan-payment-config.ts");
     const client = await source("components", "plan-checkout.tsx");
 
     expect(config).toContain('configuredAddress(environment, "HOODLUMS_TREASURY_ADDRESS")');
-    expect(config).toContain('configuredAddress(environment, "HOODLUMS_USDT_TOKEN_ADDRESS")');
+    expect(config).toContain("HOODLUMS_PAYMENT_TOKENS_JSON");
     expect(config).toContain("nativeAmountWeiEnvironmentKey");
     expect(client).not.toContain("HOODLUMS_TREASURY_ADDRESS");
-    expect(client).not.toContain("HOODLUMS_USDT_TOKEN_ADDRESS");
+    expect(client).not.toContain("HOODLUMS_PAYMENT_TOKENS_JSON");
     expect(client).not.toContain("HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI");
   });
 });

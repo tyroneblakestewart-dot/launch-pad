@@ -17,8 +17,16 @@ export type PaidLaunchPath = (typeof PAID_LAUNCH_PATHS)[number];
 export type PaymentSubscriptionTier = "bond_pro_site" | "pro" | "pro_bundle";
 export type PaymentKind = "one_off" | "subscription";
 export type PaymentDestination = "builder" | "subscription-confirmation";
-export type PaymentAsset = "ETH" | "USDT";
+export type StablecoinSymbol = string;
+export type PaymentAsset = "ETH" | StablecoinSymbol;
 export type PaymentBillingPeriod = "one_off" | SubscriptionBillingPeriod;
+
+export type PaymentTokenOption = {
+  symbol: StablecoinSymbol;
+  contractAddress: `0x${string}`;
+  decimals: number;
+  note: string | null;
+};
 
 export type PlanPaymentDefinition = {
   id: PaidLaunchPath;
@@ -61,6 +69,7 @@ export type PlanPaymentQuote = {
   subscriptionDays: number | null;
   usdCents: number;
   asset: PaymentAsset;
+  paymentTokens: PaymentTokenOption[];
   amountAtomic: `0x${string}`;
   amountDisplay: string;
   treasuryAddress: `0x${string}`;

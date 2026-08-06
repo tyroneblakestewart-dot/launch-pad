@@ -4,7 +4,10 @@ import {
   resolvePaymentBillingPeriod,
 } from "@/lib/plan-payments";
 import { isAdminRequestOriginAllowed } from "@/lib/server/api-protection";
-import { PlanPaymentConfigurationError } from "@/lib/server/plan-payment-config";
+import {
+  getPlanPaymentQuote,
+  PlanPaymentConfigurationError,
+} from "@/lib/server/plan-payment-config";
 import {
   PlanPaymentProofError,
   verifyPlanPaymentWalletProof,
@@ -31,12 +34,14 @@ export async function POST(request: Request) {
   const input = body as {
     plan?: unknown;
     billingPeriod?: unknown;
+    paymentToken?: unknown;
     walletAddress?: unknown;
     transactionHash?: unknown;
     walletSignature?: unknown;
   };
   if (
     !isPaidLaunchPath(input.plan) ||
+    (input.paymentToken !== undefined && typeof input.paymentToken !== "string") ||
     typeof input.walletAddress !== "string" ||
     typeof input.transactionHash !== "string" ||
     typeof input.walletSignature !== "string"
@@ -44,7 +49,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Plan, walletAddress, transactionHash and walletSignature are required.",
+          "Plan, walletAddress, transactionHash and walletSignature are required; paymentToken must be a string when supplied.",
       },
       { status: 400 },
     );
@@ -53,9 +58,16 @@ export async function POST(request: Request) {
   const billingPeriod = resolvePaymentBillingPeriod(input.plan, input.billingPeriod);
 
   try {
+    const quote = getPlanPaymentQuote(
+      input.plan,
+      billingPeriod,
+      input.paymentToken,
+    );
+
     await verifyPlanPaymentWalletProof({
       plan: input.plan,
       billingPeriod,
+      paymentToken: quote.asset,
       walletAddress: input.walletAddress,
       transactionHash: input.transactionHash,
       walletSignature: input.walletSignature,
@@ -65,6 +77,7 @@ export async function POST(request: Request) {
     const result = await verifyAndRecordPlanPayment({
       plan: input.plan,
       billingPeriod,
+      paymentToken: quote.asset,
       walletAddress: input.walletAddress,
       transactionHash: input.transactionHash,
     });

@@ -27,8 +27,8 @@ import {
   subscriptionStatusAt,
 } from "@/lib/subscription-lifecycle";
 import {
+  ERC20_TRANSFER_ABI,
   getPlanPaymentQuote,
-  USDT_TRANSFER_ABI,
 } from "@/lib/server/plan-payment-config";
 import { getPostgresPool } from "@/lib/server/postgres";
 import { createSubscriptionTelegramLink } from "@/lib/server/subscription-telegram";
@@ -61,6 +61,7 @@ export class PlanPaymentError extends Error {
 export type VerifyPlanPaymentInput = {
   plan: PaidLaunchPath;
   billingPeriod?: PaymentBillingPeriod;
+  paymentToken?: string;
   walletAddress: string;
   transactionHash: string;
 };
@@ -101,6 +102,7 @@ export type ChainReceipt = {
 };
 
 export type VerifyChainDeps = {
+  environment?: Record<string, string | undefined>;
   getChainId: () => Promise<number>;
   getTransaction: (hash: Hash) => Promise<ChainTransaction>;
   getReceipt: (hash: Hash) => Promise<ChainReceipt>;
@@ -112,7 +114,16 @@ function sameAddress(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase();
 }
 
-function verifiedUsdtTransfer(input: {
+function sameOptionalAddress(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  if (!left || !right) return !left && !right;
+  return sameAddress(left, right);
+}
+
+function verifiedTokenTransfer(input: {
+  symbol: string;
   transaction: ChainTransaction;
   receipt: ChainReceipt;
   tokenAddress: Address;
@@ -122,42 +133,45 @@ function verifiedUsdtTransfer(input: {
 }): void {
   if (!input.transaction.to || !sameAddress(input.transaction.to, input.tokenAddress)) {
     throw new PlanPaymentError(
-      "The subscription transaction was not sent to the configured USDT contract.",
+      `The subscription transaction was not sent to the configured ${input.symbol} contract.`,
       "wrong-token",
     );
   }
   if (input.transaction.value !== 0n) {
     throw new PlanPaymentError(
-      "USDT subscription payments must not send native currency.",
+      `${input.symbol} subscription payments must not send native currency.`,
       "wrong-transaction-type",
     );
   }
 
   let decoded: ReturnType<typeof decodeFunctionData>;
   try {
-    decoded = decodeFunctionData({ abi: USDT_TRANSFER_ABI, data: input.transaction.input });
+    decoded = decodeFunctionData({
+      abi: ERC20_TRANSFER_ABI,
+      data: input.transaction.input,
+    });
   } catch {
     throw new PlanPaymentError(
-      "The transaction is not a direct USDT transfer.",
+      `The transaction is not a direct ${input.symbol} transfer.`,
       "wrong-transaction-type",
     );
   }
   if (decoded.functionName !== "transfer") {
     throw new PlanPaymentError(
-      "The transaction is not a direct USDT transfer.",
+      `The transaction is not a direct ${input.symbol} transfer.`,
       "wrong-transaction-type",
     );
   }
   const [recipient, amount] = decoded.args as readonly [Address, bigint];
   if (!sameAddress(recipient, input.treasuryAddress)) {
     throw new PlanPaymentError(
-      "The USDT payment was not sent to the configured treasury wallet.",
+      `The ${input.symbol} payment was not sent to the configured treasury wallet.`,
       "wrong-recipient",
     );
   }
   if (amount !== input.expectedAmount) {
     throw new PlanPaymentError(
-      "The USDT transfer amount does not match the selected subscription price.",
+      `The ${input.symbol} transfer amount does not match the selected subscription price.`,
       "underpaid",
     );
   }
@@ -166,7 +180,7 @@ function verifiedUsdtTransfer(input: {
     if (!sameAddress(log.address, input.tokenAddress)) return false;
     try {
       const event = decodeEventLog({
-        abi: USDT_TRANSFER_ABI,
+        abi: ERC20_TRANSFER_ABI,
         data: log.data,
         topics: log.topics as [Hex, ...Hex[]],
       });
@@ -183,7 +197,7 @@ function verifiedUsdtTransfer(input: {
   });
   if (!hasMatchingTransfer) {
     throw new PlanPaymentError(
-      "The confirmed receipt does not contain the required USDT Transfer event.",
+      `The confirmed receipt does not contain the required ${input.symbol} Transfer event.`,
       "missing-transfer-log",
     );
   }
@@ -201,7 +215,12 @@ export async function verifyPlanPaymentTransaction(
   }
 
   const billingPeriod = resolvePaymentBillingPeriod(input.plan, input.billingPeriod);
-  const quote = getPlanPaymentQuote(input.plan, billingPeriod);
+  const quote = getPlanPaymentQuote(
+    input.plan,
+    billingPeriod,
+    input.paymentToken,
+    deps?.environment ?? process.env,
+  );
   const client = deps
     ? null
     : createPublicClient({
@@ -224,7 +243,7 @@ export async function verifyPlanPaymentTransaction(
       getTokenDecimals: (tokenAddress: Address) =>
         client!.readContract({
           address: tokenAddress,
-          abi: USDT_TRANSFER_ABI,
+          abi: ERC20_TRANSFER_ABI,
           functionName: "decimals",
         }),
     } satisfies VerifyChainDeps);
@@ -270,21 +289,20 @@ export async function verifyPlanPaymentTransaction(
   }
 
   const expectedAtomic = BigInt(quote.amountAtomic);
-  if (quote.asset === "USDT") {
-    if (!quote.tokenAddress || quote.tokenDecimals === null) {
-      throw new PlanPaymentError("USDT payment configuration is incomplete.", "wrong-token");
-    }
-    const actualDecimals = await chain.getTokenDecimals(quote.tokenAddress);
+  const tokenPayment = quote.tokenAddress !== null && quote.tokenDecimals !== null;
+  if (tokenPayment) {
+    const actualDecimals = await chain.getTokenDecimals(quote.tokenAddress!);
     if (actualDecimals !== quote.tokenDecimals) {
       throw new PlanPaymentError(
-        "The configured USDT decimals do not match the on-chain token contract.",
+        `The configured ${quote.asset} decimals do not match the on-chain token contract.`,
         "wrong-token-decimals",
       );
     }
-    verifiedUsdtTransfer({
+    verifiedTokenTransfer({
+      symbol: quote.asset,
       transaction,
       receipt,
-      tokenAddress: quote.tokenAddress,
+      tokenAddress: quote.tokenAddress!,
       treasuryAddress: quote.treasuryAddress,
       walletAddress: input.walletAddress,
       expectedAmount: expectedAtomic,
@@ -311,8 +329,8 @@ export async function verifyPlanPaymentTransaction(
   }
 
   const catalog = paymentCatalogPrice(input.plan, billingPeriod);
-  const amountAtomic = quote.asset === "USDT" ? expectedAtomic : transaction.value;
-  const amountDisplay = quote.asset === "USDT"
+  const amountAtomic = tokenPayment ? expectedAtomic : transaction.value;
+  const amountDisplay = tokenPayment
     ? formatUnits(amountAtomic, quote.tokenDecimals!)
     : formatEther(amountAtomic);
 
@@ -337,6 +355,8 @@ type ExistingPaymentRow = {
   wallet_address: string;
   plan_id: string;
   billing_period: PaymentBillingPeriod;
+  asset_symbol?: string | null;
+  asset_contract?: string | null;
   paid_from: Date | string | null;
   paid_until: Date | string | null;
 };
@@ -434,7 +454,7 @@ export async function persistVerifiedPlanPayment(
          subscription_days
        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
        ON CONFLICT (payment_tx_hash) DO NOTHING
-       RETURNING wallet_address, plan_id, billing_period, paid_from, paid_until`,
+       RETURNING wallet_address, plan_id, billing_period, asset_symbol, asset_contract, paid_from, paid_until`,
       [
         payment.transactionHash.toLowerCase(),
         payment.walletAddress.toLowerCase(),
@@ -460,21 +480,29 @@ export async function persistVerifiedPlanPayment(
 
     if (inserted.rows.length === 0) {
       const existing = await client.query<ExistingPaymentRow>(
-        `SELECT wallet_address, plan_id, billing_period, paid_from, paid_until
+        `SELECT wallet_address, plan_id, billing_period,
+                asset_symbol, asset_contract, paid_from, paid_until
            FROM plan_payment_events
           WHERE payment_tx_hash = $1
           LIMIT 1`,
         [payment.transactionHash.toLowerCase()],
       );
       const row = existing.rows[0];
+      const recordedAssetMatches =
+        !row?.asset_symbol || row.asset_symbol === payment.asset;
+      const recordedContractMatches =
+        row?.asset_contract === undefined ||
+        sameOptionalAddress(row.asset_contract, payment.tokenAddress);
       if (
         !row ||
         !sameAddress(row.wallet_address, payment.walletAddress) ||
         row.plan_id !== payment.plan ||
-        row.billing_period !== payment.billingPeriod
+        row.billing_period !== payment.billingPeriod ||
+        !recordedAssetMatches ||
+        !recordedContractMatches
       ) {
         throw new PlanPaymentError(
-          "This transaction hash has already been used for another purchase.",
+          "This transaction hash has already been used for another purchase or payment token.",
           "replayed",
         );
       }

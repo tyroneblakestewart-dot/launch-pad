@@ -18,6 +18,7 @@ export class PlanPaymentProofError extends Error {
 export type VerifyPlanPaymentProofInput = {
   plan: PaidLaunchPath;
   billingPeriod: PaymentBillingPeriod;
+  paymentToken?: string;
   walletAddress: string;
   transactionHash: string;
   walletSignature: string;
@@ -52,6 +53,7 @@ export async function verifyPlanPaymentWalletProof(
     message: buildPlanPaymentProofMessage({
       plan: input.plan,
       billingPeriod: input.billingPeriod,
+      paymentToken: input.paymentToken,
       walletAddress: input.walletAddress,
       transactionHash: input.transactionHash,
       origin,
