@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { accountOverlayContentFromRecord } from "@/components/account-overlay-shell";
+import { accountOverlayContentFromRecord } from "@/lib/account-overlay-content";
 import {
   CMS_PREVIEW_QUERY_PARAM,
   resolvePageContent,
