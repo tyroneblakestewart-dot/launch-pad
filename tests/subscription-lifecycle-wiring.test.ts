@@ -29,7 +29,7 @@ describe("global subscription lifecycle wiring", () => {
     expect(banner).toContain('requestWorkspaceOpen("new", access.plan)');
     expect(banner).toContain('import { storeLaunchPathPreset } from "@/lib/launch-paths"');
     expect(banner).toContain("storeLaunchPathPreset(access.plan)");
-    expect(banner).toContain("Renew with USDT");
+    expect(banner).toContain("Renew with stablecoin");
     expect(css).toContain("@media (max-width: 640px)");
     expect(css).toContain("env(safe-area-inset-top)");
     expect(css).toContain("min-height: 44px");
@@ -46,11 +46,11 @@ describe("global subscription lifecycle wiring", () => {
     expect(route).toContain('headers: { "Cache-Control": "private, no-store" }');
   });
 
-  it("keeps billing locked after a hash exists so retry cannot trigger a second payment", async () => {
+  it("locks billing and stablecoin selection after a hash exists so retry cannot trigger another payment", async () => {
     const checkout = await source("components", "plan-checkout.tsx");
 
-    expect(checkout).toContain("const billingLocked = busy || Boolean(transactionHash)");
-    expect(checkout).toContain("disabled={billingLocked}");
+    expect(checkout).toContain("const selectionLocked = busy || Boolean(transactionHash)");
+    expect(checkout).toContain("disabled={selectionLocked}");
     expect(checkout).toContain("if (transactionHash && paymentWalletAddress && paymentSignature)");
     expect(checkout).toContain("RETRY VERIFICATION");
   });
@@ -98,6 +98,7 @@ describe("scheduled reminders and Telegram integration", () => {
     expect(pipeline).toContain("Last daily lifecycle run");
     expect(pipeline).toContain("Last Telegram renewal reminder");
     expect(pipeline).toContain("011_plan_payments.sql");
+    expect(pipeline).toContain("getConfiguredPaymentTokens");
   });
 });
 
@@ -145,7 +146,7 @@ describe("data retention and admin standing rule", () => {
     expect(migration).not.toMatch(/DROP\s+TABLE\s+subscriptions/i);
   });
 
-  it("shows lifecycle state and payment history in Subscribers and USDT revenue in Money", async () => {
+  it("shows lifecycle state and token-aware payment history in Subscribers and Money", async () => {
     const subscribers = await source("components", "admin-subscribers-section.tsx");
     const money = await source("components", "admin-money-section.tsx");
     const server = await source("lib", "server", "admin-operations.ts");
