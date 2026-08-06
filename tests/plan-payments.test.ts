@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Address, Hash } from "viem";
 import { getPlanPaymentQuote } from "@/lib/server/plan-payment-config";
 import {
-  PlanPaymentError,
   persistVerifiedPlanPayment,
   verifyPlanPaymentTransaction,
   type ChainReceipt,
@@ -13,11 +12,12 @@ import {
 const WALLET = "0x1111111111111111111111111111111111111111" as Address;
 const TREASURY = "0x2222222222222222222222222222222222222222" as Address;
 const HASH = `0x${"ab".repeat(32)}` as Hash;
+const CHAIN_ID = 46630;
 
 beforeEach(() => {
   process.env.HOODLUMS_TREASURY_ADDRESS = TREASURY;
   process.env.HOODLUMS_PAYMENT_RPC_URL = "https://rpc.example.test";
-  process.env.HOODLUMS_PAYMENT_CHAIN_ID = "46630";
+  process.env.HOODLUMS_PAYMENT_CHAIN_ID = String(CHAIN_ID);
   process.env.HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI = "1000000000000000";
   process.env.HOODLUMS_PRO_AMOUNT_WEI = "5000000000000000";
   process.env.HOODLUMS_PRO_BUNDLE_AMOUNT_WEI = "12000000000000000";
@@ -32,8 +32,13 @@ afterEach(() => {
   delete process.env.HOODLUMS_PRO_BUNDLE_AMOUNT_WEI;
 });
 
-function chain(overrides: Partial<ChainTransaction> = {}, receipt: Partial<ChainReceipt> = {}) {
+function chain(
+  overrides: Partial<ChainTransaction> = {},
+  receipt: Partial<ChainReceipt> = {},
+  chainId = CHAIN_ID,
+) {
   return {
+    getChainId: async () => chainId,
     getTransaction: async () => ({
       from: WALLET,
       to: TREASURY,
@@ -57,7 +62,7 @@ describe("plan payment configuration", () => {
       treasuryAddress: TREASURY,
       usdCents: 5_000,
       amountEth: "0.005",
-      chainId: 46630,
+      chainId: CHAIN_ID,
     });
     expect(quote.amountWei).toBe("0x11c37937e08000");
   });
@@ -83,7 +88,17 @@ describe("server-side chain verification", () => {
       transactionHash: HASH,
       amountWei: 5_000_000_000_000_000n,
       usdCents: 5_000,
+      chainId: CHAIN_ID,
     });
+  });
+
+  it("rejects an RPC that reports a different EVM chain", async () => {
+    await expect(
+      verifyPlanPaymentTransaction(
+        { plan: "pro", walletAddress: WALLET, transactionHash: HASH },
+        chain({}, {}, 1),
+      ),
+    ).rejects.toMatchObject({ code: "wrong-chain" });
   });
 
   it("rejects a payment to any wallet other than the configured treasury", async () => {
@@ -92,7 +107,7 @@ describe("server-side chain verification", () => {
         { plan: "pro", walletAddress: WALLET, transactionHash: HASH },
         chain({ to: "0x3333333333333333333333333333333333333333" }),
       ),
-    ).rejects.toMatchObject<Partial<PlanPaymentError>>({ code: "wrong-recipient" });
+    ).rejects.toMatchObject({ code: "wrong-recipient" });
   });
 
   it("rejects underpayment and contract-call transactions", async () => {
@@ -101,23 +116,23 @@ describe("server-side chain verification", () => {
         { plan: "pro", walletAddress: WALLET, transactionHash: HASH },
         chain({ value: 1n }),
       ),
-    ).rejects.toMatchObject<Partial<PlanPaymentError>>({ code: "underpaid" });
+    ).rejects.toMatchObject({ code: "underpaid" });
 
     await expect(
       verifyPlanPaymentTransaction(
         { plan: "pro", walletAddress: WALLET, transactionHash: HASH },
         chain({ input: "0x1234" }),
       ),
-    ).rejects.toMatchObject<Partial<PlanPaymentError>>({ code: "wrong-transaction-type" });
+    ).rejects.toMatchObject({ code: "wrong-transaction-type" });
   });
 
-  it("never unlocks a reverted or unconfirmed transaction", async () => {
+  it("never unlocks a reverted transaction", async () => {
     await expect(
       verifyPlanPaymentTransaction(
         { plan: "pro", walletAddress: WALLET, transactionHash: HASH },
         chain({}, { status: "reverted" }),
       ),
-    ).rejects.toMatchObject<Partial<PlanPaymentError>>({ code: "reverted" });
+    ).rejects.toMatchObject({ code: "reverted" });
   });
 });
 
@@ -159,6 +174,7 @@ describe("durable payment recording", () => {
         amountWei: 5_000_000_000_000_000n,
         amountEth: "0.005",
         usdCents: 5_000,
+        chainId: CHAIN_ID,
         blockNumber: 123n,
       },
       { connect: async () => client, now },
@@ -199,6 +215,7 @@ describe("durable payment recording", () => {
         amountWei: 5_000_000_000_000_000n,
         amountEth: "0.005",
         usdCents: 5_000,
+        chainId: CHAIN_ID,
         blockNumber: 123n,
       },
       { connect: async () => client, now: new Date("2026-08-06T09:00:00.000Z") },
