@@ -43,8 +43,9 @@ describe("shared plan purchase flow", () => {
 
     expect(checkout).toContain("Monthly · 32 days");
     expect(checkout).toContain("3 months upfront · 96 days");
-    expect(checkout).toContain('setBillingPeriod("monthly")');
-    expect(checkout).toContain('setBillingPeriod("upfront")');
+    expect(checkout).toContain('changeBillingPeriod("monthly")');
+    expect(checkout).toContain('changeBillingPeriod("upfront")');
+    expect(checkout).toContain("setBillingPeriod(nextBilling)");
     expect(catalog).toContain('usdCents: 12_000, windowDays: 96');
     expect(catalog).toContain('usdCents: 28_800, windowDays: 96');
   });
@@ -53,9 +54,9 @@ describe("shared plan purchase flow", () => {
     const checkout = await source("components", "plan-checkout.tsx");
     const config = await source("lib", "server", "plan-payment-config.ts");
 
-    expect(checkout).toContain("to: quote.transactionTo");
-    expect(checkout).toContain("value: quote.transactionValue");
-    expect(checkout).toContain("data: quote.transactionData");
+    expect(checkout).toContain("to: currentQuote.transactionTo");
+    expect(checkout).toContain("value: currentQuote.transactionValue");
+    expect(checkout).toContain("data: currentQuote.transactionData");
     expect(checkout).not.toContain("HOODLUMS_USDT_TOKEN_ADDRESS");
     expect(checkout).not.toContain("HOODLUMS_TREASURY_ADDRESS");
     expect(config).toContain('configuredAddress(environment, "HOODLUMS_USDT_TOKEN_ADDRESS")');
@@ -85,11 +86,25 @@ describe("shared plan purchase flow", () => {
     const proof = await source("lib", "plan-payment-proof.ts");
 
     expect(checkout).toContain('method: "personal_sign"');
-    expect(checkout).toContain("billingPeriod: quote.billingPeriod");
+    expect(checkout).toContain("billingPeriod: currentQuote.billingPeriod");
     expect(route).toContain("verifyPlanPaymentWalletProof");
     expect(route).toContain("billingPeriod");
     expect(route).toContain("walletSignature");
     expect(proof).toContain("`Billing: ${billingPeriod}`");
+  });
+
+  it("resets quote state from the billing click rather than synchronously inside the fetch effect", async () => {
+    const checkout = await source("components", "plan-checkout.tsx");
+    const effectStart = checkout.indexOf("useEffect(() => {");
+    const effectEnd = checkout.indexOf("function changeBillingPeriod", effectStart);
+    const effect = checkout.slice(effectStart, effectEnd);
+    const change = checkout.slice(effectEnd, checkout.indexOf("async function requestWalletProof"));
+
+    expect(effect).not.toContain("setQuote(null)");
+    expect(effect).not.toContain('setPhase("loading")');
+    expect(change).toContain("setQuote(null)");
+    expect(change).toContain('setPhase("loading")');
+    expect(checkout).toContain("quote?.plan === plan && quote.billingPeriod === expectedBilling");
   });
 
   it("uses the exact selected EIP-6963 provider and a mobile-safe wallet button", async () => {
