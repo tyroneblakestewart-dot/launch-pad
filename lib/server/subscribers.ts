@@ -201,7 +201,7 @@ export async function listSubscribers(deps: ListSubscribersDeps = {}): Promise<A
     return {
       status: "unavailable",
       message:
-        "Subscriber lifecycle data could not be loaded. Apply migrations through 009_subscription_lifecycle.sql and try again.",
+        "Subscriber lifecycle data could not be loaded. Apply migrations through 010_subscription_lifecycle.sql and try again.",
       rows: [],
     };
   }
