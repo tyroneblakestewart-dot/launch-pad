@@ -1,9 +1,24 @@
 import {
+  type AdminSubscriberPayment,
   type AdminSubscriberRow,
   type AdminSubscriberTier,
   type AdminSubscribersSnapshot,
 } from "@/lib/admin-operations";
+import { subscriptionStatusAt } from "@/lib/subscription-lifecycle";
 import { getPostgresPool } from "@/lib/server/postgres";
+
+export type SubscribersPaymentQueryRow = {
+  payment_tx_hash: string;
+  plan_id: AdminSubscriberPayment["planId"];
+  billing_period: AdminSubscriberPayment["billingPeriod"] | null;
+  asset_symbol: string | null;
+  amount_display: string | null;
+  amount_eth: string | null;
+  amount_usd_cents: number | string;
+  paid_from: Date | string | null;
+  paid_until: Date | string | null;
+  confirmed_at: Date | string;
+};
 
 export type SubscribersQueryRow = {
   wallet_address: string;
@@ -11,12 +26,19 @@ export type SubscribersQueryRow = {
   status: string | null;
   started_at: Date | string | null;
   expires_at: Date | string | null;
+  paid_from: Date | string | null;
+  paid_until: Date | string | null;
   payment_tx_hash: string | null;
   amount_eth: string | null;
+  last_payment_asset: string | null;
+  last_payment_amount: string | null;
+  telegram_user_id: number | string | null;
+  telegram_username: string | null;
   created_at: Date | string | null;
   slugs: Array<string | null> | null;
   x_handles: Array<string | null> | null;
   telegrams: Array<string | null> | null;
+  payment_history: SubscribersPaymentQueryRow[] | null;
 };
 
 export type SubscribersQuery = (
@@ -30,14 +52,6 @@ export type ListSubscribersDeps = {
   now?: Date;
 };
 
-/**
- * Every wallet on the platform, joined from two independent sources: wallets
- * that have published a site (`published_sites`, always present) and wallets
- * with a durable subscription record (`subscriptions`, only present once a
- * wallet has paid). A wallet in one table but not the other is not an error
- * — it is either a free-tier publisher or a subscriber who hasn't published
- * yet — so this is a FULL OUTER JOIN, not an inner join.
- */
 const SUBSCRIBERS_QUERY = `
   WITH site_wallets AS (
     SELECT
@@ -54,12 +68,39 @@ const SUBSCRIBERS_QUERY = `
     sub.status,
     sub.started_at,
     sub.expires_at,
+    sub.paid_from,
+    sub.paid_until,
     sub.payment_tx_hash,
     sub.amount_eth,
+    sub.last_payment_asset,
+    sub.last_payment_amount,
+    sub.telegram_user_id,
+    sub.telegram_username,
     sub.created_at,
     sw.slugs,
     sw.x_handles,
-    sw.telegrams
+    sw.telegrams,
+    COALESCE(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'payment_tx_hash', payment.payment_tx_hash,
+            'plan_id', payment.plan_id,
+            'billing_period', payment.billing_period,
+            'asset_symbol', payment.asset_symbol,
+            'amount_display', payment.amount_display,
+            'amount_eth', payment.amount_eth,
+            'amount_usd_cents', payment.amount_usd_cents,
+            'paid_from', payment.paid_from,
+            'paid_until', payment.paid_until,
+            'confirmed_at', payment.confirmed_at
+          ) ORDER BY payment.confirmed_at DESC
+        )
+        FROM plan_payment_events payment
+        WHERE payment.wallet_address = COALESCE(sw.wallet_address, sub.wallet_address)
+      ),
+      '[]'::jsonb
+    ) AS payment_history
   FROM site_wallets sw
   FULL OUTER JOIN subscriptions sub ON sub.wallet_address = sw.wallet_address
   ORDER BY COALESCE(sw.wallet_address, sub.wallet_address)
@@ -76,15 +117,31 @@ function firstNonEmpty(values: Array<string | null> | null): string | null {
   return found ? found.trim() : null;
 }
 
+function paymentFromQueryRow(row: SubscribersPaymentQueryRow): AdminSubscriberPayment {
+  return {
+    transactionHash: row.payment_tx_hash,
+    planId: row.plan_id,
+    billingPeriod: row.billing_period ?? (row.plan_id === "bond-pro-site" ? "one_off" : "monthly"),
+    asset: row.asset_symbol || (row.amount_eth ? "ETH" : "—"),
+    amountDisplay: row.amount_display || row.amount_eth || "—",
+    amountUsdCents: Number(row.amount_usd_cents || 0),
+    paidFrom: asIso(row.paid_from),
+    paidUntil: asIso(row.paid_until),
+    confirmedAt: asIso(row.confirmed_at)!,
+  };
+}
+
 function rowFromQueryRow(row: SubscribersQueryRow, now: Date): AdminSubscriberRow {
   const hasSubscription = Boolean(row.tier);
-  const expiresAt = asIso(row.expires_at);
-  const isExpired = Boolean(expiresAt && new Date(expiresAt).getTime() < now.getTime());
+  const paidUntil = asIso(row.paid_until ?? row.expires_at);
   const tier = (hasSubscription ? row.tier : "free") as AdminSubscriberTier;
-  const status = !hasSubscription ? "free" : isExpired ? "expired" : "active";
+  const status = !hasSubscription ? "free" : subscriptionStatusAt(paidUntil, now);
   const slugs = [...new Set((row.slugs || []).filter((slug): slug is string => Boolean(slug)))].sort((a, b) =>
     a.localeCompare(b),
   );
+  const linkedTelegram = row.telegram_username
+    ? `@${row.telegram_username.replace(/^@/, "")}`
+    : null;
 
   return {
     walletAddress: row.wallet_address,
@@ -92,23 +149,29 @@ function rowFromQueryRow(row: SubscribersQueryRow, now: Date): AdminSubscriberRo
     status,
     slugs,
     xHandle: firstNonEmpty(row.x_handles),
-    telegram: firstNonEmpty(row.telegrams),
+    telegram: linkedTelegram || firstNonEmpty(row.telegrams),
+    telegramLinked: Boolean(row.telegram_user_id),
     startedAt: asIso(row.started_at),
-    expiresAt,
+    expiresAt: paidUntil,
+    paidFrom: asIso(row.paid_from),
+    paidUntil,
+    lastPaymentAsset: row.last_payment_asset || (row.amount_eth ? "ETH" : null),
+    lastPaymentAmount: row.last_payment_amount || row.amount_eth || null,
     lastPaymentAmountEth: row.amount_eth || null,
     lastPaymentAt: asIso(row.created_at),
+    paymentHistory: (row.payment_history || []).map(paymentFromQueryRow),
   };
 }
 
 /**
- * Read-only. Never throws — a missing DATABASE_URL, an unapplied migration
- * (the `subscriptions` table not existing yet) or any other query failure
- * all degrade to an "unavailable" snapshot with an empty row list, so the
- * dashboard can always render "No subscribers yet" instead of an error.
+ * Read-only. Never throws — a missing database/migration degrades to an
+ * unavailable snapshot so the admin cockpit itself remains usable.
  */
 export async function listSubscribers(deps: ListSubscribersDeps = {}): Promise<AdminSubscribersSnapshot> {
   const databaseUrl = deps.databaseUrl ?? process.env.DATABASE_URL?.trim() ?? "";
-  const query = deps.query ?? (databaseUrl ? (text: string, params?: unknown[]) => getPostgresPool(databaseUrl).query(text, params) : null);
+  const query = deps.query ?? (databaseUrl
+    ? (text: string, params?: unknown[]) => getPostgresPool(databaseUrl).query(text, params)
+    : null);
 
   if (!query) {
     return { status: "unavailable", message: "DATABASE_URL is not configured.", rows: [] };
@@ -119,13 +182,14 @@ export async function listSubscribers(deps: ListSubscribersDeps = {}): Promise<A
     const result = await query(SUBSCRIBERS_QUERY);
     return {
       status: "ready",
-      message: "Live data from Postgres.",
+      message: "Live subscription lifecycle and payment history from Postgres.",
       rows: result.rows.map((row) => rowFromQueryRow(row, now)),
     };
   } catch {
     return {
       status: "unavailable",
-      message: "Subscriber data could not be loaded. Apply migration 007_subscriptions.sql and try again.",
+      message:
+        "Subscriber lifecycle data could not be loaded. Apply migrations through 009_subscription_lifecycle.sql and try again.",
       rows: [],
     };
   }
