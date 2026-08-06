@@ -12,10 +12,11 @@ const SIGNATURE = `0x${"cd".repeat(65)}` as Hex;
 const ORIGIN = "https://hoodlums.dev";
 
 describe("plan payment wallet proof", () => {
-  it("binds the signature message to origin, plan, wallet and transaction", () => {
+  it("binds the signature to origin, plan, billing period, wallet and transaction", () => {
     expect(
       buildPlanPaymentProofMessage({
         plan: "pro-bundle",
+        billingPeriod: "upfront",
         walletAddress: WALLET,
         transactionHash: HASH,
         origin: ORIGIN,
@@ -24,6 +25,7 @@ describe("plan payment wallet proof", () => {
       [
         "Origin: https://hoodlums.dev",
         "Plan: pro-bundle",
+        "Billing: upfront",
         `Wallet: ${WALLET}`,
         `Transaction: ${HASH}`,
       ].join("\n"),
@@ -36,6 +38,7 @@ describe("plan payment wallet proof", () => {
     await verifyPlanPaymentWalletProof(
       {
         plan: "pro",
+        billingPeriod: "monthly",
         walletAddress: WALLET,
         transactionHash: HASH,
         walletSignature: SIGNATURE,
@@ -49,6 +52,7 @@ describe("plan payment wallet proof", () => {
       signature: SIGNATURE,
       message: buildPlanPaymentProofMessage({
         plan: "pro",
+        billingPeriod: "monthly",
         walletAddress: WALLET,
         transactionHash: HASH,
         origin: ORIGIN,
@@ -56,11 +60,30 @@ describe("plan payment wallet proof", () => {
     });
   });
 
+  it("prevents a monthly proof from being reused for an upfront purchase", () => {
+    const monthly = buildPlanPaymentProofMessage({
+      plan: "pro",
+      billingPeriod: "monthly",
+      walletAddress: WALLET,
+      transactionHash: HASH,
+      origin: ORIGIN,
+    });
+    const upfront = buildPlanPaymentProofMessage({
+      plan: "pro",
+      billingPeriod: "upfront",
+      walletAddress: WALLET,
+      transactionHash: HASH,
+      origin: ORIGIN,
+    });
+    expect(monthly).not.toBe(upfront);
+  });
+
   it("rejects a signature that does not recover to the paying wallet", async () => {
     await expect(
       verifyPlanPaymentWalletProof(
         {
           plan: "bond-pro-site",
+          billingPeriod: "one_off",
           walletAddress: WALLET,
           transactionHash: HASH,
           walletSignature: SIGNATURE,
@@ -75,6 +98,7 @@ describe("plan payment wallet proof", () => {
     await expect(
       verifyPlanPaymentWalletProof({
         plan: "pro",
+        billingPeriod: "monthly",
         walletAddress: "not-an-address",
         transactionHash: HASH,
         walletSignature: "not-a-signature",
