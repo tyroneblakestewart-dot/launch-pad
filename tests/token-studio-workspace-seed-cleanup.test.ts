@@ -31,8 +31,12 @@ describe("token studio workspace no longer force-seeds the operator's launch", (
       workspace.indexOf("function findStudioButton"),
     );
     expect(cleanupBlock).toContain("removeSeededHoodlumsLaunch(parsed)");
-    expect(cleanupBlock).not.toContain("localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed))");
-    expect(cleanupBlock).not.toMatch(/setItem\(STORAGE_KEY,\s*JSON\.stringify\(\s*\[/);
+    expect(cleanupBlock).not.toContain(
+      "localStorage.setItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY, JSON.stringify(parsed))",
+    );
+    expect(cleanupBlock).not.toMatch(
+      /setItem\(TOKEN_STUDIO_PROJECTS_STORAGE_KEY,\s*JSON\.stringify\(\s*\[/,
+    );
   });
 
   it("calls the cleanup exactly once, from the mount effect", async () => {
@@ -48,7 +52,7 @@ describe("token studio workspace no longer force-seeds the operator's launch", (
     expect(mountEffect).toContain("useEffect(() => {\n    cleanUpSeededHoodlumsLaunch();\n  }, []);");
   });
 
-  it("does not call any seeding/cleanup function from openWorkspace or openSavedLaunches", async () => {
+  it("never re-seeds from openWorkspace or openSavedLaunches", async () => {
     const workspace = await readWorkspaceSource();
 
     const openWorkspaceBlock = workspace.slice(
@@ -63,6 +67,9 @@ describe("token studio workspace no longer force-seeds the operator's launch", (
     expect(openWorkspaceBlock).not.toContain("cleanUpSeededHoodlumsLaunch");
     expect(openWorkspaceBlock).not.toContain("localStorage");
     expect(openSavedLaunchesBlock).not.toContain("cleanUpSeededHoodlumsLaunch");
-    expect(openSavedLaunchesBlock).not.toContain("localStorage");
+    expect(openSavedLaunchesBlock).toContain(
+      "localStorage.getItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY)",
+    );
+    expect(openSavedLaunchesBlock).not.toContain("localStorage.setItem");
   });
 });
