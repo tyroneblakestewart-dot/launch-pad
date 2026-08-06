@@ -18,6 +18,16 @@ const nextConfig: NextConfig = {
   },
   basePath: isStaticExport ? repositoryBasePath : "",
   assetPrefix: isStaticExport ? repositoryBasePath : "",
+  async redirects() {
+    if (isStaticExport) return [];
+    return [
+      {
+        source: "/account",
+        destination: "/?account=open",
+        permanent: false,
+      },
+    ];
+  },
   env: {
     GENERATE_SITE_STYLE_SHARED_SECRET: generationSharedToken,
     NEXT_PUBLIC_GENERATE_SITE_STYLE_SHARED_SECRET: generationSharedToken,
