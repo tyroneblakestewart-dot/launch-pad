@@ -27,7 +27,8 @@ describe("global subscription lifecycle wiring", () => {
     expect(banner).toContain("renew now");
     expect(banner).toContain("has expired — renew to unlock your features. Your data is safe.");
     expect(banner).toContain('requestWorkspaceOpen("new", access.plan)');
-    expect(banner).toContain('window.sessionStorage.setItem("hoodlums:launch-path-preset", access.plan)');
+    expect(banner).toContain('import { storeLaunchPathPreset } from "@/lib/launch-paths"');
+    expect(banner).toContain("storeLaunchPathPreset(access.plan)");
     expect(banner).toContain("Renew with USDT");
     expect(css).toContain("@media (max-width: 640px)");
     expect(css).toContain("env(safe-area-inset-top)");
