@@ -7,9 +7,9 @@ import styles from "./hoodlums-token-grid.module.css";
 type Tab = "bonding" | "graduated" | "new";
 
 const TABS: { key: Tab; label: string }[] = [
+  { key: "new", label: "New" },
   { key: "bonding", label: "Bonding" },
   { key: "graduated", label: "Graduated" },
-  { key: "new", label: "New" },
 ];
 
 function initial(name: string): string {
@@ -17,7 +17,7 @@ function initial(name: string): string {
 }
 
 export function HoodlumsTokenGrid({ liveSites }: { liveSites: PublicGeneratedSite[] }) {
-  const [tab, setTab] = useState<Tab>("bonding");
+  const [tab, setTab] = useState<Tab>("new");
 
   // The bonding curve isn't deployed yet (issue #185), so every live site is
   // an honest "bonding" / "new" token at 0% graduation. "Graduated" stays
