@@ -1,20 +1,37 @@
 import type { PoolClient } from "pg";
 import {
   createPublicClient,
+  decodeEventLog,
+  decodeFunctionData,
   formatEther,
+  formatUnits,
   http,
   isAddress,
   isHash,
   type Address,
   type Hash,
+  type Hex,
 } from "viem";
 import {
+  paymentCatalogPrice,
   planPaymentDefinition,
+  resolvePaymentBillingPeriod,
   type PaidLaunchPath,
+  type PaymentAsset,
+  type PaymentBillingPeriod,
   type PlanPaymentVerification,
 } from "@/lib/plan-payments";
-import { getPlanPaymentQuote } from "@/lib/server/plan-payment-config";
+import {
+  calculateSubscriptionWindow,
+  isSubscriptionPlan,
+  subscriptionStatusAt,
+} from "@/lib/subscription-lifecycle";
+import {
+  getPlanPaymentQuote,
+  USDT_TRANSFER_ABI,
+} from "@/lib/server/plan-payment-config";
 import { getPostgresPool } from "@/lib/server/postgres";
+import { createSubscriptionTelegramLink } from "@/lib/server/subscription-telegram";
 
 const MIN_CONFIRMATIONS = 1;
 
@@ -28,8 +45,11 @@ export class PlanPaymentError extends Error {
       | "wrong-chain"
       | "wrong-sender"
       | "wrong-recipient"
+      | "wrong-token"
+      | "wrong-token-decimals"
       | "underpaid"
       | "wrong-transaction-type"
+      | "missing-transfer-log"
       | "replayed"
       | "database-unavailable",
   ) {
@@ -40,17 +60,23 @@ export class PlanPaymentError extends Error {
 
 export type VerifyPlanPaymentInput = {
   plan: PaidLaunchPath;
+  billingPeriod?: PaymentBillingPeriod;
   walletAddress: string;
   transactionHash: string;
 };
 
 export type VerifiedChainPayment = {
   plan: PaidLaunchPath;
+  billingPeriod: PaymentBillingPeriod;
   walletAddress: Address;
   transactionHash: Hash;
-  amountWei: bigint;
-  amountEth: string;
+  asset: PaymentAsset;
+  tokenAddress: Address | null;
+  amountAtomic: bigint;
+  amountDisplay: string;
+  amountEth: string | null;
   usdCents: number;
+  subscriptionDays: number | null;
   chainId: number;
   blockNumber: bigint;
 };
@@ -59,12 +85,19 @@ export type ChainTransaction = {
   from: Address;
   to: Address | null;
   value: bigint;
-  input: `0x${string}`;
+  input: Hex;
+};
+
+export type ChainLog = {
+  address: Address;
+  data: Hex;
+  topics: readonly Hex[];
 };
 
 export type ChainReceipt = {
   status: "success" | "reverted";
   blockNumber: bigint;
+  logs: readonly ChainLog[];
 };
 
 export type VerifyChainDeps = {
@@ -72,10 +105,88 @@ export type VerifyChainDeps = {
   getTransaction: (hash: Hash) => Promise<ChainTransaction>;
   getReceipt: (hash: Hash) => Promise<ChainReceipt>;
   getConfirmations: (hash: Hash) => Promise<bigint>;
+  getTokenDecimals: (tokenAddress: Address) => Promise<number>;
 };
 
 function sameAddress(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase();
+}
+
+function verifiedUsdtTransfer(input: {
+  transaction: ChainTransaction;
+  receipt: ChainReceipt;
+  tokenAddress: Address;
+  treasuryAddress: Address;
+  walletAddress: Address;
+  expectedAmount: bigint;
+}): void {
+  if (!input.transaction.to || !sameAddress(input.transaction.to, input.tokenAddress)) {
+    throw new PlanPaymentError(
+      "The subscription transaction was not sent to the configured USDT contract.",
+      "wrong-token",
+    );
+  }
+  if (input.transaction.value !== 0n) {
+    throw new PlanPaymentError(
+      "USDT subscription payments must not send native currency.",
+      "wrong-transaction-type",
+    );
+  }
+
+  let decoded: ReturnType<typeof decodeFunctionData>;
+  try {
+    decoded = decodeFunctionData({ abi: USDT_TRANSFER_ABI, data: input.transaction.input });
+  } catch {
+    throw new PlanPaymentError(
+      "The transaction is not a direct USDT transfer.",
+      "wrong-transaction-type",
+    );
+  }
+  if (decoded.functionName !== "transfer") {
+    throw new PlanPaymentError(
+      "The transaction is not a direct USDT transfer.",
+      "wrong-transaction-type",
+    );
+  }
+  const [recipient, amount] = decoded.args as readonly [Address, bigint];
+  if (!sameAddress(recipient, input.treasuryAddress)) {
+    throw new PlanPaymentError(
+      "The USDT payment was not sent to the configured treasury wallet.",
+      "wrong-recipient",
+    );
+  }
+  if (amount !== input.expectedAmount) {
+    throw new PlanPaymentError(
+      "The USDT transfer amount does not match the selected subscription price.",
+      "underpaid",
+    );
+  }
+
+  const hasMatchingTransfer = input.receipt.logs.some((log) => {
+    if (!sameAddress(log.address, input.tokenAddress)) return false;
+    try {
+      const event = decodeEventLog({
+        abi: USDT_TRANSFER_ABI,
+        data: log.data,
+        topics: log.topics as [Hex, ...Hex[]],
+      });
+      if (event.eventName !== "Transfer") return false;
+      const args = event.args as { from: Address; to: Address; value: bigint };
+      return (
+        sameAddress(args.from, input.walletAddress) &&
+        sameAddress(args.to, input.treasuryAddress) &&
+        args.value === input.expectedAmount
+      );
+    } catch {
+      return false;
+    }
+  });
+  if (!hasMatchingTransfer) {
+    throw new PlanPaymentError(
+      "The confirmed receipt does not contain the required USDT Transfer event.",
+      "missing-transfer-log",
+    );
+  }
 }
 
 export async function verifyPlanPaymentTransaction(
@@ -89,7 +200,8 @@ export async function verifyPlanPaymentTransaction(
     );
   }
 
-  const quote = getPlanPaymentQuote(input.plan);
+  const billingPeriod = resolvePaymentBillingPeriod(input.plan, input.billingPeriod);
+  const quote = getPlanPaymentQuote(input.plan, billingPeriod);
   const client = deps
     ? null
     : createPublicClient({
@@ -108,8 +220,13 @@ export async function verifyPlanPaymentTransaction(
       getChainId: () => client!.getChainId(),
       getTransaction: (hash: Hash) => client!.getTransaction({ hash }),
       getReceipt: (hash: Hash) => client!.getTransactionReceipt({ hash }),
-      getConfirmations: (hash: Hash) =>
-        client!.getTransactionConfirmations({ hash }),
+      getConfirmations: (hash: Hash) => client!.getTransactionConfirmations({ hash }),
+      getTokenDecimals: (tokenAddress: Address) =>
+        client!.readContract({
+          address: tokenAddress,
+          abi: USDT_TRANSFER_ABI,
+          functionName: "decimals",
+        }),
     } satisfies VerifyChainDeps);
 
   let chainId: number;
@@ -151,34 +268,66 @@ export async function verifyPlanPaymentTransaction(
       "wrong-sender",
     );
   }
-  if (!transaction.to || !sameAddress(transaction.to, quote.treasuryAddress)) {
-    throw new PlanPaymentError(
-      "The payment was not sent to the configured treasury wallet.",
-      "wrong-recipient",
-    );
-  }
-  if (transaction.input !== "0x") {
-    throw new PlanPaymentError(
-      "Plan payments must be direct ETH transfers to the treasury.",
-      "wrong-transaction-type",
-    );
+
+  const expectedAtomic = BigInt(quote.amountAtomic);
+  if (quote.asset === "USDT") {
+    if (!quote.tokenAddress || quote.tokenDecimals === null) {
+      throw new PlanPaymentError("USDT payment configuration is incomplete.", "wrong-token");
+    }
+    const actualDecimals = await chain.getTokenDecimals(quote.tokenAddress);
+    if (actualDecimals !== quote.tokenDecimals) {
+      throw new PlanPaymentError(
+        "The configured USDT decimals do not match the on-chain token contract.",
+        "wrong-token-decimals",
+      );
+    }
+    verifiedUsdtTransfer({
+      transaction,
+      receipt,
+      tokenAddress: quote.tokenAddress,
+      treasuryAddress: quote.treasuryAddress,
+      walletAddress: input.walletAddress,
+      expectedAmount: expectedAtomic,
+    });
+  } else {
+    if (!transaction.to || !sameAddress(transaction.to, quote.treasuryAddress)) {
+      throw new PlanPaymentError(
+        "The payment was not sent to the configured treasury wallet.",
+        "wrong-recipient",
+      );
+    }
+    if (transaction.input !== "0x") {
+      throw new PlanPaymentError(
+        "The one-off payment must be a direct ETH transfer to the treasury.",
+        "wrong-transaction-type",
+      );
+    }
+    if (transaction.value < expectedAtomic) {
+      throw new PlanPaymentError(
+        `The payment is below the required ${quote.amountDisplay} ETH.`,
+        "underpaid",
+      );
+    }
   }
 
-  const expectedWei = BigInt(quote.amountWei);
-  if (transaction.value < expectedWei) {
-    throw new PlanPaymentError(
-      `The payment is below the required ${quote.amountEth} ETH.`,
-      "underpaid",
-    );
-  }
+  const catalog = paymentCatalogPrice(input.plan, billingPeriod);
+  const amountAtomic = quote.asset === "USDT" ? expectedAtomic : transaction.value;
+  const amountDisplay = quote.asset === "USDT"
+    ? formatUnits(amountAtomic, quote.tokenDecimals!)
+    : formatEther(amountAtomic);
 
   return {
     plan: input.plan,
+    billingPeriod,
     walletAddress: input.walletAddress,
     transactionHash: input.transactionHash,
-    amountWei: transaction.value,
-    amountEth: formatEther(transaction.value),
-    usdCents: quote.usdCents,
+    asset: quote.asset,
+    tokenAddress: quote.tokenAddress,
+    amountAtomic,
+    amountDisplay,
+    amountEth: quote.asset === "ETH" ? amountDisplay : null,
+    usdCents: catalog.usdCents,
+    subscriptionDays: catalog.subscriptionDays,
     chainId,
     blockNumber: receipt.blockNumber,
   };
@@ -187,19 +336,18 @@ export async function verifyPlanPaymentTransaction(
 type ExistingPaymentRow = {
   wallet_address: string;
   plan_id: string;
+  billing_period: PaymentBillingPeriod;
+  paid_from: Date | string | null;
   paid_until: Date | string | null;
 };
 
 type ExistingSubscriptionRow = {
+  paid_until: Date | string | null;
   expires_at: Date | string | null;
 };
 
 export type PlanPaymentDatabaseClient = Pick<PoolClient, "query" | "release">;
 export type PlanPaymentConnect = () => Promise<PlanPaymentDatabaseClient>;
-
-function addDays(start: Date, days: number): Date {
-  return new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
-}
 
 async function safeRollback(client: PlanPaymentDatabaseClient): Promise<void> {
   try {
@@ -207,6 +355,11 @@ async function safeRollback(client: PlanPaymentDatabaseClient): Promise<void> {
   } catch {
     // Keep the original error.
   }
+}
+
+function iso(value: Date | string | null): string | null {
+  if (!value) return null;
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
 export async function persistVerifiedPlanPayment(
@@ -235,22 +388,27 @@ export async function persistVerifiedPlanPayment(
   try {
     await client.query("BEGIN");
 
+    let paidFrom: Date | null = null;
     let paidUntil: Date | null = null;
-    if (definition.subscriptionDays) {
+    if (isSubscriptionPlan(payment.plan)) {
       const existingSubscription = await client.query<ExistingSubscriptionRow>(
-        `SELECT expires_at
+        `SELECT paid_until, expires_at
            FROM subscriptions
           WHERE wallet_address = $1
           FOR UPDATE`,
         [payment.walletAddress.toLowerCase()],
       );
-      const existingExpiry = existingSubscription.rows[0]?.expires_at
-        ? new Date(existingSubscription.rows[0].expires_at)
-        : null;
-      const base = existingExpiry && existingExpiry.getTime() > now.getTime()
-        ? existingExpiry
-        : now;
-      paidUntil = addDays(base, definition.subscriptionDays);
+      const currentRaw = existingSubscription.rows[0]?.paid_until ??
+        existingSubscription.rows[0]?.expires_at ??
+        null;
+      const currentPaidUntil = currentRaw ? new Date(currentRaw) : null;
+      const window = calculateSubscriptionWindow({
+        now,
+        currentPaidUntil,
+        billingPeriod: payment.billingPeriod === "upfront" ? "upfront" : "monthly",
+      });
+      paidFrom = window.paidFrom;
+      paidUntil = window.paidUntil;
     }
 
     const inserted = await client.query<ExistingPaymentRow>(
@@ -266,29 +424,43 @@ export async function persistVerifiedPlanPayment(
          chain_id,
          block_number,
          paid_until,
-         confirmed_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         confirmed_at,
+         billing_period,
+         asset_symbol,
+         asset_contract,
+         amount_atomic,
+         amount_display,
+         paid_from,
+         subscription_days
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
        ON CONFLICT (payment_tx_hash) DO NOTHING
-       RETURNING wallet_address, plan_id, paid_until`,
+       RETURNING wallet_address, plan_id, billing_period, paid_from, paid_until`,
       [
         payment.transactionHash.toLowerCase(),
         payment.walletAddress.toLowerCase(),
         payment.plan,
         definition.subscriptionTier,
         definition.kind,
-        payment.amountWei.toString(),
+        payment.asset === "ETH" ? payment.amountAtomic.toString() : null,
         payment.amountEth,
         payment.usdCents,
         payment.chainId,
         payment.blockNumber.toString(),
         paidUntil,
         now,
+        payment.billingPeriod,
+        payment.asset,
+        payment.tokenAddress?.toLowerCase() ?? null,
+        payment.amountAtomic.toString(),
+        payment.amountDisplay,
+        paidFrom,
+        payment.subscriptionDays,
       ],
     );
 
     if (inserted.rows.length === 0) {
       const existing = await client.query<ExistingPaymentRow>(
-        `SELECT wallet_address, plan_id, paid_until
+        `SELECT wallet_address, plan_id, billing_period, paid_from, paid_until
            FROM plan_payment_events
           WHERE payment_tx_hash = $1
           LIMIT 1`,
@@ -298,7 +470,8 @@ export async function persistVerifiedPlanPayment(
       if (
         !row ||
         !sameAddress(row.wallet_address, payment.walletAddress) ||
-        row.plan_id !== payment.plan
+        row.plan_id !== payment.plan ||
+        row.billing_period !== payment.billingPeriod
       ) {
         throw new PlanPaymentError(
           "This transaction hash has already been used for another purchase.",
@@ -306,16 +479,25 @@ export async function persistVerifiedPlanPayment(
         );
       }
       await client.query("COMMIT");
+      const existingPaidUntil = iso(row.paid_until);
       return {
         verified: true,
         plan: payment.plan,
+        billingPeriod: payment.billingPeriod,
         walletAddress: payment.walletAddress,
         transactionHash: payment.transactionHash,
+        asset: payment.asset,
+        amountDisplay: payment.amountDisplay,
         amountEth: payment.amountEth,
         usdCents: payment.usdCents,
-        paidUntil: row.paid_until ? new Date(row.paid_until).toISOString() : null,
+        paidFrom: iso(row.paid_from),
+        paidUntil: existingPaidUntil,
+        subscriptionStatus: existingPaidUntil
+          ? subscriptionStatusAt(existingPaidUntil, now)
+          : null,
         destination: definition.destination,
         alreadyRecorded: true,
+        telegramLinkUrl: null,
       };
     }
 
@@ -326,24 +508,38 @@ export async function persistVerifiedPlanPayment(
          status,
          started_at,
          expires_at,
+         paid_from,
+         paid_until,
          payment_tx_hash,
          amount_eth,
+         last_payment_asset,
+         last_payment_amount,
+         last_payment_usd_cents,
          created_at
-       ) VALUES ($1, $2, 'active', $3, $4, $5, $6, $3)
+       ) VALUES ($1, $2, 'active', $3, $4, $5, $4, $6, $7, $8, $9, $10, $3)
        ON CONFLICT (wallet_address) DO UPDATE
          SET tier = EXCLUDED.tier,
              status = 'active',
              expires_at = EXCLUDED.expires_at,
+             paid_from = EXCLUDED.paid_from,
+             paid_until = EXCLUDED.paid_until,
              payment_tx_hash = EXCLUDED.payment_tx_hash,
              amount_eth = EXCLUDED.amount_eth,
+             last_payment_asset = EXCLUDED.last_payment_asset,
+             last_payment_amount = EXCLUDED.last_payment_amount,
+             last_payment_usd_cents = EXCLUDED.last_payment_usd_cents,
              created_at = EXCLUDED.created_at`,
       [
         payment.walletAddress.toLowerCase(),
         definition.subscriptionTier,
         now,
         paidUntil,
+        paidFrom,
         payment.transactionHash.toLowerCase(),
-        payment.amountEth,
+        payment.amountEth ?? "",
+        payment.asset,
+        payment.amountDisplay,
+        payment.usdCents,
       ],
     );
 
@@ -351,7 +547,7 @@ export async function persistVerifiedPlanPayment(
       `INSERT INTO admin_activity_log (event_kind, service_key, message, created_at)
        VALUES ('payment-received', NULL, $1, $2)`,
       [
-        `${definition.label} payment verified: $${(payment.usdCents / 100).toFixed(2)} · ${payment.amountEth} ETH · ${payment.walletAddress}`,
+        `${definition.label} ${payment.billingPeriod} payment verified: $${(payment.usdCents / 100).toFixed(2)} · ${payment.amountDisplay} ${payment.asset} · ${payment.walletAddress}`,
         now,
       ],
     );
@@ -360,13 +556,19 @@ export async function persistVerifiedPlanPayment(
     return {
       verified: true,
       plan: payment.plan,
+      billingPeriod: payment.billingPeriod,
       walletAddress: payment.walletAddress,
       transactionHash: payment.transactionHash,
+      asset: payment.asset,
+      amountDisplay: payment.amountDisplay,
       amountEth: payment.amountEth,
       usdCents: payment.usdCents,
+      paidFrom: paidFrom?.toISOString() ?? null,
       paidUntil: paidUntil?.toISOString() ?? null,
+      subscriptionStatus: paidUntil ? "active" : null,
       destination: definition.destination,
       alreadyRecorded: false,
+      telegramLinkUrl: null,
     };
   } catch (error) {
     await safeRollback(client);
@@ -383,8 +585,18 @@ export async function verifyAndRecordPlanPayment(
     databaseUrl?: string;
     connect?: PlanPaymentConnect;
     now?: Date;
+    telegramLink?: typeof createSubscriptionTelegramLink;
   } = {},
 ): Promise<PlanPaymentVerification> {
   const verified = await verifyPlanPaymentTransaction(input, options.verifyDeps);
-  return persistVerifiedPlanPayment(verified, options);
+  const recorded = await persistVerifiedPlanPayment(verified, options);
+  if (!isSubscriptionPlan(recorded.plan)) return recorded;
+
+  const telegramLink = options.telegramLink ?? createSubscriptionTelegramLink;
+  const telegramLinkUrl = await telegramLink({
+    walletAddress: recorded.walletAddress,
+    databaseUrl: options.databaseUrl,
+    now: options.now,
+  });
+  return { ...recorded, telegramLinkUrl };
 }
