@@ -62,6 +62,7 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
   const [phase, setPhase] = useState<CheckoutPhase>("loading");
   const [message, setMessage] = useState("Loading the server-verified payment quote…");
   const [transactionHash, setTransactionHash] = useState("");
+  const [paymentWalletAddress, setPaymentWalletAddress] = useState("");
   const [verification, setVerification] = useState<PlanPaymentVerification | null>(null);
   const mounted = useRef(true);
 
@@ -119,12 +120,34 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
     );
   }
 
+  async function finishVerification(walletAddress: string, hash: string) {
+    setPhase("verifying");
+    setMessage("Payment submitted. Verifying it on the server…");
+    const result = await verifyUntilConfirmed(walletAddress, hash);
+    if (!mounted.current) return;
+
+    setVerification(result);
+    if (result.destination === "builder") {
+      setMessage("Payment confirmed. Opening the Pro Site builder…");
+      onBuilderUnlocked(plan);
+      return;
+    }
+    setPhase("success");
+    setMessage("Subscription confirmed.");
+  }
+
   async function pay() {
     if (!quote || phase === "sending" || phase === "verifying") return;
-    setPhase("sending");
-    setMessage("Opening your confirmed wallet…");
 
     try {
+      if (transactionHash && paymentWalletAddress) {
+        await finishVerification(paymentWalletAddress, transactionHash);
+        return;
+      }
+
+      setPhase("sending");
+      setMessage("Opening your confirmed wallet…");
+
       const browserWindow = window as PaymentWindow;
       const provider = browserWindow.__launchpadEthereum || browserWindow.ethereum;
       if (!provider) {
@@ -169,20 +192,9 @@ export function PlanCheckout({ plan, onBuilderUnlocked, onClose }: PlanCheckoutP
       })) as string;
       if (!hash) throw new Error("The wallet did not return a transaction hash.");
 
+      setPaymentWalletAddress(walletAddress);
       setTransactionHash(hash);
-      setPhase("verifying");
-      setMessage("Payment submitted. Verifying it on the server…");
-      const result = await verifyUntilConfirmed(walletAddress, hash);
-      if (!mounted.current) return;
-
-      setVerification(result);
-      if (result.destination === "builder") {
-        setMessage("Payment confirmed. Opening the Pro Site builder…");
-        onBuilderUnlocked(plan);
-        return;
-      }
-      setPhase("success");
-      setMessage("Subscription confirmed.");
+      await finishVerification(walletAddress, hash);
     } catch (error) {
       if (!mounted.current) return;
       setPhase("error");
