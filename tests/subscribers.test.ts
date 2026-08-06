@@ -61,7 +61,7 @@ describe("listSubscribers", () => {
       },
     });
     expect(snapshot).toMatchObject({ status: "unavailable", rows: [] });
-    expect(snapshot.message).toContain("009_subscription_lifecycle.sql");
+    expect(snapshot.message).toContain("010_subscription_lifecycle.sql");
   });
 
   it("returns a ready empty snapshot when there are no subscribers", async () => {
