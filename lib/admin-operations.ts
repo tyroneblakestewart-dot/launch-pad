@@ -75,6 +75,7 @@ export const SYSTEM_HEALTH_CHECK_IDS = [
   "contracts",
   "deployment",
   "subscribers",
+  "subscription-lifecycle",
   "hoodchat",
   "token-chat",
 ] as const;
