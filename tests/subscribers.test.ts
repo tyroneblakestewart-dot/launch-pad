@@ -90,6 +90,32 @@ describe("listSubscribers", () => {
     });
   });
 
+  it("keeps permanent one-off paid tiers active when they have no paid_until", async () => {
+    const snapshot = await listSubscribers({
+      databaseUrl: "postgres://example",
+      now: new Date("2030-01-01T00:00:00.000Z"),
+      query: async () => ({
+        rows: [
+          row({
+            tier: "bond_pro_site",
+            status: "active",
+            paid_until: null,
+            expires_at: null,
+            last_payment_asset: "ETH",
+            last_payment_amount: "0.001",
+          }),
+        ],
+      }),
+    });
+    expect(snapshot.rows[0]).toMatchObject({
+      tier: "bond_pro_site",
+      status: "active",
+      paidUntil: null,
+      lastPaymentAsset: "ETH",
+      lastPaymentAmount: "0.001",
+    });
+  });
+
   it("derives active and expiring states from paid_until rather than trusting stored status", async () => {
     const now = new Date("2026-06-01T00:00:00.000Z");
     const active = await listSubscribers({
