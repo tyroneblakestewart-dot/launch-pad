@@ -3,15 +3,17 @@
 import { useEffect, useState } from "react";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import {
-  LAUNCH_PATH_OPTIONS,
+  PLAN_CHOOSER_OPTIONS,
   consumeLaunchPathPreset,
   launchPathLabel,
 } from "@/lib/launch-paths";
+import { isPaidLaunchPath, type PaidLaunchPath } from "@/lib/plan-payments";
 import type { LaunchPath } from "@/lib/types";
 import {
   OPEN_WORKSPACE_REQUEST_EVENT,
   type OpenWorkspaceRequestDetail,
 } from "@/lib/workspace-open-request";
+import { PlanCheckout } from "./plan-checkout";
 import styles from "./token-path-chooser.module.css";
 
 interface TokenPathChooserProps {
@@ -22,6 +24,7 @@ interface TokenPathChooserProps {
 
 export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooserProps) {
   const [pending, setPending] = useState<LaunchPath | null>(selected);
+  const [checkoutPlan, setCheckoutPlan] = useState<PaidLaunchPath | null>(null);
   const [wasOpen, setWasOpen] = useState(open);
   const [dismissed, setDismissed] = useState(false);
 
@@ -29,6 +32,7 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
     setWasOpen(open);
     if (open) {
       setPending(consumeLaunchPathPreset() ?? selected);
+      setCheckoutPlan(null);
       setDismissed(false);
     }
   }
@@ -40,6 +44,7 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
       if (action !== "new" || !launchPath) return;
       consumeLaunchPathPreset();
       setPending(launchPath);
+      setCheckoutPlan(null);
       setDismissed(false);
     }
 
@@ -64,6 +69,20 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
         block: "start",
       });
     });
+  }
+
+  function continueWithPending(): void {
+    if (!pending) return;
+    if (isPaidLaunchPath(pending)) {
+      setCheckoutPlan(pending);
+      return;
+    }
+    onConfirm(pending);
+  }
+
+  function unlockPaidBuilder(plan: PaidLaunchPath): void {
+    setCheckoutPlan(null);
+    onConfirm(plan);
   }
 
   if (!open) return null;
@@ -111,76 +130,91 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
               maskImage: `url(${HOODLUMS_WORDMARK_IMAGE})`,
             }}
           />
-          <p className={styles.eyebrow}>CHOOSE YOUR PATH</p>
-          <h2 id="token-path-chooser-title">How do you want to launch?</h2>
+          <p className={styles.eyebrow}>{checkoutPlan ? "SECURE CHECKOUT" : "CHOOSE YOUR PATH"}</p>
+          <h2 id="token-path-chooser-title">
+            {checkoutPlan ? `Unlock ${launchPathLabel(checkoutPlan)}` : "How do you want to launch?"}
+          </h2>
           <p className={styles.subheading}>
-            Pick a path for this token. You can change it any time before launch.
+            {checkoutPlan
+              ? "No paid feature unlocks until the confirmed Robinhood Chain transaction is verified and recorded by the server."
+              : "Pick a path for this token. You can change it any time before launch."}
           </p>
         </div>
 
-        <div className={styles.columns}>
-          {LAUNCH_PATH_OPTIONS.map((option) => {
-            const isSelected = pending === option.id;
-            const detailsLink = option.detailsLink;
-            const columnClassName = [
-              styles.column,
-              option.featured ? styles.columnFeatured : "",
-              isSelected ? styles.columnSelected : "",
-              pending && !isSelected ? styles.columnDimmed : "",
-            ]
-              .filter(Boolean)
-              .join(" ");
-
-            return (
-              <article key={option.id} className={columnClassName}>
-                {option.badge ? <span className={styles.badge}>{option.badge}</span> : null}
-                <button
-                  type="button"
-                  className={styles.columnSelect}
-                  aria-pressed={isSelected}
-                  onClick={() => setPending(option.id)}
-                >
-                  <span className={styles.columnName}>{option.name}</span>
-                  <span className={styles.columnPrice}>{option.price}</span>
-                  <span className={styles.columnTagline}>{option.tagline}</span>
-                  <span className={styles.columnBullets}>
-                    {option.bullets.map((bullet) => (
-                      <span className={styles.bullet} key={bullet}>
-                        {bullet}
-                      </span>
-                    ))}
-                  </span>
-                  {option.foot ? <span className={styles.columnFoot}>{option.foot}</span> : null}
-                </button>
-                {detailsLink ? (
-                  <button
-                    type="button"
-                    className={styles.columnDetailLink}
-                    onClick={() => viewPlanDetails(detailsLink.targetId)}
-                  >
-                    {detailsLink.label}
-                  </button>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
-
-        {pending ? (
+        {checkoutPlan ? (
+          <PlanCheckout
+            plan={checkoutPlan}
+            onBuilderUnlocked={unlockPaidBuilder}
+            onClose={() => setCheckoutPlan(null)}
+          />
+        ) : (
           <>
-            <button type="button" className={styles.continueButton} onClick={() => onConfirm(pending)}>
-              Continue with {launchPathLabel(pending)}
-            </button>
-            <p className={styles.terms}>
-              By clicking this button, you agree to the <span>Terms and Conditions</span>,{" "}
-              <span>Privacy Policy</span>, and certify that you are over 18 years old.
-            </p>
-          </>
-        ) : null}
+            <div className={styles.columns}>
+              {PLAN_CHOOSER_OPTIONS.map((option) => {
+                const isSelected = pending === option.id;
+                const detailsLink = option.detailsLink;
+                const columnClassName = [
+                  styles.column,
+                  option.featured ? styles.columnFeatured : "",
+                  isSelected ? styles.columnSelected : "",
+                  pending && !isSelected ? styles.columnDimmed : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
 
-        <button type="button" className={styles.fullDetailsLink} onClick={() => viewPlanDetails()}>
-          See full plan details ↓
-        </button>
+                return (
+                  <article key={option.id} className={columnClassName}>
+                    {option.badge ? <span className={styles.badge}>{option.badge}</span> : null}
+                    <button
+                      type="button"
+                      className={styles.columnSelect}
+                      aria-pressed={isSelected}
+                      onClick={() => setPending(option.id)}
+                    >
+                      <span className={styles.columnName}>{option.name}</span>
+                      <span className={styles.columnPrice}>{option.price}</span>
+                      <span className={styles.columnTagline}>{option.tagline}</span>
+                      <span className={styles.columnBullets}>
+                        {option.bullets.map((bullet) => (
+                          <span className={styles.bullet} key={bullet}>
+                            {bullet}
+                          </span>
+                        ))}
+                      </span>
+                      {option.foot ? <span className={styles.columnFoot}>{option.foot}</span> : null}
+                    </button>
+                    {detailsLink ? (
+                      <button
+                        type="button"
+                        className={styles.columnDetailLink}
+                        onClick={() => viewPlanDetails(detailsLink.targetId)}
+                      >
+                        {detailsLink.label}
+                      </button>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+
+            {pending ? (
+              <>
+                <button type="button" className={styles.continueButton} onClick={continueWithPending}>
+                  {isPaidLaunchPath(pending) ? "Continue to payment with" : "Continue with"}{" "}
+                  {launchPathLabel(pending)}
+                </button>
+                <p className={styles.terms}>
+                  By clicking this button, you agree to the <span>Terms and Conditions</span>,{" "}
+                  <span>Privacy Policy</span>, and certify that you are over 18 years old.
+                </p>
+              </>
+            ) : null}
+
+            <button type="button" className={styles.fullDetailsLink} onClick={() => viewPlanDetails()}>
+              See full plan details ↓
+            </button>
+          </>
+        )}
       </section>
     </div>
   );
