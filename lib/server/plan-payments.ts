@@ -25,6 +25,7 @@ export class PlanPaymentError extends Error {
       | "invalid-request"
       | "pending"
       | "reverted"
+      | "wrong-chain"
       | "wrong-sender"
       | "wrong-recipient"
       | "underpaid"
@@ -50,6 +51,7 @@ export type VerifiedChainPayment = {
   amountWei: bigint;
   amountEth: string;
   usdCents: number;
+  chainId: number;
   blockNumber: bigint;
 };
 
@@ -66,6 +68,7 @@ export type ChainReceipt = {
 };
 
 export type VerifyChainDeps = {
+  getChainId: () => Promise<number>;
   getTransaction: (hash: Hash) => Promise<ChainTransaction>;
   getReceipt: (hash: Hash) => Promise<ChainReceipt>;
   getConfirmations: (hash: Hash) => Promise<bigint>;
@@ -102,17 +105,20 @@ export async function verifyPlanPaymentTransaction(
   const chain =
     deps ??
     ({
+      getChainId: () => client!.getChainId(),
       getTransaction: (hash: Hash) => client!.getTransaction({ hash }),
       getReceipt: (hash: Hash) => client!.getTransactionReceipt({ hash }),
       getConfirmations: (hash: Hash) =>
         client!.getTransactionConfirmations({ transactionHash: hash }),
     } satisfies VerifyChainDeps);
 
+  let chainId: number;
   let transaction: ChainTransaction;
   let receipt: ChainReceipt;
   let confirmations: bigint;
   try {
-    [transaction, receipt, confirmations] = await Promise.all([
+    [chainId, transaction, receipt, confirmations] = await Promise.all([
+      chain.getChainId(),
       chain.getTransaction(input.transactionHash),
       chain.getReceipt(input.transactionHash),
       chain.getConfirmations(input.transactionHash),
@@ -124,6 +130,12 @@ export async function verifyPlanPaymentTransaction(
     );
   }
 
+  if (chainId !== quote.chainId) {
+    throw new PlanPaymentError(
+      `The payment RPC reported chain ${chainId}, not the configured Robinhood Chain ${quote.chainId}.`,
+      "wrong-chain",
+    );
+  }
   if (receipt.status !== "success") {
     throw new PlanPaymentError("The payment transaction reverted.", "reverted");
   }
@@ -167,6 +179,7 @@ export async function verifyPlanPaymentTransaction(
     amountWei: transaction.value,
     amountEth: formatEther(transaction.value),
     usdCents: quote.usdCents,
+    chainId,
     blockNumber: receipt.blockNumber,
   };
 }
@@ -266,7 +279,7 @@ export async function persistVerifiedPlanPayment(
         payment.amountWei.toString(),
         payment.amountEth,
         payment.usdCents,
-        getPlanPaymentQuote(payment.plan).chainId,
+        payment.chainId,
         payment.blockNumber.toString(),
         paidUntil,
         now,
