@@ -124,6 +124,7 @@ describe("backend test inventory", () => {
       "lib/server/page-content-store.ts",
       "lib/server/page-content.ts",
       "lib/server/plan-payment-config.ts",
+      "lib/server/plan-payment-proof.ts",
       "lib/server/plan-payments.ts",
       "lib/server/postgres-publish-store.ts",
       "lib/server/postgres.ts",
