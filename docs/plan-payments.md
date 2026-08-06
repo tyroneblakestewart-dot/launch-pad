@@ -1,8 +1,51 @@
-# Verified plan payments
+# Verified plan payments and subscription lifecycle
 
-Paid plan access is fail-closed. The browser sends a direct ETH transfer from the user's confirmed EIP-6963 wallet, but the browser never decides that access is paid. After the transaction is submitted, the same wallet signs a plain-text proof tied to the site origin, plan and transaction hash. That signature sends no funds. `/api/plan-payments/verify` verifies the payer signature, then independently reads the transaction and receipt from the configured Robinhood Chain RPC, checks the RPC chain ID, sender, treasury recipient, direct-transfer calldata, value, successful receipt and confirmation count, and records the transaction in Postgres before returning an unlock response.
+Paid access is fail-closed. The browser can request a wallet transaction, but it never decides that a plan is paid or active. After the transaction is submitted, the paying wallet signs a plain-text proof tied to the site origin, plan, billing period and transaction hash. The signature sends no funds. `/api/plan-payments/verify` verifies wallet ownership, independently reads the transaction and receipt from the configured Robinhood Chain RPC, validates the configured chain and payment details, and records the result in Postgres before returning an unlock response.
 
-A public transaction hash by itself is not sufficient to claim an unlock from another browser: the request must also include a valid signature from the wallet that sent the payment.
+A public transaction hash is not sufficient to claim an unlock: the request must also include a valid signature from the wallet that sent the payment.
+
+## Payment assets
+
+- **Bond + Pro Site:** one-off ETH transfer to the configured treasury. The exact wei amount is server configuration.
+- **Pro:** USDT ERC-20 transfer to the configured treasury.
+- **Pro Bundle:** USDT ERC-20 transfer to the configured treasury.
+
+For USDT subscriptions, verification requires all of the following:
+
+- the RPC reports the configured Robinhood Chain ID;
+- the transaction succeeded and has the required confirmation;
+- the transaction sender matches the signed wallet;
+- the transaction target is the configured USDT contract;
+- the token contract's on-chain decimals match `HOODLUMS_USDT_DECIMALS`;
+- calldata decodes as `transfer(treasury, exactAmount)`;
+- no native currency is sent with the token transfer;
+- the receipt contains the matching USDT `Transfer` event from the paying wallet to the treasury;
+- the transaction hash has not been used for another wallet, plan or billing period.
+
+## Manual-renewal windows
+
+There is no automatic charging.
+
+| Plan | Billing choice | USDT payment | Access window |
+| --- | --- | ---: | ---: |
+| Pro | Monthly | $50 | 32 days |
+| Pro | 3 months upfront | $120 | 96 days |
+| Pro Bundle | Monthly | $120 | 32 days |
+| Pro Bundle | 3 months upfront | $288 | 96 days |
+
+The upfront option is 20% below three separate monthly payments.
+
+- Renewing before expiry extends from the current `paid_until` value.
+- Renewing after expiry starts a new window from the confirmed payment time.
+- An expired payment returns the subscription to active without deleting any project or generated-site data.
+
+Lifecycle state is derived server-side from `paid_until`:
+
+- `active`: more than five days remain;
+- `expiring`: five days or less remain;
+- `expired`: `paid_until` has passed. Subscription features are disabled, but data is retained.
+
+`getSubscriptionAccess()` and `isSubscriptionActive()` in `lib/server/subscription-lifecycle.ts` are the single server-side entitlement source. Subscription features must not use a browser-only flag.
 
 ## Database
 
@@ -11,40 +54,86 @@ Apply migrations in order, including:
 ```text
 db/migrations/007_subscriptions.sql
 db/migrations/008_plan_payments.sql
+db/migrations/009_subscription_lifecycle.sql
 ```
 
-`subscriptions` remains the current one-row-per-wallet entitlement used by **Admin → Subscribers**. `plan_payment_events` is the immutable transaction-hash-unique revenue ledger used by **Admin → Money** and the admin activity stream.
+- `subscriptions` stores each wallet's current plan, lifecycle state, `paid_from`, `paid_until` and optional Telegram link.
+- `plan_payment_events` is the immutable transaction-hash-unique payment history used by **Admin → Money** and **Admin → Subscribers**.
+- `subscription_lifecycle_runs` records each daily cron execution.
+- `subscription_reminder_events` records each reminder attempt and prevents duplicate sends for the same wallet, expiry and reminder day.
+- `telegram_link_codes` stores short-lived, one-time wallet-to-Telegram link codes.
+
+Expired subscriptions are updated in place. No subscription data, payment history, generated site or saved project is deleted by lifecycle processing.
 
 ## Required server environment
 
-Never commit real treasury or RPC values.
+Never commit real treasury, token, RPC or bot values.
 
 ```bash
 DATABASE_URL=postgres://...
+
 HOODLUMS_TREASURY_ADDRESS=0x...
 HOODLUMS_PAYMENT_RPC_URL=https://...
 HOODLUMS_PAYMENT_CHAIN_ID=46630
-HOODLUMS_PAYMENT_CHAIN_NAME="Robinhood Chain Testnet"
-HOODLUMS_PAYMENT_EXPLORER_URL=https://explorer.testnet.chain.robinhood.com
+HOODLUMS_PAYMENT_CHAIN_NAME="Robinhood Chain"
+HOODLUMS_PAYMENT_EXPLORER_URL=https://...
 
-# Exact server-controlled ETH prices in wei. Update these values when the
-# desired ETH equivalent of the advertised USD prices changes.
+# Bond + Pro Site only: exact one-off ETH price in wei.
 HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI=...
-HOODLUMS_PRO_AMOUNT_WEI=...
-HOODLUMS_PRO_BUNDLE_AMOUNT_WEI=...
+
+# Subscription token configuration. Decimals are checked against the contract.
+HOODLUMS_USDT_TOKEN_ADDRESS=0x...
+HOODLUMS_USDT_DECIMALS=6
+
+# Vercel cron authentication.
+CRON_SECRET=...
+
+# Optional Telegram reminders. In-app reminders continue without these.
+TELEGRAM_BOT_TOKEN=123456:...
+TELEGRAM_BOT_USERNAME=HoodlumsBot
+TELEGRAM_WEBHOOK_SECRET=...
+
+# Used in reminder links. Defaults to https://hoodlums.dev.
+HOODLUMS_APP_ORIGIN=https://hoodlums.dev
 ```
 
-The USD product prices are fixed at $10, $50 and $120 in code and in the revenue ledger. The exact ETH transfer values are server configuration rather than client input. This repository does not guess an exchange rate or trust an unsigned browser quote. Production deployment must set the wei amounts to the approved ETH equivalents before enabling checkout.
+The existing allowed-origin configuration must also match the deployment origin. The wallet proof contains that origin, so a signature produced for one deployment cannot be replayed against another.
 
-The existing same-origin configuration used by state-changing endpoints must also match the deployment origin (`ADMIN_ALLOWED_ORIGIN`, `PUBLISH_ALLOWED_ORIGIN`, or `GENERATE_SITE_STYLE_ALLOWED_ORIGIN`). The wallet proof includes that origin, so a signature produced for one deployment origin cannot be reused against another.
+## Telegram linking
 
-## Access rules
+After a successful Pro or Pro Bundle payment, the confirmation screen offers **Link Telegram for renewal reminders** when the bot is configured.
 
-- Bond and Bond + Site: no payment request; builder opens immediately.
-- Bond + Pro Site: verified one-off payment; builder opens only after wallet-proof verification, on-chain verification and database recording all succeed.
-- Pro: verified payment creates or extends an active entitlement by 30 days.
-- Pro Bundle: same as Pro, with tier `pro_bundle` and up to three tokens.
-- A transaction hash can be recorded once. Retrying verification for the same wallet and plan is idempotent; attempting to reuse it for another wallet or plan is rejected.
-- If a payment is sent but the proof-signature step is cancelled, retry asks only for the signature and reuses the existing transaction hash. It cannot send the payment a second time.
+1. The server creates a random one-time code that expires after 30 minutes.
+2. The user opens `https://t.me/<bot>?start=<code>`.
+3. Telegram sends the `/start` update to `/api/telegram/subscription-webhook`.
+4. The webhook requires Telegram's `X-Telegram-Bot-Api-Secret-Token` header to match `TELEGRAM_WEBHOOK_SECRET`.
+5. The server consumes the code once and stores the Telegram user/chat ID against the paying wallet's subscription.
 
-Recurring billing is deliberately not implemented. Each accepted Pro or Pro Bundle payment extends an existing future expiry by another 30 days, or starts 30 days from confirmation when no active period remains.
+Configure the Telegram webhook with the route above and the same secret token. The bot token is only used server-side.
+
+## Reminders and cron
+
+`vercel.json` runs `/api/cron/subscription-lifecycle` daily at 09:00 UTC. Vercel supplies `Authorization: Bearer <CRON_SECRET>` when `CRON_SECRET` is configured.
+
+The daily job:
+
+- updates stored lifecycle states;
+- sends Telegram reminders five days before expiry, two days before expiry and on/after the expiry day;
+- records reminder attempts and failures idempotently;
+- records the run totals in `subscription_lifecycle_runs`;
+- writes successful reminder events to the admin activity log.
+
+In-app reminders do not depend on the cron's stored status. The global banner requests the current server-derived state for the connected wallet and appears from five days remaining or after expiry.
+
+The **Subscribers** drill-down in **Admin → System Health** shows migration readiness, cron/Telegram configuration, the last lifecycle run and the most recent Telegram reminder result.
+
+## Admin cockpit
+
+- **Admin → Subscribers:** current plan, active/expiring/expired state, paid window, Telegram-link state and full verified payment history.
+- **Admin → Money:** every verified revenue event with the correct asset (ETH or USDT), billing period and paid window.
+- **Admin → Activity:** verified payments and successful Telegram reminder sends.
+- **Admin → System Health → Subscribers:** lifecycle tables, last cron run and latest reminder result.
+
+## Retry safety
+
+If a transaction is submitted but signing or confirmation is interrupted, retry reuses the existing transaction hash. It does not call `eth_sendTransaction` again. A recorded hash is idempotent only for the same wallet, plan and billing period; any other reuse is rejected.
