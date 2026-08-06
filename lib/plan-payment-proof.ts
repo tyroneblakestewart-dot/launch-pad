@@ -1,7 +1,8 @@
-import type { PaidLaunchPath } from "@/lib/plan-payments";
+import type { PaidLaunchPath, PaymentBillingPeriod } from "@/lib/plan-payments";
 
 export type PlanPaymentProofFields = {
   plan: PaidLaunchPath;
+  billingPeriod: PaymentBillingPeriod;
   walletAddress: string;
   transactionHash: string;
   origin: string;
@@ -9,6 +10,7 @@ export type PlanPaymentProofFields = {
 
 export function buildPlanPaymentProofMessage({
   plan,
+  billingPeriod,
   walletAddress,
   transactionHash,
   origin,
@@ -17,6 +19,7 @@ export function buildPlanPaymentProofMessage({
     "HOODLUMS plan payment verification",
     `Origin: ${origin}`,
     `Plan: ${plan}`,
+    `Billing: ${billingPeriod}`,
     `Wallet: ${walletAddress.toLowerCase()}`,
     `Transaction: ${transactionHash.toLowerCase()}`,
     "",
