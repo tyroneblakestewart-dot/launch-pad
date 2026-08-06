@@ -4,7 +4,7 @@ This change handles real-value payment verification and must remain unmerged unt
 
 ## Before deployment
 
-- Apply migrations through `009_subscription_lifecycle.sql`.
+- Apply migrations through `010_subscription_lifecycle.sql`.
 - Configure the treasury, Robinhood Chain RPC and approved USDT contract/decimals.
 - Configure `CRON_SECRET` for Vercel cron authentication.
 - Optionally configure the Telegram bot username, token and webhook secret.
