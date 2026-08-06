@@ -25,17 +25,28 @@ interface TokenPathChooserProps {
 export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooserProps) {
   const [pending, setPending] = useState<LaunchPath | null>(selected);
   const [checkoutPlan, setCheckoutPlan] = useState<PaidLaunchPath | null>(null);
+  const [presetToConfirm, setPresetToConfirm] = useState<LaunchPath | null>(null);
   const [wasOpen, setWasOpen] = useState(open);
   const [dismissed, setDismissed] = useState(false);
 
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
-      setPending(consumeLaunchPathPreset() ?? selected);
-      setCheckoutPlan(null);
+      const preset = consumeLaunchPathPreset();
+      setPending(preset ?? selected);
+      setCheckoutPlan(preset && isPaidLaunchPath(preset) ? preset : null);
+      setPresetToConfirm(preset && !isPaidLaunchPath(preset) ? preset : null);
       setDismissed(false);
+    } else {
+      setCheckoutPlan(null);
+      setPresetToConfirm(null);
     }
   }
+
+  useEffect(() => {
+    if (!open || !presetToConfirm) return;
+    onConfirm(presetToConfirm);
+  }, [onConfirm, open, presetToConfirm]);
 
   useEffect(() => {
     function onWorkspaceRequest(event: Event) {
@@ -44,7 +55,8 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
       if (action !== "new" || !launchPath) return;
       consumeLaunchPathPreset();
       setPending(launchPath);
-      setCheckoutPlan(null);
+      setCheckoutPlan(isPaidLaunchPath(launchPath) ? launchPath : null);
+      setPresetToConfirm(isPaidLaunchPath(launchPath) ? null : launchPath);
       setDismissed(false);
     }
 
@@ -85,7 +97,7 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
     onConfirm(plan);
   }
 
-  if (!open) return null;
+  if (!open || presetToConfirm) return null;
 
   if (dismissed) {
     return (
