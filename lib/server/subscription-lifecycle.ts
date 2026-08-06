@@ -4,23 +4,12 @@ import {
   subscriptionDaysRemaining,
   subscriptionPlanLabel,
   subscriptionStatusAt,
+  type SubscriptionAccess,
   type SubscriptionPlan,
-  type SubscriptionReminderKind,
   type SubscriptionStatus,
 } from "@/lib/subscription-lifecycle";
 import { getPostgresPool } from "@/lib/server/postgres";
 import { sendText } from "@/lib/server/telegram";
-
-export type SubscriptionAccess = {
-  walletAddress: string;
-  plan: SubscriptionPlan | null;
-  status: SubscriptionStatus;
-  active: boolean;
-  paidFrom: string | null;
-  paidUntil: string | null;
-  daysRemaining: number;
-  telegramLinked: boolean;
-};
 
 type SubscriptionAccessRow = {
   wallet_address: string;
@@ -286,7 +275,7 @@ export async function runSubscriptionLifecycle(options: {
         WHERE id = $1`,
       [
         runId,
-        new Date(),
+        now,
         result.subscriptionsChecked,
         result.statusesUpdated,
         result.remindersDue,
@@ -301,7 +290,7 @@ export async function runSubscriptionLifecycle(options: {
       `UPDATE subscription_lifecycle_runs
           SET completed_at = $2, status = 'failed', error_message = $3
         WHERE id = $1`,
-      [runId, new Date(), message],
+      [runId, now, message],
     ).catch(() => undefined);
     throw error;
   }
