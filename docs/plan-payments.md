@@ -49,14 +49,19 @@ Lifecycle state is derived server-side from `paid_until`:
 
 ## Database
 
-Apply migrations in order, including:
+The migration filenames have unique prefixes. The plan-payment migration was renamed from `008_plan_payments.sql` to `011_plan_payments.sql` because `008_hoodchat.sql` already owns prefix 008.
+
+The runner preserves the plan-payment migration's original dependency position, so a fresh database applies these relevant migrations in this logical order:
 
 ```text
 db/migrations/007_subscriptions.sql
-db/migrations/008_plan_payments.sql
+db/migrations/008_hoodchat.sql
+db/migrations/011_plan_payments.sql   # compatibility order: after 008, before 009/010
 db/migrations/009_token_chat.sql
 db/migrations/010_subscription_lifecycle.sql
 ```
+
+`scripts/migrate-database.mjs` records applied files in `hoodlums_schema_migrations`. For an existing Supabase database where the old `008_plan_payments.sql` was already applied, the runner recognises the existing `plan_payment_events` table, records `011_plan_payments.sql` as remapped from the legacy filename, and does not execute the payment migration again.
 
 - `subscriptions` stores each wallet's current plan, lifecycle state, `paid_from`, `paid_until` and optional Telegram link.
 - `plan_payment_events` is the immutable transaction-hash-unique payment history used by **Admin → Money** and **Admin → Subscribers**.
