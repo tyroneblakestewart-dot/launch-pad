@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "bash -o pipefail -c 'npm test 2>&1 | tee public/pr260-full-test-output.txt' && bash -o pipefail -c 'npx vitest run tests/subscription-lifecycle-wiring.test.ts --reporter=verbose 2>&1 | tee public/pr260-wiring-test-output.txt' && next build",
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run && hardhat test solidity",
