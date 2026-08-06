@@ -58,14 +58,21 @@ function asIso(value: Date | string | null): string | null {
 function configurationStage(
   environment: Record<string, string | undefined>,
 ): AdminPipelineStage {
-  const required = ["DATABASE_URL", "CRON_SECRET"];
+  const required = [
+    "DATABASE_URL",
+    "CRON_SECRET",
+    "HOODLUMS_TREASURY_ADDRESS",
+    "HOODLUMS_PAYMENT_RPC_URL",
+    "HOODLUMS_USDT_TOKEN_ADDRESS",
+    "HOODLUMS_USDT_DECIMALS",
+  ];
   const missingRequired = required.filter(
     (name) => !(environment[name] || "").trim(),
   );
   if (missingRequired.length > 0) {
     return stage(
       "lifecycle-configuration",
-      "Cron and reminder configuration",
+      "Payment, cron and reminder configuration",
       "red",
       `Missing required variable(s): ${missingRequired.join(", ")}.`,
     );
@@ -82,17 +89,17 @@ function configurationStage(
   if (missingTelegram.length > 0) {
     return stage(
       "lifecycle-configuration",
-      "Cron and reminder configuration",
+      "Payment, cron and reminder configuration",
       "amber",
-      `Daily lifecycle processing is configured. Telegram reminders are optional and currently missing: ${missingTelegram.join(", ")}. In-app reminders remain available.`,
+      `USDT payments and daily lifecycle processing are configured. Telegram reminders are optional and currently missing: ${missingTelegram.join(", ")}. In-app reminders remain available.`,
     );
   }
 
   return stage(
     "lifecycle-configuration",
-    "Cron and reminder configuration",
+    "Payment, cron and reminder configuration",
     "green",
-    "Daily lifecycle processing and Telegram reminder configuration are present.",
+    "USDT payments, daily lifecycle processing and Telegram reminders are configured.",
   );
 }
 
