@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import {
   AdminActivity,
   AdminIssues,
-  AdminMoney,
   AdminOverview,
 } from "@/components/admin-operations-sections";
+import { AdminMoneySection } from "@/components/admin-money-section";
 import { AdminPagesSection } from "@/components/admin-pages-section";
 import { AdminSubscribersSection } from "@/components/admin-subscribers-section";
 import { AdminSystemHealth } from "@/components/admin-system-health";
@@ -216,7 +216,7 @@ export function AdminDashboard() {
           <AdminActivity snapshot={snapshot} />
         ) : null}
         {snapshot && activeSection === "money" ? (
-          <AdminMoney snapshot={snapshot} />
+          <AdminMoneySection snapshot={snapshot} />
         ) : null}
         {snapshot && activeSection === "issues" ? (
           <AdminIssues
