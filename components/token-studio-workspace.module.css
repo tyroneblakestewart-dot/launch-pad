@@ -127,6 +127,82 @@
   pointer-events: none;
 }
 
+.savedLaunchBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.76);
+  backdrop-filter: blur(10px);
+}
+
+.savedLaunchPanel {
+  width: min(100%, 520px);
+  padding: 22px;
+  border: 1px solid rgba(198, 245, 62, 0.28);
+  border-radius: 12px;
+  background: #0b100c;
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.7);
+}
+
+.savedLaunchHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.savedLaunchHeading span {
+  display: block;
+  margin-bottom: 5px;
+  color: #c6f53e;
+  font: 700 10px/1 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.16em;
+}
+
+.savedLaunchHeading h2 {
+  margin: 0;
+  color: #f4f7f1;
+  font-size: 21px;
+}
+
+.savedLaunchHeading button {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 7px;
+  color: #9ba59d;
+  background: #111713;
+  font-size: 21px;
+  cursor: pointer;
+}
+
+.savedLaunchEmpty {
+  margin: 0 0 16px;
+  padding: 46px 18px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #667169;
+  background: #080c09;
+  text-align: center;
+  font: 600 11px/1.5 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.createLaunchButton {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  color: #0b100c;
+  background: #c6f53e;
+  font: 800 12px "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+
 @media (max-width: 700px) {
   .tokenRecord {
     align-items: flex-start;
@@ -141,5 +217,15 @@
   .workspaceActions,
   .workspaceActions button {
     width: 100%;
+  }
+
+  .savedLaunchBackdrop {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .savedLaunchPanel {
+    padding: 19px;
+    border-radius: 14px;
   }
 }
