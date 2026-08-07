@@ -26,21 +26,13 @@
   padding: 4px 4px 6px;
 }
 
-.eyebrow {
+.wordmark {
+  display: block;
+  height: 56px;
+  width: auto;
   margin: 0 0 6px;
-  color: #c6f53e;
-  font: 700 10px "IBM Plex Mono", monospace;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.title {
-  margin: 0 0 6px;
-  font-family: "Archivo Black", sans-serif;
-  font-size: 30px;
-  letter-spacing: -0.03em;
-  text-transform: uppercase;
-  line-height: 1.05;
+  object-fit: contain;
+  object-position: left center;
 }
 
 .intro {
@@ -291,7 +283,7 @@
 }
 
 @media (min-width: 640px) {
-  .title {
-    font-size: 36px;
+  .wordmark {
+    height: 64px;
   }
 }

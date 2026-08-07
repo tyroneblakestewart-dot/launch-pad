@@ -95,8 +95,6 @@ async function postMessage(category: HoodchatCategory, body: string): Promise<Ho
 }
 
 export type HoodchatHubProps = {
-  heroEyebrow: string;
-  heroTitle: string;
   heroIntro: string;
   emptyState: string;
   composerPlaceholder: string;
@@ -104,8 +102,6 @@ export type HoodchatHubProps = {
 };
 
 export function HoodchatHub({
-  heroEyebrow,
-  heroTitle,
   heroIntro,
   emptyState,
   composerPlaceholder,
@@ -234,8 +230,8 @@ export function HoodchatHub({
     <main className={styles.page}>
       <div className={styles.shell}>
         <header className={styles.hero}>
-          <p className={styles.eyebrow}>{heroEyebrow}</p>
-          <h1 className={styles.title}>{heroTitle}</h1>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className={styles.wordmark} src="/hoodchat-wordmark.png" alt="Hoodchat" width={1519} height={512} />
           <p className={styles.intro}>{heroIntro}</p>
         </header>
 

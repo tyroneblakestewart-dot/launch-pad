@@ -16,8 +16,6 @@ export default async function HoodchatPage({ searchParams }: HoodchatPageProps) 
 
   return (
     <HoodchatHub
-      heroEyebrow={content.hero_eyebrow}
-      heroTitle={content.hero_title}
       heroIntro={content.hero_intro}
       emptyState={content.empty_state}
       composerPlaceholder={content.composer_placeholder}
