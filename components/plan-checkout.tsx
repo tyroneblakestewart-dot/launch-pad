@@ -14,19 +14,11 @@ import {
   isSubscriptionPlan,
   type SubscriptionBillingPeriod,
 } from "@/lib/subscription-lifecycle";
+import {
+  getInjectedEvmProvider,
+  type Eip1193Provider,
+} from "@/lib/wallet-provider";
 import styles from "./plan-checkout.module.css";
-
-type EthereumProvider = {
-  request: (args: {
-    method: string;
-    params?: unknown[] | Record<string, unknown>;
-  }) => Promise<unknown>;
-};
-
-type PaymentWindow = Window & {
-  ethereum?: EthereumProvider;
-  __launchpadEthereum?: EthereumProvider;
-};
 
 type PlanCheckoutProps = {
   plan: PaidLaunchPath;
@@ -50,8 +42,30 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "The wallet payment was cancelled.";
+function errorMessage(error: unknown, fallback = "The wallet payment could not continue."): string {
+  const providerError = error as { code?: unknown; message?: unknown } | null;
+  const code = typeof providerError?.code === "number" ? providerError.code : null;
+  if (code === 4001) {
+    return `${fallback} You rejected the request in your wallet.`;
+  }
+  if (code === -32002) {
+    return `${fallback} A wallet request is already pending. Open the wallet extension, finish or reject that request, then try again.`;
+  }
+  if (error instanceof Error && error.message) return `${fallback} ${error.message}`;
+  if (typeof providerError?.message === "string" && providerError.message) {
+    return `${fallback} ${providerError.message}`;
+  }
+  return fallback;
+}
+
+function normaliseChainId(value: unknown): string | null {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return `0x${value.toString(16)}`;
+  }
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  if (!/^0x[0-9a-f]+$/.test(trimmed)) return null;
+  return trimmed;
 }
 
 async function responseError(response: Response): Promise<string> {
@@ -92,6 +106,12 @@ export function PlanCheckout({
   const selectionLocked = busy || Boolean(transactionHash);
   const needsWalletInteraction = !transactionHash || !paymentSignature;
 
+  function showError(nextMessage: string): void {
+    if (!mounted.current) return;
+    setPhase("error");
+    setMessage(nextMessage);
+  }
+
   useEffect(() => {
     mounted.current = true;
     const controller = new AbortController();
@@ -125,8 +145,7 @@ export function PlanCheckout({
       })
       .catch((error) => {
         if (!mounted.current || controller.signal.aborted) return;
-        setPhase("error");
-        setMessage(errorMessage(error));
+        showError(errorMessage(error, "The payment quote could not be loaded."));
       });
 
     return () => {
@@ -158,11 +177,11 @@ export function PlanCheckout({
   }
 
   async function requestWalletProof(
-    provider: EthereumProvider,
+    provider: Eip1193Provider,
     walletAddress: string,
     hash: string,
   ): Promise<string> {
-    if (!currentQuote) throw new Error("The payment quote is not ready.");
+    if (!currentQuote) throw new Error("The payment quote is no longer ready. Reload checkout and retry.");
     setPhase("sending");
     setMessage(
       "Payment submitted. Sign the confirmation message to prove you control the paying wallet. This signature sends no funds.",
@@ -175,10 +194,16 @@ export function PlanCheckout({
       transactionHash: hash,
       origin: window.location.origin,
     });
-    const signature = (await provider.request({
-      method: "personal_sign",
-      params: [stringToHex(proofMessage), walletAddress],
-    })) as string;
+
+    let signature: string;
+    try {
+      signature = (await provider.request({
+        method: "personal_sign",
+        params: [stringToHex(proofMessage), walletAddress],
+      })) as string;
+    } catch (error) {
+      throw new Error(errorMessage(error, "The payment was sent, but the wallet signature failed."));
+    }
     if (!signature) throw new Error("The wallet did not return a payment proof signature.");
     setPaymentSignature(signature);
     return signature;
@@ -189,21 +214,26 @@ export function PlanCheckout({
     hash: string,
     walletSignature: string,
   ): Promise<PlanPaymentVerification> {
-    if (!currentQuote) throw new Error("The payment quote is not ready.");
+    if (!currentQuote) throw new Error("The payment quote is no longer ready. Reload checkout and retry verification.");
     for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt += 1) {
-      const response = await fetch("/api/plan-payments/verify", {
-        method: "POST",
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          plan,
-          billingPeriod: currentQuote.billingPeriod,
-          paymentToken: currentQuote.asset,
-          walletAddress,
-          transactionHash: hash,
-          walletSignature,
-        }),
-      });
+      let response: Response;
+      try {
+        response = await fetch("/api/plan-payments/verify", {
+          method: "POST",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            plan,
+            billingPeriod: currentQuote.billingPeriod,
+            paymentToken: currentQuote.asset,
+            walletAddress,
+            transactionHash: hash,
+            walletSignature,
+          }),
+        });
+      } catch (error) {
+        throw new Error(errorMessage(error, "The payment was sent, but the verification server could not be reached."));
+      }
 
       if (response.ok) return (await response.json()) as PlanPaymentVerification;
       if (response.status !== 202) throw new Error(await responseError(response));
@@ -235,8 +265,78 @@ export function PlanCheckout({
     setMessage("Subscription confirmed.");
   }
 
+  async function ensurePaymentChain(
+    provider: Eip1193Provider,
+    expectedQuote: PlanPaymentQuote,
+  ): Promise<void> {
+    let currentChain: string | null;
+    try {
+      currentChain = normaliseChainId(await provider.request({ method: "eth_chainId" }));
+    } catch (error) {
+      throw new Error(errorMessage(error, "Could not read the wallet network."));
+    }
+    if (!currentChain) {
+      throw new Error("The wallet returned an invalid chain ID. Refresh the wallet connection and try again.");
+    }
+
+    const expectedChain = expectedQuote.chainIdHex.toLowerCase();
+    if (currentChain !== expectedChain) {
+      setMessage(`Switching your wallet to ${expectedQuote.chainName}…`);
+      try {
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: expectedQuote.chainIdHex }],
+        });
+      } catch (switchError) {
+        const code = (switchError as { code?: number })?.code;
+        if (code !== 4902) {
+          throw new Error(
+            errorMessage(switchError, `Could not switch the wallet to ${expectedQuote.chainName}.`),
+          );
+        }
+        try {
+          await provider.request({
+            method: "wallet_addEthereumChain",
+            params: [
+              {
+                chainId: expectedQuote.chainIdHex,
+                chainName: expectedQuote.chainName,
+                nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+                rpcUrls: [expectedQuote.rpcUrl],
+                blockExplorerUrls: [expectedQuote.explorerBaseUrl],
+              },
+            ],
+          });
+        } catch (addError) {
+          throw new Error(
+            errorMessage(addError, `Could not add ${expectedQuote.chainName} to the wallet.`),
+          );
+        }
+      }
+    }
+
+    let confirmedChain: string | null;
+    try {
+      confirmedChain = normaliseChainId(await provider.request({ method: "eth_chainId" }));
+    } catch (error) {
+      throw new Error(errorMessage(error, "Could not confirm the wallet network after switching."));
+    }
+    if (confirmedChain !== expectedChain) {
+      throw new Error(
+        `The wallet is still on ${confirmedChain || "an unknown network"}. Switch to ${expectedQuote.chainName} (${expectedQuote.chainId}) and try again.`,
+      );
+    }
+  }
+
   async function pay() {
-    if (!currentQuote || phase === "sending" || phase === "verifying") return;
+    if (!currentQuote) {
+      showError("The payment quote is not ready. Wait for the USDG quote to finish loading, then try again.");
+      return;
+    }
+    if (phase === "sending" || phase === "verifying") {
+      setMessage("A wallet or verification request is already in progress. Complete it before trying again.");
+      return;
+    }
 
     try {
       if (transactionHash && paymentWalletAddress && paymentSignature) {
@@ -248,10 +348,11 @@ export function PlanCheckout({
         return;
       }
 
-      const browserWindow = window as PaymentWindow;
-      const provider = browserWindow.__launchpadEthereum || browserWindow.ethereum;
+      const provider = getInjectedEvmProvider();
       if (!provider) {
-        throw new Error("No EVM wallet was found. Install or unlock MetaMask, Rabby or Phantom.");
+        throw new Error(
+          "No confirmed EVM wallet provider was detected. Re-open Account, confirm MetaMask/Rabby/Phantom, then return to checkout.",
+        );
       }
 
       if (transactionHash && paymentWalletAddress) {
@@ -265,55 +366,49 @@ export function PlanCheckout({
       }
 
       setPhase("sending");
-      setMessage("Opening your confirmed wallet…");
+      setMessage("Checking your confirmed wallet and Robinhood Chain network…");
+      await ensurePaymentChain(provider, currentQuote);
 
+      let accounts: string[];
       try {
-        await provider.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: currentQuote.chainIdHex }],
-        });
-      } catch (switchError) {
-        const code = (switchError as { code?: number })?.code;
-        if (code !== 4902) throw switchError;
-        await provider.request({
-          method: "wallet_addEthereumChain",
-          params: [
-            {
-              chainId: currentQuote.chainIdHex,
-              chainName: currentQuote.chainName,
-              nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-              rpcUrls: [currentQuote.rpcUrl],
-              blockExplorerUrls: [currentQuote.explorerBaseUrl],
-            },
-          ],
-        });
+        accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
+      } catch (error) {
+        throw new Error(errorMessage(error, "The wallet account request failed."));
+      }
+      const walletAddress = accounts?.[0];
+      if (!walletAddress) {
+        throw new Error("The wallet returned no account. Unlock it, confirm the account, and try again.");
       }
 
-      const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
-      const walletAddress = accounts?.[0];
-      if (!walletAddress) throw new Error("The wallet returned no account.");
-
-      const hash = (await provider.request({
-        method: "eth_sendTransaction",
-        params: [
-          {
-            from: walletAddress,
-            to: currentQuote.transactionTo,
-            value: currentQuote.transactionValue,
-            data: currentQuote.transactionData,
-          },
-        ],
-      })) as string;
-      if (!hash) throw new Error("The wallet did not return a transaction hash.");
+      setMessage(
+        `Confirm the ${currentQuote.amountDisplay} ${currentQuote.asset} transfer in your wallet. No plan unlocks until it is verified.`,
+      );
+      let hash: string;
+      try {
+        hash = (await provider.request({
+          method: "eth_sendTransaction",
+          params: [
+            {
+              from: walletAddress,
+              to: currentQuote.transactionTo,
+              value: currentQuote.transactionValue,
+              data: currentQuote.transactionData,
+            },
+          ],
+        })) as string;
+      } catch (error) {
+        throw new Error(
+          errorMessage(error, `${currentQuote.asset} payment was not submitted.`),
+        );
+      }
+      if (!hash) throw new Error("The wallet returned no transaction hash. No payment was recorded.");
 
       setPaymentWalletAddress(walletAddress);
       setTransactionHash(hash);
       const signature = await requestWalletProof(provider, walletAddress, hash);
       await finishVerification(walletAddress, hash, signature);
     } catch (error) {
-      if (!mounted.current) return;
-      setPhase("error");
-      setMessage(errorMessage(error));
+      showError(errorMessage(error));
     }
   }
 
@@ -428,7 +523,11 @@ export function PlanCheckout({
         <button
           type="button"
           className={`${needsWalletInteraction ? "wallet-button " : ""}${styles.payButton}`}
-          onClick={() => void pay()}
+          onClick={() => {
+            void pay().catch((error) => {
+              showError(errorMessage(error, "Payment failed unexpectedly."));
+            });
+          }}
           disabled={!currentQuote || busy}
         >
           {phase === "sending"
