@@ -1,11 +1,14 @@
 type PaymentOriginEnvironment = Record<string, string | undefined>;
 
+export type PlanPaymentOriginIntent = "send" | "verify";
+
 export type PlanPaymentOriginDecision = {
   allowed: boolean;
   requestOrigin: string | null;
   primaryOrigin: string | null;
   isPreview: boolean;
   previewPaymentsEnabled: boolean;
+  intent: PlanPaymentOriginIntent;
   reason: string;
 };
 
@@ -47,6 +50,7 @@ function configuredPaymentOrigins(environment: PaymentOriginEnvironment): string
 
 export function getPlanPaymentOriginDecision(
   request: Request,
+  intent: PlanPaymentOriginIntent = "verify",
   environment: PaymentOriginEnvironment = process.env,
 ): PlanPaymentOriginDecision {
   const requestOrigin = normaliseOrigin(request.headers.get("origin"));
@@ -57,7 +61,11 @@ export function getPlanPaymentOriginDecision(
 
   const allowedOrigins = new Set(configured);
   if (isPreview) {
-    if (previewPaymentsEnabled) {
+    // Preview verification/recovery is safe to allow because it cannot move funds:
+    // the server still requires the exact on-chain transfer and a wallet signature
+    // bound to this preview origin. Sending a new real payment remains blocked by
+    // default and requires an explicit environment opt-in.
+    if (intent === "verify" || previewPaymentsEnabled) {
       if (requestUrlOrigin) allowedOrigins.add(requestUrlOrigin);
       const deploymentOrigin = vercelSystemOrigin(environment.VERCEL_URL);
       const branchOrigin = vercelSystemOrigin(environment.VERCEL_BRANCH_URL);
@@ -65,10 +73,8 @@ export function getPlanPaymentOriginDecision(
       if (branchOrigin) allowedOrigins.add(branchOrigin);
     }
   } else if (requestUrlOrigin) {
-    // Production and local development may use the deployment's own same-origin
-    // host. Preview deployments are deliberately excluded unless explicitly
-    // enabled above, preventing a real payment from being sent on a preview that
-    // verification will later reject.
+    // Production and local development may use their own same-origin host in
+    // addition to configured canonical origins.
     allowedOrigins.add(requestUrlOrigin);
   }
 
@@ -80,6 +86,7 @@ export function getPlanPaymentOriginDecision(
       primaryOrigin,
       isPreview,
       previewPaymentsEnabled,
+      intent,
       reason: "The browser did not provide a valid payment request origin.",
     };
   }
@@ -91,12 +98,13 @@ export function getPlanPaymentOriginDecision(
       primaryOrigin,
       isPreview,
       previewPaymentsEnabled,
+      intent,
       reason: "Payment origin is allowed.",
     };
   }
 
-  const reason = isPreview && !previewPaymentsEnabled
-    ? `Real payments are disabled on Vercel previews. Open ${primaryOrigin || "the production Hoodlums site"} to pay or recover an existing transaction.`
+  const reason = isPreview && intent === "send" && !previewPaymentsEnabled
+    ? `Real payments are disabled on Vercel previews. Open ${primaryOrigin || "the production Hoodlums site"} to pay. Existing transaction hashes can still be recovered without sending a second payment.`
     : `Payments are not allowed from ${requestOrigin}. Open ${primaryOrigin || "the approved Hoodlums origin"} to continue.`;
 
   return {
@@ -105,13 +113,15 @@ export function getPlanPaymentOriginDecision(
     primaryOrigin,
     isPreview,
     previewPaymentsEnabled,
+    intent,
     reason,
   };
 }
 
 export function isPlanPaymentOriginAllowed(
   request: Request,
+  intent: PlanPaymentOriginIntent = "verify",
   environment: PaymentOriginEnvironment = process.env,
 ): boolean {
-  return getPlanPaymentOriginDecision(request, environment).allowed;
+  return getPlanPaymentOriginDecision(request, intent, environment).allowed;
 }
