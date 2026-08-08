@@ -222,9 +222,11 @@ label small { display: block; margin-top: 5px; color: #5f6a61; font: 10px var(--
 .chain-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 .chain-dot.robinhood { background: #20d45b; box-shadow: 0 0 8px #20d45b; }
 .chain-dot.solana { background: linear-gradient(135deg, #9945ff, #14f195); box-shadow: 0 0 8px rgba(20,241,149,.7); }
-.ticker-input, .url-input { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 6px; background: #0a0f0c; overflow: hidden; }
-.ticker-input:focus-within, .url-input:focus-within { border-color: rgba(85,255,120,.6); }
+.ticker-input, .url-input, .social-input { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 6px; background: #0a0f0c; overflow: hidden; }
+.ticker-input:focus-within, .url-input:focus-within, .social-input:focus-within { border-color: rgba(85,255,120,.6); }
 .ticker-input span { padding-left: 12px; color: var(--green); font: 700 13px var(--mono); }
+.social-input-icon { flex: none; width: 20px; height: 20px; margin-left: 11px; }
+.social-input input { border: 0; background: transparent; box-shadow: none; }
 .section-toggle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .section-toggle {
   display: flex;
