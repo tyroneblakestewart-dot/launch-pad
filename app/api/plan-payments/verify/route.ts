@@ -20,7 +20,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const originDecision = getPlanPaymentOriginDecision(request);
+  const originDecision = getPlanPaymentOriginDecision(request, "verify");
   if (!originDecision.allowed) {
     return NextResponse.json(
       {
