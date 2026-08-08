@@ -190,6 +190,16 @@ export function WalletProviderSelector() {
       // Solana uses Phantom's dedicated Solana provider, not window.ethereum.
       if (button.textContent?.toLowerCase().includes("phantom")) return;
 
+      // Once the user has already confirmed an EIP-6963 wallet, payment and
+      // signing buttons must reach their own React handlers immediately. The old
+      // behaviour intercepted every .wallet-button click and opened this selector
+      // again; inside the plan chooser that selector sat behind the checkout modal,
+      // so the payment click looked completely dead.
+      if (confirmedWallet.current) {
+        installSelectedProvider(confirmedWallet.current);
+        return;
+      }
+
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
