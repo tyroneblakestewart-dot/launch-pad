@@ -4,7 +4,7 @@ import { getPlanPaymentOriginDecision } from "@/lib/server/plan-payment-origin";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const decision = getPlanPaymentOriginDecision(request);
+  const decision = getPlanPaymentOriginDecision(request, "send");
   if (!decision.allowed) {
     return NextResponse.json(
       {
