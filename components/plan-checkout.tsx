@@ -206,16 +206,26 @@ export function PlanCheckout({
 
   useEffect(() => {
     mounted.current = true;
-    const stored = parseRecoverablePlanPayment(
-      localStorage.getItem(RECOVERABLE_PLAN_PAYMENT_STORAGE_KEY),
-    );
-    if (!stored || stored.plan !== plan) return;
-    setStoredRecovery(stored);
-    setRecoveryHash(stored.transactionHash);
-    if (subscription && (stored.billingPeriod === "monthly" || stored.billingPeriod === "upfront")) {
-      setBillingPeriod(stored.billingPeriod);
-      setPaymentToken(stored.paymentToken);
-    }
+    const restoreTimer = window.setTimeout(() => {
+      const stored = parseRecoverablePlanPayment(
+        localStorage.getItem(RECOVERABLE_PLAN_PAYMENT_STORAGE_KEY),
+      );
+      if (!stored || stored.plan !== plan || !mounted.current) return;
+      setStoredRecovery(stored);
+      setRecoveryHash(stored.transactionHash);
+      if (
+        subscription &&
+        (stored.billingPeriod === "monthly" || stored.billingPeriod === "upfront")
+      ) {
+        setBillingPeriod(stored.billingPeriod);
+        setPaymentToken(stored.paymentToken);
+      }
+    }, 0);
+
+    return () => {
+      window.clearTimeout(restoreTimer);
+      mounted.current = false;
+    };
   }, [plan, subscription]);
 
   useEffect(() => {
@@ -224,10 +234,6 @@ export function PlanCheckout({
       subscription && paymentToken
         ? `&token=${encodeURIComponent(paymentToken)}`
         : "";
-
-    setSendOriginAllowed(false);
-    setPhase("loading");
-    setMessage("Checking payment safety and loading the verified quote…");
 
     Promise.all([
       fetch(
@@ -448,11 +454,7 @@ export function PlanCheckout({
     setMessage(
       `Verifying existing on-chain transaction ${hash}. No second payment will be sent.`,
     );
-    const result = await verifyUntilConfirmed(
-      walletAddress,
-      hash,
-      walletSignature,
-    );
+    const result = await verifyUntilConfirmed(walletAddress, hash, walletSignature);
     if (!mounted.current) return;
 
     clearRecoverablePayment(hash);
@@ -550,9 +552,7 @@ export function PlanCheckout({
     }
   }
 
-  async function currentWallet(
-    provider: Eip1193Provider,
-  ): Promise<string> {
+  async function currentWallet(provider: Eip1193Provider): Promise<string> {
     let accounts: string[];
     try {
       accounts = (await provider.request({
