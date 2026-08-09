@@ -80,10 +80,45 @@ HOODLUMS_PAYMENT_CHAIN_ID=4663
 HOODLUMS_PAYMENT_CHAIN_NAME="Robinhood Chain"
 HOODLUMS_PAYMENT_EXPLORER_URL=https://robinhoodchain.blockscout.com
 HOODLUMS_PAYMENT_TOKENS_JSON='[...]'
+HOODLUMS_APP_ORIGIN=https://hoodlums.dev
+
+# Optional comma-separated additional production/payment origins.
+HOODLUMS_PAYMENT_ALLOWED_ORIGINS=
+
+# Keep false/unset in normal deployments. Setting true allows a Vercel preview
+# to request a REAL wallet payment after its preflight passes.
+HOODLUMS_PAYMENT_ALLOW_VERCEL_PREVIEWS=false
 
 # Bond + Pro Site only: exact one-off ETH price in wei.
 HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI=...
 ```
+
+## Payment origin safety
+
+Payment verification no longer reuses the admin-login origin policy. Payments have their own allowlist and a dedicated `POST /api/plan-payments/preflight` safety check.
+
+- Production same-origin requests and `HOODLUMS_APP_ORIGIN` are allowed.
+- Additional approved origins can be supplied with `HOODLUMS_PAYMENT_ALLOWED_ORIGINS`.
+- New real payments from Vercel previews are blocked by default.
+- Preview sends require the explicit `HOODLUMS_PAYMENT_ALLOW_VERCEL_PREVIEWS=true` opt-in.
+- Preview verification/recovery is allowed for that preview's own origin because it cannot request a new transfer. It still requires the exact on-chain payment and a fresh wallet signature bound to the current origin.
+- Checkout runs preflight while loading and again immediately before `eth_sendTransaction`. A rejected origin therefore cannot move funds and then discover only afterward that verification is forbidden.
+
+## Recovering an existing payment
+
+A confirmed on-chain transfer must never be stranded just because signing, networking, origin policy or server verification fails afterward.
+
+As soon as the wallet returns a transaction hash, checkout saves a recovery record in browser local storage **before** requesting the wallet proof or calling the verification API. The recovery record contains the plan, billing choice, token, paying wallet, transaction hash, amount, chain and timestamp. It never stores the wallet signature.
+
+The checkout exposes **Recover an existing payment**:
+
+1. Select the same plan, billing period and payment token used by the original transfer.
+2. Paste the existing transaction hash (or use the locally saved hash when available).
+3. Connect the wallet that sent the payment.
+4. Sign a fresh proof for the current origin. This signature sends no funds.
+5. The server rechecks the original transaction's chain, sender, token contract, decimals, exact treasury calldata, amount and matching `Transfer` event, then applies normal replay protection and records the subscription.
+
+The recovery path never calls `eth_sendTransaction`, so retrying a failed activation cannot create a second payment. After any post-transfer failure the UI explicitly tells the user **Do not pay again**, keeps the hash visible/recoverable and offers the recovery action.
 
 ## Subscription prices
 
@@ -126,7 +161,7 @@ The existing schema already stores token-aware payment history:
 - `subscriptions.last_payment_asset`
 - `subscriptions.last_payment_amount`
 
-No new migration is required for multi-token support.
+No new migration is required for multi-token support or transaction-hash recovery.
 
 - **Admin → Money** displays the token symbol for every revenue event.
 - **Admin → Subscribers** displays the token used for the latest payment and in payment history.

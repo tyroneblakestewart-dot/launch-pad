@@ -3,11 +3,11 @@ import {
   isPaidLaunchPath,
   resolvePaymentBillingPeriod,
 } from "@/lib/plan-payments";
-import { isAdminRequestOriginAllowed } from "@/lib/server/api-protection";
 import {
   getPlanPaymentQuote,
   PlanPaymentConfigurationError,
 } from "@/lib/server/plan-payment-config";
+import { getPlanPaymentOriginDecision } from "@/lib/server/plan-payment-origin";
 import {
   PlanPaymentProofError,
   verifyPlanPaymentWalletProof,
@@ -20,8 +20,19 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  if (!isAdminRequestOriginAllowed(request)) {
-    return NextResponse.json({ error: "Request origin is not allowed." }, { status: 403 });
+  const originDecision = getPlanPaymentOriginDecision(request, "verify");
+  if (!originDecision.allowed) {
+    return NextResponse.json(
+      {
+        error: originDecision.reason,
+        recoveryOrigin: originDecision.primaryOrigin,
+        recoverable: true,
+      },
+      {
+        status: 403,
+        headers: { "Cache-Control": "private, no-store" },
+      },
+    );
   }
 
   let body: unknown;
@@ -71,7 +82,7 @@ export async function POST(request: Request) {
       walletAddress: input.walletAddress,
       transactionHash: input.transactionHash,
       walletSignature: input.walletSignature,
-      origin: new URL(request.url).origin,
+      origin: originDecision.requestOrigin!,
     });
 
     const result = await verifyAndRecordPlanPayment({
@@ -86,15 +97,21 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (error instanceof PlanPaymentProofError) {
-      return NextResponse.json({ error: error.message }, { status: 401 });
+      return NextResponse.json(
+        { error: error.message, recoverable: true },
+        { status: 401 },
+      );
     }
     if (error instanceof PlanPaymentConfigurationError) {
-      return NextResponse.json({ error: error.message }, { status: 503 });
+      return NextResponse.json(
+        { error: error.message, recoverable: true },
+        { status: 503 },
+      );
     }
     if (error instanceof PlanPaymentError) {
       if (error.code === "pending") {
         return NextResponse.json(
-          { pending: true, error: error.message },
+          { pending: true, recoverable: true, error: error.message },
           { status: 202 },
         );
       }
@@ -106,10 +123,17 @@ export async function POST(request: Request) {
             : error.code === "invalid-request"
               ? 400
               : 422;
-      return NextResponse.json({ error: error.message }, { status });
+      return NextResponse.json(
+        { error: error.message, recoverable: error.code !== "replayed" },
+        { status },
+      );
     }
     return NextResponse.json(
-      { error: "Payment verification failed safely. No plan was unlocked." },
+      {
+        error:
+          "Payment verification failed safely. The transaction hash remains recoverable and no second payment is required.",
+        recoverable: true,
+      },
       { status: 500 },
     );
   }
