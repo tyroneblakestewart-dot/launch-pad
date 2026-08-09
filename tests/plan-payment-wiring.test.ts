@@ -72,7 +72,7 @@ describe("shared plan purchase flow", () => {
     const retryStart = checkout.indexOf(
       "if (transactionHash && paymentWalletAddress && paymentSignature)",
     );
-    const retryEnd = checkout.indexOf("const browserWindow", retryStart);
+    const retryEnd = checkout.indexOf("const provider = getInjectedEvmProvider()", retryStart);
     const retryBranch = checkout.slice(retryStart, retryEnd);
 
     expect(retryBranch).toContain("paymentWalletAddress");
@@ -121,11 +121,42 @@ describe("shared plan purchase flow", () => {
     const checkout = await source("components", "plan-checkout.tsx");
     const css = await source("components", "plan-checkout.module.css");
 
-    expect(checkout).toContain("browserWindow.__launchpadEthereum || browserWindow.ethereum");
+    expect(checkout).toContain("getInjectedEvmProvider()");
     expect(checkout).toContain('needsWalletInteraction ? "wallet-button " : ""');
     expect(css).toContain("@media (max-width: 480px)");
     expect(css).toContain("grid-template-columns: 1fr;");
     expect(css).toContain("touch-action: manipulation;");
+  });
+
+  it("does not swallow a confirmed wallet payment click behind the global selector", async () => {
+    const selector = await source("components", "wallet-provider-selector.tsx");
+    const selectorCss = await source("components", "wallet-provider-selector.module.css");
+    const chooserCss = await source("components", "token-path-chooser.module.css");
+
+    const confirmedPassThrough = selector.indexOf("if (confirmedWallet.current) {");
+    const preventDefault = selector.indexOf("event.preventDefault();", confirmedPassThrough);
+    expect(confirmedPassThrough).toBeGreaterThan(-1);
+    expect(preventDefault).toBeGreaterThan(confirmedPassThrough);
+    expect(selector.slice(confirmedPassThrough, preventDefault)).toContain("installSelectedProvider");
+    expect(selector.slice(confirmedPassThrough, preventDefault)).toContain("return;");
+    expect(selectorCss).toContain("z-index: 1700;");
+    expect(chooserCss).toContain("z-index: 1500;");
+  });
+
+  it("shows a visible checkout error for every wallet failure stage", async () => {
+    const checkout = await source("components", "plan-checkout.tsx");
+
+    expect(checkout).toContain("The payment quote is not ready. Wait for the USDG quote");
+    expect(checkout).toContain("No confirmed EVM wallet provider was detected");
+    expect(checkout).toContain("Could not read the wallet network");
+    expect(checkout).toContain("Could not switch the wallet to");
+    expect(checkout).toContain("Could not confirm the wallet network after switching");
+    expect(checkout).toContain("The wallet account request failed");
+    expect(checkout).toContain("payment was not submitted");
+    expect(checkout).toContain("wallet signature failed");
+    expect(checkout).toContain("verification server could not be reached");
+    expect(checkout).toContain("Payment failed unexpectedly");
+    expect(checkout).toContain('setPhase("error")');
   });
 });
 
