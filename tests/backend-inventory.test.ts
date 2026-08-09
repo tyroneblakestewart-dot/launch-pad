@@ -128,6 +128,7 @@ describe("backend test inventory", () => {
       "lib/server/generate-site-page-stream.ts",
       "lib/server/generate-site-style.ts",
       "lib/server/hoodchat-store.ts",
+      "lib/server/mascot-prompt-builder.ts",
       "lib/server/page-content-sanitise.ts",
       "lib/server/page-content-store.ts",
       "lib/server/page-content.ts",
