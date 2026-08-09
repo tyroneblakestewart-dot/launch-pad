@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   }
   if (text.length > MAX_TELEGRAM_TEXT_LENGTH) {
     return jsonError(
-      `Telegram text must be ${MAX_TEGRAM_TEXT_LENGTH} characters or fewer.`,
+      `Telegram text must be ${MAX_TELEGRAM_TEXT_LENGTH} characters or fewer.`,
       400,
     );
   }
