@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { TokenProject } from "@/lib/types";
 import styles from "./social-hub.module.css";
@@ -10,7 +9,7 @@ const DRAFT_STORAGE_KEY = "private-meme-token-studio-social-drafts-v1";
 const TELEGRAM_CHAT_STORAGE_KEY = "private-meme-token-studio-telegram-chats-v1";
 
 type TemplateId = "launch" | "countdown" | "contract" | "community" | "custom";
-
+type StudioTab = "setup" | "calendar" | "queue" | "rules";
 type DraftMap = Record<string, string>;
 type ChatMap = Record<string, string>;
 
@@ -21,6 +20,50 @@ const TEMPLATES: Array<{ id: TemplateId; label: string; description: string }> =
   { id: "community", label: "Community call", description: "Bring followers into X and Telegram." },
   { id: "custom", label: "Custom post", description: "Start with a blank composer." },
 ];
+
+const TABS: Array<{ id: StudioTab; desktop: string; mobile: string }> = [
+  { id: "setup", desktop: "Setup", mobile: "Setup" },
+  { id: "calendar", desktop: "Calendar & Schedule", mobile: "Calendar" },
+  { id: "queue", desktop: "Queue & History", mobile: "Queue" },
+  { id: "rules", desktop: "Settings & Rules", mobile: "Rules" },
+];
+
+const BOTS = [
+  {
+    name: "Buy Bot",
+    kind: "ALERTS",
+    mark: "B",
+    description: "Announces every purchase in your channel, with the size and the buyer.",
+  },
+  {
+    name: "Hype Bot",
+    kind: "COMMUNITY",
+    mark: "H",
+    description: "Keeps the chat moving between announcements — memes, questions and GMs.",
+  },
+  {
+    name: "Watchtower",
+    kind: "MILESTONES",
+    mark: "W",
+    description: "Posts when you hit a milestone: holders, market cap and graduation.",
+  },
+] as const;
+
+const MASCOT_ACTIONS = ["trading", "celebrating", "chilling", "building", "gym", "gaming", "cooking"];
+const MASCOT_PLACES = ["city streets", "beach", "space", "office", "casino", "nature"];
+const BANNED_WORDS = ["guaranteed", "financial advice", "to the moon", "rug", "100x"];
+const TONE_DIALS = [
+  ["Humour", "Dry", "Playful", "Full degen"],
+  ["Emoji", "None", "A little", "Plenty"],
+  ["Hashtags", "Never", "One or two", "Lots"],
+  ["Post length", "Short", "Medium", "Long"],
+] as const;
+const CALENDAR_DAY_NAMES = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+const AUGUST_2026 = Array.from({ length: 42 }, (_, index) => {
+  const day = index - 4;
+  return day >= 1 && day <= 31 ? day : null;
+});
+const MOBILE_WEEK = [8, 9, 10, 11, 12, 13, 14];
 
 function safeProjects(raw: string | null): TokenProject[] {
   if (!raw) return [];
@@ -79,7 +122,6 @@ function buildTemplate(project: TokenProject, template: TemplateId): string {
   const links = [website, xHandle, telegram].filter(Boolean).join("\n");
 
   if (template === "custom") return "";
-
   if (template === "countdown") {
     return [
       `⏳ ${name} ($${ticker}) launch countdown is live.`,
@@ -89,7 +131,6 @@ function buildTemplate(project: TokenProject, template: TemplateId): string {
       .filter(Boolean)
       .join("\n\n");
   }
-
   if (template === "contract") {
     return [
       `✅ ${name} ($${ticker}) is live on ${chain}.`,
@@ -100,7 +141,6 @@ function buildTemplate(project: TokenProject, template: TemplateId): string {
       .filter(Boolean)
       .join("\n\n");
   }
-
   if (template === "community") {
     return [
       `The ${name} community is assembling.`,
@@ -110,7 +150,6 @@ function buildTemplate(project: TokenProject, template: TemplateId): string {
       .filter(Boolean)
       .join("\n\n");
   }
-
   return [
     `🚨 Introducing ${name} ($${ticker}) on ${chain}.`,
     project.description || "A new community token is preparing for launch.",
@@ -124,12 +163,33 @@ function shortAddress(value: string): string {
   return value.length > 14 ? `${value.slice(0, 7)}…${value.slice(-5)}` : value;
 }
 
+function XIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
+function TelegramIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M21.94 4.3 18.9 19.1c-.23 1.02-.84 1.27-1.7.79l-4.7-3.46-2.27 2.18c-.25.25-.46.46-.94.46l.33-4.78 8.7-7.86c.38-.34-.08-.53-.59-.19l-10.75 6.77-4.63-1.45c-1.01-.31-1.03-1 .21-1.49l18.1-6.98c.84-.3 1.57.2 1.28 1.21z" />
+    </svg>
+  );
+}
+
+function ComingSoon({ compact = false }: { compact?: boolean }) {
+  return <span className={compact ? styles.comingSoonCompact : styles.comingSoon}>Coming soon</span>;
+}
+
 export function SocialHub() {
   const [projects, setProjects] = useState<TokenProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<StudioTab>("setup");
   const [templateId, setTemplateId] = useState<TemplateId>("launch");
   const [message, setMessage] = useState("");
-  const [telegramBotToken, setTelegramBotToken] = useState("");
   const [telegramChatId, setTelegramChatId] = useState("");
   const [includeArtwork, setIncludeArtwork] = useState(true);
   const [status, setStatus] = useState(
@@ -158,9 +218,10 @@ export function SocialHub() {
 
   const xCharacterCount = message.length;
   const xReady = xCharacterCount > 0 && xCharacterCount <= 280;
-  const telegramReady = Boolean(
-    selectedProject && telegramBotToken.trim() && telegramChatId.trim() && message.trim(),
-  );
+  const telegramReady = Boolean(selectedProject && telegramChatId.trim() && message.trim());
+  const projectInitial = (selectedProject?.name || "H").slice(0, 1).toUpperCase();
+  const projectTicker = selectedProject?.ticker?.trim().toUpperCase() || "PROJECT";
+  const xHandle = selectedProject?.xHandle ? cleanHandle(selectedProject.xHandle) : "";
 
   function selectProject(id: string) {
     const project = projects.find((item) => item.id === id);
@@ -171,7 +232,8 @@ export function SocialHub() {
     setTelegramChatId(chats[id] || "");
     setTemplateId("launch");
     setMessage(drafts[id] || buildTemplate(project, "launch"));
-    setStatus(`${project.name || "Project"} loaded into the social composer.`);
+    setProjectMenuOpen(false);
+    setStatus(`${project.name || "Project"} loaded into Hoodlums Social.`);
   }
 
   function chooseTemplate(id: TemplateId) {
@@ -239,18 +301,17 @@ export function SocialHub() {
       return false;
     }
     if (!telegramReady) {
-      setStatus("Enter the Telegram bot token, channel ID and post text first.");
+      setStatus("Enter the Telegram channel username or chat ID and add post text first.");
       return false;
     }
 
     setBusy(true);
-    setStatus("Sending the approved post to Telegram…");
+    setStatus("Sending the approved post through the Hoodlums Telegram bot…");
     try {
       const response = await fetch("/api/social/telegram", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          botToken: telegramBotToken.trim(),
           chatId: telegramChatId.trim(),
           text: message.trim(),
           artwork: includeArtwork ? selectedProject.heroImage : "",
@@ -264,8 +325,7 @@ export function SocialHub() {
       const chats: ChatMap = safeMap(localStorage.getItem(TELEGRAM_CHAT_STORAGE_KEY));
       chats[selectedProject.id] = telegramChatId.trim();
       localStorage.setItem(TELEGRAM_CHAT_STORAGE_KEY, JSON.stringify(chats));
-      setTelegramBotToken("");
-      setStatus("Telegram post published. The bot token was cleared from the form and was not saved.");
+      setStatus("Telegram post published through the Hoodlums bot.");
       return true;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Telegram publishing failed.");
@@ -280,225 +340,566 @@ export function SocialHub() {
     await postTelegram();
   }
 
+  function renderProjectArtwork(className: string, alt: string) {
+    if (selectedProject?.heroImage) {
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className={className} src={selectedProject.heroImage} alt={alt} />
+      );
+    }
+    return <span className={styles.artworkFallback}>{projectInitial}</span>;
+  }
+
   return (
     <main className={styles.shell}>
-      <header className={styles.topbar}>
-        <div>
-          <p>SOCIAL OPERATIONS</p>
-          <h1>Project Social Hub</h1>
-          <span>Prepare once. Review every destination. Publish without sharing passwords.</span>
-        </div>
-        <nav>
-          <Link href="/">← Studio</Link>
-          <Link href="/providers">Provider desk</Link>
-        </nav>
-      </header>
+      <div className={styles.pageFrame}>
+        <header className={styles.hero}>
+          <div className={styles.heroBrand}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              className={styles.socialWordmark}
+              src="/hoodlums-social-wordmark.png"
+              alt="Hoodlums Social"
+            />
+            <p>Prepare once. Review every destination. Publish without sharing passwords.</p>
+          </div>
 
-      <section className={styles.status} role="status">
-        <span>●</span>
-        <p>{status}</p>
-      </section>
-
-      <section className={styles.grid}>
-        <aside className={styles.sidebar}>
-          <section className={styles.card}>
-            <div className={styles.cardHeading}>
-              <div><p>STEP 01</p><h2>Choose project</h2></div>
-              <b>{projects.length}</b>
+          <div className={styles.heroActions}>
+            <span className={styles.proBadge}>PRO · AI SOCIAL STUDIO</span>
+            <div className={styles.projectPicker}>
+              <button
+                type="button"
+                className={styles.projectPickerButton}
+                onClick={() => setProjectMenuOpen((current) => !current)}
+                disabled={projects.length === 0}
+                aria-expanded={projectMenuOpen}
+                aria-haspopup="listbox"
+              >
+                <span className={styles.projectPickerMark}>{projectInitial}</span>
+                <span>{projectTicker}</span>
+                <span className={styles.projectPickerChevron}>▼</span>
+              </button>
+              {projectMenuOpen ? (
+                <div className={styles.projectMenu} role="listbox" aria-label="Saved project">
+                  {projects.map((project) => (
+                    <button
+                      type="button"
+                      key={project.id}
+                      className={project.id === selectedProjectId ? styles.projectMenuActive : styles.projectMenuItem}
+                      onClick={() => selectProject(project.id)}
+                      role="option"
+                      aria-selected={project.id === selectedProjectId}
+                    >
+                      <span className={styles.projectMenuMark}>
+                        {project.heroImage ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={project.heroImage} alt="" />
+                        ) : (
+                          (project.name || "T").slice(0, 1).toUpperCase()
+                        )}
+                      </span>
+                      <span>
+                        <b>{project.name || "Untitled project"}</b>
+                        <small>${project.ticker || "TOKEN"} · {project.chain}</small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
+          </div>
+        </header>
 
-            {projects.length === 0 ? (
-              <div className={styles.empty}>
-                No saved projects were found. Return to the studio and save the token project first.
-              </div>
-            ) : (
-              <div className={styles.projectList}>
-                {projects.map((project) => (
+        {projects.length === 0 ? (
+          <section className={styles.noProject}>
+            <span>NO SAVED PROJECT</span>
+            <h1>Save a token project before using Hoodlums Social.</h1>
+            <p>Your existing project picker still reads the private browser vault used by the launch studio.</p>
+            <a href="/">Return to launch studio</a>
+          </section>
+        ) : (
+          <section className={styles.studioPanel}>
+            <div className={styles.tabBar}>
+              <div className={styles.tabs} role="tablist" aria-label="Hoodlums Social sections">
+                {TABS.map((tab) => (
                   <button
                     type="button"
-                    key={project.id}
-                    className={project.id === selectedProjectId ? styles.projectActive : styles.project}
-                    onClick={() => selectProject(project.id)}
+                    key={tab.id}
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
+                    className={activeTab === tab.id ? styles.tabActive : styles.tab}
+                    onClick={() => setActiveTab(tab.id)}
                   >
-                    <span className={styles.projectImage}>
-                      {project.heroImage ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={project.heroImage} alt="" />
-                      ) : (
-                        project.name.slice(0, 1).toUpperCase() || "T"
-                      )}
-                    </span>
-                    <span>
-                      <b>{project.name || "Untitled project"}</b>
-                      <small>${project.ticker || "TOKEN"} · {project.chain}</small>
-                    </span>
-                    <em>{project.status}</em>
+                    <span className={styles.tabDesktop}>{tab.desktop}</span>
+                    <span className={styles.tabMobile}>{tab.mobile}</span>
                   </button>
                 ))}
               </div>
-            )}
-          </section>
-
-          <section className={styles.card}>
-            <div className={styles.cardHeading}>
-              <div><p>STEP 02</p><h2>Post type</h2></div>
-            </div>
-            <div className={styles.templateList}>
-              {TEMPLATES.map((template) => (
-                <button
-                  type="button"
-                  key={template.id}
-                  className={template.id === templateId ? styles.templateActive : styles.template}
-                  onClick={() => chooseTemplate(template.id)}
-                  disabled={!selectedProject}
-                >
-                  <b>{template.label}</b>
-                  <span>{template.description}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-        </aside>
-
-        <section className={styles.composerColumn}>
-          <section className={styles.composerCard}>
-            <div className={styles.cardHeading}>
-              <div><p>STEP 03</p><h2>Review the post</h2></div>
-              <span className={xReady ? styles.countReady : styles.countWarning}>
-                {xCharacterCount}/280
-              </span>
-            </div>
-
-            {selectedProject && (
-              <div className={styles.projectSummary}>
-                <span className={styles.summaryArtwork}>
-                  {selectedProject.heroImage ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={selectedProject.heroImage} alt={`${selectedProject.name} artwork`} />
-                  ) : (
-                    selectedProject.name.slice(0, 1).toUpperCase() || "T"
-                  )}
-                </span>
-                <span>
-                  <b>{selectedProject.name || "Untitled project"}</b>
-                  <small>
-                    ${selectedProject.ticker || "TOKEN"} · {selectedProject.chain}
-                    {selectedProject.contractAddress
-                      ? ` · ${shortAddress(selectedProject.contractAddress)}`
-                      : " · contract pending"}
-                  </small>
-                </span>
+              <div className={styles.panelMeta}>
+                <span className={styles.metaPill}><b>X + TELEGRAM</b> live tools</span>
+                <span className={styles.metaPillMuted}><b>AI TOOLS</b> coming soon</span>
               </div>
-            )}
+            </div>
 
-            <textarea
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              placeholder="Choose a project and write the announcement…"
-              rows={12}
-            />
+            <div className={styles.panelBody}>
+              {activeTab === "setup" ? (
+                <div className={styles.sectionStack}>
+                  <section className={styles.block}>
+                    <div className={styles.sectionHeading}>
+                      <div>
+                        <h2>Connect your accounts</h2>
+                        <p>We post on your behalf. You never hand over a password.</p>
+                      </div>
+                    </div>
+                    <div className={styles.twoCols}>
+                      <article className={styles.connectionCard}>
+                        <span className={styles.xIcon}><XIcon /></span>
+                        <div>
+                          <b>X</b>
+                          <span>{xHandle || "Uses the account already signed into X"}</span>
+                        </div>
+                        <span className={styles.connectionState}>Browser handoff</span>
+                      </article>
+                      <article className={styles.connectionCard}>
+                        <span className={styles.telegramIcon}><TelegramIcon /></span>
+                        <div>
+                          <b>Telegram</b>
+                          <span>{telegramChatId || "Hoodlums bot · channel not set"}</span>
+                        </div>
+                        <span className={telegramChatId ? styles.connectionStateLive : styles.connectionState}>
+                          {telegramChatId ? "Channel saved" : "Server bot"}
+                        </span>
+                      </article>
+                    </div>
+                  </section>
 
-            <div className={styles.composerActions}>
-              <button type="button" onClick={saveDraft}>Save draft</button>
-              <button type="button" onClick={copyPost}>Copy post</button>
-              <button type="button" onClick={downloadArtwork} disabled={!selectedProject?.heroImage}>
-                Download artwork
-              </button>
+                  <section className={styles.block}>
+                    <div className={styles.sectionHeading}>
+                      <div>
+                        <span className={styles.eyebrow}>PICK A HOODLUMS BOT</span>
+                        <p>Choose one of our bots and add it to your channel. Nothing to paste, nothing to set up.</p>
+                      </div>
+                      <ComingSoon compact />
+                    </div>
+                    <div className={styles.threeCols}>
+                      {BOTS.map((bot) => (
+                        <article className={styles.botCard} key={bot.name}>
+                          <span className={styles.botMark}>{bot.mark}</span>
+                          <div className={styles.botCopy}>
+                            <span>{bot.kind}</span>
+                            <b>{bot.name}</b>
+                            <p>{bot.description}</p>
+                          </div>
+                          <button type="button" disabled>Add to your channel</button>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+
+                  <div className={styles.divider} />
+
+                  <section className={styles.block}>
+                    <div className={styles.sectionHeading}>
+                      <div>
+                        <h2>Compose now</h2>
+                        <p>The working Project Social Hub tools live here now: choose a post type, review it, then approve X and/or Telegram.</p>
+                      </div>
+                      <span className={xReady ? styles.characterReady : styles.characterWarning}>{xCharacterCount}/280</span>
+                    </div>
+
+                    <div className={styles.composeGrid}>
+                      <aside className={styles.templatePanel}>
+                        <span className={styles.eyebrow}>POST TYPE</span>
+                        <div className={styles.templateList}>
+                          {TEMPLATES.map((template) => (
+                            <button
+                              type="button"
+                              key={template.id}
+                              className={template.id === templateId ? styles.templateActive : styles.template}
+                              onClick={() => chooseTemplate(template.id)}
+                            >
+                              <b>{template.label}</b>
+                              <span>{template.description}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </aside>
+
+                      <div className={styles.composerPanel}>
+                        <div className={styles.projectSummary}>
+                          <span className={styles.summaryArtwork}>
+                            {renderProjectArtwork(styles.summaryImage, `${selectedProject?.name || "Token"} artwork`)}
+                          </span>
+                          <span>
+                            <b>{selectedProject?.name || "Untitled project"}</b>
+                            <small>
+                              ${projectTicker} · {selectedProject?.chain}
+                              {selectedProject?.contractAddress
+                                ? ` · ${shortAddress(selectedProject.contractAddress)}`
+                                : " · contract pending"}
+                            </small>
+                          </span>
+                        </div>
+                        <textarea
+                          value={message}
+                          onChange={(event) => setMessage(event.target.value)}
+                          placeholder="Write the announcement…"
+                          rows={9}
+                        />
+                        <div className={styles.composerActions}>
+                          <button type="button" onClick={saveDraft}>Save draft</button>
+                          <button type="button" onClick={copyPost}>Copy post</button>
+                          <button type="button" onClick={downloadArtwork} disabled={!selectedProject?.heroImage}>
+                            Download artwork
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={styles.destinationGrid}>
+                      <article className={styles.destinationCard}>
+                        <div className={styles.destinationTitle}>
+                          <span className={styles.xIcon}><XIcon /></span>
+                          <div>
+                            <h3>X</h3>
+                            <p>Review in the official X composer before anything posts.</p>
+                          </div>
+                        </div>
+                        <ul>
+                          <li>Uses the X account already signed into your browser</li>
+                          <li>No X password or access token is stored</li>
+                          <li>Artwork remains a manual attachment</li>
+                        </ul>
+                        <button type="button" className={styles.xButton} onClick={openXComposer} disabled={!xReady}>
+                          APPROVE & OPEN X COMPOSER ↗
+                        </button>
+                      </article>
+
+                      <article className={styles.destinationCard}>
+                        <div className={styles.destinationTitle}>
+                          <span className={styles.telegramIcon}><TelegramIcon /></span>
+                          <div>
+                            <h3>Telegram</h3>
+                            <p>Direct publishing through the server-managed Hoodlums bot.</p>
+                          </div>
+                        </div>
+                        <label>
+                          <span>Channel username or chat ID</span>
+                          <input
+                            value={telegramChatId}
+                            onChange={(event) => setTelegramChatId(event.target.value)}
+                            placeholder="@yourchannel or -1001234567890"
+                          />
+                          <small>Add the Hoodlums bot as an administrator allowed to post. No BotFather token is entered in the Studio.</small>
+                        </label>
+                        <label className={styles.checkbox}>
+                          <input
+                            type="checkbox"
+                            checked={includeArtwork}
+                            onChange={(event) => setIncludeArtwork(event.target.checked)}
+                          />
+                          <span>Include project artwork when available</span>
+                        </label>
+                        <button
+                          type="button"
+                          className={styles.telegramButton}
+                          onClick={postTelegram}
+                          disabled={!telegramReady || busy}
+                        >
+                          {busy ? "PUBLISHING…" : "APPROVE & POST TO TELEGRAM"}
+                        </button>
+                      </article>
+                    </div>
+
+                    <div className={styles.publishBar}>
+                      <div>
+                        <b>Publish to both</b>
+                        <span>Opens X for your final click, then sends the approved Telegram post.</span>
+                      </div>
+                      <button type="button" onClick={publishBoth} disabled={!xReady || !telegramReady || busy}>
+                        APPROVE BOTH DESTINATIONS
+                      </button>
+                    </div>
+
+                    <div className={styles.statusBar} role="status" aria-live="polite">
+                      <span>●</span>
+                      <p>{status}</p>
+                    </div>
+                  </section>
+
+                  <div className={styles.divider} />
+
+                  <section className={styles.twoColsTop}>
+                    <div className={styles.blockInner}>
+                      <div className={styles.sectionHeading}>
+                        <div>
+                          <h2>Teach the AI your voice</h2>
+                          <p>Drop in posts you like the sound of. The more you add, the better it sounds — 20 is ideal.</p>
+                        </div>
+                        <ComingSoon compact />
+                      </div>
+                      <div className={styles.insetPanel}>
+                        <textarea disabled placeholder="Paste a post here, one per line — or drag a screenshot in" rows={5} />
+                        <div className={styles.disabledActions}>
+                          <button type="button" disabled>Upload screenshots</button>
+                          <span>0 / 20 examples</span>
+                        </div>
+                      </div>
+                      <div className={styles.progressRow}>
+                        <div><span>EXAMPLES ADDED</span><b>0 / 20</b></div>
+                        <div className={styles.progressTrack}><span /></div>
+                      </div>
+                      <p className={styles.limeNote}>Your examples teach style only — the AI will only ever talk about your project.</p>
+                    </div>
+
+                    <div className={styles.blockInner}>
+                      <div className={styles.sectionHeading}>
+                        <div>
+                          <h2>Voice preview</h2>
+                          <p>Here&apos;s how it would sound writing about your project.</p>
+                        </div>
+                        <ComingSoon compact />
+                      </div>
+                      <div className={styles.previewEmpty}>
+                        <span>AI VOICE PREVIEW</span>
+                        <b>Add examples to unlock voice samples.</b>
+                        <p>No generated text is shown until the voice-learning backend exists.</p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <div className={styles.divider} />
+
+                  <section className={styles.block}>
+                    <div className={styles.sectionHeading}>
+                      <div>
+                        <h2>Your mascot</h2>
+                        <p>Upload your character once. Every image we make features them — and only them.</p>
+                      </div>
+                      <ComingSoon compact />
+                    </div>
+                    <div className={styles.mascotGrid}>
+                      <div className={styles.mascotOptions}>
+                        <div>
+                          <span className={styles.eyebrow}>WHAT SHOULD YOUR MASCOT BE DOING?</span>
+                          <div className={styles.chips}>
+                            {MASCOT_ACTIONS.map((label) => <button type="button" disabled key={label}>{label}</button>)}
+                            <button type="button" disabled className={styles.dashedChip}>add your own…</button>
+                          </div>
+                        </div>
+                        <div>
+                          <span className={styles.eyebrow}>WHERE SHOULD YOUR MASCOT SHOW UP?</span>
+                          <div className={styles.chips}>
+                            {MASCOT_PLACES.map((label) => <button type="button" disabled key={label}>{label}</button>)}
+                            <button type="button" disabled className={styles.dashedChip}>add your own…</button>
+                          </div>
+                        </div>
+                        <p>Your mascot is always the only character in generated images.</p>
+                      </div>
+                      <div className={styles.mascotDrop}>
+                        <span className={styles.mascotInitial}>{projectInitial}</span>
+                        <b>Upload mascot artwork</b>
+                        <p>PNG, JPG or WEBP</p>
+                        <button type="button" disabled>Choose image</button>
+                        <ComingSoon compact />
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              ) : null}
+
+              {activeTab === "calendar" ? (
+                <div className={styles.sectionStack}>
+                  <section className={styles.block}>
+                    <div className={styles.calendarHeading}>
+                      <div>
+                        <h2>August 2026</h2>
+                        <p>Tap a day to add something. Lime days will hold launches or announcements.</p>
+                      </div>
+                      <div className={styles.timezoneControl}>
+                        <span>ALL TIMES SHOWN IN</span>
+                        <select disabled defaultValue="London (GMT+1)">
+                          <option>London (GMT+1)</option>
+                        </select>
+                        <ComingSoon compact />
+                      </div>
+                    </div>
+
+                    <div className={styles.calendarLayout}>
+                      <div>
+                        <div className={styles.desktopCalendar}>
+                          {CALENDAR_DAY_NAMES.map((day) => <span key={day}>{day}</span>)}
+                          {AUGUST_2026.map((day, index) => (
+                            <button
+                              type="button"
+                              disabled
+                              key={`${day ?? "blank"}-${index}`}
+                              className={day === 9 ? styles.calendarToday : day ? styles.calendarDay : styles.calendarBlank}
+                            >
+                              {day}
+                            </button>
+                          ))}
+                        </div>
+                        <div className={styles.mobileWeek}>
+                          {MOBILE_WEEK.map((day, index) => (
+                            <button type="button" disabled key={day} className={day === 9 ? styles.weekToday : styles.weekDay}>
+                              <span>{CALENDAR_DAY_NAMES[(index + 5) % 7]}</span>
+                              <b>{day}</b>
+                              <small>No scheduled posts</small>
+                            </button>
+                          ))}
+                        </div>
+                        <div className={styles.calendarLegend}>
+                          <span><i className={styles.limeDot} />Announcement or launch</span>
+                          <span><i className={styles.greyDot} />Scheduled post</span>
+                        </div>
+                      </div>
+
+                      <aside className={styles.scheduleCard}>
+                        <div>
+                          <span className={styles.eyebrow}>ADD TO</span>
+                          <h3>9 August 2026</h3>
+                        </div>
+                        <button type="button" disabled className={styles.aiMakeButton}>
+                          <b>AI makes it</b>
+                          <span>Describe your idea and we&apos;ll create the post and artwork.</span>
+                        </button>
+                        <button type="button" disabled className={styles.ownPostButton}>
+                          <b>I&apos;ll post my own</b>
+                          <span>Upload or write it yourself — we&apos;ll publish it on time.</span>
+                        </button>
+                        <div className={styles.miniDivider} />
+                        <span className={styles.eyebrow}>WHERE IT POSTS</span>
+                        <div className={styles.destinationChips}>
+                          <span><XIcon /> X</span>
+                          <span><TelegramIcon /> Telegram</span>
+                        </div>
+                        <p>Posting to Telegram keeps the community talking between announcements.</p>
+                        <div className={styles.miniDivider} />
+                        <span className={styles.eyebrow}>QUIET HOURS</span>
+                        <div className={styles.quietHours}>
+                          <span>Never post between</span>
+                          <select disabled><option>23:00</option></select>
+                          <span>and</span>
+                          <select disabled><option>07:00</option></select>
+                        </div>
+                        <ComingSoon />
+                      </aside>
+                    </div>
+                  </section>
+                </div>
+              ) : null}
+
+              {activeTab === "queue" ? (
+                <div className={styles.sectionStack}>
+                  <section className={styles.block}>
+                    <div className={styles.sectionHeading}>
+                      <div>
+                        <h2>What&apos;s going out</h2>
+                        <p>Scheduling, approval queues and post history will appear here when that backend is connected.</p>
+                      </div>
+                      <div className={styles.segmentedDisabled}>
+                        <span className={styles.segmentActive}>Approve first</span>
+                        <span>Auto-publish</span>
+                      </div>
+                    </div>
+                    <div className={styles.queueEmpty}>
+                      <ComingSoon />
+                      <b>No queue is being simulated.</b>
+                      <p>Your working X and Telegram publish buttons remain in Setup. This tab is intentionally display-only until real scheduling exists.</p>
+                    </div>
+                  </section>
+
+                  <section className={styles.performanceCard}>
+                    <div className={styles.sectionHeading}>
+                      <div>
+                        <h2>How it&apos;s going</h2>
+                        <p>Your numbers, updated as they move.</p>
+                      </div>
+                      <span className={styles.privateBadge}>ONLY YOU CAN SEE THIS</span>
+                    </div>
+                    <div className={styles.metricGrid}>
+                      {["Posts published", "Approval rate", "Best post"].map((label) => (
+                        <div key={label}>
+                          <span>{label}</span>
+                          <b>—</b>
+                          <small>Coming soon</small>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className={styles.block}>
+                    <div className={styles.sectionHeading}>
+                      <div>
+                        <span className={styles.eyebrow}>HISTORY</span>
+                        <p>Real publish history will be stored here when queue persistence is implemented.</p>
+                      </div>
+                      <ComingSoon compact />
+                    </div>
+                    <div className={styles.historyPlaceholder}>
+                      <span>No fabricated history.</span>
+                    </div>
+                  </section>
+                </div>
+              ) : null}
+
+              {activeTab === "rules" ? (
+                <div className={styles.sectionStack}>
+                  <section className={styles.twoColsTop}>
+                    <div className={styles.blockInner}>
+                      <div className={styles.sectionHeading}>
+                        <div>
+                          <h2>Words to avoid</h2>
+                          <p>The AI will never use these once rule storage is connected.</p>
+                        </div>
+                        <ComingSoon compact />
+                      </div>
+                      <div className={styles.bannedPanel}>
+                        {BANNED_WORDS.map((word) => <span key={word}>{word}<i>×</i></span>)}
+                        <button type="button" disabled>+ add a word</button>
+                      </div>
+                      <p className={styles.exampleLabel}>Example rules from the approved design — not active yet.</p>
+                    </div>
+
+                    <div className={styles.blockInner}>
+                      <div className={styles.sectionHeading}>
+                        <div>
+                          <h2>How it should sound</h2>
+                          <p>Nudge the tone whenever you like.</p>
+                        </div>
+                        <ComingSoon compact />
+                      </div>
+                      <div className={styles.dialList}>
+                        {TONE_DIALS.map(([label, ...options]) => (
+                          <div key={label}>
+                            <span>{label}</span>
+                            <div>
+                              {options.map((option, index) => (
+                                <button type="button" disabled key={option} className={index === 1 ? styles.dialSelected : undefined}>{option}</button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className={styles.block}>
+                    <button type="button" disabled className={styles.advancedButton}>
+                      <span>
+                        <b>Advanced rules</b>
+                        <small>Frequency caps, quiet-hour enforcement and automatic safety checks.</small>
+                      </span>
+                      <ComingSoon compact />
+                    </button>
+                  </section>
+                </div>
+              ) : null}
             </div>
           </section>
-
-          <section className={styles.destinationGrid}>
-            <article className={styles.destinationCard}>
-              <div className={styles.destinationTitle}>
-                <span className={styles.xBadge}>X</span>
-                <div><h3>X account</h3><p>Approval through the official X composer</p></div>
-              </div>
-              <ul>
-                <li>Uses the account already signed into X</li>
-                <li>No X password or access token is stored</li>
-                <li>Artwork must be attached manually</li>
-              </ul>
-              <button
-                type="button"
-                className={styles.xButton}
-                onClick={openXComposer}
-                disabled={!xReady}
-              >
-                APPROVE & OPEN X COMPOSER ↗
-              </button>
-            </article>
-
-            <article className={styles.destinationCard}>
-              <div className={styles.destinationTitle}>
-                <span className={styles.telegramBadge}>T</span>
-                <div><h3>Telegram channel</h3><p>Direct publishing through your Telegram bot</p></div>
-              </div>
-
-              <label>
-                <span>Bot token</span>
-                <input
-                  type="password"
-                  value={telegramBotToken}
-                  onChange={(event) => setTelegramBotToken(event.target.value)}
-                  placeholder="Paste the BotFather token for this post"
-                  autoComplete="off"
-                />
-                <small>Never saved. Cleared after a successful post.</small>
-              </label>
-
-              <label>
-                <span>Channel username or chat ID</span>
-                <input
-                  value={telegramChatId}
-                  onChange={(event) => setTelegramChatId(event.target.value)}
-                  placeholder="@yourchannel or -1001234567890"
-                />
-                <small>The bot must be an administrator allowed to post.</small>
-              </label>
-
-              <label className={styles.checkbox}>
-                <input
-                  type="checkbox"
-                  checked={includeArtwork}
-                  onChange={(event) => setIncludeArtwork(event.target.checked)}
-                />
-                <span>Include project artwork when available</span>
-              </label>
-
-              <button
-                type="button"
-                className={styles.telegramButton}
-                onClick={postTelegram}
-                disabled={!telegramReady || busy}
-              >
-                {busy ? "PUBLISHING…" : "APPROVE & POST TO TELEGRAM"}
-              </button>
-            </article>
-          </section>
-
-          <section className={styles.publishBar}>
-            <div>
-              <b>Publish to both</b>
-              <span>Opens X for your final click, then sends the approved Telegram post.</span>
-            </div>
-            <button
-              type="button"
-              onClick={publishBoth}
-              disabled={!xReady || !telegramReady || busy}
-            >
-              APPROVE BOTH DESTINATIONS
-            </button>
-          </section>
-
-          <section className={styles.securityNote}>
-            <b>Current security boundary</b>
-            <p>
-              This version does not create social accounts, solve captchas, store passwords or schedule background posts.
-              Full one-click X API publishing requires an X Developer application, OAuth authorization and encrypted server-side token storage.
-            </p>
-          </section>
-        </section>
-      </section>
+        )}
+      </div>
     </main>
   );
 }
