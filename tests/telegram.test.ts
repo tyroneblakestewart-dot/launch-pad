@@ -16,6 +16,7 @@ import {
 const BOT_TOKEN = `123456:${"A".repeat(24)}`;
 const CHAT_ID = "@hoodlums_test";
 const VALID_ARTWORK = `data:image/png;base64,${Buffer.from("fake-image").toString("base64")}`;
+const ORIGINAL_TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 function makeRequest(body: unknown): Request {
   return new Request("http://localhost/api/social/telegram", {
@@ -38,6 +39,11 @@ async function responseJson<T>(response: Response): Promise<T> {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  if (ORIGINAL_TELEGRAM_BOT_TOKEN === undefined) {
+    delete process.env.TELEGRAM_BOT_TOKEN;
+  } else {
+    process.env.TELEGRAM_BOT_TOKEN = ORIGINAL_TELEGRAM_BOT_TOKEN;
+  }
 });
 
 describe("Telegram server functions", () => {
@@ -200,16 +206,30 @@ describe("POST /api/social/telegram", () => {
     });
   });
 
-  it("rejects missing or invalid Telegram credentials", async () => {
+  it("fails closed when the server bot is missing and rejects invalid chat IDs", async () => {
+    delete process.env.TELEGRAM_BOT_TOKEN;
     const missingToken = await POST(makeRequest({ chatId: CHAT_ID, text: "Hello" }));
-    expect(missingToken.status).toBe(400);
-    expect((await responseJson<{ error: string }>(missingToken)).error).toContain("BotFather");
+    expect(missingToken.status).toBe(503);
+    expect((await responseJson<{ error: string }>(missingToken)).error).toContain("not configured");
 
     const invalidChat = await POST(
       makeRequest({ botToken: BOT_TOKEN, chatId: "bad", text: "Hello" }),
     );
     expect(invalidChat.status).toBe(400);
     expect((await responseJson<{ error: string }>(invalidChat)).error).toContain("chat ID");
+  });
+
+  it("uses the configured Hoodlums bot when the browser omits a raw token", async () => {
+    process.env.TELEGRAM_BOT_TOKEN = BOT_TOKEN;
+    const fetchMock = vi.fn().mockResolvedValue(telegramSuccess(30));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(makeRequest({ chatId: CHAT_ID, text: "Server bot post" }));
+    const body = await responseJson<{ ok: boolean; messageIds: number[] }>(response);
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ ok: true, messageIds: [30] });
+    expect(String(fetchMock.mock.calls[0][0])).toContain(`bot${BOT_TOKEN}/sendMessage`);
   });
 
   it("rejects empty and over-limit posts", async () => {
