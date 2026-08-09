@@ -54,7 +54,8 @@
 }
 
 .summary span,
-.status span {
+.status span,
+.recovery > span {
   color: #c6f53e;
   font: 800 9px/1 "IBM Plex Mono", monospace;
   letter-spacing: 0.14em;
@@ -71,7 +72,8 @@
 
 .summary p,
 .status p,
-.success p {
+.success p,
+.recovery p {
   margin: 0;
   color: #a8b0aa;
   font-size: 12px;
@@ -106,6 +108,73 @@
 
 .error {
   color: #ff9a9a !important;
+}
+
+.recovery {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(241, 207, 85, 0.26);
+  border-radius: 14px;
+  background: rgba(241, 207, 85, 0.045);
+}
+
+.recovery h4 {
+  margin: 0;
+  color: #f4f7f1;
+  font-size: 16px;
+}
+
+.recoverySaved {
+  overflow-wrap: anywhere;
+  padding: 9px 10px;
+  border: 1px dashed rgba(198, 245, 62, 0.22);
+  border-radius: 9px;
+  color: #b8c3ba !important;
+  background: rgba(198, 245, 62, 0.04);
+  font: 700 9px/1.5 "IBM Plex Mono", monospace !important;
+}
+
+.recoveryInput {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  outline: none;
+  color: #f4f7f1;
+  background: #080d09;
+  font: 700 10px/1.4 "IBM Plex Mono", monospace;
+}
+
+.recoveryInput:focus {
+  border-color: rgba(198, 245, 62, 0.55);
+  box-shadow: 0 0 0 2px rgba(198, 245, 62, 0.08);
+}
+
+.recoverButton {
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid rgba(241, 207, 85, 0.45);
+  border-radius: 999px;
+  color: #f1cf55;
+  background: rgba(241, 207, 85, 0.08);
+  cursor: pointer;
+  touch-action: manipulation;
+  font: 900 10px/1 "IBM Plex Mono", monospace;
+}
+
+.recoverButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.recoveryLink {
+  overflow-wrap: anywhere;
+  color: #c6f53e;
+  font: 700 10px/1.5 "IBM Plex Mono", monospace;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .actions {
@@ -200,7 +269,8 @@
   }
 
   .summary,
-  .success {
+  .success,
+  .recovery {
     padding: 15px;
   }
 
@@ -211,7 +281,8 @@
   .telegramButton,
   .doneButton,
   .payButton,
-  .backButton {
+  .backButton,
+  .recoverButton {
     width: 100%;
   }
 }
