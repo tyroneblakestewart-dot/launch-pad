@@ -729,7 +729,7 @@ export function PlanCheckout({
       <div className={styles.success} aria-live="polite">
         <span className={styles.successDot} aria-hidden="true">✓</span>
         <span>SUBSCRIPTION ACTIVE</span>
-        <h3>You&apos;re subscribed — AI Social Studio coming soon</h3>
+        <h3>You&apos;re subscribed — AI Social Studio unlocked</h3>
         <p>
           {definition.label} is active for this wallet
           {verification.paidUntil
@@ -754,8 +754,12 @@ export function PlanCheckout({
             remain active.
           </p>
         )}
-        <button type="button" className={styles.doneButton} onClick={onClose}>
-          Done
+        <button
+          type="button"
+          className={styles.doneButton}
+          onClick={() => window.location.assign("/social")}
+        >
+          Open AI Social Studio
         </button>
       </div>
     );
