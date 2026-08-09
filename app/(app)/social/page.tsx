@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { SocialHub } from "@/components/social-hub";
 
 export const metadata: Metadata = {
-  title: "Social Hub | Private Meme Token Studio",
+  title: "AI Social Studio",
   description:
-    "Prepare, approve and publish token-project announcements to X and Telegram.",
+    "Prepare once. Review every destination. Publish to X and Telegram from Hoodlums Social.",
 };
 
 export default function SocialPage() {
