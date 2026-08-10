@@ -852,6 +852,19 @@
 .mascotDrop button { padding: 0 16px; }
 
 .calendarHeading { align-items: center; }
+.calendarMonthNav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.calendarMonthNav h2 { min-width: 150px; }
+.calendarNavButton,
+.calendarTodayButton {
+  min-height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: #c3c9c4;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  font-weight: 800;
+}
+.calendarNavButton { width: 32px; display: grid; place-items: center; font-size: 16px; }
+.calendarTodayButton { padding: 0 12px; color: #c6f53e; border-color: rgba(198, 245, 62, 0.3); background: rgba(198, 245, 62, 0.08); font-size: 10.5px; letter-spacing: 0.04em; }
 .timezoneControl { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .timezoneControl > span:first-child { color: #8d918c; font: 700 10px "IBM Plex Mono", monospace; letter-spacing: 0.1em; }
 .timezoneControl select,
@@ -887,7 +900,9 @@
   background: rgba(255, 255, 255, 0.018);
   font: 700 12px "IBM Plex Mono", monospace;
 }
+.calendarDay { cursor: pointer; }
 .calendarToday { border-color: rgba(198, 245, 62, 0.42); color: #c6f53e; background: rgba(198, 245, 62, 0.09); box-shadow: inset 0 1px rgba(198, 245, 62, 0.18); }
+.calendarSelected { border-color: #c6f53e; color: #071008; background: linear-gradient(180deg, #c6f53e, #a7dd4a); box-shadow: 0 10px 24px -14px rgba(198, 245, 62, 0.6); }
 .calendarBlank { visibility: hidden; }
 .mobileWeek { display: none; }
 
@@ -1007,13 +1022,20 @@
   .desktopCalendar { display: none; }
   .mobileWeek { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x mandatory; }
   .weekDay,
-  .weekToday { min-width: 132px; min-height: 96px; display: grid; gap: 5px; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; color: #a8aaa9; background: rgba(255, 255, 255, 0.018); text-align: left; scroll-snap-align: start; }
+  .weekToday,
+  .weekSelected { min-width: 132px; min-height: 96px; display: grid; gap: 5px; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; color: #a8aaa9; background: rgba(255, 255, 255, 0.018); text-align: left; scroll-snap-align: start; }
   .weekToday { border-color: rgba(198, 245, 62, 0.4); background: rgba(198, 245, 62, 0.08); }
+  .weekSelected { border-color: #c6f53e; background: linear-gradient(180deg, #c6f53e, #a7dd4a); }
   .weekDay > span,
-  .weekToday > span { color: #6f746e; font: 700 9px "IBM Plex Mono", monospace; letter-spacing: 0.1em; }
+  .weekToday > span,
+  .weekSelected > span { color: #6f746e; font: 700 9px "IBM Plex Mono", monospace; letter-spacing: 0.1em; }
   .weekDay b,
-  .weekToday b { color: #f4f7f1; font: 400 22px "Archivo Black", Inter, sans-serif; }
+  .weekToday b,
+  .weekSelected b { color: #f4f7f1; font: 400 22px "Archivo Black", Inter, sans-serif; }
   .weekToday b { color: #c6f53e; }
+  .weekSelected b,
+  .weekSelected > span,
+  .weekSelected small { color: #071008; }
   .weekDay small,
   .weekToday small { color: #8d918c; font-size: 9.5px; }
 }

@@ -54,11 +54,42 @@ const TONE_DIALS = [
   ["Post length", "Short", "Medium", "Long"],
 ] as const;
 const CALENDAR_DAY_NAMES = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-const AUGUST_2026 = Array.from({ length: 42 }, (_, index) => {
-  const day = index - 4;
-  return day >= 1 && day <= 31 ? day : null;
-});
-const MOBILE_WEEK = [8, 9, 10, 11, 12, 13, 14];
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const TIMEZONES = [
+  { id: "london", label: "London (GMT+1)" },
+  { id: "newyork", label: "New York (GMT-4)" },
+  { id: "singapore", label: "Singapore (GMT+8)" },
+];
+
+type MonthView = { year: number; month: number };
+type SelectedDay = { year: number; month: number; day: number };
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function firstWeekdayIndex(year: number, month: number): number {
+  return (new Date(year, month, 1).getDay() + 6) % 7;
+}
+
+function buildMonthGrid(year: number, month: number): Array<number | null> {
+  const total = daysInMonth(year, month);
+  const leading = firstWeekdayIndex(year, month);
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = index - leading + 1;
+    return day >= 1 && day <= total ? day : null;
+  });
+}
+
+function shiftedMonth(view: MonthView, delta: number): MonthView {
+  const next = view.month + delta;
+  if (next < 0) return { year: view.year - 1, month: 11 };
+  if (next > 11) return { year: view.year + 1, month: 0 };
+  return { year: view.year, month: next };
+}
 
 function safeProjects(raw: string | null): TokenProject[] {
   if (!raw) return [];
@@ -192,6 +223,15 @@ export function SocialHub() {
     "Choose a saved project, review the post and approve each destination.",
   );
   const [busy, setBusy] = useState(false);
+  const [calendarView, setCalendarView] = useState<MonthView>(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
+  const [selectedDay, setSelectedDay] = useState<SelectedDay>(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth(), day: now.getDate() };
+  });
+  const [timezoneId, setTimezoneId] = useState(TIMEZONES[0].id);
 
   useEffect(() => {
     const loadedProjects = safeProjects(localStorage.getItem(PROJECT_STORAGE_KEY));
@@ -218,6 +258,17 @@ export function SocialHub() {
   const projectInitial = (selectedProject?.name || "H").slice(0, 1).toUpperCase();
   const projectTicker = selectedProject?.ticker?.trim().toUpperCase() || "PROJECT";
   const xHandle = selectedProject?.xHandle ? cleanHandle(selectedProject.xHandle) : "";
+  const now = new Date();
+  const isCurrentMonthView = calendarView.year === now.getFullYear() && calendarView.month === now.getMonth();
+  const monthGrid = useMemo(
+    () => buildMonthGrid(calendarView.year, calendarView.month),
+    [calendarView.year, calendarView.month],
+  );
+  const monthDays = useMemo(
+    () => monthGrid.filter((day): day is number => day !== null),
+    [monthGrid],
+  );
+  const selectedDayLabel = `${selectedDay.day} ${MONTH_NAMES[selectedDay.month]} ${selectedDay.year}`;
 
   function selectProject(id: string) {
     const project = projects.find((item) => item.id === id);
@@ -334,6 +385,20 @@ export function SocialHub() {
   async function publishBoth() {
     if (!openXComposer()) return;
     await postTelegram();
+  }
+
+  function goToMonth(delta: number) {
+    setCalendarView((current) => shiftedMonth(current, delta));
+  }
+
+  function jumpToToday() {
+    const now = new Date();
+    setCalendarView({ year: now.getFullYear(), month: now.getMonth() });
+    setSelectedDay({ year: now.getFullYear(), month: now.getMonth(), day: now.getDate() });
+  }
+
+  function selectDay(day: number) {
+    setSelectedDay({ year: calendarView.year, month: calendarView.month, day });
   }
 
   function renderProjectArtwork(className: string, alt: string) {
@@ -707,15 +772,39 @@ export function SocialHub() {
                   <section className={styles.block}>
                     <div className={styles.calendarHeading}>
                       <div>
-                        <h2>August 2026</h2>
+                        <div className={styles.calendarMonthNav}>
+                          <button
+                            type="button"
+                            className={styles.calendarNavButton}
+                            onClick={() => goToMonth(-1)}
+                            aria-label="Previous month"
+                          >
+                            ‹
+                          </button>
+                          <h2>{MONTH_NAMES[calendarView.month]} {calendarView.year}</h2>
+                          <button
+                            type="button"
+                            className={styles.calendarNavButton}
+                            onClick={() => goToMonth(1)}
+                            aria-label="Next month"
+                          >
+                            ›
+                          </button>
+                          {!isCurrentMonthView ? (
+                            <button type="button" className={styles.calendarTodayButton} onClick={jumpToToday}>
+                              Jump to today
+                            </button>
+                          ) : null}
+                        </div>
                         <p>Tap a day to add something. Lime days will hold launches or announcements.</p>
                       </div>
                       <div className={styles.timezoneControl}>
                         <span>ALL TIMES SHOWN IN</span>
-                        <select disabled defaultValue="London (GMT+1)">
-                          <option>London (GMT+1)</option>
+                        <select value={timezoneId} onChange={(event) => setTimezoneId(event.target.value)}>
+                          {TIMEZONES.map((timezone) => (
+                            <option key={timezone.id} value={timezone.id}>{timezone.label}</option>
+                          ))}
                         </select>
-                        <ComingSoon compact />
                       </div>
                     </div>
 
@@ -723,25 +812,52 @@ export function SocialHub() {
                       <div>
                         <div className={styles.desktopCalendar}>
                           {CALENDAR_DAY_NAMES.map((day) => <span key={day}>{day}</span>)}
-                          {AUGUST_2026.map((day, index) => (
-                            <button
-                              type="button"
-                              disabled
-                              key={`${day ?? "blank"}-${index}`}
-                              className={day === 9 ? styles.calendarToday : day ? styles.calendarDay : styles.calendarBlank}
-                            >
-                              {day}
-                            </button>
-                          ))}
+                          {monthGrid.map((day, index) => {
+                            const isToday = day !== null && isCurrentMonthView && day === now.getDate();
+                            const isSelected =
+                              day !== null &&
+                              selectedDay.year === calendarView.year &&
+                              selectedDay.month === calendarView.month &&
+                              day === selectedDay.day;
+                            const className = day === null
+                              ? styles.calendarBlank
+                              : [styles.calendarDay, isToday && styles.calendarToday, isSelected && styles.calendarSelected]
+                                  .filter(Boolean)
+                                  .join(" ");
+                            return (
+                              <button
+                                type="button"
+                                disabled={day === null}
+                                key={`${calendarView.year}-${calendarView.month}-${day ?? "blank"}-${index}`}
+                                className={className}
+                                onClick={day !== null ? () => selectDay(day) : undefined}
+                              >
+                                {day}
+                              </button>
+                            );
+                          })}
                         </div>
                         <div className={styles.mobileWeek}>
-                          {MOBILE_WEEK.map((day, index) => (
-                            <button type="button" disabled key={day} className={day === 9 ? styles.weekToday : styles.weekDay}>
-                              <span>{CALENDAR_DAY_NAMES[(index + 5) % 7]}</span>
-                              <b>{day}</b>
-                              <small>No scheduled posts</small>
-                            </button>
-                          ))}
+                          {monthDays.map((day) => {
+                            const weekdayIndex = (new Date(calendarView.year, calendarView.month, day).getDay() + 6) % 7;
+                            const isToday = isCurrentMonthView && day === now.getDate();
+                            const isSelected =
+                              selectedDay.year === calendarView.year &&
+                              selectedDay.month === calendarView.month &&
+                              day === selectedDay.day;
+                            return (
+                              <button
+                                type="button"
+                                key={day}
+                                onClick={() => selectDay(day)}
+                                className={isSelected ? styles.weekSelected : isToday ? styles.weekToday : styles.weekDay}
+                              >
+                                <span>{CALENDAR_DAY_NAMES[weekdayIndex]}</span>
+                                <b>{day}</b>
+                                <small>{isToday ? "Today" : "No scheduled posts"}</small>
+                              </button>
+                            );
+                          })}
                         </div>
                         <div className={styles.calendarLegend}>
                           <span><i className={styles.limeDot} />Announcement or launch</span>
@@ -752,7 +868,7 @@ export function SocialHub() {
                       <aside className={styles.scheduleCard}>
                         <div>
                           <span className={styles.eyebrow}>ADD TO</span>
-                          <h3>9 August 2026</h3>
+                          <h3>{selectedDayLabel}</h3>
                         </div>
                         <button type="button" disabled className={styles.aiMakeButton}>
                           <b>AI makes it</b>

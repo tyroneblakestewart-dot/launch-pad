@@ -61,12 +61,31 @@ describe("Hoodlums AI Social Studio", () => {
 
     expect(social).toContain("Teach the AI your voice");
     expect(social).toContain("Your mascot");
-    expect(social).toContain("August 2026");
+    expect(social).toContain("MONTH_NAMES[calendarView.month]");
     expect(social).toContain("What&apos;s going out");
     expect(social).toContain("Words to avoid");
     expect(social).toContain("Coming soon");
     expect(social).toContain("No queue is being simulated.");
     expect(social).toContain("No fabricated history.");
+    // Scheduling navigation is live, but the actual add-item flow stays coming soon.
+    expect(social).toContain('disabled className={styles.aiMakeButton}');
+    expect(social).toContain('disabled className={styles.ownPostButton}');
+  });
+
+  it("supports real month navigation, today highlighting and year-boundary rollover in the calendar", async () => {
+    const social = await source("components", "social-hub.tsx");
+
+    expect(social).toContain("function shiftedMonth(view: MonthView, delta: number): MonthView");
+    expect(social).toContain("if (next < 0) return { year: view.year - 1, month: 11 };");
+    expect(social).toContain("if (next > 11) return { year: view.year + 1, month: 0 };");
+    expect(social).toContain("function buildMonthGrid(year: number, month: number)");
+    expect(social).toContain("function jumpToToday()");
+    expect(social).toContain("Jump to today");
+    expect(social).toContain('aria-label="Previous month"');
+    expect(social).toContain('aria-label="Next month"');
+    expect(social).toContain("isToday && styles.calendarToday");
+    expect(social).toContain("isSelected ? styles.weekSelected : isToday ? styles.weekToday : styles.weekDay");
+    expect(social).toContain("TIMEZONES.map((timezone)");
   });
 
   it("fits under the existing 72px mobile header and above the fixed bottom nav", async () => {
