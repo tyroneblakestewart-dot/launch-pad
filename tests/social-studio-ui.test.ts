@@ -39,8 +39,9 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain("postTelegram");
     expect(social).toContain('fetch("/api/social/telegram"');
     expect(social).toContain("publishBoth");
-    expect(social).toContain("APPROVE & OPEN X COMPOSER");
-    expect(social).toContain("APPROVE & POST TO TELEGRAM");
+    expect(social).toContain("Approve &amp; open X composer");
+    expect(social).toContain("Approve & post to Telegram");
+    expect(social).toContain("APPROVE BOTH DESTINATIONS");
   });
 
   it("removes the raw bot-token field while retaining server-side Telegram posting", async () => {
@@ -61,7 +62,7 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain("Teach the AI your voice");
     expect(social).toContain("Your mascot");
     expect(social).toContain("August 2026");
-    expect(social).toContain("What's going out");
+    expect(social).toContain("What&apos;s going out");
     expect(social).toContain("Words to avoid");
     expect(social).toContain("Coming soon");
     expect(social).toContain("No queue is being simulated.");
