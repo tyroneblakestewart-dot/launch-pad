@@ -44,5 +44,7 @@ export async function GET(request: Request) {
     );
   }
 
-  return NextResponse.json(access, { headers: NO_STORE_HEADERS });
+  return NextResponse.json(access, {
+    headers: { "Cache-Control": "private, no-store" },
+  });
 }
