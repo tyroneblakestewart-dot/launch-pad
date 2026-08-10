@@ -39,12 +39,20 @@ export async function POST(request: Request) {
     return jsonError("The Telegram request body was not valid JSON.", 400);
   }
 
-  const botToken = typeof body.botToken === "string" ? body.botToken.trim() : "";
+  const requestedBotToken = typeof body.botToken === "string" ? body.botToken.trim() : "";
+  const configuredBotToken = process.env.TELEGRAM_BOT_TOKEN?.trim() || "";
+  const botToken = requestedBotToken || configuredBotToken;
   const chatId = typeof body.chatId === "string" ? body.chatId.trim() : "";
   const text = typeof body.text === "string" ? body.text.trim() : "";
   const artworkValue = typeof body.artwork === "string" ? body.artwork.trim() : "";
 
   if (!isBotToken(botToken)) {
+    if (!requestedBotToken) {
+      return jsonError(
+        "Telegram publishing is not configured on this deployment. Add the Hoodlums bot token on the server before posting.",
+        503,
+      );
+    }
     return jsonError("The BotFather token format is not valid.", 400);
   }
   if (!isChatId(chatId)) {
