@@ -301,7 +301,7 @@ Loading a saved project (or clicking "Reopen generated site" in the preview tool
 | Route | Purpose | Status |
 | --- | --- | --- |
 | `/` | Project studio, artwork upload, site generation, and Dexscreener preview | Available |
-| `/manager` | Pro and Pro Bundle plan cards with a Monthly / 3-months billing toggle | Available; the launch-flow nav's step-2 tab (issue #248) |
+| `/manager` | Subscriber gateway: wallets with a server-confirmed active subscription see an "Open your Studio" panel linking to `/social`, with the Pro / Pro Bundle plan cards collapsed behind a "View plans" toggle; everyone else sees the plan cards (Monthly / 3-months billing toggle) directly | Available; the launch-flow nav's step-2 tab (issue #248) |
 | `/providers` | Robinhood provider handoff, contract verification, and creator-buy tracking | Available; external actions require a provider and wallet. Hidden from the nav (issue #248) — reachable by direct URL only, mechanics unchanged |
 | `/allocations` | Allocation planning and wallet-approved testnet distribution | Available. Hidden from the nav (issue #248) — reachable by direct URL only, mechanics unchanged |
 | `/liquidity-lab` | Register and fund a separately deployed test AMM | Test-only; nav tab hidden unless `NEXT_PUBLIC_SHOW_TESTNET_TOOLS=true` |
@@ -409,7 +409,7 @@ table (migration `006_page_content_registry.sql`; see
   page's Dexscreener chrome. Home, Providers, Manager and Allocations resolve
   this content server-side at the page-chrome level and pass it down as plain
   props into the large stateful client components that own the rest of each
-  page (`HoodlumsMarketHome`, `ProviderLauncher`, `ManagerPlans`,
+  page (`HoodlumsMarketHome`, `ProviderLauncher`, `ManagerGateway`,
   `TokenAllocationDesk`) — those components' internal state, wallet flows and
   effects are never restructured, so a bad edit can never destabilise the
   primary mobile-Safari workspace. The sign-in provider *names* themselves

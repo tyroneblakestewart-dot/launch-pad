@@ -1,4 +1,4 @@
-import { ManagerPlans } from "@/components/manager-plans";
+import { ManagerGateway } from "@/components/manager-gateway";
 import { CMS_PREVIEW_QUERY_PARAM, resolvePageContent } from "@/lib/server/page-content";
 
 type ManagerPageProps = {
@@ -12,7 +12,7 @@ export default async function ManagerPage({ searchParams }: ManagerPageProps) {
   );
 
   return (
-    <ManagerPlans
+    <ManagerGateway
       headerEyebrow={content.header_eyebrow}
       headerTitle={content.header_title}
       headerIntro={content.header_intro}
