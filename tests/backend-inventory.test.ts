@@ -29,6 +29,8 @@ describe("backend test inventory", () => {
 
     expect(routeFiles).toEqual([
       "app/api/account-content/route.ts",
+      "app/api/admin/accounts/[wallet]/route.ts",
+      "app/api/admin/accounts/route.ts",
       "app/api/admin/challenge/route.ts",
       "app/api/admin/health/pipeline/route.ts",
       "app/api/admin/health/route.ts",
@@ -74,6 +76,8 @@ describe("backend test inventory", () => {
 
     expect(Object.fromEntries(methods)).toEqual({
       "app/api/account-content/route.ts": ["GET"],
+      "app/api/admin/accounts/[wallet]/route.ts": ["GET"],
+      "app/api/admin/accounts/route.ts": ["GET"],
       "app/api/admin/challenge/route.ts": ["POST"],
       "app/api/admin/health/pipeline/route.ts": ["GET"],
       "app/api/admin/health/route.ts": ["GET"],
@@ -115,6 +119,7 @@ describe("backend test inventory", () => {
       .sort();
 
     expect(serverFiles).toEqual([
+      "lib/server/admin-accounts.ts",
       "lib/server/admin-auth.ts",
       "lib/server/admin-operations-store.ts",
       "lib/server/admin-operations.ts",

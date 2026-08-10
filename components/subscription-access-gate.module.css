@@ -1,0 +1,85 @@
+.shell {
+  min-height: calc(100dvh - 72px);
+  display: grid;
+  place-items: center;
+  padding: 40px 18px 110px;
+  color: #f4f7f1;
+  background:
+    radial-gradient(circle at 76% 4%, rgba(198, 245, 62, 0.13), transparent 28rem),
+    linear-gradient(180deg, #090b09, #050706);
+}
+
+.card {
+  width: min(560px, 100%);
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+  padding: clamp(24px, 6vw, 42px);
+  border: 1px solid rgba(198, 245, 62, 0.25);
+  border-radius: 20px;
+  background: rgba(8, 12, 9, 0.94);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
+}
+
+.eyebrow {
+  color: #c6f53e;
+  font: 800 10px "IBM Plex Mono", monospace;
+  letter-spacing: 0.14em;
+}
+
+.card h1 {
+  margin: 0;
+  color: #f4f7f1;
+  font-size: clamp(1.55rem, 6vw, 2.35rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.card p {
+  max-width: 52ch;
+  margin: 0;
+  color: #a9b0aa;
+  font-size: 0.93rem;
+  line-height: 1.65;
+}
+
+.card button {
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 10px 16px;
+  border: 1px solid #c6f53e;
+  border-radius: 10px;
+  color: #071006;
+  background: #c6f53e;
+  font: 800 0.78rem "IBM Plex Mono", monospace;
+  cursor: pointer;
+}
+
+.card button:focus-visible {
+  outline: 3px solid rgba(198, 245, 62, 0.28);
+  outline-offset: 3px;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(198, 245, 62, 0.18);
+  border-top-color: #c6f53e;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (min-width: 1100px) {
+  .shell {
+    min-height: 100dvh;
+    padding: 48px 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+}

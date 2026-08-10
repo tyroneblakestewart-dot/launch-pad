@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AdminAccountsSection } from "@/components/admin-accounts-section";
 import {
   AdminActivity,
   AdminIssues,
@@ -23,6 +24,7 @@ type SectionId =
   | "issues"
   | "pages"
   | "subscribers"
+  | "accounts"
   | "system-health";
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
@@ -32,6 +34,7 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "issues", label: "Issues" },
   { id: "pages", label: "Pages" },
   { id: "subscribers", label: "Subscribers" },
+  { id: "accounts", label: "Accounts" },
   { id: "system-health", label: "System Health" },
 ];
 
@@ -151,6 +154,12 @@ export function AdminDashboard() {
     [loadOperations],
   );
 
+  const independentSection =
+    activeSection === "system-health" ||
+    activeSection === "pages" ||
+    activeSection === "subscribers" ||
+    activeSection === "accounts";
+
   return (
     <main className={styles.dashboard}>
       <header className={styles.header}>
@@ -203,7 +212,7 @@ export function AdminDashboard() {
           </p>
         ) : null}
 
-        {activeSection !== "system-health" && activeSection !== "pages" && activeSection !== "subscribers" && !snapshot ? (
+        {!independentSection && !snapshot ? (
           <div className={styles.loadingPanel}>
             {loading ? "Loading admin operations…" : "No operations data is available."}
           </div>
@@ -228,6 +237,7 @@ export function AdminDashboard() {
         ) : null}
         {activeSection === "pages" ? <AdminPagesSection /> : null}
         {activeSection === "subscribers" ? <AdminSubscribersSection /> : null}
+        {activeSection === "accounts" ? <AdminAccountsSection /> : null}
         {activeSection === "system-health" ? <AdminSystemHealth /> : null}
       </section>
     </main>
