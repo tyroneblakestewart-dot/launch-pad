@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import type { TokenProject } from "@/lib/types";
 import styles from "./social-hub.module.css";
 
@@ -31,20 +32,14 @@ const TABS: Array<{ id: StudioTab; desktop: string; mobile: string }> = [
 const BOTS = [
   {
     name: "Buy Bot",
-    kind: "ALERTS",
-    mark: "B",
     description: "Announces every purchase in your channel, with the size and the buyer.",
   },
   {
     name: "Hype Bot",
-    kind: "COMMUNITY",
-    mark: "H",
     description: "Keeps the chat moving between announcements — memes, questions and GMs.",
   },
   {
     name: "Watchtower",
-    kind: "MILESTONES",
-    mark: "W",
     description: "Posts when you hit a milestone: holders, market cap and graduation.",
   },
 ] as const;
@@ -59,11 +54,42 @@ const TONE_DIALS = [
   ["Post length", "Short", "Medium", "Long"],
 ] as const;
 const CALENDAR_DAY_NAMES = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-const AUGUST_2026 = Array.from({ length: 42 }, (_, index) => {
-  const day = index - 4;
-  return day >= 1 && day <= 31 ? day : null;
-});
-const MOBILE_WEEK = [8, 9, 10, 11, 12, 13, 14];
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const TIMEZONES = [
+  { id: "london", label: "London (GMT+1)" },
+  { id: "newyork", label: "New York (GMT-4)" },
+  { id: "singapore", label: "Singapore (GMT+8)" },
+];
+
+type MonthView = { year: number; month: number };
+type SelectedDay = { year: number; month: number; day: number };
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function firstWeekdayIndex(year: number, month: number): number {
+  return (new Date(year, month, 1).getDay() + 6) % 7;
+}
+
+function buildMonthGrid(year: number, month: number): Array<number | null> {
+  const total = daysInMonth(year, month);
+  const leading = firstWeekdayIndex(year, month);
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = index - leading + 1;
+    return day >= 1 && day <= total ? day : null;
+  });
+}
+
+function shiftedMonth(view: MonthView, delta: number): MonthView {
+  const next = view.month + delta;
+  if (next < 0) return { year: view.year - 1, month: 11 };
+  if (next > 11) return { year: view.year + 1, month: 0 };
+  return { year: view.year, month: next };
+}
 
 function safeProjects(raw: string | null): TokenProject[] {
   if (!raw) return [];
@@ -188,6 +214,7 @@ export function SocialHub() {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<StudioTab>("setup");
+  const [composeOpen, setComposeOpen] = useState(false);
   const [templateId, setTemplateId] = useState<TemplateId>("launch");
   const [message, setMessage] = useState("");
   const [telegramChatId, setTelegramChatId] = useState("");
@@ -196,6 +223,15 @@ export function SocialHub() {
     "Choose a saved project, review the post and approve each destination.",
   );
   const [busy, setBusy] = useState(false);
+  const [calendarView, setCalendarView] = useState<MonthView>(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
+  const [selectedDay, setSelectedDay] = useState<SelectedDay>(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth(), day: now.getDate() };
+  });
+  const [timezoneId, setTimezoneId] = useState(TIMEZONES[0].id);
 
   useEffect(() => {
     const loadedProjects = safeProjects(localStorage.getItem(PROJECT_STORAGE_KEY));
@@ -222,6 +258,17 @@ export function SocialHub() {
   const projectInitial = (selectedProject?.name || "H").slice(0, 1).toUpperCase();
   const projectTicker = selectedProject?.ticker?.trim().toUpperCase() || "PROJECT";
   const xHandle = selectedProject?.xHandle ? cleanHandle(selectedProject.xHandle) : "";
+  const now = new Date();
+  const isCurrentMonthView = calendarView.year === now.getFullYear() && calendarView.month === now.getMonth();
+  const monthGrid = useMemo(
+    () => buildMonthGrid(calendarView.year, calendarView.month),
+    [calendarView.year, calendarView.month],
+  );
+  const monthDays = useMemo(
+    () => monthGrid.filter((day): day is number => day !== null),
+    [monthGrid],
+  );
+  const selectedDayLabel = `${selectedDay.day} ${MONTH_NAMES[selectedDay.month]} ${selectedDay.year}`;
 
   function selectProject(id: string) {
     const project = projects.find((item) => item.id === id);
@@ -340,6 +387,20 @@ export function SocialHub() {
     await postTelegram();
   }
 
+  function goToMonth(delta: number) {
+    setCalendarView((current) => shiftedMonth(current, delta));
+  }
+
+  function jumpToToday() {
+    const now = new Date();
+    setCalendarView({ year: now.getFullYear(), month: now.getMonth() });
+    setSelectedDay({ year: now.getFullYear(), month: now.getMonth(), day: now.getDate() });
+  }
+
+  function selectDay(day: number) {
+    setSelectedDay({ year: calendarView.year, month: calendarView.month, day });
+  }
+
   function renderProjectArtwork(className: string, alt: string) {
     if (selectedProject?.heroImage) {
       return (
@@ -415,7 +476,7 @@ export function SocialHub() {
             <span>NO SAVED PROJECT</span>
             <h1>Save a token project before using Hoodlums Social.</h1>
             <p>Your existing project picker still reads the private browser vault used by the launch studio.</p>
-            <a href="/">Return to launch studio</a>
+            <Link href="/">Return to launch studio</Link>
           </section>
         ) : (
           <section className={styles.studioPanel}>
@@ -453,144 +514,36 @@ export function SocialHub() {
                     </div>
                     <div className={styles.twoCols}>
                       <article className={styles.connectionCard}>
-                        <span className={styles.xIcon}><XIcon /></span>
-                        <div>
-                          <b>X</b>
-                          <span>{xHandle || "Uses the account already signed into X"}</span>
-                        </div>
-                        <span className={styles.connectionState}>Browser handoff</span>
-                      </article>
-                      <article className={styles.connectionCard}>
-                        <span className={styles.telegramIcon}><TelegramIcon /></span>
-                        <div>
-                          <b>Telegram</b>
-                          <span>{telegramChatId || "Hoodlums bot · channel not set"}</span>
-                        </div>
-                        <span className={telegramChatId ? styles.connectionStateLive : styles.connectionState}>
-                          {telegramChatId ? "Channel saved" : "Server bot"}
-                        </span>
-                      </article>
-                    </div>
-                  </section>
-
-                  <section className={styles.block}>
-                    <div className={styles.sectionHeading}>
-                      <div>
-                        <span className={styles.eyebrow}>PICK A HOODLUMS BOT</span>
-                        <p>Choose one of our bots and add it to your channel. Nothing to paste, nothing to set up.</p>
-                      </div>
-                      <ComingSoon compact />
-                    </div>
-                    <div className={styles.threeCols}>
-                      {BOTS.map((bot) => (
-                        <article className={styles.botCard} key={bot.name}>
-                          <span className={styles.botMark}>{bot.mark}</span>
-                          <div className={styles.botCopy}>
-                            <span>{bot.kind}</span>
-                            <b>{bot.name}</b>
-                            <p>{bot.description}</p>
-                          </div>
-                          <button type="button" disabled>Add to your channel</button>
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-
-                  <div className={styles.divider} />
-
-                  <section className={styles.block}>
-                    <div className={styles.sectionHeading}>
-                      <div>
-                        <h2>Compose now</h2>
-                        <p>The working Project Social Hub tools live here now: choose a post type, review it, then approve X and/or Telegram.</p>
-                      </div>
-                      <span className={xReady ? styles.characterReady : styles.characterWarning}>{xCharacterCount}/280</span>
-                    </div>
-
-                    <div className={styles.composeGrid}>
-                      <aside className={styles.templatePanel}>
-                        <span className={styles.eyebrow}>POST TYPE</span>
-                        <div className={styles.templateList}>
-                          {TEMPLATES.map((template) => (
-                            <button
-                              type="button"
-                              key={template.id}
-                              className={template.id === templateId ? styles.templateActive : styles.template}
-                              onClick={() => chooseTemplate(template.id)}
-                            >
-                              <b>{template.label}</b>
-                              <span>{template.description}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </aside>
-
-                      <div className={styles.composerPanel}>
-                        <div className={styles.projectSummary}>
-                          <span className={styles.summaryArtwork}>
-                            {renderProjectArtwork(styles.summaryImage, `${selectedProject?.name || "Token"} artwork`)}
-                          </span>
-                          <span>
-                            <b>{selectedProject?.name || "Untitled project"}</b>
-                            <small>
-                              ${projectTicker} · {selectedProject?.chain}
-                              {selectedProject?.contractAddress
-                                ? ` · ${shortAddress(selectedProject.contractAddress)}`
-                                : " · contract pending"}
-                            </small>
-                          </span>
-                        </div>
-                        <textarea
-                          value={message}
-                          onChange={(event) => setMessage(event.target.value)}
-                          placeholder="Write the announcement…"
-                          rows={9}
-                        />
-                        <div className={styles.composerActions}>
-                          <button type="button" onClick={saveDraft}>Save draft</button>
-                          <button type="button" onClick={copyPost}>Copy post</button>
-                          <button type="button" onClick={downloadArtwork} disabled={!selectedProject?.heroImage}>
-                            Download artwork
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className={styles.destinationGrid}>
-                      <article className={styles.destinationCard}>
-                        <div className={styles.destinationTitle}>
+                        <div className={styles.connectionCardTop}>
                           <span className={styles.xIcon}><XIcon /></span>
                           <div>
-                            <h3>X</h3>
-                            <p>Review in the official X composer before anything posts.</p>
+                            <b>X</b>
+                            <span>{xHandle || "Uses the account already signed into X"}</span>
                           </div>
+                          <span className={styles.connectionState}>Browser handoff</span>
                         </div>
-                        <ul>
-                          <li>Uses the X account already signed into your browser</li>
-                          <li>No X password or access token is stored</li>
-                          <li>Artwork remains a manual attachment</li>
-                        </ul>
-                        <button type="button" className={styles.xButton} onClick={openXComposer} disabled={!xReady}>
-                          APPROVE & OPEN X COMPOSER ↗
-                        </button>
+                        <p className={styles.connectionHelper}>
+                          Uses the X account already signed into your browser — no password or access token is stored.
+                        </p>
                       </article>
-
-                      <article className={styles.destinationCard}>
-                        <div className={styles.destinationTitle}>
+                      <article className={styles.connectionCard}>
+                        <div className={styles.connectionCardTop}>
                           <span className={styles.telegramIcon}><TelegramIcon /></span>
                           <div>
-                            <h3>Telegram</h3>
-                            <p>Direct publishing through the server-managed Hoodlums bot.</p>
+                            <b>Telegram</b>
+                            <span>{telegramChatId || "Hoodlums bot · channel not set"}</span>
                           </div>
+                          <span className={telegramChatId ? styles.connectionStateLive : styles.connectionState}>
+                            {telegramChatId ? "Channel saved" : "Server bot"}
+                          </span>
                         </div>
-                        <label>
+                        <label className={styles.connectionField}>
                           <span>Channel username or chat ID</span>
                           <input
                             value={telegramChatId}
                             onChange={(event) => setTelegramChatId(event.target.value)}
                             placeholder="@yourchannel or -1001234567890"
                           />
-                          <small>Add the Hoodlums bot as an administrator allowed to post. No BotFather token is entered in the Studio.</small>
                         </label>
                         <label className={styles.checkbox}>
                           <input
@@ -600,36 +553,16 @@ export function SocialHub() {
                           />
                           <span>Include project artwork when available</span>
                         </label>
-                        <button
-                          type="button"
-                          className={styles.telegramButton}
-                          onClick={postTelegram}
-                          disabled={!telegramReady || busy}
-                        >
-                          {busy ? "PUBLISHING…" : "APPROVE & POST TO TELEGRAM"}
-                        </button>
+                        <p className={styles.connectionHelper}>
+                          Add the Hoodlums bot as an administrator allowed to post — no BotFather token is entered in the Studio.
+                        </p>
                       </article>
-                    </div>
-
-                    <div className={styles.publishBar}>
-                      <div>
-                        <b>Publish to both</b>
-                        <span>Opens X for your final click, then sends the approved Telegram post.</span>
-                      </div>
-                      <button type="button" onClick={publishBoth} disabled={!xReady || !telegramReady || busy}>
-                        APPROVE BOTH DESTINATIONS
-                      </button>
-                    </div>
-
-                    <div className={styles.statusBar} role="status" aria-live="polite">
-                      <span>●</span>
-                      <p>{status}</p>
                     </div>
                   </section>
 
                   <div className={styles.divider} />
 
-                  <section className={styles.twoColsTop}>
+                  <section className={`${styles.twoColsTop} ${styles.voiceRow}`}>
                     <div className={styles.blockInner}>
                       <div className={styles.sectionHeading}>
                         <div>
@@ -665,6 +598,132 @@ export function SocialHub() {
                         <b>Add examples to unlock voice samples.</b>
                         <p>No generated text is shown until the voice-learning backend exists.</p>
                       </div>
+                    </div>
+                  </section>
+
+                  <div className={styles.divider} />
+
+                  <section className={styles.block}>
+                    <button
+                      type="button"
+                      className={styles.accordionHeader}
+                      onClick={() => setComposeOpen((current) => !current)}
+                      aria-expanded={composeOpen}
+                      aria-controls="compose-panel"
+                    >
+                      <div>
+                        <h2>Compose now</h2>
+                        <p>Choose a post type, review it, then approve X and/or Telegram.</p>
+                      </div>
+                      <div className={styles.accordionHeaderRight}>
+                        <span className={xReady ? styles.characterReady : styles.characterWarning}>{xCharacterCount}/280</span>
+                        <span className={composeOpen ? styles.accordionChevronOpen : styles.accordionChevron}>▼</span>
+                      </div>
+                    </button>
+
+                    {composeOpen ? (
+                      <div id="compose-panel" className={styles.accordionBody}>
+                        <div className={styles.composeGrid}>
+                          <aside className={styles.templatePanel}>
+                            <span className={styles.eyebrow}>POST TYPE</span>
+                            <div className={styles.templateList}>
+                              {TEMPLATES.map((template) => (
+                                <button
+                                  type="button"
+                                  key={template.id}
+                                  className={template.id === templateId ? styles.templateActive : styles.template}
+                                  onClick={() => chooseTemplate(template.id)}
+                                >
+                                  <b>{template.label}</b>
+                                  <span>{template.description}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </aside>
+
+                          <div className={styles.composerPanel}>
+                            <div className={styles.projectSummary}>
+                              <span className={styles.summaryArtwork}>
+                                {renderProjectArtwork(styles.summaryImage, `${selectedProject?.name || "Token"} artwork`)}
+                              </span>
+                              <span>
+                                <b>{selectedProject?.name || "Untitled project"}</b>
+                                <small>
+                                  ${projectTicker} · {selectedProject?.chain}
+                                  {selectedProject?.contractAddress
+                                    ? ` · ${shortAddress(selectedProject.contractAddress)}`
+                                    : " · contract pending"}
+                                </small>
+                              </span>
+                            </div>
+                            <textarea
+                              value={message}
+                              onChange={(event) => setMessage(event.target.value)}
+                              placeholder="Write the announcement…"
+                              rows={9}
+                            />
+                            <div className={styles.composerActions}>
+                              <button type="button" onClick={saveDraft}>Save draft</button>
+                              <button type="button" onClick={copyPost}>Copy post</button>
+                              <button type="button" onClick={downloadArtwork} disabled={!selectedProject?.heroImage}>
+                                Download artwork
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className={styles.postActions}>
+                          <button type="button" className={styles.xButton} onClick={openXComposer} disabled={!xReady}>
+                            <XIcon /> Approve &amp; open X composer
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.telegramButton}
+                            onClick={postTelegram}
+                            disabled={!telegramReady || busy}
+                          >
+                            <TelegramIcon /> {busy ? "Publishing…" : "Approve & post to Telegram"}
+                          </button>
+                        </div>
+
+                        <div className={styles.publishBar}>
+                          <div>
+                            <b>Publish to both</b>
+                            <span>Opens X for your final click, then sends the approved Telegram post.</span>
+                          </div>
+                          <button type="button" onClick={publishBoth} disabled={!xReady || !telegramReady || busy}>
+                            APPROVE BOTH DESTINATIONS
+                          </button>
+                        </div>
+
+                        <div className={styles.statusBar} role="status" aria-live="polite">
+                          <span>●</span>
+                          <p>{status}</p>
+                        </div>
+                      </div>
+                    ) : null}
+                  </section>
+
+                  <div className={styles.divider} />
+
+                  <section className={styles.block}>
+                    <div className={styles.sectionHeading}>
+                      <div>
+                        <span className={styles.eyebrow}>PICK A HOODLUMS BOT</span>
+                        <p>Choose one of our bots and add it to your channel. Nothing to paste, nothing to set up.</p>
+                      </div>
+                      <ComingSoon compact />
+                    </div>
+                    <div className={styles.botList}>
+                      {BOTS.map((bot) => (
+                        <div className={styles.botRow} key={bot.name}>
+                          <div className={styles.botRowInfo}>
+                            <b>{bot.name}</b>
+                            <span>{bot.description}</span>
+                          </div>
+                          <button type="button" disabled>Add to your channel</button>
+                        </div>
+                      ))}
                     </div>
                   </section>
 
@@ -713,15 +772,39 @@ export function SocialHub() {
                   <section className={styles.block}>
                     <div className={styles.calendarHeading}>
                       <div>
-                        <h2>August 2026</h2>
+                        <div className={styles.calendarMonthNav}>
+                          <button
+                            type="button"
+                            className={styles.calendarNavButton}
+                            onClick={() => goToMonth(-1)}
+                            aria-label="Previous month"
+                          >
+                            ‹
+                          </button>
+                          <h2>{MONTH_NAMES[calendarView.month]} {calendarView.year}</h2>
+                          <button
+                            type="button"
+                            className={styles.calendarNavButton}
+                            onClick={() => goToMonth(1)}
+                            aria-label="Next month"
+                          >
+                            ›
+                          </button>
+                          {!isCurrentMonthView ? (
+                            <button type="button" className={styles.calendarTodayButton} onClick={jumpToToday}>
+                              Jump to today
+                            </button>
+                          ) : null}
+                        </div>
                         <p>Tap a day to add something. Lime days will hold launches or announcements.</p>
                       </div>
                       <div className={styles.timezoneControl}>
                         <span>ALL TIMES SHOWN IN</span>
-                        <select disabled defaultValue="London (GMT+1)">
-                          <option>London (GMT+1)</option>
+                        <select value={timezoneId} onChange={(event) => setTimezoneId(event.target.value)}>
+                          {TIMEZONES.map((timezone) => (
+                            <option key={timezone.id} value={timezone.id}>{timezone.label}</option>
+                          ))}
                         </select>
-                        <ComingSoon compact />
                       </div>
                     </div>
 
@@ -729,25 +812,52 @@ export function SocialHub() {
                       <div>
                         <div className={styles.desktopCalendar}>
                           {CALENDAR_DAY_NAMES.map((day) => <span key={day}>{day}</span>)}
-                          {AUGUST_2026.map((day, index) => (
-                            <button
-                              type="button"
-                              disabled
-                              key={`${day ?? "blank"}-${index}`}
-                              className={day === 9 ? styles.calendarToday : day ? styles.calendarDay : styles.calendarBlank}
-                            >
-                              {day}
-                            </button>
-                          ))}
+                          {monthGrid.map((day, index) => {
+                            const isToday = day !== null && isCurrentMonthView && day === now.getDate();
+                            const isSelected =
+                              day !== null &&
+                              selectedDay.year === calendarView.year &&
+                              selectedDay.month === calendarView.month &&
+                              day === selectedDay.day;
+                            const className = day === null
+                              ? styles.calendarBlank
+                              : [styles.calendarDay, isToday && styles.calendarToday, isSelected && styles.calendarSelected]
+                                  .filter(Boolean)
+                                  .join(" ");
+                            return (
+                              <button
+                                type="button"
+                                disabled={day === null}
+                                key={`${calendarView.year}-${calendarView.month}-${day ?? "blank"}-${index}`}
+                                className={className}
+                                onClick={day !== null ? () => selectDay(day) : undefined}
+                              >
+                                {day}
+                              </button>
+                            );
+                          })}
                         </div>
                         <div className={styles.mobileWeek}>
-                          {MOBILE_WEEK.map((day, index) => (
-                            <button type="button" disabled key={day} className={day === 9 ? styles.weekToday : styles.weekDay}>
-                              <span>{CALENDAR_DAY_NAMES[(index + 5) % 7]}</span>
-                              <b>{day}</b>
-                              <small>No scheduled posts</small>
-                            </button>
-                          ))}
+                          {monthDays.map((day) => {
+                            const weekdayIndex = (new Date(calendarView.year, calendarView.month, day).getDay() + 6) % 7;
+                            const isToday = isCurrentMonthView && day === now.getDate();
+                            const isSelected =
+                              selectedDay.year === calendarView.year &&
+                              selectedDay.month === calendarView.month &&
+                              day === selectedDay.day;
+                            return (
+                              <button
+                                type="button"
+                                key={day}
+                                onClick={() => selectDay(day)}
+                                className={isSelected ? styles.weekSelected : isToday ? styles.weekToday : styles.weekDay}
+                              >
+                                <span>{CALENDAR_DAY_NAMES[weekdayIndex]}</span>
+                                <b>{day}</b>
+                                <small>{isToday ? "Today" : "No scheduled posts"}</small>
+                              </button>
+                            );
+                          })}
                         </div>
                         <div className={styles.calendarLegend}>
                           <span><i className={styles.limeDot} />Announcement or launch</span>
@@ -758,7 +868,7 @@ export function SocialHub() {
                       <aside className={styles.scheduleCard}>
                         <div>
                           <span className={styles.eyebrow}>ADD TO</span>
-                          <h3>9 August 2026</h3>
+                          <h3>{selectedDayLabel}</h3>
                         </div>
                         <button type="button" disabled className={styles.aiMakeButton}>
                           <b>AI makes it</b>

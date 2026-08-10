@@ -342,7 +342,8 @@
 }
 
 .sectionHeading > div:first-child,
-.calendarHeading > div:first-child {
+.calendarHeading > div:first-child,
+.accordionHeader > div:first-child {
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -351,7 +352,7 @@
 .sectionHeading h2,
 .calendarHeading h2,
 .scheduleCard h3,
-.destinationTitle h3 {
+.accordionHeader h2 {
   margin: 0;
   color: #f4f7f1;
   font-family: "Archivo Black", Inter, sans-serif;
@@ -360,12 +361,12 @@
 }
 
 .sectionHeading h2,
-.calendarHeading h2 { font-size: 19px; }
+.calendarHeading h2,
+.accordionHeader h2 { font-size: 19px; }
 
 .sectionHeading p,
 .calendarHeading p,
-.botCopy p,
-.destinationTitle p,
+.accordionHeader p,
 .mascotOptions p,
 .scheduleCard p,
 .queueEmpty p,
@@ -384,16 +385,11 @@
 }
 
 .twoColsTop { align-items: start; }
-
-.threeCols {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
+.twoColsTop.voiceRow { align-items: stretch; }
+.voiceRow .previewEmpty { flex: 1; height: auto; }
 
 .connectionCard,
-.botCard,
-.destinationCard,
+.botRow,
 .performanceCard,
 .scheduleCard,
 .templatePanel,
@@ -404,24 +400,51 @@
 }
 
 .connectionCard {
-  min-height: 80px;
   padding: 18px;
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   border-radius: 16px;
 }
 
-.connectionCard > div {
+.connectionCardTop {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.connectionCardTop > div {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
-.connectionCard b { font-size: 14px; }
-.connectionCard > div span { overflow: hidden; color: #8d918c; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.connectionCardTop b { font-size: 14px; }
+.connectionCardTop > div span { overflow: hidden; color: #8d918c; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+
+.connectionField { display: grid; gap: 7px; }
+.connectionField > span { color: #e6ebe4; font-size: 11.5px; font-weight: 700; }
+.connectionField input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  outline: none;
+  color: #f4f7f1;
+  background: #080d09;
+  font: 600 11px "IBM Plex Mono", monospace;
+}
+.connectionField input:focus { border-color: rgba(198, 245, 62, 0.46); }
+
+.connectionHelper {
+  margin: 0;
+  color: #7f8780;
+  font-size: 11px;
+  line-height: 1.5;
+}
 
 .xIcon,
 .telegramIcon {
@@ -477,33 +500,22 @@
 .comingSoon { min-height: 36px; padding: 0 15px; font-size: 9.5px; }
 .comingSoonCompact { min-height: 28px; padding: 0 10px; font-size: 8.5px; }
 
-.botCard {
-  min-height: 225px;
-  padding: 18px;
+.botList { display: flex; flex-direction: column; gap: 10px; }
+
+.botRow {
+  padding: 14px 16px;
   display: flex;
-  flex-direction: column;
-  gap: 13px;
-  border-radius: 16px;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  border-radius: 14px;
 }
 
-.botMark {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  border-radius: 13px;
-  color: #071008;
-  background: #c6f53e;
-  box-shadow: 0 14px 30px -18px rgba(198, 245, 62, 0.6);
-  font-size: 18px;
-  font-weight: 900;
-}
+.botRowInfo { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 3px; }
+.botRowInfo b { font-size: 14px; }
+.botRowInfo span { color: #a8aaa9; font-size: 12.5px; line-height: 1.5; }
 
-.botCopy { display: flex; flex: 1; flex-direction: column; gap: 5px; }
-.botCopy > span { color: #8d918c; font: 700 9px "IBM Plex Mono", monospace; letter-spacing: 0.13em; }
-.botCopy b { font-size: 15px; }
-.botCopy p { font-size: 12.5px; }
-.botCard button,
+.botRow button,
 .disabledActions button,
 .mascotDrop button {
   min-height: 38px;
@@ -515,7 +527,9 @@
   font-weight: 800;
 }
 
-.botCard button:disabled,
+.botRow button { flex: none; padding: 0 16px; }
+
+.botRow button:disabled,
 .disabledActions button:disabled,
 .mascotDrop button:disabled,
 .chips button:disabled,
@@ -636,62 +650,67 @@
 }
 .composerActions button:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.destinationGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-}
-
-.destinationCard {
-  padding: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  border-radius: 18px;
-}
-
-.destinationTitle { display: flex; align-items: center; gap: 12px; }
-.destinationTitle > div { display: grid; gap: 4px; }
-.destinationTitle h3 { font-size: 17px; }
-.destinationTitle p { font-size: 12px; }
-
-.destinationCard ul {
-  margin: 0;
-  padding-left: 18px;
-  color: #8d918c;
-  font-size: 11.5px;
-  line-height: 1.65;
-}
-
-.destinationCard label { display: grid; gap: 7px; }
-.destinationCard label > span { color: #e6ebe4; font-size: 11.5px; font-weight: 700; }
-.destinationCard input:not([type="checkbox"]) {
-  width: 100%;
-  min-height: 44px;
-  padding: 0 13px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 10px;
-  outline: none;
-  color: #f4f7f1;
-  background: #080d09;
-  font: 600 11px "IBM Plex Mono", monospace;
-}
-.destinationCard input:focus { border-color: rgba(198, 245, 62, 0.46); }
-.destinationCard small { color: #7f8780; font-size: 10px; line-height: 1.45; }
-
 .checkbox { display: flex !important; align-items: center; gap: 9px !important; }
 .checkbox input { width: 16px; height: 16px; accent-color: #c6f53e; }
 .checkbox span { font-size: 10.5px !important; }
 
+.accordionHeader {
+  width: 100%;
+  padding: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.accordionHeaderRight { display: flex; align-items: center; gap: 10px; flex: none; }
+
+.accordionChevron,
+.accordionChevronOpen {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: #8d918c;
+  font-size: 10px;
+  transition: transform 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.accordionChevronOpen {
+  color: #c6f53e;
+  border-color: rgba(198, 245, 62, 0.34);
+  transform: rotate(180deg);
+}
+
+.accordionBody { display: flex; flex-direction: column; gap: 18px; }
+
+.postActions { display: flex; gap: 10px; flex-wrap: wrap; }
+
 .xButton,
 .telegramButton {
+  flex: 1;
+  min-width: 200px;
   min-height: 46px;
-  margin-top: auto;
-  padding: 0 16px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 900;
 }
+
+.xButton svg,
+.telegramButton svg { width: 14px; height: 14px; fill: currentColor; flex: none; }
 
 .xButton { border: 1px solid rgba(255, 255, 255, 0.16); color: #fff; background: #000; }
 .telegramButton { border: 0; color: #fff; background: #229ed9; }
@@ -833,6 +852,19 @@
 .mascotDrop button { padding: 0 16px; }
 
 .calendarHeading { align-items: center; }
+.calendarMonthNav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.calendarMonthNav h2 { min-width: 150px; }
+.calendarNavButton,
+.calendarTodayButton {
+  min-height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: #c3c9c4;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  font-weight: 800;
+}
+.calendarNavButton { width: 32px; display: grid; place-items: center; font-size: 16px; }
+.calendarTodayButton { padding: 0 12px; color: #c6f53e; border-color: rgba(198, 245, 62, 0.3); background: rgba(198, 245, 62, 0.08); font-size: 10.5px; letter-spacing: 0.04em; }
 .timezoneControl { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .timezoneControl > span:first-child { color: #8d918c; font: 700 10px "IBM Plex Mono", monospace; letter-spacing: 0.1em; }
 .timezoneControl select,
@@ -868,7 +900,9 @@
   background: rgba(255, 255, 255, 0.018);
   font: 700 12px "IBM Plex Mono", monospace;
 }
+.calendarDay { cursor: pointer; }
 .calendarToday { border-color: rgba(198, 245, 62, 0.42); color: #c6f53e; background: rgba(198, 245, 62, 0.09); box-shadow: inset 0 1px rgba(198, 245, 62, 0.18); }
+.calendarSelected { border-color: #c6f53e; color: #071008; background: linear-gradient(180deg, #c6f53e, #a7dd4a); box-shadow: 0 10px 24px -14px rgba(198, 245, 62, 0.6); }
 .calendarBlank { visibility: hidden; }
 .mobileWeek { display: none; }
 
@@ -975,28 +1009,33 @@
   .panelBody { padding: 18px 16px 22px; }
   .twoCols,
   .twoColsTop,
-  .threeCols,
   .composeGrid,
-  .destinationGrid,
   .mascotGrid,
   .calendarLayout,
   .metricGrid { grid-template-columns: 1fr; }
-  .connectionCard { grid-template-columns: 44px minmax(0, 1fr); }
+  .connectionCardTop { grid-template-columns: 44px minmax(0, 1fr); }
   .connectionState,
   .connectionStateLive { grid-column: 2; width: fit-content; }
-  .botCard { min-height: auto; }
+  .postActions { flex-direction: column; }
   .publishBar { align-items: flex-start; flex-direction: column; }
   .publishBar button { width: 100%; }
   .desktopCalendar { display: none; }
   .mobileWeek { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x mandatory; }
   .weekDay,
-  .weekToday { min-width: 132px; min-height: 96px; display: grid; gap: 5px; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; color: #a8aaa9; background: rgba(255, 255, 255, 0.018); text-align: left; scroll-snap-align: start; }
+  .weekToday,
+  .weekSelected { min-width: 132px; min-height: 96px; display: grid; gap: 5px; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; color: #a8aaa9; background: rgba(255, 255, 255, 0.018); text-align: left; scroll-snap-align: start; }
   .weekToday { border-color: rgba(198, 245, 62, 0.4); background: rgba(198, 245, 62, 0.08); }
+  .weekSelected { border-color: #c6f53e; background: linear-gradient(180deg, #c6f53e, #a7dd4a); }
   .weekDay > span,
-  .weekToday > span { color: #6f746e; font: 700 9px "IBM Plex Mono", monospace; letter-spacing: 0.1em; }
+  .weekToday > span,
+  .weekSelected > span { color: #6f746e; font: 700 9px "IBM Plex Mono", monospace; letter-spacing: 0.1em; }
   .weekDay b,
-  .weekToday b { color: #f4f7f1; font: 400 22px "Archivo Black", Inter, sans-serif; }
+  .weekToday b,
+  .weekSelected b { color: #f4f7f1; font: 400 22px "Archivo Black", Inter, sans-serif; }
   .weekToday b { color: #c6f53e; }
+  .weekSelected b,
+  .weekSelected > span,
+  .weekSelected small { color: #071008; }
   .weekDay small,
   .weekToday small { color: #8d918c; font-size: 9.5px; }
 }
@@ -1018,13 +1057,12 @@
   .panelBody { padding: 16px 14px 24px; }
   .sectionStack { gap: 22px; }
   .connectionCard,
-  .botCard,
+  .botRow,
   .templatePanel,
   .composerPanel,
-  .destinationCard,
   .performanceCard,
   .scheduleCard { padding: 15px; }
-  .connectionCard { min-height: 72px; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; }
+  .connectionCardTop { grid-template-columns: 38px minmax(0, 1fr); gap: 12px; }
   .xIcon,
   .telegramIcon { width: 38px; height: 38px; border-radius: 11px; }
   .xIcon svg { width: 16px; height: 16px; }
