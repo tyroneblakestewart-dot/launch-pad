@@ -1,0 +1,142 @@
+.shell {
+  min-height: 100vh;
+  padding: 28px;
+  color: #f4f7f1;
+}
+
+.header {
+  max-width: 1440px;
+  margin: 0 auto 22px;
+  padding: 24px;
+  border: 1px solid rgba(131, 183, 139, 0.2);
+  border-radius: 14px;
+  background: rgba(10, 15, 11, 0.94);
+}
+
+.header p {
+  margin: 0 0 7px;
+  color: #c6f53e;
+  font: 700 10px "IBM Plex Mono", monospace;
+  letter-spacing: 0.16em;
+}
+
+.header h1 {
+  margin: 0 0 8px;
+  font-size: clamp(28px, 4vw, 46px);
+  letter-spacing: -0.045em;
+}
+
+.header span {
+  display: block;
+  max-width: 60ch;
+  color: #9aa69c;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.inner {
+  width: min(900px, 100%);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.panel {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: clamp(22px, 5vw, 34px);
+  border: 1px solid rgba(198, 245, 62, 0.25);
+  border-radius: 20px;
+  background: rgba(8, 12, 9, 0.94);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
+}
+
+.panelEyebrow {
+  color: #c6f53e;
+  font: 800 10px "IBM Plex Mono", monospace;
+  letter-spacing: 0.14em;
+}
+
+.panel h2 {
+  margin: 0;
+  font-size: clamp(1.4rem, 5vw, 2rem);
+  letter-spacing: -0.03em;
+}
+
+.panel p {
+  margin: 0;
+  color: #a9b0aa;
+  font-size: 0.93rem;
+}
+
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin-top: 8px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 999px;
+  background: #c6f53e;
+  color: #061006;
+  font-weight: 900;
+  font-size: 13px;
+  text-decoration: none;
+  box-shadow: 0 16px 40px rgba(198, 245, 62, 0.16);
+}
+
+.toggle {
+  align-self: flex-start;
+  padding: 8px 4px;
+  border: 0;
+  background: none;
+  color: #83b78b;
+  font: 700 11px "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.loading {
+  min-height: calc(100dvh - 72px);
+  display: grid;
+  place-items: center;
+  justify-items: center;
+  gap: 14px;
+  color: #a9b0aa;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(198, 245, 62, 0.18);
+  border-top-color: #c6f53e;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+}
+
+@media (max-width: 640px) {
+  .shell {
+    padding: 16px;
+  }
+
+  .header {
+    padding: 18px;
+    border-radius: 16px;
+  }
+
+  .cta {
+    width: 100%;
+  }
+}

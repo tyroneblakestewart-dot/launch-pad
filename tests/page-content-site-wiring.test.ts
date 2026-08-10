@@ -9,7 +9,7 @@ import AccountPage from "@/app/(app)/account/page";
 import PublicGeneratedSitePage from "@/app/[slug]/page";
 import { HoodlumsMarketHome } from "@/components/hoodlums-market-home";
 import { ProviderLauncher } from "@/components/provider-launcher";
-import { ManagerPlans } from "@/components/manager-plans";
+import { ManagerGateway } from "@/components/manager-gateway";
 import { TokenAllocationDesk } from "@/components/token-allocation-desk";
 import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
 import type { PublicGeneratedSite } from "@/lib/public-site";
@@ -193,9 +193,9 @@ describe("providers page content wiring", () => {
 });
 
 describe("manager page content wiring", () => {
-  it("passes the registered defaults into ManagerPlans as props", async () => {
+  it("passes the registered defaults into ManagerGateway as props", async () => {
     const tree = await ManagerPage({ searchParams: undefined });
-    const [manager] = findAll(tree, (el) => el.type === ManagerPlans);
+    const [manager] = findAll(tree, (el) => el.type === ManagerGateway);
     expect(manager.props.headerEyebrow).toBe("MANAGER · PLANS");
     expect(manager.props.headerTitle).toBe("Grow your token after launch.");
     expect(manager.props.headerIntro).toBe(
@@ -203,10 +203,10 @@ describe("manager page content wiring", () => {
     );
   });
 
-  it("passes a published override through to ManagerPlans", async () => {
+  it("passes a published override through to ManagerGateway", async () => {
     await publishOverride("manager", "header_title", "heading", "Manage every launch");
     const tree = await ManagerPage({ searchParams: undefined });
-    const [manager] = findAll(tree, (el) => el.type === ManagerPlans);
+    const [manager] = findAll(tree, (el) => el.type === ManagerGateway);
     expect(manager.props.headerTitle).toBe("Manage every launch");
   });
 
@@ -217,11 +217,11 @@ describe("manager page content wiring", () => {
     await store.saveDraft({ pageId: "manager", elementId: "header_intro", elementType: "text", value: "Draft intro", actor: "admin" });
 
     const withoutPreview = await ManagerPage({ searchParams: Promise.resolve({}) });
-    const [managerWithoutPreview] = findAll(withoutPreview, (el) => el.type === ManagerPlans);
+    const [managerWithoutPreview] = findAll(withoutPreview, (el) => el.type === ManagerGateway);
     expect(managerWithoutPreview.props.headerIntro).not.toBe("Draft intro");
 
     const withPreview = await ManagerPage({ searchParams: Promise.resolve({ cms_preview: "1" }) });
-    const [managerWithPreview] = findAll(withPreview, (el) => el.type === ManagerPlans);
+    const [managerWithPreview] = findAll(withPreview, (el) => el.type === ManagerGateway);
     expect(managerWithPreview.props.headerIntro).toBe("Draft intro");
   });
 });
