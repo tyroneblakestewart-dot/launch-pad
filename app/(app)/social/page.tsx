@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SocialHub } from "@/components/social-hub";
+import { SubscriptionAccessGate } from "@/components/subscription-access-gate";
 
 export const metadata: Metadata = {
   title: "AI Social Studio",
@@ -8,5 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default function SocialPage() {
-  return <SocialHub />;
+  return (
+    <SubscriptionAccessGate>
+      <SocialHub />
+    </SubscriptionAccessGate>
+  );
 }
