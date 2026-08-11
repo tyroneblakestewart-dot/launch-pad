@@ -50,9 +50,10 @@ type AppWindowTabId = (typeof APP_WINDOW_TABS)[number]["id"];
 
 /**
  * Decorative, non-interactive recreation of the AI Social Studio app shell
- * (window chrome, tab row, sidebar hint) used by the Setup and Rules slide
- * visuals. It is aria-hidden and built from non-focusable elements only —
- * it must never register as real product UI.
+ * (window chrome, address pill, sidebar logo, tab row) used by the Setup,
+ * Calendar and Rules slide mockups. It is aria-hidden and built only from
+ * span/div/p/h3/h4/i/img — no buttons, inputs, links or textareas — so it
+ * never registers as real, interactive product UI.
  */
 function AppWindowFrame({
   activeTab,
@@ -69,26 +70,38 @@ function AppWindowFrame({
           <i />
           <i />
         </span>
-        <span className={styles.appWindowLabel}>AI Social Studio</span>
-      </div>
-      <div className={styles.appWindowTabs}>
-        {APP_WINDOW_TABS.map((tab) => (
-          <span
-            key={tab.id}
-            className={tab.id === activeTab ? styles.appWindowTabActive : styles.appWindowTab}
-          >
-            {tab.label}
-          </span>
-        ))}
+        <span className={styles.appWindowAddr}>
+          hoodlums.dev<b>/social</b>
+        </span>
       </div>
       <div className={styles.appWindowBody}>
         <div className={styles.appWindowSidebar}>
-          <span className={styles.appWindowSidebarDot} />
+          <img src="/hoodlums-wordmark.svg" alt="" className={styles.appWindowSideLogo} />
           <span className={styles.appWindowSidebarLine} />
           <span className={styles.appWindowSidebarLine} />
           <span className={styles.appWindowSidebarLine} />
         </div>
-        <div className={styles.appWindowContent}>{children}</div>
+        <div className={styles.appWindowChrome}>
+          <div className={styles.appWindowBrandRow}>
+            <img
+              src="/hoodlums-social-wordmark.png"
+              alt=""
+              className={styles.appWindowWordmark}
+            />
+            <span className={styles.appWindowProBadge}>Pro · AI Social Studio</span>
+          </div>
+          <div className={styles.appWindowTabs}>
+            {APP_WINDOW_TABS.map((tab) => (
+              <span
+                key={tab.id}
+                className={tab.id === activeTab ? styles.appWindowTabActive : styles.appWindowTab}
+              >
+                {tab.label}
+              </span>
+            ))}
+          </div>
+          <div className={styles.appWindowContent}>{children}</div>
+        </div>
       </div>
     </div>
   );
@@ -97,24 +110,57 @@ function AppWindowFrame({
 function VoiceSlideVisual() {
   return (
     <AppWindowFrame activeTab="setup">
-      <div className={styles.dropZone}>
-        <span className={styles.dropZoneLabel}>Example posts</span>
-        <p className={styles.dropZonePost}>gm gm — another day, another chart to stare at. $ALLEY</p>
-        <p className={styles.dropZonePost}>340 of you didn&apos;t sell. respect. that&apos;s the whole post.</p>
-      </div>
-      <div className={styles.learningState}>
-        <div className={styles.learningLabel}>
-          <span>AI learning your voice</span>
-          <b>14 / 20 posts analysed</b>
+      <div className={styles.cols}>
+        <div className={styles.panel}>
+          <h3 className={styles.panelTitle}>Teach the AI your voice</h3>
+          <p className={styles.panelSub}>Drop in posts you like the sound of — 20 is ideal.</p>
+          <div className={styles.examples}>
+            <span className={styles.examplesLabel}>Example posts</span>
+            <p className={styles.examplePost}>gm gm — another day, another chart to stare at. $ALLEY</p>
+            <p className={styles.examplePost}>340 of you didn&apos;t sell. respect. that&apos;s the whole post.</p>
+          </div>
+          <div className={styles.meterRow}>
+            <span className={styles.meterLabel}>Examples added</span>
+            <span className={styles.meterCount}>14 / 20</span>
+          </div>
+          <div className={styles.meterTrack}>
+            <span className={styles.meterFill} />
+          </div>
+          <div className={styles.learnRow}>
+            <span className={styles.learnPulse} />
+            <span>AI learning your voice — 14 / 20 posts analysed</span>
+          </div>
+          <div className={styles.traitChips}>
+            <span className={styles.traitChip}>Tone · chaotic-friendly</span>
+            <span className={styles.traitChip}>Slang · gm, ser, wagmi</span>
+            <span className={styles.traitChip}>Emoji · 🚀 💀 🫡</span>
+          </div>
         </div>
-        <div className={styles.learningTrack}>
-          <span className={styles.learningFill} />
+        <div className={styles.panel}>
+          <h3 className={styles.panelTitle}>Voice preview</h3>
+          <p className={styles.panelSub}>How it sounds writing about your project.</p>
+          <div className={styles.previewCard}>
+            <div className={styles.previewHead}>
+              <span className={styles.previewAvatar}>H</span>
+              <span className={styles.previewHandle}>
+                Hoodlums
+                <small>@hoodlums · draft</small>
+              </span>
+            </div>
+            <p className={styles.previewText}>
+              gm hoodlums. bags packed, curve climbing. we don&apos;t chase pumps — we print them. 🖨️
+            </p>
+            <div className={styles.previewArtwork}>
+              <img src="/showcase/mascot-trading.png" alt="" />
+            </div>
+            <div className={styles.previewDests}>
+              <span className={styles.previewDestActive}>X ✓</span>
+              <span className={styles.previewDestActive}>Telegram ✓</span>
+              <span className={styles.previewDest}>5×/day</span>
+            </div>
+          </div>
+          <p className={styles.caption}>Every post arrives with original artwork of your mascot.</p>
         </div>
-      </div>
-      <div className={styles.traitChips}>
-        <span className={styles.traitChip}>Tone · chaotic-friendly</span>
-        <span className={styles.traitChip}>Slang · gm, ser, wagmi</span>
-        <span className={styles.traitChip}>Emoji · 🚀 💀 🫡</span>
       </div>
     </AppWindowFrame>
   );
@@ -130,55 +176,160 @@ function MascotSlideVisual() {
   );
 }
 
-const SCHEDULE_DAYS = [
-  { label: "M", active: true },
-  { label: "T", active: false },
-  { label: "W", active: true },
-  { label: "T", active: false },
-  { label: "F", active: true },
-  { label: "S", active: false },
-  { label: "S", active: false },
+type CalendarDayState = "default" | "sel" | "mark";
+
+const CALENDAR_WEEK: readonly { label: string; state: CalendarDayState }[] = [
+  { label: "8", state: "default" },
+  { label: "9", state: "default" },
+  { label: "10", state: "default" },
+  { label: "11", state: "sel" },
+  { label: "12", state: "default" },
+  { label: "13", state: "default" },
+  { label: "14", state: "mark" },
+];
+
+const CALENDAR_DOW = ["M", "T", "W", "T", "F", "S", "S"] as const;
+
+function calendarDayClassName(state: CalendarDayState) {
+  if (state === "sel") return styles.calDaySel;
+  if (state === "mark") return styles.calDayMark;
+  return styles.calDay;
+}
+
+function CalendarSlideVisual() {
+  return (
+    <AppWindowFrame activeTab="calendar">
+      <div className={styles.cols}>
+        <div className={styles.panel}>
+          <div className={styles.calHead}>
+            <h3 className={styles.panelTitle}>August 2026</h3>
+            <span className={styles.calTz}>London (GMT+1)</span>
+          </div>
+          <p className={styles.panelSub}>
+            Tap a day to add something. Lime days hold launches or announcements.
+          </p>
+          <div className={styles.calDow}>
+            {CALENDAR_DOW.map((day, index) => (
+              <span key={`${day}-${index}`}>{day}</span>
+            ))}
+          </div>
+          <div className={styles.calGrid}>
+            {CALENDAR_WEEK.map((day) => (
+              <span key={day.label} className={calendarDayClassName(day.state)}>
+                {day.label}
+              </span>
+            ))}
+          </div>
+          <div className={styles.calLegend}>
+            <span>
+              <i className={styles.calLegendDotLaunch} />
+              Announcement or launch
+            </span>
+            <span>
+              <i className={styles.calLegendDotPost} />
+              Scheduled post
+            </span>
+          </div>
+        </div>
+        <div className={styles.panel}>
+          <span className={styles.addToLabel}>Add to</span>
+          <p className={styles.addToDate}>11 August 2026</p>
+          <div className={styles.addToOptionActive}>
+            <h4>AI makes it</h4>
+            <p>Describe your idea and we&apos;ll create the post and artwork.</p>
+          </div>
+          <div className={styles.addToOption}>
+            <h4>I&apos;ll post my own</h4>
+            <p>Upload or write it yourself — we&apos;ll publish it on time.</p>
+          </div>
+          <span className={styles.whereLabel}>Where it posts</span>
+          <div className={styles.previewDests}>
+            <span className={styles.previewDestActive}>X ✓</span>
+            <span className={styles.previewDestActive}>Telegram ✓</span>
+          </div>
+          <div className={styles.quietRow}>
+            <span>Quiet hours</span>
+            <b>23:00 – 07:00</b>
+          </div>
+          <span className={styles.scheduleCta}>Schedule it</span>
+        </div>
+      </div>
+    </AppWindowFrame>
+  );
+}
+
+const RULE_ROWS = [
+  { label: "Humour", options: ["Dry", "Playful", "Full degen"], activeIndex: 1 },
+  { label: "Emoji", options: ["None", "A little", "Plenty"], activeIndex: 1 },
+  { label: "Hashtags", options: ["Never", "One or two", "Lots"], activeIndex: 1 },
 ] as const;
+
+const BANNED_WORDS = ["guaranteed", "to the moon", "financial advice"] as const;
 
 function ControlSlideVisual() {
   return (
     <AppWindowFrame activeTab="rules">
-      <div className={styles.modeToggleMini}>
-        <span>Autopilot</span>
-        <span className={styles.modeToggleMiniActive}>Approve first</span>
-      </div>
-      <div className={styles.queuedPost}>
-        <div className={styles.queuedPostMeta}>
-          <span>Today · 18:00</span>
-          <span className={styles.queuedPostDivider} />
-          <span>X + Telegram</span>
+      <div className={styles.cols}>
+        <div className={styles.panel}>
+          <h3 className={styles.panelTitle}>Your rules</h3>
+          <p className={styles.panelSub}>The AI never crosses your lines.</p>
+          <div className={styles.bannedChips}>
+            {BANNED_WORDS.map((word) => (
+              <span key={word} className={styles.bannedChip}>
+                {word}
+                <i>×</i>
+              </span>
+            ))}
+          </div>
+          {RULE_ROWS.map((rule) => (
+            <div key={rule.label} className={styles.ruleRow}>
+              <span className={styles.ruleLabel}>{rule.label}</span>
+              <span className={styles.ruleSeg}>
+                {rule.options.map((option, index) => (
+                  <span
+                    key={option}
+                    className={
+                      index === rule.activeIndex ? styles.ruleSegOptionActive : styles.ruleSegOption
+                    }
+                  >
+                    {option}
+                  </span>
+                ))}
+              </span>
+            </div>
+          ))}
         </div>
-        <p>340 wallets and not one of you has sold. genuinely moved. $ALLEY</p>
-        <div className={styles.queuedPostActions}>
-          <span className={styles.queuedApprove}>Approve</span>
-          <span className={styles.queuedEdit}>Edit</span>
+        <div className={styles.panel}>
+          <h3 className={styles.panelTitle}>What&apos;s going out</h3>
+          <p className={styles.panelSub}>Nothing posts until you say so — or flip to autopilot.</p>
+          <div className={styles.modeToggleMini}>
+            <span className={styles.modeToggleMiniActive}>Approve first</span>
+            <span>Autopilot</span>
+          </div>
+          <div className={styles.queueCard}>
+            <div className={styles.queueHead}>
+              <span className={styles.queueWhen}>Today · 18:00 · X + Telegram</span>
+              <span className={styles.queueBadge}>Ready</span>
+            </div>
+            <div className={styles.queueBody}>
+              <div className={styles.queueArt}>
+                <img src="/showcase/mascot-celebrating.png" alt="" />
+              </div>
+              <p className={styles.queueText}>
+                340 wallets and not one of you has sold. genuinely moved. $ALLEY
+              </p>
+            </div>
+            <div className={styles.queueActions}>
+              <span className={styles.queuedApprove}>Approve</span>
+              <span className={styles.queuedEdit}>Edit</span>
+            </div>
+          </div>
+          <div className={styles.quietRow}>
+            <span>Quiet hours</span>
+            <b>23:00 – 07:00</b>
+          </div>
+          <p className={styles.caption}>Your rules, your banned words, your schedule.</p>
         </div>
-      </div>
-      <div className={styles.bannedChips}>
-        <span className={styles.bannedChip}>
-          guaranteed<i>×</i>
-        </span>
-        <span className={styles.bannedChip}>
-          to the moon<i>×</i>
-        </span>
-        <span className={styles.bannedChip}>
-          financial advice<i>×</i>
-        </span>
-      </div>
-      <div className={styles.scheduleStrip}>
-        {SCHEDULE_DAYS.map((day, index) => (
-          <span
-            key={`${day.label}-${index}`}
-            className={day.active ? styles.scheduleDayActive : styles.scheduleDay}
-          >
-            {day.label}
-          </span>
-        ))}
       </div>
     </AppWindowFrame>
   );
@@ -187,6 +338,7 @@ function ControlSlideVisual() {
 const SLIDE_VISUALS: Record<(typeof SOCIAL_SHOWCASE_SLIDES)[number]["id"], () => React.JSX.Element> = {
   voice: VoiceSlideVisual,
   mascot: MascotSlideVisual,
+  calendar: CalendarSlideVisual,
   control: ControlSlideVisual,
 };
 

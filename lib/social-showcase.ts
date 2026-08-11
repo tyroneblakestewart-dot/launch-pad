@@ -1,4 +1,4 @@
-export type SocialShowcaseSlideId = "voice" | "mascot" | "control";
+export type SocialShowcaseSlideId = "voice" | "mascot" | "calendar" | "control";
 
 export type SocialShowcaseSlide = {
   id: SocialShowcaseSlideId;
@@ -7,7 +7,7 @@ export type SocialShowcaseSlide = {
   body: string;
 };
 
-/** The three approved slides for the homepage AI Social Studio showcase (issue #278). */
+/** The four approved slides for the homepage AI Social Studio showcase (issue #278). */
 export const SOCIAL_SHOWCASE_SLIDES: readonly SocialShowcaseSlide[] = [
   {
     id: "voice",
@@ -22,8 +22,14 @@ export const SOCIAL_SHOWCASE_SLIDES: readonly SocialShowcaseSlide[] = [
     body: "Upload your mascot once. Get original artwork with every post — always your character, never anyone else’s.",
   },
   {
-    id: "control",
+    id: "calendar",
     step: "Step 03",
+    title: "Plan the month in minutes",
+    body: "Tap a day, drop an idea, done. The AI writes the post and the artwork, publishes on time — never during quiet hours.",
+  },
+  {
+    id: "control",
+    step: "Step 04",
     title: "You stay in control",
     body: "Approve every post before it goes out, or flip to full autopilot. Your rules, your banned words, your schedule.",
   },

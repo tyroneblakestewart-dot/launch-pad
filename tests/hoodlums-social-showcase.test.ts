@@ -22,12 +22,33 @@ async function source(...parts: string[]) {
 }
 
 describe("AI Social Studio showcase content (issue #278)", () => {
-  it("ships exactly the three approved slides in order", () => {
+  it("ships exactly the four approved slides in order", () => {
     expect(SOCIAL_SHOWCASE_SLIDES.map((slide) => slide.title)).toEqual([
       "Your voice, on autopilot",
       "Your mascot, everywhere",
+      "Plan the month in minutes",
       "You stay in control",
     ]);
+    expect(SOCIAL_SHOWCASE_SLIDES.map((slide) => slide.step)).toEqual([
+      "Step 01",
+      "Step 02",
+      "Step 03",
+      "Step 04",
+    ]);
+    expect(SOCIAL_SHOWCASE_SLIDES.map((slide) => slide.id)).toEqual([
+      "voice",
+      "mascot",
+      "calendar",
+      "control",
+    ]);
+  });
+
+  it("gives the new calendar slide the approved copy", () => {
+    const calendar = SOCIAL_SHOWCASE_SLIDES.find((slide) => slide.id === "calendar");
+
+    expect(calendar?.body).toBe(
+      "Tap a day, drop an idea, done. The AI writes the post and the artwork, publishes on time — never during quiet hours.",
+    );
   });
 
   it("references the four approved mascot scene image slots", () => {
@@ -45,16 +66,17 @@ describe("AI Social Studio showcase content (issue #278)", () => {
 });
 
 describe("AI Social Studio showcase carousel logic", () => {
-  it("wraps forward through all three slides", () => {
-    expect(nextShowcaseIndex(0, 3)).toBe(1);
-    expect(nextShowcaseIndex(1, 3)).toBe(2);
-    expect(nextShowcaseIndex(2, 3)).toBe(0);
+  it("wraps forward through all slides for an arbitrary slide count", () => {
+    expect(nextShowcaseIndex(0, 4)).toBe(1);
+    expect(nextShowcaseIndex(1, 4)).toBe(2);
+    expect(nextShowcaseIndex(2, 4)).toBe(3);
+    expect(nextShowcaseIndex(3, 4)).toBe(0);
   });
 
   it("clamps dot-navigation indexes into range in both directions", () => {
-    expect(clampShowcaseIndex(-1, 3)).toBe(2);
-    expect(clampShowcaseIndex(3, 3)).toBe(0);
-    expect(clampShowcaseIndex(1, 3)).toBe(1);
+    expect(clampShowcaseIndex(-1, 4)).toBe(3);
+    expect(clampShowcaseIndex(4, 4)).toBe(0);
+    expect(clampShowcaseIndex(1, 4)).toBe(1);
   });
 
   it("only registers a swipe once it clears the threshold, and picks direction from the sign", () => {
@@ -116,29 +138,64 @@ describe("AI Social Studio showcase wiring", () => {
     expect(component).toContain("mascotPlaceholder");
   });
 
-  it("recreates the Social Studio Setup tab as a decorative mini app window on slide 1", async () => {
+  it("maps every slide id, including the new calendar slide, to a visual", async () => {
+    const component = await source("components", "hoodlums-social-showcase.tsx");
+    const slideVisualsStart = component.indexOf("const SLIDE_VISUALS");
+    const slideVisualsEnd = component.indexOf("export function HoodlumsSocialShowcase");
+    const slideVisualsSource = component.slice(slideVisualsStart, slideVisualsEnd);
+
+    expect(slideVisualsSource).toContain("voice: VoiceSlideVisual");
+    expect(slideVisualsSource).toContain("mascot: MascotSlideVisual");
+    expect(slideVisualsSource).toContain("calendar: CalendarSlideVisual");
+    expect(slideVisualsSource).toContain("control: ControlSlideVisual");
+  });
+
+  it("recreates the Social Studio app shell as a shared decorative mini app window", async () => {
     const component = await source("components", "hoodlums-social-showcase.tsx");
 
-    // Shared app-window chrome: tabs, sidebar hint, decorative-only markers.
     expect(component).toContain('aria-hidden="true"');
     expect(component).toContain("appWindowTabs");
+    expect(component).toContain("appWindowSidebar");
     expect(component).toMatch(/label:\s*"Setup"/);
     expect(component).toMatch(/label:\s*"Calendar"/);
     expect(component).toMatch(/label:\s*"Queue"/);
     expect(component).toMatch(/label:\s*"Rules"/);
-    expect(component).toContain("appWindowSidebar");
 
-    // Selling moments called out in the request, enlarged and readable.
+    // Real, already-shipped assets only — no new image files.
+    expect(component).toContain('src="/hoodlums-wordmark.svg"');
+    expect(component).toContain('src="/hoodlums-social-wordmark.png"');
+  });
+
+  it("recreates the Setup tab as a mockup on slide 1 with the selling moments enlarged and readable", async () => {
+    const component = await source("components", "hoodlums-social-showcase.tsx");
+
+    expect(component).toContain('activeTab="setup"');
+    expect(component).toContain("Teach the AI your voice");
     expect(component).toContain("Example posts");
     expect(component).toContain("gm gm — another day, another chart to stare at. $ALLEY");
     expect(component).toContain("340 of you didn&apos;t sell. respect. that&apos;s the whole post.");
-    expect(component).toContain("AI learning your voice");
-    expect(component).toContain("14 / 20 posts analysed");
+    expect(component).toContain("AI learning your voice — 14 / 20 posts analysed");
     expect(component).toContain("traitChip");
     expect((component.match(/styles\.traitChip\b/g) ?? []).length).toBeGreaterThanOrEqual(3);
+
+    expect(component).toContain("Voice preview");
+    expect(component).toContain('src="/showcase/mascot-trading.png"');
   });
 
-  it("recreates the control surface as a decorative mini app window on slide 3", async () => {
+  it("adds a Plan the month in minutes calendar mockup on the new slide 3", async () => {
+    const component = await source("components", "hoodlums-social-showcase.tsx");
+
+    expect(component).toContain('activeTab="calendar"');
+    expect(component).toContain("function CalendarSlideVisual");
+    expect(component).toContain("calGrid");
+    expect(component).toContain("calDaySel");
+    expect(component).toContain("calDayMark");
+    expect(component).toContain("addToOptionActive");
+    expect(component).toContain("AI makes it");
+    expect(component).toContain("Schedule it");
+  });
+
+  it("recreates the control surface as a mockup on slide 4 with the four approved controls", async () => {
     const component = await source("components", "hoodlums-social-showcase.tsx");
 
     expect(component).toContain('activeTab="rules"');
@@ -146,7 +203,7 @@ describe("AI Social Studio showcase wiring", () => {
     expect(component).toContain("modeToggleMiniActive");
     expect(component).toContain("Approve first");
 
-    expect(component).toContain("queuedPost");
+    expect(component).toContain("queueCard");
     expect(component).toContain("queuedApprove");
     expect(component).toContain("queuedEdit");
 
@@ -155,8 +212,8 @@ describe("AI Social Studio showcase wiring", () => {
     expect(component).toContain("to the moon");
     expect(component).toContain("financial advice");
 
-    expect(component).toContain("scheduleStrip");
-    expect(component).toContain("SCHEDULE_DAYS");
+    expect(component).toContain("quietRow");
+    expect(component).toContain('src="/showcase/mascot-celebrating.png"');
   });
 
   it("keeps the mini app-window recreations non-interactive with no focusable elements", async () => {
@@ -169,6 +226,13 @@ describe("AI Social Studio showcase wiring", () => {
     expect(appWindowStart).toBeGreaterThan(-1);
     expect(appWindowEnd).toBeGreaterThan(appWindowStart);
     expect(appWindowSource).not.toMatch(/<button|<input|<a\s|<textarea|tabIndex/);
+  });
+
+  it("stacks the mockup above the slide copy on phones and splits side by side on desktop", async () => {
+    const css = await source("components", "hoodlums-social-showcase.module.css");
+
+    expect(css).toMatch(/@media \(max-width: 640px\)\s*{[^}]*\.cols\s*{\s*grid-template-columns: 1fr;/s);
+    expect(css).toMatch(/@media \(min-width: 900px\)\s*{[^]*?grid-template-areas:\s*\n\s*"visual step"/);
   });
 
   it("keeps the section background transparent so it blends into the shared ambient glow", async () => {
