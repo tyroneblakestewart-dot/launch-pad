@@ -18,19 +18,20 @@ type AccountContentResponse = {
   content?: AccountOverlayContent;
 };
 
-function ProviderMark({ name }: { name: ProviderName }) {
-  const labels: Record<ProviderName, string> = {
-    Google: "G",
-    GitHub: "GH",
-    X: "X",
-    MetaMask: "M",
-    Rabby: "R",
-    Phantom: "P",
-  };
+const PROVIDER_LOGOS: Record<ProviderName, string> = {
+  Google: "/logos/google.svg",
+  GitHub: "/logos/github.svg",
+  X: "/logos/x.svg",
+  MetaMask: "/logos/metamask.svg",
+  Rabby: "/logos/rabby.svg",
+  Phantom: "/logos/phantom.svg",
+};
 
+function ProviderMark({ name }: { name: ProviderName }) {
   return (
     <span className={`${styles.mark} ${styles[name.toLowerCase()]}`} aria-hidden="true">
-      {labels[name]}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img className={styles.markLogo} src={PROVIDER_LOGOS[name]} alt="" />
     </span>
   );
 }
