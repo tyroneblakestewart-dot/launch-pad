@@ -74,6 +74,36 @@ describe("Account overlay restructure", () => {
     expect(overlay).toContain('aria-modal="true"');
   });
 
+  it("renders each provider's official logo instead of a letter monogram", async () => {
+    const overlay = await source("components", "account-overlay.tsx");
+
+    const expectedLogos: Record<string, string> = {
+      Google: "/logos/google.svg",
+      GitHub: "/logos/github.svg",
+      X: "/logos/x.svg",
+      MetaMask: "/logos/metamask.svg",
+      Rabby: "/logos/rabby.svg",
+      Phantom: "/logos/phantom.svg",
+    };
+
+    for (const [provider, path] of Object.entries(expectedLogos)) {
+      expect(overlay).toContain(`${provider}: "${path}"`);
+    }
+
+    expect(overlay).toContain("styles.markLogo");
+    expect(overlay).not.toMatch(/Google:\s*"G"/);
+    expect(overlay).not.toMatch(/GitHub:\s*"GH"/);
+    expect(overlay).not.toMatch(/MetaMask:\s*"M"/);
+    expect(overlay).not.toMatch(/Rabby:\s*"R"/);
+    expect(overlay).not.toMatch(/Phantom:\s*"P"/);
+
+    for (const file of Object.values(expectedLogos)) {
+      const svg = await source("public", file.replace(/^\//, ""));
+      expect(svg).toContain("<svg");
+      expect(svg).toContain("viewBox=");
+    }
+  });
+
   it("opens from the redirected account query and preserves CMS preview support", async () => {
     const overlay = await source("components", "account-overlay.tsx");
     const config = await source("next.config.ts");
