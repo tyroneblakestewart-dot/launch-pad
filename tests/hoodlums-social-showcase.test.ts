@@ -116,6 +116,61 @@ describe("AI Social Studio showcase wiring", () => {
     expect(component).toContain("mascotPlaceholder");
   });
 
+  it("recreates the Social Studio Setup tab as a decorative mini app window on slide 1", async () => {
+    const component = await source("components", "hoodlums-social-showcase.tsx");
+
+    // Shared app-window chrome: tabs, sidebar hint, decorative-only markers.
+    expect(component).toContain('aria-hidden="true"');
+    expect(component).toContain("appWindowTabs");
+    expect(component).toMatch(/label:\s*"Setup"/);
+    expect(component).toMatch(/label:\s*"Calendar"/);
+    expect(component).toMatch(/label:\s*"Queue"/);
+    expect(component).toMatch(/label:\s*"Rules"/);
+    expect(component).toContain("appWindowSidebar");
+
+    // Selling moments called out in the request, enlarged and readable.
+    expect(component).toContain("Example posts");
+    expect(component).toContain("gm gm — another day, another chart to stare at. $ALLEY");
+    expect(component).toContain("340 of you didn&apos;t sell. respect. that&apos;s the whole post.");
+    expect(component).toContain("AI learning your voice");
+    expect(component).toContain("14 / 20 posts analysed");
+    expect(component).toContain("traitChip");
+    expect((component.match(/styles\.traitChip\b/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("recreates the control surface as a decorative mini app window on slide 3", async () => {
+    const component = await source("components", "hoodlums-social-showcase.tsx");
+
+    expect(component).toContain('activeTab="rules"');
+    expect(component).toContain("modeToggleMini");
+    expect(component).toContain("modeToggleMiniActive");
+    expect(component).toContain("Approve first");
+
+    expect(component).toContain("queuedPost");
+    expect(component).toContain("queuedApprove");
+    expect(component).toContain("queuedEdit");
+
+    expect(component).toContain("bannedChips");
+    expect(component).toContain("guaranteed");
+    expect(component).toContain("to the moon");
+    expect(component).toContain("financial advice");
+
+    expect(component).toContain("scheduleStrip");
+    expect(component).toContain("SCHEDULE_DAYS");
+  });
+
+  it("keeps the mini app-window recreations non-interactive with no focusable elements", async () => {
+    const component = await source("components", "hoodlums-social-showcase.tsx");
+
+    const appWindowStart = component.indexOf("function AppWindowFrame");
+    const appWindowEnd = component.indexOf("const SLIDE_VISUALS");
+    const appWindowSource = component.slice(appWindowStart, appWindowEnd);
+
+    expect(appWindowStart).toBeGreaterThan(-1);
+    expect(appWindowEnd).toBeGreaterThan(appWindowStart);
+    expect(appWindowSource).not.toMatch(/<button|<input|<a\s|<textarea|tabIndex/);
+  });
+
   it("keeps the section background transparent so it blends into the shared ambient glow", async () => {
     const css = await source("components", "hoodlums-social-showcase.module.css");
 

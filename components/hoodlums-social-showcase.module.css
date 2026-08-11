@@ -172,94 +172,338 @@
   box-shadow: 0 0 16px rgba(198, 245, 62, 0.6);
 }
 
-/* Post card mockup — Step 01, "Your voice, on autopilot" */
-.postCard {
+/* Mini app-window shell shared by Step 01 (Setup) and Step 03 (Rules) recreations */
+.appWindow {
   display: flex;
   flex-direction: column;
-  gap: 13px;
   width: 100%;
-  max-width: 330px;
-  padding: 16px;
+  max-width: 460px;
   border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 26px;
-  background: rgba(18, 21, 19, 0.99);
+  border-radius: 20px;
+  background: rgba(14, 17, 15, 0.99);
   box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.07) inset,
+    0 1px 0 0 rgba(255, 255, 255, 0.06) inset,
     0 40px 90px -22px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
 }
 
-.postHeader {
+.appWindowTitlebar {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent);
 }
 
-.postAvatar {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid rgba(198, 245, 62, 0.35);
+.appWindowDots {
+  display: flex;
+  gap: 5px;
+}
+
+.appWindowDots i {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: linear-gradient(180deg, rgba(198, 245, 62, 0.22), rgba(198, 245, 62, 0.05));
-  color: #c6f53e;
-  font: 800 12px var(--mono, "IBM Plex Mono", monospace);
+  background: rgba(255, 255, 255, 0.16);
 }
 
-.postAuthor {
+.appWindowLabel {
+  color: #8d918c;
+  font: 700 9.5px/1 var(--mono, "IBM Plex Mono", monospace);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.appWindowTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.appWindowTab,
+.appWindowTabActive {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font: 700 9.5px/1 var(--mono, "IBM Plex Mono", monospace);
+  letter-spacing: 0.04em;
+}
+
+.appWindowTab {
+  color: #6d716d;
+}
+
+.appWindowTabActive {
+  background: linear-gradient(180deg, rgba(198, 245, 62, 0.2), rgba(198, 245, 62, 0.05));
+  color: #c6f53e;
+}
+
+.appWindowBody {
+  display: flex;
+}
+
+.appWindowSidebar {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 34px;
+  padding: 14px 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.appWindowSidebarDot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(198, 245, 62, 0.3);
+}
+
+.appWindowSidebarLine {
+  width: 16px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.appWindowContent {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  gap: 14px;
+  padding: 16px;
 }
 
-.postAuthor b {
-  font-size: 13.5px;
+/* Setup tab recreation — Step 01, "Your voice, on autopilot" */
+.dropZone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
 }
 
-.postAuthor span {
-  color: #8d918c;
-  font-size: 12px;
+.dropZoneLabel {
+  color: #6d716d;
+  font: 700 9px/1 var(--mono, "IBM Plex Mono", monospace);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-.postText {
+.dropZonePost {
   margin: 0;
-  color: #f4f7f1;
-  font-size: 14px;
-  line-height: 1.55;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #c3c9c4;
+  font-size: 12px;
+  line-height: 1.4;
   text-wrap: pretty;
 }
 
-.postStats {
+.learningState {
   display: flex;
-  align-items: center;
-  gap: 22px;
-  color: #8d918c;
-  font: 600 12px var(--mono, "IBM Plex Mono", monospace);
+  flex-direction: column;
+  gap: 7px;
 }
 
-.generatedBadge {
-  display: inline-flex;
-  align-self: flex-start;
+.learningLabel {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding: 9px 13px;
-  border: 1px solid rgba(198, 245, 62, 0.34);
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(198, 245, 62, 0.15), rgba(198, 245, 62, 0.04));
+  justify-content: space-between;
+  gap: 6px 8px;
+}
+
+.learningLabel span {
+  color: #c3c9c4;
+  font: 700 11px/1.2 Inter, sans-serif;
+}
+
+.learningLabel b {
   color: #c6f53e;
-  font: 700 10.5px/1.4 var(--mono, "IBM Plex Mono", monospace);
+  font: 700 10.5px/1 var(--mono, "IBM Plex Mono", monospace);
+}
+
+.learningTrack {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.learningFill {
+  display: block;
+  width: 70%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(198, 245, 62, 0.7), #c6f53e);
+}
+
+.traitChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.traitChip {
+  padding: 6px 11px;
+  border: 1px solid rgba(198, 245, 62, 0.28);
+  border-radius: 999px;
+  background: rgba(198, 245, 62, 0.07);
+  color: #c6f53e;
+  font: 700 10px/1 var(--mono, "IBM Plex Mono", monospace);
+  letter-spacing: 0.02em;
+}
+
+/* Rules/control-surface recreation — Step 03, "You stay in control" */
+.modeToggleMini {
+  display: flex;
+  align-self: flex-start;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(255, 255, 255, 0.02));
+}
+
+.modeToggleMini span {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: #8d918c;
+  font: 700 9.5px/1 var(--mono, "IBM Plex Mono", monospace);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.modeToggleMiniActive {
+  background: linear-gradient(180deg, rgba(198, 245, 62, 0.2), rgba(198, 245, 62, 0.05));
+  color: #c6f53e !important;
+  font-weight: 800;
+}
+
+.queuedPost {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid rgba(198, 245, 62, 0.3);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(198, 245, 62, 0.1) 0%, rgba(198, 245, 62, 0.03) 40%, rgba(255, 255, 255, 0.012) 100%);
+  box-shadow: 0 1px 0 0 rgba(198, 245, 62, 0.18) inset;
+}
+
+.queuedPostMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  color: #c6f53e;
+  font: 700 9.5px/1 var(--mono, "IBM Plex Mono", monospace);
   letter-spacing: 0.06em;
 }
 
-.generatedDot {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  border-radius: 50%;
+.queuedPostMeta span:last-child {
+  color: #8d918c;
+}
+
+.queuedPostDivider {
+  width: 1px;
+  height: 9px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.queuedPost p {
+  margin: 0;
+  color: #f4f7f1;
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.queuedPostActions {
+  display: flex;
+  gap: 7px;
+}
+
+.queuedApprove,
+.queuedEdit {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 13px;
+  border-radius: 999px;
+  font: 800 11px Inter, sans-serif;
+}
+
+.queuedApprove {
   background: #c6f53e;
-  box-shadow: 0 0 10px #c6f53e;
+  color: #071008;
+}
+
+.queuedEdit {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  color: #c3c9c4;
+  font-weight: 700;
+}
+
+.bannedChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bannedChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #c3c9c4;
+  font: 600 10px/1 Inter, sans-serif;
+}
+
+.bannedChip i {
+  color: #6d716d;
+  font-style: normal;
+}
+
+.scheduleStrip {
+  display: flex;
+  gap: 5px;
+}
+
+.scheduleDay,
+.scheduleDayActive {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  font: 700 9.5px/1 var(--mono, "IBM Plex Mono", monospace);
+}
+
+.scheduleDay {
+  background: rgba(255, 255, 255, 0.05);
+  color: #6d716d;
+}
+
+.scheduleDayActive {
+  background: linear-gradient(180deg, rgba(198, 245, 62, 0.25), rgba(198, 245, 62, 0.08));
+  color: #c6f53e;
 }
 
 /* Mascot grid mockup — Step 02, "Your mascot, everywhere" */
@@ -313,137 +557,6 @@
   font: 700 9.5px/1 var(--mono, "IBM Plex Mono", monospace);
   letter-spacing: 0.09em;
   text-transform: uppercase;
-}
-
-/* Approval queue mockup — Step 03, "You stay in control" */
-.controlCard {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: 100%;
-  max-width: 440px;
-  padding: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 26px;
-  background: rgba(18, 21, 19, 0.99);
-  box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.07) inset,
-    0 40px 90px -22px rgba(0, 0, 0, 0.8);
-}
-
-.controlToolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.modeToggle {
-  display: flex;
-  gap: 3px;
-  padding: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(255, 255, 255, 0.02));
-}
-
-.modeToggle span {
-  display: flex;
-  align-items: center;
-  height: 30px;
-  padding: 0 13px;
-  border-radius: 999px;
-  color: #8d918c;
-  font: 700 10.5px/1 var(--mono, "IBM Plex Mono", monospace);
-  letter-spacing: 0.08em;
-}
-
-.modeActive {
-  background: linear-gradient(180deg, rgba(198, 245, 62, 0.2), rgba(198, 245, 62, 0.05));
-  color: #c6f53e !important;
-  font-weight: 800;
-}
-
-.quotaPill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(255, 255, 255, 0.02));
-  color: #c3c9c4;
-  font: 700 10.5px/1 var(--mono, "IBM Plex Mono", monospace);
-}
-
-.quotaPill b {
-  color: #c6f53e;
-}
-
-.pendingPost {
-  display: flex;
-  flex-direction: column;
-  gap: 11px;
-  padding: 14px;
-  border: 1px solid rgba(198, 245, 62, 0.3);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(198, 245, 62, 0.1) 0%, rgba(198, 245, 62, 0.03) 40%, rgba(255, 255, 255, 0.012) 100%);
-  box-shadow: 0 1px 0 0 rgba(198, 245, 62, 0.18) inset;
-}
-
-.pendingMeta {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: #c6f53e;
-  font: 700 10px/1 var(--mono, "IBM Plex Mono", monospace);
-  letter-spacing: 0.08em;
-}
-
-.pendingMeta span:last-child {
-  color: #8d918c;
-}
-
-.pendingDivider {
-  width: 1px;
-  height: 10px;
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.pendingPost p {
-  margin: 0;
-  color: #f4f7f1;
-  font-size: 13px;
-  line-height: 1.55;
-  text-wrap: pretty;
-}
-
-.pendingActions {
-  display: flex;
-  gap: 8px;
-}
-
-.approveButton,
-.editButton {
-  display: flex;
-  align-items: center;
-  height: 34px;
-  padding: 0 17px;
-  border-radius: 999px;
-  font: 800 12px Inter, sans-serif;
-}
-
-.approveButton {
-  background: #c6f53e;
-  color: #071008;
-}
-
-.editButton {
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
-  color: #c3c9c4;
-  font-weight: 700;
 }
 
 @media (min-width: 900px) {
