@@ -3,6 +3,7 @@
 import type { MouseEvent } from "react";
 import type { PublicGeneratedSite } from "@/lib/public-site";
 import { HoodlumsPlansSection } from "@/components/hoodlums-plans-section";
+import { HoodlumsSocialShowcase } from "@/components/hoodlums-social-showcase";
 import { HoodlumsTokenGrid } from "@/components/hoodlums-token-grid";
 import { RobinhoodTrendingPanel } from "@/components/robinhood-trending-panel";
 import { requestWorkspaceOpen } from "@/lib/workspace-open-request";
@@ -85,7 +86,12 @@ export function HoodlumsMarketHome({
         <RobinhoodTrendingPanel />
       </div>
 
-      {showPlans ? <HoodlumsPlansSection /> : null}
+      {showPlans ? (
+        <>
+          <HoodlumsPlansSection />
+          <HoodlumsSocialShowcase />
+        </>
+      ) : null}
     </div>
   );
 }
