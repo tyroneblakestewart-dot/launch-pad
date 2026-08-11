@@ -231,7 +231,7 @@ describe("AI Social Studio showcase wiring", () => {
   it("stacks the mockup above the slide copy on phones and splits side by side on desktop", async () => {
     const css = await source("components", "hoodlums-social-showcase.module.css");
 
-    expect(css).toMatch(/@media \(max-width: 640px\)\s*{[^}]*\.cols\s*{\s*grid-template-columns: 1fr;/s);
+    expect(css).toMatch(/@media \(max-width: 640px\)\s*{[^]*?\.cols\s*{\s*grid-template-columns: 1fr;/s);
     expect(css).toMatch(/@media \(min-width: 900px\)\s*{[^]*?grid-template-areas:\s*\n\s*"visual step"/);
   });
 
