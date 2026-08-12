@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "@/app/api/trending-robinhood/route";
 import { resetSolanaTrendingCacheForTests } from "@/lib/server/robinhood-trending";
+import { resetGraduatingFeedCacheForTests } from "@/lib/server/pumpfun-graduating";
 
 const ORIGINAL_API_KEY = process.env.GMGN_API_KEY;
+const ORIGINAL_MORALIS_API_KEY = process.env.MORALIS_API_KEY;
 
 function makeRequest(feed?: string): NextRequest {
   const url = new URL("http://localhost/api/trending-robinhood");
@@ -14,8 +16,11 @@ function makeRequest(feed?: string): NextRequest {
 afterEach(() => {
   vi.unstubAllGlobals();
   resetSolanaTrendingCacheForTests();
+  resetGraduatingFeedCacheForTests();
   if (ORIGINAL_API_KEY === undefined) delete process.env.GMGN_API_KEY;
   else process.env.GMGN_API_KEY = ORIGINAL_API_KEY;
+  if (ORIGINAL_MORALIS_API_KEY === undefined) delete process.env.MORALIS_API_KEY;
+  else process.env.MORALIS_API_KEY = ORIGINAL_MORALIS_API_KEY;
 });
 
 describe("GET /api/trending-robinhood", () => {
@@ -75,6 +80,35 @@ describe("GET /api/trending-robinhood", () => {
     expect(body.error).toBe(false);
     expect(body.tokens).toEqual([
       expect.objectContaining({ ticker: "SOL1", address: "SoL111" }),
+    ]);
+  });
+
+  it("responds with an error payload for feed=graduating when MORALIS_API_KEY is unset", async () => {
+    delete process.env.MORALIS_API_KEY;
+
+    const response = await GET(makeRequest("graduating"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ tokens: [], error: true });
+  });
+
+  it("serves the pump.fun graduating feed via Moralis when feed=graduating", async () => {
+    process.env.MORALIS_API_KEY = "moralis-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify([{ tokenAddress: "Addr1", symbol: "GRAD", bondingCurveProgress: 82 }]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+
+    const response = await GET(makeRequest("graduating"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.error).toBe(false);
+    expect(body.tokens).toEqual([
+      expect.objectContaining({ ticker: "GRAD", address: "Addr1", progressPercent: 82 }),
     ]);
   });
 });

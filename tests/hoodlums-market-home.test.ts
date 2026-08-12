@@ -90,6 +90,27 @@ describe("Hoodlums bonding-market studio home (issue #185)", () => {
     expect(component).toContain("via Dexscreener");
   });
 
+  it("adds a 'Graduating now' pump.fun tab that hides itself until the feed clears the eligibility bar (issue #287)", async () => {
+    const component = await source("components", "robinhood-trending-panel.tsx");
+    const styles = await source("components", "robinhood-trending-panel.module.css");
+
+    expect(component).toContain("feed=graduating");
+    expect(component).toContain("MIN_GRADUATING_TOKENS = 2");
+    expect(component).toContain("graduatingEligible");
+    expect(component).toContain("Graduating now");
+    expect(component).toContain("GRADUATING · PUMP.FUN");
+    expect(component).toContain("live from pump.fun — Hoodlums graduations join this race at mainnet");
+    // The tab button itself must be conditionally rendered, not just styled
+    // away, so a thin/errored feed never leaves a dead tab in the DOM.
+    expect(component).toContain("{graduatingEligible && (");
+    // Falls back to Solana rather than leaving a dead tab selected.
+    expect(component).toContain(
+      'const displayedTab: TrendingTab = activeTab === "graduating" && !graduatingEligible ? "solana" : activeTab;',
+    );
+    expect(styles).toContain(".progressFill");
+    expect(styles).toContain("#bce759");
+  });
+
   it("relabels sidebar step 1 as Create & Bond", async () => {
     const nav = await source("components", "app-navigation.tsx");
 

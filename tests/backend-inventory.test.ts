@@ -150,6 +150,7 @@ describe("backend test inventory", () => {
       "lib/server/publish-auth.ts",
       "lib/server/publish-store.ts",
       "lib/server/published-site-validation.ts",
+      "lib/server/pumpfun-graduating.ts",
       "lib/server/robinhood-trending.ts",
       "lib/server/sanitise-provider-detail.ts",
       "lib/server/service-isolation.ts",

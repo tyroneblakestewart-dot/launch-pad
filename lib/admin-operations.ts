@@ -14,7 +14,8 @@ export const ADMIN_SERVICE_DEFINITIONS = [
   {
     key: "market-feed",
     label: "Market feed",
-    description: "The Robinhood Chain trending-token feed shown on Hoodlums pages.",
+    description:
+      "The Robinhood Chain, Solana boosts, and pump.fun \"Graduating now\" trending-token feeds shown on Hoodlums pages.",
     affectedRoutes: "/api/trending-robinhood",
   },
   {
