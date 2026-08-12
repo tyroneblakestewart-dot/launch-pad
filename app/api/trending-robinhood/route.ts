@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import { fetchRobinhoodTrendingTokens, fetchSolanaTrendingTokens } from "@/lib/server/robinhood-trending";
+import { fetchGraduatingTokens } from "@/lib/server/pumpfun-graduating";
 
 // Temporarily forcing every request to run the function instead of serving
 // from the ISR cache, to confirm live GMGN responses while debugging the
@@ -17,8 +18,14 @@ export async function GET(request: NextRequest) {
     nodeEnv: process.env.NODE_ENV,
   });
 
-  const feed = request.nextUrl.searchParams.get("feed") === "solana" ? "solana" : "robinhood";
-  const result = feed === "solana" ? await fetchSolanaTrendingTokens() : await fetchRobinhoodTrendingTokens();
+  const feedParam = request.nextUrl.searchParams.get("feed");
+  const feed = feedParam === "solana" ? "solana" : feedParam === "graduating" ? "graduating" : "robinhood";
+  const result =
+    feed === "solana"
+      ? await fetchSolanaTrendingTokens()
+      : feed === "graduating"
+        ? await fetchGraduatingTokens()
+        : await fetchRobinhoodTrendingTokens();
   return NextResponse.json(result, {
     headers: {
       "Cache-Control": "no-store, no-cache, must-revalidate",
