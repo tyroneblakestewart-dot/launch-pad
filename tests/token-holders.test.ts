@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchTokenHolderStats } from "@/lib/server/token-holders";
+import { fetchTokenHolderStats, lookupTokenHolderStats, resetTokenHolderStatsCacheForTests } from "@/lib/server/token-holders";
 
 const ADDRESS = "0x3bf7447cd055f1475a8b09090c7b062abc9d3798";
 const LP_ADDRESS = "0xLPPOOL0000000000000000000000000000000001";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  resetTokenHolderStatsCacheForTests();
 });
 
 function makeFetchMock(options: {
@@ -118,5 +119,57 @@ describe("fetchTokenHolderStats", () => {
     const stats = await fetchTokenHolderStats("robinhood", ADDRESS);
     expect(stats).toMatchObject({ supported: true, holderCount: null, holders: [] });
     expect((stats as { error?: string }).error).toBeTruthy();
+  });
+});
+
+// Cached wrapper used by app/[slug]/page.tsx (issue #286), mirroring
+// lib/server/dexscreener.ts's lookupDexscreenerPair TTL-cache tests.
+describe("lookupTokenHolderStats", () => {
+  it("does not re-fetch for the same chain/address within the cache window", async () => {
+    const fetchMock = makeFetchMock({
+      info: { holders_count: "1", total_supply: "1000" },
+      holders: [{ address: { hash: "0xWhale1" }, value: "250" }],
+      pairs: [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = await lookupTokenHolderStats("robinhood", ADDRESS);
+    const callsAfterFirst = fetchMock.mock.calls.length;
+    const second = await lookupTokenHolderStats("robinhood", ADDRESS);
+
+    expect(second).toEqual(first);
+    expect(fetchMock.mock.calls.length).toBe(callsAfterFirst);
+  });
+
+  it("re-fetches once the cache window has elapsed", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const fetchMock = makeFetchMock({
+      info: { holders_count: "1", total_supply: "1000" },
+      holders: [{ address: { hash: "0xWhale1" }, value: "250" }],
+      pairs: [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await lookupTokenHolderStats("robinhood", ADDRESS);
+    const callsAfterFirst = fetchMock.mock.calls.length;
+    now.mockReturnValue(1_000_000 + 60_001);
+    await lookupTokenHolderStats("robinhood", ADDRESS);
+
+    expect(fetchMock.mock.calls.length).toBe(callsAfterFirst * 2);
+  });
+
+  it("treats the same address as one cache entry regardless of casing", async () => {
+    const fetchMock = makeFetchMock({
+      info: { holders_count: "1", total_supply: "1000" },
+      holders: [{ address: { hash: "0xWhale1" }, value: "250" }],
+      pairs: [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await lookupTokenHolderStats("robinhood", ADDRESS);
+    const callsAfterFirst = fetchMock.mock.calls.length;
+    await lookupTokenHolderStats("robinhood", ADDRESS.toUpperCase());
+
+    expect(fetchMock.mock.calls.length).toBe(callsAfterFirst);
   });
 });

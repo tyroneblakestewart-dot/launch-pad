@@ -291,6 +291,33 @@ textarea.textInput {
   opacity: 0.45;
 }
 
+.attachSuccess {
+  margin: 0 0 12px;
+  border: 1px solid rgba(114, 232, 141, 0.28);
+  border-radius: 10px;
+  background: rgba(114, 232, 141, 0.08);
+  color: #72e88d;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+}
+
+.attachForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.attachField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 220px;
+  color: rgba(238, 243, 234, 0.75);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 @media (max-width: 520px) {
   .panel {
     padding: 14px;
@@ -312,5 +339,10 @@ textarea.textInput {
   .elementActions button {
     flex: 1;
     min-width: 0;
+  }
+
+  .attachForm {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
 import { PublicSiteFrame } from "@/components/public-site-frame";
 import { PublicTokenFallback } from "@/components/public-token-fallback";
+import { TokenHolderStats } from "@/components/token-holder-stats";
 import {
   formatLiquidityLabel,
   isFreeSiteTemplateHtml,
@@ -15,6 +16,7 @@ import { lookupDexscreenerPair } from "@/lib/server/dexscreener";
 import { resolvePageContent } from "@/lib/server/page-content";
 import { getPublicGeneratedSiteBySlug } from "@/lib/server/public-generated-sites";
 import { decodeArtworkDataUrl } from "@/lib/server/public-site-artwork";
+import { lookupTokenHolderStats } from "@/lib/server/token-holders";
 import { validateSlug } from "@/lib/slug";
 import { canAccessPublishedSite, draftPreviewTokenMatches } from "./draft-preview";
 
@@ -141,6 +143,16 @@ export default async function PublicGeneratedSitePage({ params, searchParams }: 
           emptyHeading={chrome.dexscreener_empty_heading}
           emptyCopy={chrome.dexscreener_empty_copy}
           checkLabel={chrome.dexscreener_check_label}
+        />
+      ) : null}
+      {/* Unlike the Dexscreener chart, the free-site template has no
+          in-document holder-stats block of its own, so this section renders
+          for both pipelines whenever a contract address is on record. */}
+      {site.contractAddress && isContentVisible(chrome.holder_stats_visible) ? (
+        <TokenHolderStats
+          stats={await lookupTokenHolderStats(site.chain, site.contractAddress)}
+          heading={chrome.holder_stats_heading}
+          emptyCopy={chrome.holder_stats_empty_copy}
         />
       ) : null}
     </main>

@@ -406,6 +406,16 @@ describe("renderFreeSiteTemplate", () => {
       const html = render();
       expect(isCompleteGeneratedPageHtml(html)).toBe(true);
     });
+
+    // Dexscreener never indexes Robinhood Chain Testnet, so the no-pair-yet
+    // state must read as "activates once trading is indexed", not "broken"
+    // or a vague "coming soon" (issue #286).
+    it("frames the no-pair chart state as activating once trading is indexed, not as broken", () => {
+      const html = render();
+      expect(html).toContain("Chart activates once trading is indexed");
+      expect(html).toContain("doesn't index Robinhood Chain Testnet");
+      expect(html).toContain("Check Dexscreener ↗");
+    });
   });
 
   describe("handle normalisation and links", () => {

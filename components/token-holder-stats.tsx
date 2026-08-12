@@ -8,11 +8,21 @@ function formatPercent(percent: number | null): string {
   return percent === null ? "—" : `${percent < 0.01 ? "<0.01" : percent.toFixed(2)}%`;
 }
 
-export function TokenHolderStats({ stats }: { stats: TokenHolderStatsResult }) {
+type TokenHolderStatsProps = {
+  stats: TokenHolderStatsResult;
+  heading?: string;
+  emptyCopy?: string;
+};
+
+export function TokenHolderStats({
+  stats,
+  heading = "Holders",
+  emptyCopy = "Holder stats appear once the token is live.",
+}: TokenHolderStatsProps) {
   return (
     <section className="token-holder-stats" aria-label="Holder stats">
       <div className="token-holder-stats-heading">
-        <h2>Holders</h2>
+        <h2>{heading}</h2>
         {stats.supported && stats.holderCount !== null ? (
           <b>{stats.holderCount.toLocaleString("en-GB")} holders</b>
         ) : null}
@@ -20,10 +30,8 @@ export function TokenHolderStats({ stats }: { stats: TokenHolderStatsResult }) {
 
       {!stats.supported ? (
         <p className="token-holder-stats-empty">Holder stats aren&rsquo;t available for this chain yet.</p>
-      ) : stats.error || stats.holders.length === 0 ? (
-        <p className="token-holder-stats-empty">
-          {stats.error || "No holder data found for this token yet."}
-        </p>
+      ) : stats.holders.length === 0 ? (
+        <p className="token-holder-stats-empty">{emptyCopy}</p>
       ) : (
         <>
           <ol className="token-holder-stats-list">
@@ -35,7 +43,11 @@ export function TokenHolderStats({ stats }: { stats: TokenHolderStatsResult }) {
               </li>
             ))}
           </ol>
-          <p className="token-holder-stats-note">Liquidity pool address excluded from this list.</p>
+          <p className="token-holder-stats-note">
+            {stats.lpAddress
+              ? `Liquidity pool ${shortenAddress(stats.lpAddress)} excluded from this list.`
+              : "Liquidity pool address excluded from this list."}
+          </p>
         </>
       )}
 

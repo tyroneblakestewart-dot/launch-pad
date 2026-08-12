@@ -15,6 +15,8 @@ import type {
   PublishVisibilityResult,
   PublishWithChallengeInput,
   SetVisibilityWithChallengeInput,
+  UpdateContractAddressInput,
+  UpdateContractAddressResult,
 } from "@/lib/server/publish-store";
 import type { ProjectStatus, SupportedChain } from "@/lib/types";
 
@@ -361,6 +363,21 @@ export function createPostgresPublishStore(databaseUrl: string): PublishStore {
           LIMIT 100`,
       );
       return result.rows.map(siteFromRow).filter((site): site is PublicGeneratedSite => site !== null);
+    },
+
+    async updateContractAddress(input: UpdateContractAddressInput): Promise<UpdateContractAddressResult> {
+      const result = await pool.query<PublishedSiteRow>(
+        `UPDATE published_sites
+            SET contract_address = $2
+          WHERE slug = $1
+          RETURNING ${SITE_COLUMNS}`,
+        [input.slug, input.contractAddress],
+      );
+      const row = result.rows[0];
+      if (!row) return { status: "site_not_found" };
+      const site = siteFromRow(row);
+      if (!site) throw new Error("The updated public site could not be mapped safely.");
+      return { status: "updated", site };
     },
   };
 }

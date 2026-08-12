@@ -57,7 +57,8 @@ export type AdminActivityKind =
   | "admin-logout"
   | "page-content-published"
   | "payment-received"
-  | "subscription-reminder-sent";
+  | "subscription-reminder-sent"
+  | "site-contract-address-attached";
 
 export type AdminActivityItem = {
   id: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import styles from "./admin-pages-section.module.css";
 
 type ElementListing = {
@@ -39,6 +39,85 @@ function formatTimestamp(value: string | null): string {
 
 function elementKey(pageId: string, elementId: string): string {
   return `${pageId}::${elementId}`;
+}
+
+function AdminAttachContractAddress() {
+  const [slug, setSlug] = useState("");
+  const [contractAddress, setContractAddress] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/admin/published-sites", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: slug.trim(), contractAddress: contractAddress.trim() }),
+      });
+      if (!response.ok) throw new Error(await readError(response, "The contract address could not be attached."));
+      setMessage(`Attached ${contractAddress.trim()} to /${slug.trim()}. The chart and holder-stats sections activate on the next page load.`);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "The contract address could not be attached.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={styles.panel}>
+      <div className={styles.sectionHeader}>
+        <div>
+          <h2 className={styles.sectionTitle}>Attach a contract address</h2>
+          <p className={styles.sectionIntro}>
+            A site can be published before its token launches, and publishing is a single-use wallet-signed action
+            with no edit path — this attaches or corrects the contract address on an already-published site so its
+            Dexscreener chart and holder-stats sections can activate once the token trades.
+          </p>
+        </div>
+      </div>
+
+      {error ? (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      ) : null}
+      {message ? <p className={styles.attachSuccess}>{message}</p> : null}
+
+      <form className={styles.attachForm} onSubmit={(event) => void onSubmit(event)}>
+        <label className={styles.attachField}>
+          <span>Site slug</span>
+          <input
+            className={styles.textInput}
+            type="text"
+            value={slug}
+            disabled={busy}
+            placeholder="bltl"
+            onChange={(event) => setSlug(event.target.value)}
+          />
+        </label>
+        <label className={styles.attachField}>
+          <span>Contract / mint address</span>
+          <input
+            className={styles.textInput}
+            type="text"
+            value={contractAddress}
+            disabled={busy}
+            placeholder="0x… or a Solana mint address"
+            onChange={(event) => setContractAddress(event.target.value)}
+          />
+        </label>
+        <button type="submit" className={styles.saveButton} disabled={busy || !slug.trim() || !contractAddress.trim()}>
+          {busy ? "Attaching…" : "Attach address"}
+        </button>
+      </form>
+    </section>
+  );
 }
 
 export function AdminPagesSection() {
@@ -140,6 +219,7 @@ export function AdminPagesSection() {
   }
 
   return (
+    <>
     <section className={styles.panel}>
       <div className={styles.sectionHeader}>
         <div>
@@ -311,5 +391,7 @@ export function AdminPagesSection() {
         })}
       </ul>
     </section>
+    <AdminAttachContractAddress />
+    </>
   );
 }

@@ -8,10 +8,12 @@ import {
   setPublicGeneratedSiteAdapter,
 } from "@/lib/server/public-generated-sites";
 import { resetDexscreenerPairCacheForTests } from "@/lib/server/dexscreener";
+import { resetTokenHolderStatsCacheForTests } from "@/lib/server/token-holders";
 import type { PublicGeneratedSite } from "@/lib/public-site";
 import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
 import { PublicSiteFrame } from "@/components/public-site-frame";
 import { PublicTokenFallback } from "@/components/public-token-fallback";
+import { TokenHolderStats } from "@/components/token-holder-stats";
 
 const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=";
@@ -112,6 +114,7 @@ function notFoundDigest(): string {
 afterEach(() => {
   resetPublicGeneratedSiteAdapterForTests();
   resetDexscreenerPairCacheForTests();
+  resetTokenHolderStatsCacheForTests();
   vi.unstubAllGlobals();
 });
 
@@ -127,8 +130,47 @@ function stubDexscreenerFetch(pairs: unknown[] = []) {
   );
 }
 
+// Stubs every network call the holder-stats + Dexscreener resolution makes
+// (Blockscout token info, Blockscout holders, Dexscreener pairs) so
+// PublicGeneratedSitePage can be rendered end to end without a real network.
+function stubHolderStatsAndDexscreenerFetch(options: {
+  holdersCount?: string;
+  totalSupply?: string;
+  holders?: Array<{ address?: { hash?: string }; value?: string }>;
+  pairs?: unknown[];
+} = {}) {
+  const { holdersCount = "0", totalSupply = "0", holders = [], pairs = [] } = options;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("api.dexscreener.com")) {
+        return new Response(JSON.stringify({ pairs }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.endsWith("/holders")) {
+        return new Response(JSON.stringify({ items: holders }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ holders_count: holdersCount, total_supply: totalSupply }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }),
+  );
+}
+
 describe("PublicGeneratedSitePage", () => {
-  it("renders the generated site frame and the Dexscreener section for a known fixture with a contract address", async () => {
+  it("renders the generated site frame, the Dexscreener section and the holder-stats section for a known fixture with a contract address", async () => {
+    stubHolderStatsAndDexscreenerFetch({
+      holdersCount: "2",
+      totalSupply: "1000",
+      holders: [{ address: { hash: "0xWhale1" }, value: "250" }],
+    });
     setPublicGeneratedSiteAdapter(async (slug) => (slug === "hoodlums" ? BASE_FIXTURE : null));
 
     const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
@@ -142,17 +184,38 @@ describe("PublicGeneratedSitePage", () => {
     const dexscreener = children[1] as { type: unknown; props: { address: string } };
     expect(dexscreener.type).toBe(PublicDexscreenerSection);
     expect(dexscreener.props.address).toBe(BASE_FIXTURE.contractAddress);
+
+    const holderStats = children[2] as {
+      type: unknown;
+      props: { stats: { supported: boolean; holderCount: number | null }; heading: string };
+    };
+    expect(holderStats.type).toBe(TokenHolderStats);
+    expect(holderStats.props.heading).toBe("Holders");
+    expect(holderStats.props.stats).toMatchObject({ supported: true, holderCount: 2 });
   });
 
-  it("omits the Dexscreener section when no contract address is saved", async () => {
+  it("omits the Dexscreener and holder-stats sections when no contract address is saved", async () => {
     setPublicGeneratedSiteAdapter(async () => ({ ...BASE_FIXTURE, contractAddress: "" }));
 
     const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
     const children = element.props.children as unknown[];
     expect(children[1]).toBeNull();
+    expect(children[2]).toBeNull();
+  });
+
+  it("falls back to a friendly empty state when the holder-stats lookup finds nothing", async () => {
+    stubHolderStatsAndDexscreenerFetch();
+    setPublicGeneratedSiteAdapter(async () => BASE_FIXTURE);
+
+    const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
+    const children = element.props.children as unknown[];
+    const holderStats = children[2] as { props: { stats: { holders: unknown[] }; emptyCopy: string } };
+    expect(holderStats.props.stats.holders).toEqual([]);
+    expect(holderStats.props.emptyCopy).toBe("Holder stats appear once the token is live.");
   });
 
   it("renders the safe fallback when the generated HTML is missing", async () => {
+    stubHolderStatsAndDexscreenerFetch();
     setPublicGeneratedSiteAdapter(async () => ({ ...BASE_FIXTURE, generatedSiteHtml: null }));
 
     const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
@@ -163,6 +226,7 @@ describe("PublicGeneratedSitePage", () => {
   });
 
   it("renders the safe fallback when the generated HTML is corrupt", async () => {
+    stubHolderStatsAndDexscreenerFetch();
     setPublicGeneratedSiteAdapter(async () => ({ ...BASE_FIXTURE, generatedSiteHtml: "<html>not complete</html>" }));
 
     const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
@@ -172,6 +236,7 @@ describe("PublicGeneratedSitePage", () => {
   });
 
   it("renders the safe fallback when artwork is missing even if the HTML is valid", async () => {
+    stubHolderStatsAndDexscreenerFetch();
     setPublicGeneratedSiteAdapter(async () => ({ ...BASE_FIXTURE, heroImage: "" }));
 
     const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
@@ -251,6 +316,20 @@ describe("PublicGeneratedSitePage free-site platform-fact substitution", () => {
     expect(frame.props.html).toContain(`CA: ${address}`);
     expect(frame.props.html).toContain(`href="https://dexscreener.com/search?q=${address}"`);
     expect(children[1]).toBeNull();
+  });
+
+  it("still renders the holder-stats section once a contract address is saved, even though the in-document chart means the separate Dexscreener section stays hidden", async () => {
+    stubHolderStatsAndDexscreenerFetch({ holdersCount: "5" });
+    const address = "0x3bf7447cd055f1475a8b09090c7b062abc9d3798";
+    setPublicGeneratedSiteAdapter(async () => ({ ...FREE_SITE_FIXTURE, contractAddress: address }));
+
+    const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
+    const children = element.props.children as unknown[];
+
+    expect(children[1]).toBeNull();
+    const holderStats = children[2] as { type: unknown; props: { stats: { supported: boolean } } };
+    expect(holderStats.type).toBe(TokenHolderStats);
+    expect(holderStats.props.stats.supported).toBe(true);
   });
 
   it("shows the live pair once Dexscreener reports one, with no regeneration or republish", async () => {
