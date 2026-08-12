@@ -1,48 +1,84 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchGraduatingTokens,
-  mapPumpFunCoinsPayloadToGraduatingTokens,
+  mapBitqueryPoolsToGraduatingTokens,
   resetGraduatingFeedCacheForTests,
 } from "@/lib/server/pumpfun-graduating";
+
+const ORIGINAL_TOKEN = process.env.BITQUERY_ACCESS_TOKEN;
 
 afterEach(() => {
   vi.unstubAllGlobals();
   resetGraduatingFeedCacheForTests();
+  if (ORIGINAL_TOKEN === undefined) delete process.env.BITQUERY_ACCESS_TOKEN;
+  else process.env.BITQUERY_ACCESS_TOKEN = ORIGINAL_TOKEN;
 });
 
 const NOW = 1_700_000_000_000;
-const FRESH_TS = NOW - 5 * 60 * 1000;
+const FRESH_TIME = new Date(NOW - 5 * 60 * 1000).toISOString();
 
-// usd_market_cap values chosen so progress = market_cap / 69000 * 100:
-// 41,400 -> 60%, 47,610 -> 69%, 68,310 -> 99%, 69,690 -> 101% (out of range)
-describe("mapPumpFunCoinsPayloadToGraduatingTokens", () => {
-  it("keeps only tokens with progress in the 60-99% window, sorted descending", () => {
-    const tokens = mapPumpFunCoinsPayloadToGraduatingTokens(
-      [
-        { mint: "A", symbol: "A", usd_market_cap: 41_331, last_trade_timestamp: FRESH_TS }, // 59.9%
-        { mint: "B", symbol: "B", usd_market_cap: 41_400, last_trade_timestamp: FRESH_TS }, // 60%
-        { mint: "C", symbol: "C", usd_market_cap: 68_310, last_trade_timestamp: FRESH_TS }, // 99%
-        { mint: "D", symbol: "D", usd_market_cap: 68_379, last_trade_timestamp: FRESH_TS }, // 99.1%
-        { mint: "E", symbol: "E", usd_market_cap: 51_750, last_trade_timestamp: FRESH_TS }, // 75%
-      ],
+// PostAmount maps to progress via 100 - ((PostAmount - 206_900_000) / 793_100_000 * 100).
+// Window edges (verified against Bitquery's own 95-100% example):
+//   214,831,000 -> 99% (upper bound, inclusive)
+//   214,830,000 -> 99.000126...% (still inside)
+//   524,140,000 -> 60% (lower bound, inclusive)
+//   524,141,000 -> 59.99987...% (just outside)
+//   206,900,000 -> 100% (fully graduated, outside window)
+function pool(overrides: {
+  mint?: string;
+  symbol?: string;
+  name?: string;
+  uri?: string;
+  postAmount?: number;
+  time?: string;
+}) {
+  return {
+    Block: { Time: overrides.time ?? FRESH_TIME },
+    Pool: {
+      Base: { PostAmount: overrides.postAmount ?? 524_140_000 },
+      Market: {
+        BaseCurrency: {
+          MintAddress: overrides.mint ?? "Addr1",
+          Name: overrides.name,
+          Symbol: overrides.symbol ?? "SYM",
+          Uri: overrides.uri,
+        },
+      },
+    },
+  };
+}
+
+function payload(pools: ReturnType<typeof pool>[]) {
+  return { data: { Solana: { DEXPools: pools } } };
+}
+
+describe("mapBitqueryPoolsToGraduatingTokens", () => {
+  it("keeps only pools with progress in the 60-99% window, sorted descending", () => {
+    const tokens = mapBitqueryPoolsToGraduatingTokens(
+      payload([
+        pool({ mint: "A", symbol: "A", postAmount: 524_141_000 }), // 59.99987% -> excluded
+        pool({ mint: "B", symbol: "B", postAmount: 524_140_000 }), // 60% -> included
+        pool({ mint: "C", symbol: "C", postAmount: 214_831_000 }), // 99% -> included
+        pool({ mint: "D", symbol: "D", postAmount: 214_830_000 }), // 99.0001% -> excluded
+        pool({ mint: "E", symbol: "E", postAmount: 365_520_000 }), // 80% -> included
+      ]),
       NOW,
     );
 
     expect(tokens.map((t) => t.address)).toEqual(["C", "E", "B"]);
   });
 
-  it("maps name, ticker, artwork and pump.fun url, deriving progress from market cap", () => {
-    const tokens = mapPumpFunCoinsPayloadToGraduatingTokens(
-      [
-        {
+  it("maps mint, name, symbol, artwork uri and pump.fun url, deriving progress from PostAmount", () => {
+    const tokens = mapBitqueryPoolsToGraduatingTokens(
+      payload([
+        pool({
           mint: "Addr1",
           name: "Doggo",
           symbol: "DOGGO",
-          image_uri: "https://example.com/doggo.png",
-          usd_market_cap: 55_200, // 80%
-          last_trade_timestamp: FRESH_TS,
-        },
-      ],
+          uri: "https://example.com/doggo.png",
+          postAmount: 389_313_000, // 77% exactly: 206_900_000 + 7_931_000 * (100 - 77)
+        }),
+      ]),
       NOW,
     );
 
@@ -52,123 +88,112 @@ describe("mapPumpFunCoinsPayloadToGraduatingTokens", () => {
         ticker: "DOGGO",
         address: "Addr1",
         artworkUrl: "https://example.com/doggo.png",
-        progressPercent: 80,
+        progressPercent: 77,
         url: "https://pump.fun/coin/Addr1",
       },
     ]);
   });
 
-  it("falls back to the ticker as the name, and an empty artwork url, when unset", () => {
-    const tokens = mapPumpFunCoinsPayloadToGraduatingTokens(
-      [{ mint: "Addr1", symbol: "NONAME", usd_market_cap: 55_200, last_trade_timestamp: FRESH_TS }],
+  it("falls back to the symbol as the name, and an empty artwork url, when unset", () => {
+    const tokens = mapBitqueryPoolsToGraduatingTokens(
+      payload([pool({ mint: "Addr1", symbol: "NONAME", postAmount: 400_000_000 })]),
       NOW,
     );
     expect(tokens[0].name).toBe("NONAME");
     expect(tokens[0].artworkUrl).toBe("");
   });
 
-  it("excludes tokens already marked complete (already graduated)", () => {
-    const tokens = mapPumpFunCoinsPayloadToGraduatingTokens(
-      [
+  it("drops entries missing a mint address, a symbol, or a numeric PostAmount", () => {
+    const tokens = mapBitqueryPoolsToGraduatingTokens(
+      payload([
+        pool({ mint: "", symbol: "NOADDR", postAmount: 400_000_000 }),
+        pool({ mint: "Addr2", symbol: "", postAmount: 400_000_000 }),
         {
-          mint: "Addr1",
-          symbol: "DONE",
-          usd_market_cap: 55_200,
-          complete: true,
-          last_trade_timestamp: FRESH_TS,
+          Block: { Time: FRESH_TIME },
+          Pool: { Base: {}, Market: { BaseCurrency: { MintAddress: "Addr3", Symbol: "NOCAP" } } },
         },
-      ],
-      NOW,
-    );
-    expect(tokens).toEqual([]);
-  });
-
-  it("drops entries missing a mint, a symbol, or a numeric market cap", () => {
-    const tokens = mapPumpFunCoinsPayloadToGraduatingTokens(
-      [
-        { symbol: "NOADDR", usd_market_cap: 55_200, last_trade_timestamp: FRESH_TS },
-        { mint: "Addr1", usd_market_cap: 55_200, last_trade_timestamp: FRESH_TS },
-        { mint: "Addr2", symbol: "NOCAP", last_trade_timestamp: FRESH_TS },
-        { mint: "Addr3", symbol: "BAD", usd_market_cap: "not-a-number", last_trade_timestamp: FRESH_TS },
-        { mint: "Addr4", symbol: "OK", usd_market_cap: 55_200, last_trade_timestamp: FRESH_TS },
-      ],
+        pool({ mint: "Addr4", symbol: "OK", postAmount: 400_000_000 }),
+      ]),
       NOW,
     );
     expect(tokens).toEqual([expect.objectContaining({ address: "Addr4" })]);
   });
 
   it("returns an empty array for missing or malformed payloads", () => {
-    expect(mapPumpFunCoinsPayloadToGraduatingTokens(null)).toEqual([]);
-    expect(mapPumpFunCoinsPayloadToGraduatingTokens(undefined)).toEqual([]);
-    expect(mapPumpFunCoinsPayloadToGraduatingTokens({} as never)).toEqual([]);
+    expect(mapBitqueryPoolsToGraduatingTokens(null)).toEqual([]);
+    expect(mapBitqueryPoolsToGraduatingTokens(undefined)).toEqual([]);
+    expect(mapBitqueryPoolsToGraduatingTokens({} as never)).toEqual([]);
+    expect(mapBitqueryPoolsToGraduatingTokens({ data: { Solana: {} } } as never)).toEqual([]);
   });
 
   it("caps the row at 6 tokens even when more qualify", () => {
-    const items = Array.from({ length: 10 }, (_, index) => ({
-      mint: `Addr${index}`,
-      symbol: `T${index}`,
-      usd_market_cap: 41_400 + index * 100,
-      last_trade_timestamp: FRESH_TS,
-    }));
-    expect(mapPumpFunCoinsPayloadToGraduatingTokens(items, NOW)).toHaveLength(6);
+    const pools = Array.from({ length: 10 }, (_, index) =>
+      pool({ mint: `Addr${index}`, symbol: `T${index}`, postAmount: 300_000_000 + index * 100 }),
+    );
+    expect(mapBitqueryPoolsToGraduatingTokens(payload(pools), NOW)).toHaveLength(6);
   });
 
-  it("drops a token when no last-trade timestamp field is present at all", () => {
-    const tokens = mapPumpFunCoinsPayloadToGraduatingTokens(
-      [{ mint: "Addr1", symbol: "OK", usd_market_cap: 55_200 }],
+  it("drops a pool when Block.Time is missing or unparseable", () => {
+    const tokens = mapBitqueryPoolsToGraduatingTokens(
+      payload([{ ...pool({ mint: "Addr1", symbol: "OK", postAmount: 400_000_000 }), Block: {} }]),
       NOW,
     );
     expect(tokens).toEqual([]);
   });
 
-  it("drops a token when its last-trade timestamp is older than the ~10 minute staleness window", () => {
-    const stale = mapPumpFunCoinsPayloadToGraduatingTokens(
-      [
-        {
+  it("drops a pool when its Block.Time is older than the ~10 minute staleness window", () => {
+    const stale = mapBitqueryPoolsToGraduatingTokens(
+      payload([
+        pool({
           mint: "Stale",
           symbol: "STALE",
-          usd_market_cap: 55_200,
-          last_trade_timestamp: NOW - 11 * 60 * 1000,
-        },
-      ],
+          postAmount: 400_000_000,
+          time: new Date(NOW - 11 * 60 * 1000).toISOString(),
+        }),
+      ]),
       NOW,
     );
     expect(stale).toEqual([]);
 
-    const fresh = mapPumpFunCoinsPayloadToGraduatingTokens(
-      [
-        {
+    const fresh = mapBitqueryPoolsToGraduatingTokens(
+      payload([
+        pool({
           mint: "Fresh",
           symbol: "FRESH",
-          usd_market_cap: 55_200,
-          last_trade_timestamp: NOW - 5 * 60 * 1000,
-        },
-      ],
+          postAmount: 400_000_000,
+          time: new Date(NOW - 5 * 60 * 1000).toISOString(),
+        }),
+      ]),
       NOW,
     );
     expect(fresh).toHaveLength(1);
   });
 
-  it("accepts a camelCase alias timestamp field and both seconds and milliseconds epochs", () => {
-    const fiveMinutesAgoSeconds = Math.floor((NOW - 5 * 60 * 1000) / 1000);
-
-    const tokens = mapPumpFunCoinsPayloadToGraduatingTokens(
-      [
-        {
+  it("deduplicates by mint, keeping only the newest row per token", () => {
+    const tokens = mapBitqueryPoolsToGraduatingTokens(
+      payload([
+        pool({
           mint: "Addr1",
-          symbol: "A",
-          usd_market_cap: 55_200,
-          lastTradeTimestamp: fiveMinutesAgoSeconds,
-        },
-      ],
+          symbol: "OLD",
+          postAmount: 400_000_000,
+          time: new Date(NOW - 8 * 60 * 1000).toISOString(),
+        }),
+        pool({
+          mint: "Addr1",
+          symbol: "NEW",
+          postAmount: 300_000_000,
+          time: new Date(NOW - 1 * 60 * 1000).toISOString(),
+        }),
+      ]),
       NOW,
     );
     expect(tokens).toHaveLength(1);
+    expect(tokens[0].ticker).toBe("NEW");
   });
 
-  it("clamps derived progress to 100 for market caps at or beyond the graduation threshold", () => {
-    const tokens = mapPumpFunCoinsPayloadToGraduatingTokens(
-      [{ mint: "Addr1", symbol: "OVER", usd_market_cap: 200_000, last_trade_timestamp: FRESH_TS }],
+  it("clamps derived progress to 100 for PostAmount at or below the graduation threshold", () => {
+    const tokens = mapBitqueryPoolsToGraduatingTokens(
+      payload([pool({ mint: "Addr1", symbol: "OVER", postAmount: 100_000_000 })]),
       NOW,
     );
     // Progress of 100 is above the 60-99 window, so it's filtered out either way.
@@ -177,12 +202,32 @@ describe("mapPumpFunCoinsPayloadToGraduatingTokens", () => {
 });
 
 describe("fetchGraduatingTokens", () => {
-  it("calls the pump.fun coins endpoint with no API key and maps the response", async () => {
+  it("returns an error result and skips the network call when BITQUERY_ACCESS_TOKEN is unset", async () => {
+    delete process.env.BITQUERY_ACCESS_TOKEN;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await fetchGraduatingTokens()).toEqual({ tokens: [], error: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns an error result when BITQUERY_ACCESS_TOKEN is empty", async () => {
+    process.env.BITQUERY_ACCESS_TOKEN = "   ";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await fetchGraduatingTokens()).toEqual({ tokens: [], error: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("POSTs a GraphQL query to Bitquery's EAP endpoint with a bearer token and maps the response", async () => {
+    process.env.BITQUERY_ACCESS_TOKEN = "test-token";
+    const realNowTime = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
-        JSON.stringify([
-          { mint: "Addr1", symbol: "A", usd_market_cap: 55_200, last_trade_timestamp: Date.now() },
-        ]),
+        JSON.stringify(
+          payload([pool({ mint: "Addr1", symbol: "A", postAmount: 400_000_000, time: realNowTime })]),
+        ),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     );
@@ -193,20 +238,42 @@ describe("fetchGraduatingTokens", () => {
     expect(result.error).toBe(false);
     expect(result.tokens).toHaveLength(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe(
-      "https://frontend-api.pump.fun/coins?offset=0&limit=50&sort=market_cap&order=DESC&includeNsfw=false",
-    );
+    expect(String(url)).toBe("https://streaming.bitquery.io/eap");
+    expect(init?.method).toBe("POST");
     const headers = init?.headers as Record<string, string>;
-    expect(headers["Accept"]).toBe("application/json");
+    expect(headers["Authorization"]).toBe("Bearer test-token");
+    expect(headers["Content-Type"]).toBe("application/json");
+    const body = JSON.parse(init?.body as string);
+    expect(body.query).toContain("DEXPools");
+    expect(body.variables.program).toBe("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
+    expect(body.variables.minPostAmount).toBe(214_831_000);
+    expect(body.variables.maxPostAmount).toBe(524_140_000);
   });
 
-  it("returns an error result when pump.fun responds with a non-success status (e.g. an IP block)", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("blocked", { status: 403 })));
+  it("returns an error result when Bitquery responds with a non-success status", async () => {
+    process.env.BITQUERY_ACCESS_TOKEN = "test-token";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 })));
+
+    expect(await fetchGraduatingTokens()).toEqual({ tokens: [], error: true });
+  });
+
+  it("returns an error result when the response body contains GraphQL errors", async () => {
+    process.env.BITQUERY_ACCESS_TOKEN = "test-token";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ errors: [{ message: "bad query" }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
 
     expect(await fetchGraduatingTokens()).toEqual({ tokens: [], error: true });
   });
 
   it("returns an error result on network failure or bad JSON instead of throwing", async () => {
+    process.env.BITQUERY_ACCESS_TOKEN = "test-token";
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
     expect(await fetchGraduatingTokens()).toEqual({ tokens: [], error: true });
 
@@ -215,10 +282,15 @@ describe("fetchGraduatingTokens", () => {
   });
 
   it("caches the result for the TTL window instead of re-fetching on every call", async () => {
+    process.env.BITQUERY_ACCESS_TOKEN = "test-token";
     const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
-        JSON.stringify([{ mint: "Addr1", symbol: "A", usd_market_cap: 55_200, last_trade_timestamp: 1_000_000 }]),
+        JSON.stringify(
+          payload([
+            pool({ mint: "Addr1", symbol: "A", postAmount: 400_000_000, time: new Date(1_000_000).toISOString() }),
+          ]),
+        ),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     );

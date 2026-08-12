@@ -732,7 +732,10 @@ function envVarGroups(env: Record<string, string | undefined>, requestOidcToken:
     },
     {
       feature: "Market feed",
-      items: [{ name: "GMGN_API_KEY", present: has("GMGN_API_KEY"), required: true }],
+      items: [
+        { name: "GMGN_API_KEY", present: has("GMGN_API_KEY"), required: true },
+        { name: "BITQUERY_ACCESS_TOKEN", present: has("BITQUERY_ACCESS_TOKEN"), required: false },
+      ],
     },
     {
       feature: "Telegram publishing",

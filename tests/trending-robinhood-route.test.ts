@@ -5,6 +5,7 @@ import { resetSolanaTrendingCacheForTests } from "@/lib/server/robinhood-trendin
 import { resetGraduatingFeedCacheForTests } from "@/lib/server/pumpfun-graduating";
 
 const ORIGINAL_API_KEY = process.env.GMGN_API_KEY;
+const ORIGINAL_BITQUERY_TOKEN = process.env.BITQUERY_ACCESS_TOKEN;
 
 function makeRequest(feed?: string): NextRequest {
   const url = new URL("http://localhost/api/trending-robinhood");
@@ -18,6 +19,8 @@ afterEach(() => {
   resetGraduatingFeedCacheForTests();
   if (ORIGINAL_API_KEY === undefined) delete process.env.GMGN_API_KEY;
   else process.env.GMGN_API_KEY = ORIGINAL_API_KEY;
+  if (ORIGINAL_BITQUERY_TOKEN === undefined) delete process.env.BITQUERY_ACCESS_TOKEN;
+  else process.env.BITQUERY_ACCESS_TOKEN = ORIGINAL_BITQUERY_TOKEN;
 });
 
 describe("GET /api/trending-robinhood", () => {
@@ -80,8 +83,20 @@ describe("GET /api/trending-robinhood", () => {
     ]);
   });
 
-  it("responds with an error payload for feed=graduating when pump.fun responds with a non-success status", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("blocked", { status: 403 })));
+  it("responds with an error payload for feed=graduating when BITQUERY_ACCESS_TOKEN is unset", async () => {
+    delete process.env.BITQUERY_ACCESS_TOKEN;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await GET(makeRequest("graduating"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ tokens: [], error: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("responds with an error payload for feed=graduating when Bitquery responds with a non-success status", async () => {
+    process.env.BITQUERY_ACCESS_TOKEN = "test-token";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 })));
 
     const response = await GET(makeRequest("graduating"));
     expect(response.status).toBe(200);
@@ -89,13 +104,26 @@ describe("GET /api/trending-robinhood", () => {
   });
 
   it("serves the pump.fun graduating feed when feed=graduating", async () => {
+    process.env.BITQUERY_ACCESS_TOKEN = "test-token";
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
         new Response(
-          JSON.stringify([
-            { mint: "Addr1", symbol: "GRAD", usd_market_cap: 56_580, last_trade_timestamp: Date.now() },
-          ]),
+          JSON.stringify({
+            data: {
+              Solana: {
+                DEXPools: [
+                  {
+                    Block: { Time: new Date(Date.now() - 5 * 60 * 1000).toISOString() },
+                    Pool: {
+                      Base: { PostAmount: 349_658_000 }, // progress 82%
+                      Market: { BaseCurrency: { MintAddress: "Addr1", Symbol: "GRAD" } },
+                    },
+                  },
+                ],
+              },
+            },
+          }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
       ),
