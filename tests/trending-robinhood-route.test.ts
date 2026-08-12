@@ -5,7 +5,6 @@ import { resetSolanaTrendingCacheForTests } from "@/lib/server/robinhood-trendin
 import { resetGraduatingFeedCacheForTests } from "@/lib/server/pumpfun-graduating";
 
 const ORIGINAL_API_KEY = process.env.GMGN_API_KEY;
-const ORIGINAL_MORALIS_API_KEY = process.env.MORALIS_API_KEY;
 
 function makeRequest(feed?: string): NextRequest {
   const url = new URL("http://localhost/api/trending-robinhood");
@@ -19,8 +18,6 @@ afterEach(() => {
   resetGraduatingFeedCacheForTests();
   if (ORIGINAL_API_KEY === undefined) delete process.env.GMGN_API_KEY;
   else process.env.GMGN_API_KEY = ORIGINAL_API_KEY;
-  if (ORIGINAL_MORALIS_API_KEY === undefined) delete process.env.MORALIS_API_KEY;
-  else process.env.MORALIS_API_KEY = ORIGINAL_MORALIS_API_KEY;
 });
 
 describe("GET /api/trending-robinhood", () => {
@@ -83,21 +80,22 @@ describe("GET /api/trending-robinhood", () => {
     ]);
   });
 
-  it("responds with an error payload for feed=graduating when MORALIS_API_KEY is unset", async () => {
-    delete process.env.MORALIS_API_KEY;
+  it("responds with an error payload for feed=graduating when pump.fun responds with a non-success status", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("blocked", { status: 403 })));
 
     const response = await GET(makeRequest("graduating"));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ tokens: [], error: true });
   });
 
-  it("serves the pump.fun graduating feed via Moralis when feed=graduating", async () => {
-    process.env.MORALIS_API_KEY = "moralis-key";
+  it("serves the pump.fun graduating feed when feed=graduating", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
         new Response(
-          JSON.stringify([{ tokenAddress: "Addr1", symbol: "GRAD", bondingCurveProgress: 82 }]),
+          JSON.stringify([
+            { mint: "Addr1", symbol: "GRAD", usd_market_cap: 56_580, last_trade_timestamp: Date.now() },
+          ]),
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
       ),

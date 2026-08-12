@@ -732,14 +732,7 @@ function envVarGroups(env: Record<string, string | undefined>, requestOidcToken:
     },
     {
       feature: "Market feed",
-      items: [
-        { name: "GMGN_API_KEY", present: has("GMGN_API_KEY"), required: true },
-        {
-          name: "MORALIS_API_KEY (optional — powers the \"Graduating now\" pump.fun row; the row just hides itself without it)",
-          present: has("MORALIS_API_KEY"),
-          required: false,
-        },
-      ],
+      items: [{ name: "GMGN_API_KEY", present: has("GMGN_API_KEY"), required: true }],
     },
     {
       feature: "Telegram publishing",
