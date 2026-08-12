@@ -46,6 +46,12 @@ export type PublishVisibilityResult =
   | { status: "site_not_found" }
   | { status: "not_owner" };
 
+export type UpdateContractAddressInput = { slug: string; contractAddress: string };
+
+export type UpdateContractAddressResult =
+  | { status: "updated"; site: PublicGeneratedSite }
+  | { status: "site_not_found" };
+
 export type PublishSignatureVerifier = (challenge: PublishChallenge) => Promise<boolean>;
 
 export interface PublishStore {
@@ -60,6 +66,14 @@ export interface PublishStore {
   ): Promise<PublishVisibilityResult>;
   getBySlug(slug: string): Promise<PublicGeneratedSite | null>;
   listLive(): Promise<PublicGeneratedSite[]>;
+  /**
+   * Admin-only path (issue #286) to attach or correct a published site's
+   * contract address outside the normal single-use signed publish flow — the
+   * only way a site published before its token launched can pick one up
+   * later. Optional so existing test fixtures implementing `PublishStore`
+   * don't need to grow a method they never exercise.
+   */
+  updateContractAddress?(input: UpdateContractAddressInput): Promise<UpdateContractAddressResult>;
 }
 
 export class PublishStoreUnavailableError extends Error {
@@ -84,6 +98,9 @@ const unconfiguredStore: PublishStore = {
   },
   async listLive() {
     return [];
+  },
+  async updateContractAddress() {
+    throw new PublishStoreUnavailableError();
   },
 };
 

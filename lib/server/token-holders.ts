@@ -127,3 +127,34 @@ export async function fetchTokenHolderStats(
     clearTimeout(timeout);
   }
 }
+
+// 60s window: matches `lib/server/dexscreener.ts`'s `lookupDexscreenerPair`
+// cache (issue #286) — long enough to spare Blockscout a call on every page
+// view of a public token site, short enough that a freshly-launched token's
+// holder stats show up without a regeneration or republish. Same in-memory
+// TTL-map approach as that lookup, for the same reason: `app/[slug]/page.tsx`
+// renders with `dynamic = "force-dynamic"`, so Next's fetch cache is off, and
+// `unstable_cache` isn't available under this project's Vitest setup.
+const HOLDER_STATS_CACHE_TTL_MS = 60_000;
+
+type HolderStatsCacheEntry = { expiresAt: number; result: Promise<TokenHolderStats> };
+
+const holderStatsCache = new Map<string, HolderStatsCacheEntry>();
+
+export function resetTokenHolderStatsCacheForTests(): void {
+  holderStatsCache.clear();
+}
+
+/** Cached wrapper around `fetchTokenHolderStats` for request-time callers like `app/[slug]/page.tsx`. */
+export async function lookupTokenHolderStats(
+  chain: SupportedChain,
+  address: string,
+): Promise<TokenHolderStats> {
+  const key = `${chain}:${address.toLowerCase()}`;
+  const cached = holderStatsCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.result;
+
+  const result = fetchTokenHolderStats(chain, address);
+  holderStatsCache.set(key, { expiresAt: Date.now() + HOLDER_STATS_CACHE_TTL_MS, result });
+  return result;
+}

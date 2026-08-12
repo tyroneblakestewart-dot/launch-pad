@@ -182,13 +182,14 @@ export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
         id: "dexscreener_empty_heading",
         type: "text",
         label: "No-pair-yet heading",
-        defaultValue: "Trading pair not detected yet",
+        defaultValue: "Chart activates once trading is indexed",
       },
       {
         id: "dexscreener_empty_copy",
         type: "text",
         label: "No-pair-yet copy",
-        defaultValue: "Once liquidity creates a Dexscreener pair, the live chart will appear here automatically.",
+        defaultValue:
+          "Dexscreener doesn't index Robinhood Chain Testnet, so no pair will show here while trading stays on testnet. The chart activates automatically once this token trades on a network Dexscreener indexes.",
       },
       {
         id: "dexscreener_check_label",
@@ -197,6 +198,19 @@ export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
         defaultValue: "CHECK DEXSCREENER ↗",
       },
       { id: "dexscreener_visible", type: "visibility", label: "Show Dexscreener section", defaultValue: "true" },
+      {
+        id: "holder_stats_heading",
+        type: "heading",
+        label: "Holder stats section heading",
+        defaultValue: "Holders",
+      },
+      {
+        id: "holder_stats_empty_copy",
+        type: "text",
+        label: "Holder stats empty-state copy",
+        defaultValue: "Holder stats appear once the token is live.",
+      },
+      { id: "holder_stats_visible", type: "visibility", label: "Show holder stats section", defaultValue: "true" },
     ],
   },
   {

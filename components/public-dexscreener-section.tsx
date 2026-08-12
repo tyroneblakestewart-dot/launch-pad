@@ -28,8 +28,8 @@ export function PublicDexscreenerSection({
   address,
   heading = "Dexscreener",
   openLabel = "OPEN DEXSCREENER ↗",
-  emptyHeading = "Trading pair not detected yet",
-  emptyCopy = "Once liquidity creates a Dexscreener pair, the live chart will appear here automatically.",
+  emptyHeading = "Chart activates once trading is indexed",
+  emptyCopy = "Dexscreener doesn't index Robinhood Chain Testnet, so no pair will show here while trading stays on testnet. The chart activates automatically once this token trades on a network Dexscreener indexes.",
   checkLabel = "CHECK DEXSCREENER ↗",
 }: PublicDexscreenerSectionProps) {
   const [result, setResult] = useState<DexscreenerPairResult>({ found: false });

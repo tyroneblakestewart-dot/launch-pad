@@ -5,6 +5,14 @@ import type { ProjectStatus, SupportedChain } from "@/lib/types";
 
 export const MAX_PUBLISHED_HTML_BYTES = 90_000;
 export const MAX_ARTWORK_REFERENCE_BYTES = 8_100_000;
+export const MAX_CONTRACT_ADDRESS_LENGTH = 128;
+
+const CONTRACT_ADDRESS_PATTERN = /^[A-Za-z0-9]+$/;
+
+/** Shared format check for a non-empty contract/mint address, used by both publish-time validation and the admin attach-address path. */
+export function isValidContractAddressFormat(value: string): boolean {
+  return value.length > 0 && value.length <= MAX_CONTRACT_ADDRESS_LENGTH && CONTRACT_ADDRESS_PATTERN.test(value);
+}
 
 const CONTROL_CHARACTERS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const STATUS_VALUES = new Set<ProjectStatus>(["draft", "prepared", "launched"]);
@@ -154,7 +162,7 @@ export function normalisePublishableSite(value: unknown): PublishableSiteValidat
   if (contractAddress === null || xHandle === null || telegram === null) {
     return { valid: false, reason: "One of the optional project fields is too long or contains control characters." };
   }
-  if (contractAddress && !/^[A-Za-z0-9]+$/.test(contractAddress)) {
+  if (contractAddress && !isValidContractAddressFormat(contractAddress)) {
     return { valid: false, reason: "The contract address contains unsupported characters." };
   }
 

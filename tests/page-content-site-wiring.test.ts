@@ -25,6 +25,8 @@ import {
   setPublicGeneratedSiteAdapter,
 } from "@/lib/server/public-generated-sites";
 import { resetDexscreenerPairCacheForTests } from "@/lib/server/dexscreener";
+import { resetTokenHolderStatsCacheForTests } from "@/lib/server/token-holders";
+import { TokenHolderStats } from "@/components/token-holder-stats";
 import {
   createMemoryPageContentStore,
   resetPageContentStoreForTests,
@@ -85,8 +87,35 @@ afterEach(() => {
   resetPageContentStoreForTests();
   resetPublicGeneratedSiteAdapterForTests();
   resetDexscreenerPairCacheForTests();
+  resetTokenHolderStatsCacheForTests();
   resetAdminStoresForTests();
+  vi.unstubAllGlobals();
 });
+
+function stubHolderStatsFetch() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("api.dexscreener.com")) {
+        return new Response(JSON.stringify({ pairs: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.endsWith("/holders")) {
+        return new Response(JSON.stringify({ items: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ holders_count: "0", total_supply: "0" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }),
+  );
+}
 
 async function authenticatePreviewSession(): Promise<void> {
   const token = "a-real-admin-session-token";
@@ -305,6 +334,7 @@ const FIXTURE: PublicGeneratedSite = {
 
 describe("public token site ([slug]) chrome content wiring", () => {
   it("passes the registered defaults into the Dexscreener chrome", async () => {
+    stubHolderStatsFetch();
     setPublicGeneratedSiteAdapter(async () => FIXTURE);
     const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
     const children = element.props.children as ReactElementLike[];
@@ -312,9 +342,14 @@ describe("public token site ([slug]) chrome content wiring", () => {
     expect(dexscreener.type).toBe(PublicDexscreenerSection);
     expect(dexscreener.props.heading).toBe("Dexscreener");
     expect(dexscreener.props.openLabel).toBe("OPEN DEXSCREENER ↗");
+    // Honest empty-state copy (issue #286): Dexscreener doesn't index
+    // Robinhood Chain Testnet, so this should never read as broken.
+    expect(dexscreener.props.emptyHeading).toBe("Chart activates once trading is indexed");
+    expect(dexscreener.props.emptyCopy).toContain("doesn't index Robinhood Chain Testnet");
   });
 
   it("hides the Dexscreener chrome entirely when published invisible, even with a contract address", async () => {
+    stubHolderStatsFetch();
     setPublicGeneratedSiteAdapter(async () => FIXTURE);
     await publishOverride("public-token-site", "dexscreener_visible", "visibility", "false");
 
@@ -324,6 +359,7 @@ describe("public token site ([slug]) chrome content wiring", () => {
   });
 
   it("uses a published heading override for the Dexscreener chrome", async () => {
+    stubHolderStatsFetch();
     setPublicGeneratedSiteAdapter(async () => FIXTURE);
     await publishOverride("public-token-site", "dexscreener_heading", "heading", "Live chart");
 
@@ -331,6 +367,38 @@ describe("public token site ([slug]) chrome content wiring", () => {
     const children = element.props.children as ReactElementLike[];
     const dexscreener = children[1] as ReactElementLike;
     expect(dexscreener.props.heading).toBe("Live chart");
+  });
+
+  it("passes the registered defaults into the holder-stats chrome", async () => {
+    stubHolderStatsFetch();
+    setPublicGeneratedSiteAdapter(async () => FIXTURE);
+    const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
+    const children = element.props.children as ReactElementLike[];
+    const holderStats = children[2] as ReactElementLike;
+    expect(holderStats.type).toBe(TokenHolderStats);
+    expect(holderStats.props.heading).toBe("Holders");
+    expect(holderStats.props.emptyCopy).toBe("Holder stats appear once the token is live.");
+  });
+
+  it("hides the holder-stats chrome entirely when published invisible, even with a contract address", async () => {
+    stubHolderStatsFetch();
+    setPublicGeneratedSiteAdapter(async () => FIXTURE);
+    await publishOverride("public-token-site", "holder_stats_visible", "visibility", "false");
+
+    const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
+    const children = element.props.children as ReactElementLike[];
+    expect(children[2]).toBeNull();
+  });
+
+  it("uses a published heading override for the holder-stats chrome", async () => {
+    stubHolderStatsFetch();
+    setPublicGeneratedSiteAdapter(async () => FIXTURE);
+    await publishOverride("public-token-site", "holder_stats_heading", "heading", "Top wallets");
+
+    const element = await PublicGeneratedSitePage({ params: Promise.resolve({ slug: "hoodlums" }) });
+    const children = element.props.children as ReactElementLike[];
+    const holderStats = children[2] as ReactElementLike;
+    expect(holderStats.props.heading).toBe("Top wallets");
   });
 });
 
