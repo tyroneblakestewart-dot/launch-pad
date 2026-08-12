@@ -10,101 +10,177 @@ export type GraduatingToken = {
 export type GraduatingFeedResult = { tokens: GraduatingToken[]; error: boolean };
 
 /**
- * pump.fun's own frontend API, no key required. Moralis's equivalent
- * bonding-tokens endpoint (used in an earlier version of this feed, issue
- * #287) was deprecated and now 404s, so this goes straight to the source.
- * pump.fun is known to block some datacenter IPs, including Vercel
- * functions — any non-2xx response (a block would typically show up as one)
- * resolves to an error result and the row just hides itself, never a
- * broken or dead grid.
+ * Bitquery's streaming GraphQL API, queried server-to-server (issue #291).
+ * pump.fun's own frontend API (used before this, and a Moralis-backed
+ * version before that, issue #287) is known to block datacenter IPs
+ * including Vercel functions, so production requests from this app never
+ * succeeded against it. Bitquery indexes the same on-chain pump.fun
+ * bonding-curve pools and is built for server callers. This is a polling
+ * GraphQL *query* (not a subscription) since the existing 60s cache below
+ * already handles polling; a missing/empty BITQUERY_ACCESS_TOKEN, a
+ * non-2xx response, or a malformed payload all resolve to an error result
+ * so the row just hides itself, same fail-safe contract as before.
  */
-const PUMP_FUN_COINS_ENDPOINT =
-  "https://frontend-api.pump.fun/coins?offset=0&limit=50&sort=market_cap&order=DESC&includeNsfw=false";
+const BITQUERY_EAP_ENDPOINT = "https://streaming.bitquery.io/eap";
+
+// The pump.fun bonding-curve program on Solana.
+const PUMP_FUN_PROGRAM_ADDRESS = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 
 const FEED_TIMEOUT_MS = 6_000;
 const MIN_PROGRESS_PERCENT = 60;
 const MAX_PROGRESS_PERCENT = 99;
 const MAX_TOKENS = 6;
-// pump.fun's coin payload does include a real last-trade timestamp, so
-// (unlike the earlier Moralis-backed version of this feed) staleness is
-// strictly enforced: a token is dropped when the field is missing or stale.
+// Filters both the Bitquery query itself and the mapped results: a pool
+// with no trade in this window is dropped rather than shown stale.
 const STALE_TRADE_WINDOW_MS = 10 * 60 * 1000;
 const GRADUATING_FEED_CACHE_TTL_MS = 60_000;
-// pump.fun doesn't expose a bonding-progress percentage directly; it's
-// derived from market cap against the well-known ~$69k graduation target.
-const GRADUATION_MARKET_CAP_USD = 69_000;
 
-type PumpFunCoin = {
-  mint?: string;
-  name?: string;
-  symbol?: string;
-  image_uri?: string;
-  usd_market_cap?: number | string;
-  complete?: boolean;
-  last_trade_timestamp?: number | string;
-  lastTradeTimestamp?: number | string;
+// Bitquery's own documented example for pump.fun bonding-curve progress:
+// progress% = 100 - ((Base.PostAmount - POST_AMOUNT_AT_100_PERCENT) / POST_AMOUNT_RANGE * 100)
+const POST_AMOUNT_AT_100_PERCENT = 206_900_000;
+const POST_AMOUNT_RANGE = 793_100_000;
+
+// The 60-99% display window, expressed as the equivalent Base.PostAmount
+// bounds so the range is pushed down into the query itself rather than
+// fetched wide and filtered client-side.
+const MIN_POST_AMOUNT_FOR_99_PERCENT = 214_831_000;
+const MAX_POST_AMOUNT_FOR_60_PERCENT = 524_140_000;
+
+const GRADUATING_POOLS_QUERY = `
+  query GraduatingPumpFunPools(
+    $program: String!
+    $minPostAmount: Float!
+    $maxPostAmount: Float!
+    $since: DateTime!
+    $limit: Int!
+  ) {
+    Solana(dataset: realtime) {
+      DEXPools(
+        orderBy: { descending: Block_Time }
+        limit: { count: $limit }
+        where: {
+          Pool: {
+            Dex: { ProgramAddress: { is: $program } }
+            Base: { PostAmount: { ge: $minPostAmount, le: $maxPostAmount } }
+          }
+          Block: { Time: { since: $since } }
+        }
+      ) {
+        Block {
+          Time
+        }
+        Pool {
+          Base {
+            PostAmount
+          }
+          Market {
+            BaseCurrency {
+              MintAddress
+              Name
+              Symbol
+              Uri
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+type BitqueryPool = {
+  Block?: { Time?: string | null } | null;
+  Pool?: {
+    Base?: { PostAmount?: number | string | null } | null;
+    Market?: {
+      BaseCurrency?: {
+        MintAddress?: string | null;
+        Name?: string | null;
+        Symbol?: string | null;
+        Uri?: string | null;
+      } | null;
+    } | null;
+  } | null;
 };
 
-type PumpFunCoinsPayload = PumpFunCoin[] | null | undefined;
+type BitqueryDEXPoolsResponse = {
+  data?: { Solana?: { DEXPools?: BitqueryPool[] | null } | null } | null;
+  errors?: Array<{ message?: string }> | null;
+};
 
-function toNumber(value: number | string | undefined): number | null {
-  if (value === undefined) return null;
+function toNumber(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function computeProgressPercent(usdMarketCap: number): number {
-  const raw = (usdMarketCap / GRADUATION_MARKET_CAP_USD) * 100;
+function computeProgressPercent(postAmount: number): number {
+  const raw = 100 - ((postAmount - POST_AMOUNT_AT_100_PERCENT) / POST_AMOUNT_RANGE) * 100;
   return Math.min(100, Math.max(0, raw));
 }
 
-function parseTradeTimestampMs(item: PumpFunCoin): number | null {
-  const raw = item.last_trade_timestamp ?? item.lastTradeTimestamp;
-  if (raw === undefined || raw === null) return null;
-
-  if (typeof raw === "number") return raw > 1e12 ? raw : raw * 1000;
-
-  const asNumber = Number(raw);
-  if (Number.isFinite(asNumber)) return asNumber > 1e12 ? asNumber : asNumber * 1000;
-
-  const asDate = Date.parse(raw);
-  return Number.isFinite(asDate) ? asDate : null;
+function parseBlockTimeMs(pool: BitqueryPool): number | null {
+  const raw = pool.Block?.Time;
+  if (!raw) return null;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function mapPumpFunCoinsPayloadToGraduatingTokens(
-  payload: PumpFunCoinsPayload,
+type Candidate = {
+  address: string;
+  ticker: string;
+  name: string;
+  artworkUrl: string;
+  postAmount: number;
+  blockTimeMs: number;
+};
+
+export function mapBitqueryPoolsToGraduatingTokens(
+  payload: BitqueryDEXPoolsResponse | null | undefined,
   now: number = Date.now(),
 ): GraduatingToken[] {
-  if (!Array.isArray(payload)) return [];
+  const pools = payload?.data?.Solana?.DEXPools;
+  if (!Array.isArray(pools)) return [];
 
-  return payload
-    .map((item): GraduatingToken | null => {
-      if (item?.complete) return null;
+  // Bitquery can return multiple pool-state rows per mint within the
+  // window; keep only the newest one per token.
+  const newestByMint = new Map<string, Candidate>();
 
-      const address = item?.mint;
-      const ticker = item?.symbol;
-      if (!address || !ticker) return null;
+  for (const pool of pools) {
+    const currency = pool?.Pool?.Market?.BaseCurrency;
+    const address = currency?.MintAddress;
+    const ticker = currency?.Symbol;
+    if (!address || !ticker) continue;
 
-      const marketCapUsd = toNumber(item.usd_market_cap);
-      if (marketCapUsd === null) return null;
+    const postAmount = toNumber(pool?.Pool?.Base?.PostAmount);
+    if (postAmount === null) continue;
 
-      // Strict staleness filter: pump.fun's payload actually carries this
-      // field, so a token is dropped whenever it's missing or stale rather
-      // than kept by default (contrast with the earlier Moralis-backed
-      // version of this feed, which had no timestamp field at all).
-      const tradeTimestampMs = parseTradeTimestampMs(item);
-      if (tradeTimestampMs === null || now - tradeTimestampMs > STALE_TRADE_WINDOW_MS) return null;
+    const blockTimeMs = parseBlockTimeMs(pool);
+    if (blockTimeMs === null || now - blockTimeMs > STALE_TRADE_WINDOW_MS) continue;
 
-      return {
-        name: item.name || ticker,
-        ticker,
-        address,
-        artworkUrl: item.image_uri || "",
-        progressPercent: computeProgressPercent(marketCapUsd),
-        url: `https://pump.fun/coin/${address}`,
-      };
-    })
-    .filter((token): token is GraduatingToken => token !== null)
+    const existing = newestByMint.get(address);
+    if (existing && existing.blockTimeMs >= blockTimeMs) continue;
+
+    newestByMint.set(address, {
+      address,
+      ticker,
+      name: currency?.Name || ticker,
+      artworkUrl: currency?.Uri || "",
+      postAmount,
+      blockTimeMs,
+    });
+  }
+
+  return Array.from(newestByMint.values())
+    .map(
+      (candidate): GraduatingToken => ({
+        name: candidate.name,
+        ticker: candidate.ticker,
+        address: candidate.address,
+        artworkUrl: candidate.artworkUrl,
+        progressPercent: computeProgressPercent(candidate.postAmount),
+        url: `https://pump.fun/coin/${candidate.address}`,
+      }),
+    )
     .filter((token) => token.progressPercent >= MIN_PROGRESS_PERCENT && token.progressPercent <= MAX_PROGRESS_PERCENT)
     .sort((a, b) => b.progressPercent - a.progressPercent)
     .slice(0, MAX_TOKENS);
@@ -117,32 +193,50 @@ export function resetGraduatingFeedCacheForTests(): void {
 }
 
 async function fetchGraduatingTokensUncached(): Promise<GraduatingFeedResult> {
+  const token = (process.env.BITQUERY_ACCESS_TOKEN || "").trim();
+  if (!token) {
+    return { tokens: [], error: true };
+  }
+
+  const now = Date.now();
+  const variables = {
+    program: PUMP_FUN_PROGRAM_ADDRESS,
+    minPostAmount: MIN_POST_AMOUNT_FOR_99_PERCENT,
+    maxPostAmount: MAX_POST_AMOUNT_FOR_60_PERCENT,
+    since: new Date(now - STALE_TRADE_WINDOW_MS).toISOString(),
+    limit: 50,
+  };
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FEED_TIMEOUT_MS);
   try {
-    const response = await fetch(PUMP_FUN_COINS_ENDPOINT, {
+    const response = await fetch(BITQUERY_EAP_ENDPOINT, {
+      method: "POST",
       headers: {
         Accept: "application/json",
-        // A standard browser UA is a low-risk mitigation against the
-        // datacenter/Vercel-IP blocking pump.fun is known to apply — see
-        // the module doc comment.
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
+      body: JSON.stringify({ query: GRADUATING_POOLS_QUERY, variables }),
       cache: "no-store",
       signal: controller.signal,
     });
+
     if (!response.ok) {
       const body = await response.text().catch(() => "<unreadable body>");
-      console.error(`[pumpfun-graduating] pump.fun request failed with status ${response.status}:`, body);
+      console.error(`[pumpfun-graduating] Bitquery request failed with status ${response.status}:`, body);
       return { tokens: [], error: true };
     }
 
-    const payload = (await response.json()) as PumpFunCoinsPayload;
-    return { tokens: mapPumpFunCoinsPayloadToGraduatingTokens(payload), error: false };
+    const payload = (await response.json()) as BitqueryDEXPoolsResponse;
+    if (payload?.errors?.length) {
+      console.error("[pumpfun-graduating] Bitquery returned GraphQL errors:", payload.errors);
+      return { tokens: [], error: true };
+    }
+
+    return { tokens: mapBitqueryPoolsToGraduatingTokens(payload, now), error: false };
   } catch (err) {
-    console.error("[pumpfun-graduating] pump.fun request threw:", err);
+    console.error("[pumpfun-graduating] Bitquery request threw:", err);
     return { tokens: [], error: true };
   } finally {
     clearTimeout(timeout);
@@ -151,10 +245,10 @@ async function fetchGraduatingTokensUncached(): Promise<GraduatingFeedResult> {
 
 /**
  * Server-only fetch of pump.fun tokens racing toward graduation, sourced
- * directly from pump.fun's frontend API (see module doc comment). 60s
- * in-memory cache — any failure, block, or malformed response resolves to
- * an empty, error-flagged result instead of throwing, so the panel can hide
- * the row rather than show a stale or dead grid.
+ * from Bitquery's indexed pump.fun bonding-curve pool state (see module doc
+ * comment). 60s in-memory cache — any failure, missing token, or malformed
+ * response resolves to an empty, error-flagged result instead of throwing,
+ * so the panel can hide the row rather than show a stale or dead grid.
  */
 export function fetchGraduatingTokens(): Promise<GraduatingFeedResult> {
   if (graduatingFeedCache && graduatingFeedCache.expiresAt > Date.now()) return graduatingFeedCache.result;
