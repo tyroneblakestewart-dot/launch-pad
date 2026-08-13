@@ -13,6 +13,13 @@ import {
     INonfungiblePositionManager
 } from "./UniswapV3Interfaces.sol";
 
+/// @dev Trimmed view of the ERC20Burnable surface needed to burn graduation
+///      dust. Every token this curve is deployed for is required to be
+///      ERC20Burnable (see `_graduate`'s leftover sweep).
+interface IERC20Burnable {
+    function burn(uint256 value) external;
+}
+
 /// @notice Testnet-only virtual-reserve bonding curve for a fixed-supply ERC-20.
 /// @dev The complete current token supply must enter the curve before trading.
 ///      This prevents an unlocked creator allocation from being sold into buyers.
@@ -49,6 +56,20 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     ///      behaves like a constant-product V2 pool across any price.
     int24 public constant MIN_TICK = -887272;
     int24 public constant MAX_TICK = 887272;
+
+    /// @dev Minimum share of each side's desired amount the graduation mint
+    ///      must actually consume, in basis points of BPS (99%). Uniswap V3
+    ///      pool creation/initialization is permissionless, so an attacker
+    ///      could pre-create and pre-initialize the token/WETH pool at an
+    ///      extreme price before the curve graduates. Without a floor, the
+    ///      mint would silently deposit the whole graduation liquidity at
+    ///      that attacker-chosen price. These floors make Uniswap's own
+    ///      position manager revert the mint instead.
+    uint256 public constant GRADUATION_MIN_DEPOSIT_BPS = 9_900;
+    /// @dev Maximum allowed deviation of an already-initialized pool's
+    ///      `sqrtPriceX96` from the curve's own desired ratio, in basis
+    ///      points of BPS applied to the sqrt value (see `_getOrCreateInitializedPool`).
+    uint256 public constant POOL_SQRT_PRICE_TOLERANCE_BPS = 50;
 
     IERC20 public immutable token;
     address public immutable creator;
@@ -106,6 +127,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     error DirectPaymentNotAccepted();
     error NoFeesToWithdraw();
     error NotFeeRecipient();
+    error PoolPriceOutOfTolerance(uint160 existingSqrtPriceX96, uint160 desiredSqrtPriceX96);
 
     event CurveFunded(address indexed creator, uint256 tokenAmount);
     event TokensPurchased(
@@ -134,6 +156,10 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     );
     event FeeAccrued(address indexed recipient, uint256 amount);
     event FeeWithdrawn(address indexed recipient, uint256 amount);
+    /// @notice Dust left over after the graduation mint, swept instead of
+    ///         stranded: `tokenBurned` is destroyed, `nativeAccrued` is added
+    ///         to the existing 60/40 treasury/creator claimable fee balances.
+    event GraduationDustSwept(uint256 tokenBurned, uint256 nativeAccrued);
 
     modifier onlyCreator() {
         if (msg.sender != creator) revert OnlyCreator();
@@ -454,7 +480,7 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         token.forceApprove(address(positionManager), tokenLiquidity);
         if (!weth9.approve(address(positionManager), nativeLiquidity)) revert LiquidityLockFailed();
 
-        (uint256 tokenId,,,) = positionManager.mint(
+        (uint256 tokenId,, uint256 amount0, uint256 amount1) = positionManager.mint(
             INonfungiblePositionManager.MintParams({
                 token0: token0,
                 token1: token1,
@@ -463,8 +489,11 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
                 tickUpper: tickUpper,
                 amount0Desired: amount0Desired,
                 amount1Desired: amount1Desired,
-                amount0Min: 0,
-                amount1Min: 0,
+                // At least GRADUATION_MIN_DEPOSIT_BPS of each side must be
+                // consumed, or the position manager reverts the mint. See
+                // GRADUATION_MIN_DEPOSIT_BPS for why this floor exists.
+                amount0Min: Math.mulDiv(amount0Desired, GRADUATION_MIN_DEPOSIT_BPS, BPS),
+                amount1Min: Math.mulDiv(amount1Desired, GRADUATION_MIN_DEPOSIT_BPS, BPS),
                 recipient: LP_LOCK_ADDRESS,
                 deadline: block.timestamp
             })
@@ -477,6 +506,8 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         lpTokenId = tokenId;
 
         emit Graduated(pool, tokenId, tokenLiquidity, nativeLiquidity);
+
+        _sweepGraduationLeftover(token0, amount0Desired, amount1Desired, amount0, amount1);
     }
 
     /// @dev Orders the token/WETH pair the way Uniswap V3 requires (token0 <
@@ -496,7 +527,19 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     }
 
     /// @dev Looks up this token/WETH pool from the factory, creating it if
-    ///      necessary, and initializes its starting price if it's brand new.
+    ///      necessary. A brand-new pool is initialized at the curve's exact
+    ///      desired ratio. Uniswap V3 pool creation/initialization is
+    ///      permissionless, so an already-existing, already-initialized pool
+    ///      may have been pre-rigged by an attacker who saw the curve nearing
+    ///      its graduation target; such a pool is only accepted if its price
+    ///      is within POOL_SQRT_PRICE_TOLERANCE_BPS of the curve's desired
+    ///      ratio, otherwise this reverts PoolPriceOutOfTolerance rather than
+    ///      depositing the whole graduation liquidity at an attacker-chosen
+    ///      price. This is temporary protection, not a bricked state: a
+    ///      rigged pool self-corrects via arbitrage (its price converges back
+    ///      toward the market price), after which the next qualifying buy —
+    ///      or a direct `graduate()` call, both of which retry `_graduate()`
+    ///      — succeeds normally.
     function _getOrCreateInitializedPool(
         address token0,
         address token1,
@@ -508,10 +551,60 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
             pool = uniswapV3Factory.createPool(token0, token1, UNISWAP_FEE_TIER);
         }
 
+        uint160 desiredSqrtPriceX96 = _initialSqrtPriceX96(amount0Desired, amount1Desired);
         (uint160 existingSqrtPriceX96,,,,,,) = IUniswapV3Pool(pool).slot0();
         if (existingSqrtPriceX96 == 0) {
-            IUniswapV3Pool(pool).initialize(_initialSqrtPriceX96(amount0Desired, amount1Desired));
+            IUniswapV3Pool(pool).initialize(desiredSqrtPriceX96);
+        } else if (!_withinSqrtPriceTolerance(existingSqrtPriceX96, desiredSqrtPriceX96)) {
+            revert PoolPriceOutOfTolerance(existingSqrtPriceX96, desiredSqrtPriceX96);
         }
+    }
+
+    /// @dev price = (sqrtPriceX96 / 2^96)^2, so a fractional tolerance `t` on
+    ///      sqrtPriceX96 is approximately a fractional tolerance `2t` on price
+    ///      itself (since (1±t)^2 ≈ 1±2t for small t). POOL_SQRT_PRICE_TOLERANCE_BPS
+    ///      = 50 bps (0.5%) on the sqrt value is therefore roughly a ±1% price
+    ///      tolerance, matching the ~1% price tolerance this check is meant to
+    ///      enforce.
+    function _withinSqrtPriceTolerance(uint160 existingSqrtPriceX96, uint160 desiredSqrtPriceX96)
+        internal
+        pure
+        returns (bool)
+    {
+        uint256 lowerBound =
+            Math.mulDiv(uint256(desiredSqrtPriceX96), BPS - POOL_SQRT_PRICE_TOLERANCE_BPS, BPS);
+        uint256 upperBound =
+            Math.mulDiv(uint256(desiredSqrtPriceX96), BPS + POOL_SQRT_PRICE_TOLERANCE_BPS, BPS);
+        return uint256(existingSqrtPriceX96) >= lowerBound && uint256(existingSqrtPriceX96) <= upperBound;
+    }
+
+    /// @dev Burns any token the mint didn't consume and unwraps+accrues any
+    ///      WETH it didn't consume via the existing 60/40 treasury/creator
+    ///      fee split, so nothing from the graduation deposit is ever left
+    ///      stranded in this contract and no new payment route is invented.
+    ///      With GRADUATION_MIN_DEPOSIT_BPS floors on the mint, both leftovers
+    ///      are bounded to at most 1% of their respective desired amounts.
+    function _sweepGraduationLeftover(
+        address token0,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        uint256 amount0,
+        uint256 amount1
+    ) internal {
+        bool tokenIsToken0 = token0 == address(token);
+        uint256 leftoverToken = tokenIsToken0 ? amount0Desired - amount0 : amount1Desired - amount1;
+        uint256 leftoverWeth = tokenIsToken0 ? amount1Desired - amount1 : amount0Desired - amount0;
+        if (leftoverToken == 0 && leftoverWeth == 0) return;
+
+        if (leftoverToken > 0) {
+            IERC20Burnable(address(token)).burn(leftoverToken);
+        }
+        if (leftoverWeth > 0) {
+            weth9.withdraw(leftoverWeth);
+            _accrueFee(leftoverWeth);
+        }
+
+        emit GraduationDustSwept(leftoverToken, leftoverWeth);
     }
 
     /// @dev The widest tick range this fee tier's spacing allows, so the
@@ -590,7 +683,12 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         if (!sent) revert NativeTransferFailed();
     }
 
+    /// @dev Direct payments are rejected so only recorded buys count toward
+    ///      graduation (see `testOnlyRecordedBuysCountTowardGraduation`).
+    ///      The sole exception is `weth9` itself paying back a `withdraw()`
+    ///      call from `_sweepGraduationLeftover` — `weth9` is immutable, set
+    ///      once at construction, so this cannot be spoofed by anyone else.
     receive() external payable {
-        revert DirectPaymentNotAccepted();
+        if (msg.sender != address(weth9)) revert DirectPaymentNotAccepted();
     }
 }

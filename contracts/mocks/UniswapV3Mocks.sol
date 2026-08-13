@@ -21,10 +21,24 @@ contract MockWETH9 is IWETH9 {
     mapping(address => mapping(address => uint256)) public allowance;
 
     event Deposit(address indexed dst, uint256 wad);
+    event Withdrawal(address indexed src, uint256 wad);
     event Approval(address indexed owner, address indexed spender, uint256 value);
     event Transfer(address indexed from, address indexed to, uint256 value);
 
     function deposit() external payable override {
+        _balances[msg.sender] += msg.value;
+        emit Deposit(msg.sender, msg.value);
+    }
+
+    function withdraw(uint256 wad) external override {
+        require(_balances[msg.sender] >= wad, "WETH_BALANCE");
+        _balances[msg.sender] -= wad;
+        (bool sent,) = msg.sender.call{value: wad}("");
+        require(sent, "WETH_WITHDRAW_FAILED");
+        emit Withdrawal(msg.sender, wad);
+    }
+
+    receive() external payable {
         _balances[msg.sender] += msg.value;
         emit Deposit(msg.sender, msg.value);
     }
@@ -86,6 +100,16 @@ contract MockUniswapV3Pool is IUniswapV3Pool {
         require(sqrtPriceX96 != 0, "ZERO_PRICE");
         sqrtPriceX96Stored = sqrtPriceX96;
     }
+
+    /// @dev Test-only: simulates a swap moving the pool's price, permissionless
+    ///      like a real Uniswap V3 pool's swaps would be. Used both to rig a
+    ///      pool at an attacker-chosen price before graduation and to simulate
+    ///      arbitrage correcting a rigged pool back within tolerance.
+    function setSqrtPriceX96(uint160 sqrtPriceX96) external {
+        require(sqrtPriceX96Stored != 0, "NOT_INITIALIZED");
+        require(sqrtPriceX96 != 0, "ZERO_PRICE");
+        sqrtPriceX96Stored = sqrtPriceX96;
+    }
 }
 
 contract MockUniswapV3Factory is IUniswapV3Factory {
@@ -133,6 +157,16 @@ contract MockNonfungiblePositionManager is INonfungiblePositionManager {
     mapping(uint256 => address) public ownerOf;
     mapping(uint256 => MintedPosition) public positions;
 
+    /// @dev Fraction (out of 10_000) of each side's `amountDesired` this mock
+    ///      actually consumes, simulating a mispriced pool that only accepts
+    ///      part of the deposit. Defaults to full consumption.
+    uint256 public consumptionBps = 10_000;
+
+    function setConsumptionBps(uint256 bps) external {
+        require(bps <= 10_000, "BPS_TOO_HIGH");
+        consumptionBps = bps;
+    }
+
     function mint(MintParams calldata params)
         external
         payable
@@ -143,8 +177,8 @@ contract MockNonfungiblePositionManager is INonfungiblePositionManager {
         require(params.deadline >= block.timestamp, "EXPIRED");
         require(params.tickLower < params.tickUpper, "BAD_TICK_RANGE");
 
-        amount0 = params.amount0Desired;
-        amount1 = params.amount1Desired;
+        amount0 = (params.amount0Desired * consumptionBps) / 10_000;
+        amount1 = (params.amount1Desired * consumptionBps) / 10_000;
         require(amount0 >= params.amount0Min && amount1 >= params.amount1Min, "SLIPPAGE");
 
         _pullToken(params.token0, amount0);
