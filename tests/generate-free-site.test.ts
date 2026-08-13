@@ -617,7 +617,10 @@ describe("POST /api/generate-free-site sections", () => {
   // `sections.faq`; buildFreeSiteSections only reads FREE_SITE_SECTION_KEYS,
   // so these stale flags are silently ignored rather than rejected.
   it("ignores stale roadmap/faq section flags from a client saved before their removal", async () => {
-    const fetchMock = providerMock();
+    const fetchMock = providerMock({
+      theme: THEME,
+      copy: copyForSections({ about: true, tokenomics: false, howToBuy: false }),
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(
