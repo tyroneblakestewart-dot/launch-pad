@@ -6,7 +6,6 @@ import {
   type FreeSiteCopy,
   type FreeSiteFontPairing,
   type FreeSiteHeroStyle,
-  type FreeSiteRoadmapStyle,
   type FreeSiteSections,
   type FreeSiteTemplateInput,
   type FreeSiteTokenomicsStyle,
@@ -31,19 +30,6 @@ export const FREE_SITE_COPY_KEYS = [
   "about3Title",
   "about3Body",
   "tokenomicsTitle",
-  "roadmapTitle",
-  "roadmap1Phase",
-  "roadmap1Title",
-  "roadmap1Body",
-  "roadmap2Phase",
-  "roadmap2Title",
-  "roadmap2Body",
-  "roadmap3Phase",
-  "roadmap3Title",
-  "roadmap3Body",
-  "roadmap4Phase",
-  "roadmap4Title",
-  "roadmap4Body",
   "howToBuyTitle",
   "howToBuy1Title",
   "howToBuy1Body",
@@ -54,17 +40,6 @@ export const FREE_SITE_COPY_KEYS = [
   "howToBuy4Title",
   "howToBuy4Body",
   "communityTitle",
-  "faqTitle",
-  "faq1Q",
-  "faq1A",
-  "faq2Q",
-  "faq2A",
-  "faq3Q",
-  "faq3A",
-  "faq4Q",
-  "faq4A",
-  "faq5Q",
-  "faq5A",
 ] as const satisfies readonly (keyof FreeSiteCopy)[];
 
 const PALETTE_KEYS = ["background", "surface", "primary", "secondary", "text"] as const;
@@ -72,7 +47,6 @@ const FONT_PAIRINGS = ["street", "blocky", "arcade", "rounded", "cyber", "editor
 const BACKGROUND_EFFECTS = ["cascade", "gradients", "particles", "grid", "none"] as const;
 const HERO_STYLES = ["split", "centred", "stacked"] as const;
 const TOKENOMICS_STYLES = ["terminal", "grid", "ledger"] as const;
-const ROADMAP_STYLES = ["timeline", "cards", "path"] as const;
 const ABOUT_STYLES = ["numbered", "icons", "quotes"] as const;
 const HEX_COLOUR = /^#[0-9A-Fa-f]{6}$/;
 
@@ -98,7 +72,6 @@ const THEME_SCHEMA = {
     backgroundEffect: { type: "string", enum: BACKGROUND_EFFECTS },
     heroStyle: { type: "string", enum: HERO_STYLES },
     tokenomicsStyle: { type: "string", enum: TOKENOMICS_STYLES },
-    roadmapStyle: { type: "string", enum: ROADMAP_STYLES },
     aboutStyle: { type: "string", enum: ABOUT_STYLES },
   },
   required: [
@@ -107,7 +80,6 @@ const THEME_SCHEMA = {
     "backgroundEffect",
     "heroStyle",
     "tokenomicsStyle",
-    "roadmapStyle",
     "aboutStyle",
   ],
   additionalProperties: false,
@@ -118,8 +90,8 @@ const THEME_SCHEMA = {
 // of the schema: the model cannot write, and additionalProperties:false
 // means it cannot even attempt to write, copy for a section that was not
 // requested. This is what makes the output shrink alongside the toggles
-// and stops the model inventing a roadmap/FAQ/etc for tokens that have
-// neither (issue #171).
+// and stops the model inventing copy for a section that was never enabled
+// (issue #171).
 export function buildFreeSiteDesignSchema(sections: FreeSiteSections) {
   const copyKeys = freeSiteCopyKeysForSections(sections);
   const copyProperties = Object.fromEntries(copyKeys.map((key) => [key, stringSchema]));
@@ -164,8 +136,9 @@ function buildDeveloperPrompt(sections: FreeSiteSections): string {
     "Section titles must carry the token's personality. Do not use generic labels when a title can speak in the token's voice.",
     "Write every copy field in the token's voice and ground it in the supplied project story.",
     `Only write copy for these enabled sections: ${enabled.length ? enabled.join(", ") : "none — hero only"}. The schema does not accept fields for any other section.`,
+    "This template has no roadmap and no FAQ section. Never mention, imply or promise a roadmap, milestones, phases or an FAQ anywhere in your copy.",
     disabled.length
-      ? `Do not mention or imply the existence of these disabled sections: ${disabled.join(", ")}. Do not reference them from copy in an enabled section (for example, do not promise a roadmap in the about copy when roadmap is disabled).`
+      ? `Do not mention or imply the existence of these disabled sections: ${disabled.join(", ")}. Do not reference them from copy in an enabled section (for example, do not promise how-to-buy steps in the about copy when how-to-buy is disabled).`
       : "",
     "The application renders the contract address, token supply, taxes, mint authority, ownership status and social handles separately from verified facts. Never mention or invent any of those in your copy, and never state that a fact is unannounced, pending or not yet provided.",
     "Do not invent launch terms, partnerships, dates, exchanges or promises that were not supplied.",
@@ -295,7 +268,6 @@ export function parseFreeSiteDesignResponse(
       "backgroundEffect",
       "heroStyle",
       "tokenomicsStyle",
-      "roadmapStyle",
       "aboutStyle",
     ],
     "theme",
@@ -335,11 +307,6 @@ export function parseFreeSiteDesignResponse(
         theme.tokenomicsStyle,
         TOKENOMICS_STYLES,
         "theme.tokenomicsStyle",
-      ),
-      roadmapStyle: requireEnum<FreeSiteRoadmapStyle>(
-        theme.roadmapStyle,
-        ROADMAP_STYLES,
-        "theme.roadmapStyle",
       ),
       aboutStyle: requireEnum<FreeSiteAboutStyle>(
         theme.aboutStyle,

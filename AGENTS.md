@@ -172,3 +172,17 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   alone. Wired into System Health, the `outreach` service-isolation switch,
   and a new Outreach admin section. Turning posting on for real is an
   explicit future owner decision.
+- Generated-site desktop/mobile quality (issue #303): the bespoke AI page
+  generator (`lib/site-page-openai-pipeline.ts`) now carries non-negotiable
+  responsive/layout-quality prompt rules (viewport meta, fluid units/media
+  queries for 390/768/1280px+, a centred max-width desktop container,
+  `scroll-behavior: smooth`, no horizontal overflow), and
+  `isCompleteGeneratedPageHtml` (`lib/generated-site-page.ts`) mechanically
+  rejects output with no responsive signal at all or a wide fixed-pixel
+  container outside any breakpoint. See `docs/responsive-qa.md` for the
+  manual screenshot pass this mechanical check can't replace. Separately,
+  Roadmap and FAQ were removed entirely (not just defaulted off) from the
+  free-site sections (`lib/free-site-sections.ts`): the current set is
+  Hero (always), About, Tokenomics, How to Buy, Community. Stale
+  `siteSections.roadmap` / `.faq` flags on projects saved before this
+  change are ignored, not migrated or rejected.

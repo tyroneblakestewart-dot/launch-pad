@@ -56,9 +56,7 @@ function findCheckbox(panel: Element, labelText: string): HTMLInputElement | nul
 const SECTION_TOGGLE_LABELS: Record<keyof FreeSiteSections, string> = {
   about: "About",
   tokenomics: "Tokenomics",
-  roadmap: "Roadmap",
   howToBuy: "How to buy",
-  faq: "FAQ",
 };
 
 function currentSections(panel: Element): FreeSiteSections {

@@ -53,6 +53,79 @@ function countMatches(value: string, pattern: RegExp): number {
   return value.match(pattern)?.length || 0;
 }
 
+// Layer 2 of the desktop/mobile responsiveness contract (issue #303): a
+// mechanical baseline check that rejects the clearest ways a generated page
+// would break at 390px or blow out at 1280px+. It cannot prove the layout
+// looks *good* at every width (see docs/responsive-qa.md for the
+// screenshot-based human pass that does), only that the page has at least
+// attempted the responsive techniques the generation prompt requires.
+const MEDIA_QUERY_PATTERN = /@media\b/i;
+// A bare `width:` (not `min-width`/`max-width`, which are legitimate media
+// query thresholds and a normal way to cap an image's fluid size) is
+// excluded via the negative lookbehind in both patterns below, so a
+// ubiquitous `img{max-width:100%}` rule doesn't get counted as evidence of
+// a deliberately responsive layout, and a `@media(min-width:1280px)`
+// breakpoint declaration doesn't get mistaken for a fixed-width container.
+const RESPONSIVE_UNIT_PATTERN =
+  /\bclamp\(|\bmin\(|\bmax\(|\d+(?:\.\d+)?vw\b|\d+(?:\.\d+)?vh\b|(?<![\w-])width\s*:\s*\d+(?:\.\d+)?%/i;
+// A bare `width:` fixed to a wide pixel value outside any @media block is a
+// full-bleed desktop container that would force horizontal scrolling on a
+// 390px viewport.
+const FIXED_WIDE_WIDTH_PATTERN = /(?<![\w-])width\s*:\s*(\d{3,5})px/gi;
+const MIN_OVERFLOW_RISK_WIDTH_PX = 480;
+
+function extractStyleBlocksCss(html: string): string {
+  return (html.match(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi) || [])
+    .map((block) => block.replace(/^<style\b[^>]*>/i, "").replace(/<\/style\s*>$/i, ""))
+    .join("\n");
+}
+
+// Removes the contents of every top-level `@media (...) { ... }` block so
+// the fixed-width overflow check below only looks at CSS that is always
+// active, not CSS gated behind a `min-width` breakpoint (which is exactly
+// how a page is expected to introduce a wider fixed layout for desktop).
+function stripMediaQueryBlocks(css: string): string {
+  let result = "";
+  let index = 0;
+  while (index < css.length) {
+    const mediaIndex = css.indexOf("@media", index);
+    if (mediaIndex === -1) {
+      result += css.slice(index);
+      break;
+    }
+    result += css.slice(index, mediaIndex);
+    const braceStart = css.indexOf("{", mediaIndex);
+    if (braceStart === -1) {
+      index = css.length;
+      break;
+    }
+    let depth = 1;
+    let cursor = braceStart + 1;
+    while (cursor < css.length && depth > 0) {
+      if (css[cursor] === "{") depth++;
+      else if (css[cursor] === "}") depth--;
+      cursor++;
+    }
+    index = cursor;
+  }
+  return result;
+}
+
+function hasResponsiveBaseline(html: string): boolean {
+  const styleCss = extractStyleBlocksCss(html);
+  const hasMediaQuery = MEDIA_QUERY_PATTERN.test(styleCss);
+  const hasResponsiveUnit = RESPONSIVE_UNIT_PATTERN.test(styleCss);
+  if (!hasMediaQuery && !hasResponsiveUnit) return false;
+
+  const alwaysActiveCss = stripMediaQueryBlocks(styleCss);
+  FIXED_WIDE_WIDTH_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = FIXED_WIDE_WIDTH_PATTERN.exec(alwaysActiveCss))) {
+    if (Number(match[1]) >= MIN_OVERFLOW_RISK_WIDTH_PX) return false;
+  }
+  return true;
+}
+
 function hasRetailMarketplacePresentation(html: string): boolean {
   const hasHeaderNavigation = /<header\b/i.test(html) && /<nav\b/i.test(html);
   const hasDiscoveryPattern =
@@ -90,6 +163,7 @@ export function isCompleteGeneratedPageHtml(
   if (!lower.includes("<head") || !lower.includes("<body")) return false;
   if (!lower.includes("<style") || !lower.includes("<script")) return false;
   if (!lower.includes('name="viewport"') && !lower.includes("name='viewport'")) return false;
+  if (!hasResponsiveBaseline(html)) return false;
   if (!html.includes(ARTWORK_PLACEHOLDER)) return false;
 
   for (const section of REQUIRED_PAGE_SECTIONS) {

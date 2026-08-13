@@ -16,7 +16,7 @@ const PNG_BASE64 =
 
 function page(extra = ""): string {
   const copy = "Safe generated campaign copy. ".repeat(150);
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width"><title>Safe</title><style>body{margin:0}</style></head><body><section id="hero"><img src="${ARTWORK_PLACEHOLDER}" alt="Artwork"></section><section id="about">${copy}</section><section id="tokenomics">Supply</section><section id="roadmap">Roadmap</section><section id="how-to-buy">Buy</section><section id="community">Community</section>${extra}<script>document.body.dataset.ready="true";</script></body></html>`;
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width"><title>Safe</title><style>body{margin:0}@media(max-width:700px){body{margin:0}}</style></head><body><section id="hero"><img src="${ARTWORK_PLACEHOLDER}" alt="Artwork"></section><section id="about">${copy}</section><section id="tokenomics">Supply</section><section id="roadmap">Roadmap</section><section id="how-to-buy">Buy</section><section id="community">Community</section>${extra}<script>document.body.dataset.ready="true";</script></body></html>`;
 }
 
 function validSitePayload() {

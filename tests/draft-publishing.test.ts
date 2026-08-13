@@ -39,7 +39,7 @@ const ARTWORK = `data:image/png;base64,${PNG_BASE64}`;
 
 function generatedHtml(): string {
   const copy = "Draft publishing test content. ".repeat(150);
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width"><title>Draft</title><style>body{margin:0}</style></head><body><section id="hero"><img src="${ARTWORK_PLACEHOLDER}"></section><section id="about">${copy}</section><section id="tokenomics">Supply</section><section id="roadmap">Roadmap</section><section id="how-to-buy">Buy</section><section id="community">Community</section><script>1;</script></body></html>`;
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width"><title>Draft</title><style>body{margin:0}@media(max-width:700px){body{margin:0}}</style></head><body><section id="hero"><img src="${ARTWORK_PLACEHOLDER}"></section><section id="about">${copy}</section><section id="tokenomics">Supply</section><section id="roadmap">Roadmap</section><section id="how-to-buy">Buy</section><section id="community">Community</section><script>1;</script></body></html>`;
 }
 
 function sitePayload(slug = "draft-token") {

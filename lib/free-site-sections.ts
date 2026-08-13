@@ -28,19 +28,6 @@ export type FreeSiteCopy = {
   about3Title?: string;
   about3Body?: string;
   tokenomicsTitle?: string;
-  roadmapTitle?: string;
-  roadmap1Phase?: string;
-  roadmap1Title?: string;
-  roadmap1Body?: string;
-  roadmap2Phase?: string;
-  roadmap2Title?: string;
-  roadmap2Body?: string;
-  roadmap3Phase?: string;
-  roadmap3Title?: string;
-  roadmap3Body?: string;
-  roadmap4Phase?: string;
-  roadmap4Title?: string;
-  roadmap4Body?: string;
   howToBuyTitle?: string;
   howToBuy1Title?: string;
   howToBuy1Body?: string;
@@ -51,38 +38,23 @@ export type FreeSiteCopy = {
   howToBuy4Title?: string;
   howToBuy4Body?: string;
   communityTitle: string;
-  faqTitle?: string;
-  faq1Q?: string;
-  faq1A?: string;
-  faq2Q?: string;
-  faq2A?: string;
-  faq3Q?: string;
-  faq3A?: string;
-  faq4Q?: string;
-  faq4A?: string;
-  faq5Q?: string;
-  faq5A?: string;
 };
 
 // The optional, user-toggled sections. Hero is always on and community's
 // visibility is derived from FreeSiteFacts, so neither appears here.
-export const FREE_SITE_SECTION_KEYS = [
-  "about",
-  "tokenomics",
-  "roadmap",
-  "howToBuy",
-  "faq",
-] as const;
+// Roadmap and FAQ were removed entirely (issue #303), not just defaulted
+// off: older stored projects may still carry `siteSections.roadmap` /
+// `.faq`, but those flags are simply ignored now that neither key is part
+// of this set (see buildFreeSiteSections in app/api/generate-free-site/route.ts).
+export const FREE_SITE_SECTION_KEYS = ["about", "tokenomics", "howToBuy"] as const;
 export type FreeSiteSectionKey = (typeof FREE_SITE_SECTION_KEYS)[number];
 export type FreeSiteSections = Record<FreeSiteSectionKey, boolean>;
 
-// Studio default: About and Tokenomics on, the rest off (issue #171).
+// Studio default: About and Tokenomics on, How to Buy off (issue #171).
 export const FREE_SITE_SECTION_DEFAULTS: FreeSiteSections = {
   about: true,
   tokenomics: true,
-  roadmap: false,
   howToBuy: false,
-  faq: false,
 };
 
 // The copy fields that belong to each optional section. Required from the
@@ -100,21 +72,6 @@ export const FREE_SITE_SECTION_COPY_KEYS = {
     "about3Body",
   ],
   tokenomics: ["tokenomicsTitle"],
-  roadmap: [
-    "roadmapTitle",
-    "roadmap1Phase",
-    "roadmap1Title",
-    "roadmap1Body",
-    "roadmap2Phase",
-    "roadmap2Title",
-    "roadmap2Body",
-    "roadmap3Phase",
-    "roadmap3Title",
-    "roadmap3Body",
-    "roadmap4Phase",
-    "roadmap4Title",
-    "roadmap4Body",
-  ],
   howToBuy: [
     "howToBuyTitle",
     "howToBuy1Title",
@@ -126,7 +83,6 @@ export const FREE_SITE_SECTION_COPY_KEYS = {
     "howToBuy4Title",
     "howToBuy4Body",
   ],
-  faq: ["faqTitle", "faq1Q", "faq1A", "faq2Q", "faq2A", "faq3Q", "faq3A", "faq4Q", "faq4A", "faq5Q", "faq5A"],
 } as const satisfies Record<FreeSiteSectionKey, readonly (keyof FreeSiteCopy)[]>;
 
 // Hero (always required) plus community (required regardless of the

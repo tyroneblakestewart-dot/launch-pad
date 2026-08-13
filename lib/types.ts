@@ -27,10 +27,12 @@ export interface TokenProject {
   heroImage: string;
   theme: "hoodlums";
   /**
-   * The free-site optional section toggles (About/Tokenomics/Roadmap/How to
-   * Buy/FAQ — hero is always on). Optional because projects saved before
-   * this field existed have none; readers should fall back to
-   * FREE_SITE_SECTION_DEFAULTS.
+   * The free-site optional section toggles (About/Tokenomics/How to Buy —
+   * hero is always on). Optional because projects saved before this field
+   * existed have none; readers should fall back to
+   * FREE_SITE_SECTION_DEFAULTS. Older stored projects may still carry
+   * stale `roadmap`/`faq` flags from before those sections were removed
+   * entirely (issue #303); they are simply ignored.
    */
   siteSections?: FreeSiteSections;
   /**

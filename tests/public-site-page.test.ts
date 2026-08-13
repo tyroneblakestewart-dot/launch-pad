@@ -27,7 +27,7 @@ function validGeneratedHtml(): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Original token page</title>
-<style>body{margin:0}</style>
+<style>body{margin:0}@media(max-width:700px){body{margin:0}}</style>
 </head>
 <body>
 <header><nav>Home</nav></header>
@@ -50,7 +50,7 @@ function freeSiteGeneratedHtml(): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Free-site token page</title>
-<style>body{margin:0}</style>
+<style>body{margin:0}@media(max-width:700px){body{margin:0}}</style>
 </head>
 <body>
 ${FREE_SITE_TEMPLATE_MARKER}

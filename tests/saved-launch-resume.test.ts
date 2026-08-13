@@ -33,9 +33,7 @@ const PARTIAL_LAUNCH: TokenProject = {
   siteSections: {
     about: true,
     tokenomics: true,
-    roadmap: true,
     howToBuy: false,
-    faq: true,
   },
   generatedSiteHtml: "<!doctype html><html><body>saved preview</body></html>",
   generatedSiteVersion: 2,
@@ -60,6 +58,33 @@ describe("Saved launches", () => {
 
     expect(restored).toEqual([PARTIAL_LAUNCH]);
     expect(Object.keys(restored[0]).sort()).toEqual(Object.keys(PARTIAL_LAUNCH).sort());
+  });
+
+  // Roadmap and FAQ were removed entirely from the free-site sections
+  // (issue #303), not just defaulted off. A project saved before that
+  // change may still have `siteSections.roadmap` / `.faq` in browser
+  // storage; parsing must not drop the project or crash on the stale
+  // fields, since storage is a plain JSON passthrough and the fields are
+  // simply ignored by every current reader (see FREE_SITE_SECTION_KEYS).
+  it("keeps a legacy project with stale roadmap/faq site-section flags intact", () => {
+    const legacyRaw = JSON.stringify([
+      {
+        ...PARTIAL_LAUNCH,
+        siteSections: { about: true, tokenomics: true, howToBuy: false, roadmap: true, faq: true },
+      },
+    ]);
+
+    const restored = parseSavedTokenProjects(legacyRaw);
+
+    expect(restored).toHaveLength(1);
+    expect(restored[0].id).toBe(PARTIAL_LAUNCH.id);
+    expect(restored[0].siteSections).toEqual({
+      about: true,
+      tokenomics: true,
+      howToBuy: false,
+      roadmap: true,
+      faq: true,
+    });
   });
 
   it("keeps the complete project object as the save and restore source of truth", async () => {

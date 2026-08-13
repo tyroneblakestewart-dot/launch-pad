@@ -29,7 +29,6 @@ export type FreeSiteFontPairing =
 export type FreeSiteBackgroundEffect = "cascade" | "gradients" | "particles" | "grid" | "none";
 export type FreeSiteHeroStyle = "split" | "centred" | "stacked";
 export type FreeSiteTokenomicsStyle = "terminal" | "grid" | "ledger";
-export type FreeSiteRoadmapStyle = "timeline" | "cards" | "path";
 export type FreeSiteAboutStyle = "numbered" | "icons" | "quotes";
 
 export type FreeSiteTheme = {
@@ -38,7 +37,6 @@ export type FreeSiteTheme = {
   backgroundEffect: FreeSiteBackgroundEffect;
   heroStyle: FreeSiteHeroStyle;
   tokenomicsStyle: FreeSiteTokenomicsStyle;
-  roadmapStyle: FreeSiteRoadmapStyle;
   aboutStyle: FreeSiteAboutStyle;
 };
 
@@ -79,7 +77,6 @@ const FONT_PAIRINGS = ["street", "blocky", "arcade", "rounded", "cyber", "editor
 const BACKGROUND_EFFECTS = ["cascade", "gradients", "particles", "grid", "none"] as const;
 const HERO_STYLES = ["split", "centred", "stacked"] as const;
 const TOKENOMICS_STYLES = ["terminal", "grid", "ledger"] as const;
-const ROADMAP_STYLES = ["timeline", "cards", "path"] as const;
 const ABOUT_STYLES = ["numbered", "icons", "quotes"] as const;
 const HEX_COLOUR = /^#[0-9a-fA-F]{6}$/;
 
@@ -96,19 +93,6 @@ const COPY_PLACEHOLDERS = {
   ABOUT_3_TITLE: "about3Title",
   ABOUT_3_BODY: "about3Body",
   TOKENOMICS_TITLE: "tokenomicsTitle",
-  ROADMAP_TITLE: "roadmapTitle",
-  ROADMAP_1_PHASE: "roadmap1Phase",
-  ROADMAP_1_TITLE: "roadmap1Title",
-  ROADMAP_1_BODY: "roadmap1Body",
-  ROADMAP_2_PHASE: "roadmap2Phase",
-  ROADMAP_2_TITLE: "roadmap2Title",
-  ROADMAP_2_BODY: "roadmap2Body",
-  ROADMAP_3_PHASE: "roadmap3Phase",
-  ROADMAP_3_TITLE: "roadmap3Title",
-  ROADMAP_3_BODY: "roadmap3Body",
-  ROADMAP_4_PHASE: "roadmap4Phase",
-  ROADMAP_4_TITLE: "roadmap4Title",
-  ROADMAP_4_BODY: "roadmap4Body",
   HOWTOBUY_TITLE: "howToBuyTitle",
   HOWTOBUY_1_TITLE: "howToBuy1Title",
   HOWTOBUY_1_BODY: "howToBuy1Body",
@@ -119,17 +103,6 @@ const COPY_PLACEHOLDERS = {
   HOWTOBUY_4_TITLE: "howToBuy4Title",
   HOWTOBUY_4_BODY: "howToBuy4Body",
   COMMUNITY_TITLE: "communityTitle",
-  FAQ_TITLE: "faqTitle",
-  FAQ_1_Q: "faq1Q",
-  FAQ_1_A: "faq1A",
-  FAQ_2_Q: "faq2Q",
-  FAQ_2_A: "faq2A",
-  FAQ_3_Q: "faq3Q",
-  FAQ_3_A: "faq3A",
-  FAQ_4_Q: "faq4Q",
-  FAQ_4_A: "faq4A",
-  FAQ_5_Q: "faq5Q",
-  FAQ_5_A: "faq5A",
 } as const satisfies Record<string, keyof FreeSiteCopy>;
 
 // Facts placeholders that are a direct 1:1 substitution (no href composition
@@ -259,8 +232,8 @@ function prepareSourceTemplate(source: string): string {
   output = replaceOnce(output, "  --text: #e8ffe0;", "  --text: {{THEME_TEXT}};", "text colour");
   output = replaceOnce(
     output,
-    '<body data-palette="toxic" data-fonts="street" data-bg="cascade" data-hero="split" data-tokenomics="terminal" data-roadmap="timeline" data-about="numbered">',
-    '<body data-fonts="{{THEME_FONT_PAIRING}}" data-bg="{{THEME_BACKGROUND_EFFECT}}" data-hero="{{THEME_HERO_STYLE}}" data-tokenomics="{{THEME_TOKENOMICS_STYLE}}" data-roadmap="{{THEME_ROADMAP_STYLE}}" data-about="{{THEME_ABOUT_STYLE}}">',
+    '<body data-palette="toxic" data-fonts="street" data-bg="cascade" data-hero="split" data-tokenomics="terminal" data-about="numbered">',
+    '<body data-fonts="{{THEME_FONT_PAIRING}}" data-bg="{{THEME_BACKGROUND_EFFECT}}" data-hero="{{THEME_HERO_STYLE}}" data-tokenomics="{{THEME_TOKENOMICS_STYLE}}" data-about="{{THEME_ABOUT_STYLE}}">',
     "body theme attributes",
   );
   output = replaceOnce(output, "{{ARTWORK}}", "{{FREE_SITE_ARTWORK}}", "artwork placeholder");
@@ -347,7 +320,6 @@ export function renderFreeSiteTemplate({
   validateStyle(theme.backgroundEffect, BACKGROUND_EFFECTS, "backgroundEffect");
   validateStyle(theme.heroStyle, HERO_STYLES, "heroStyle");
   validateStyle(theme.tokenomicsStyle, TOKENOMICS_STYLES, "tokenomicsStyle");
-  validateStyle(theme.roadmapStyle, ROADMAP_STYLES, "roadmapStyle");
   validateStyle(theme.aboutStyle, ABOUT_STYLES, "aboutStyle");
   const validatedFacts = validateFacts(facts);
   const validatedSections = validateSections(sections);
@@ -368,7 +340,6 @@ export function renderFreeSiteTemplate({
     .replaceAll("{{THEME_BACKGROUND_EFFECT}}", theme.backgroundEffect)
     .replaceAll("{{THEME_HERO_STYLE}}", theme.heroStyle)
     .replaceAll("{{THEME_TOKENOMICS_STYLE}}", theme.tokenomicsStyle)
-    .replaceAll("{{THEME_ROADMAP_STYLE}}", theme.roadmapStyle)
     .replaceAll("{{THEME_ABOUT_STYLE}}", theme.aboutStyle)
     .replaceAll("{{FREE_SITE_ARTWORK}}", ARTWORK_PLACEHOLDER);
 
@@ -429,9 +400,7 @@ export function renderFreeSiteTemplate({
   const TOGGLE_BLOCKS: ReadonlyArray<[string, FreeSiteSectionKey]> = [
     ["ABOUT", "about"],
     ["TOKENOMICS", "tokenomics"],
-    ["ROADMAP", "roadmap"],
     ["HOWTOBUY", "howToBuy"],
-    ["FAQ", "faq"],
   ];
   for (const [blockName, sectionKey] of TOGGLE_BLOCKS) {
     const enabled = validatedSections[sectionKey];
@@ -440,11 +409,9 @@ export function renderFreeSiteTemplate({
   }
   html = applyBlock(html, "NAV_ABOUT", validatedSections.about);
   html = applyBlock(html, "NAV_TOKENOMICS", validatedSections.tokenomics);
-  html = applyBlock(html, "NAV_ROADMAP", validatedSections.roadmap);
   html = applyBlock(html, "NAV_HOWTOBUY", validatedSections.howToBuy);
   html = applyBlock(html, "FOOTER_NAV_ABOUT", validatedSections.about);
   html = applyBlock(html, "FOOTER_NAV_TOKENOMICS", validatedSections.tokenomics);
-  html = applyBlock(html, "FOOTER_NAV_ROADMAP", validatedSections.roadmap);
 
   return html;
 }
