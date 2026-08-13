@@ -34,7 +34,7 @@ const ARTWORK_DATA_URL = `data:image/png;base64,${PNG_BASE64}`;
 
 function validGeneratedHtml(): string {
   const padding = "Original public token campaign content. ".repeat(120);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Public token</title><style>body{margin:0}</style></head><body><section id="hero"><h1>Public token</h1><img src="${ARTWORK_PLACEHOLDER}" alt="Artwork"></section><section id="about"><p>${padding}</p></section><section id="tokenomics"><h2>Tokenomics</h2></section><section id="roadmap"><h2>Roadmap</h2></section><section id="how-to-buy"><h2>How to buy</h2></section><section id="community"><h2>Community</h2></section><script>document.body.dataset.ready="true";</script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Public token</title><style>body{margin:0}@media(max-width:700px){body{margin:0}}</style></head><body><section id="hero"><h1>Public token</h1><img src="${ARTWORK_PLACEHOLDER}" alt="Artwork"></section><section id="about"><p>${padding}</p></section><section id="tokenomics"><h2>Tokenomics</h2></section><section id="roadmap"><h2>Roadmap</h2></section><section id="how-to-buy"><h2>How to buy</h2></section><section id="community"><h2>Community</h2></section><script>document.body.dataset.ready="true";</script></body></html>`;
 }
 
 function sitePayload(slug = "published-token") {

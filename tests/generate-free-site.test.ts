@@ -67,7 +67,6 @@ const THEME: FreeSiteTemplateInput["theme"] = {
   backgroundEffect: "gradients",
   heroStyle: "centred",
   tokenomicsStyle: "grid",
-  roadmapStyle: "cards",
   aboutStyle: "icons",
 };
 
@@ -324,13 +323,15 @@ describe("POST /api/generate-free-site success", () => {
     expect(designRequest.text.format.schema.properties.copy.required).toHaveLength(
       freeSiteCopyKeysForSections(FREE_SITE_SECTION_DEFAULTS).length,
     );
-    expect(designRequest.text.format.schema.properties.copy.required).not.toContain("roadmapTitle");
-    expect(designRequest.text.format.schema.properties.copy.required).not.toContain("faqTitle");
+    expect(designRequest.text.format.schema.properties.copy.required).not.toContain("howToBuyTitle");
     expect(designRequest.input[0].content[0].text).toContain(
       "Only write copy for these enabled sections: about, tokenomics.",
     );
     expect(designRequest.input[0].content[0].text).toContain(
-      "Do not mention or imply the existence of these disabled sections: roadmap, howToBuy, faq.",
+      "Do not mention or imply the existence of these disabled sections: howToBuy.",
+    );
+    expect(designRequest.input[0].content[0].text).toContain(
+      "This template has no roadmap and no FAQ section.",
     );
     expect(designRequest.input[0].content[0].text).toContain(
       "soft, cute, wholesome or gentle artwork must NOT use terminal tokenomics",
@@ -523,16 +524,12 @@ describe("POST /api/generate-free-site sections", () => {
   const ALL_SECTIONS: FreeSiteSections = {
     about: true,
     tokenomics: true,
-    roadmap: true,
     howToBuy: true,
-    faq: true,
   };
   const NONE_SECTIONS: FreeSiteSections = {
     about: false,
     tokenomics: false,
-    roadmap: false,
     howToBuy: false,
-    faq: false,
   };
 
   it("shrinks the copy schema to hero + community only when every optional section is disabled", async () => {
@@ -552,7 +549,7 @@ describe("POST /api/generate-free-site sections", () => {
     );
   });
 
-  it("grows the copy schema back to all 46 fields when every optional section is enabled", async () => {
+  it("grows the copy schema back to all 22 fields when every optional section is enabled", async () => {
     const design: FreeSiteDesignResponseBody = { theme: THEME, copy: copyForSections(ALL_SECTIONS) };
     const fetchMock = providerMock(design);
     vi.stubGlobal("fetch", fetchMock);
@@ -563,16 +560,14 @@ describe("POST /api/generate-free-site sections", () => {
     const designRequest = JSON.parse(
       String((fetchMock.mock.calls[1][1] as RequestInit).body),
     ) as { text: { format: { schema: FreeSiteDesignSchema } } };
-    expect(designRequest.text.format.schema.properties.copy.required).toHaveLength(46);
+    expect(designRequest.text.format.schema.properties.copy.required).toHaveLength(22);
   });
 
   it("renders only the requested sections end to end", async () => {
     const sections: FreeSiteSections = {
       about: true,
       tokenomics: false,
-      roadmap: false,
       howToBuy: false,
-      faq: false,
     };
     const design: FreeSiteDesignResponseBody = { theme: THEME, copy: copyForSections(sections) };
     vi.stubGlobal("fetch", providerMock(design));
@@ -606,7 +601,7 @@ describe("POST /api/generate-free-site sections", () => {
     const fetchMock = providerMock();
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await POST(request({ ...input(), sections: { about: "yes", roadmap: 1 } }));
+    const response = await POST(request({ ...input(), sections: { about: "yes", howToBuy: 1 } }));
     expect(response.status).toBe(200);
 
     const designRequest = JSON.parse(
@@ -617,12 +612,36 @@ describe("POST /api/generate-free-site sections", () => {
     );
   });
 
+  // Roadmap and FAQ were removed entirely (issue #303). A studio client
+  // built before that change may still send `sections.roadmap` /
+  // `sections.faq`; buildFreeSiteSections only reads FREE_SITE_SECTION_KEYS,
+  // so these stale flags are silently ignored rather than rejected.
+  it("ignores stale roadmap/faq section flags from a client saved before their removal", async () => {
+    const fetchMock = providerMock();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request({
+        ...input(),
+        sections: { about: true, tokenomics: false, howToBuy: false, roadmap: true, faq: true },
+      }),
+    );
+    expect(response.status).toBe(200);
+
+    const designRequest = JSON.parse(
+      String((fetchMock.mock.calls[1][1] as RequestInit).body),
+    ) as { text: { format: { schema: FreeSiteDesignSchema } } };
+    expect(designRequest.text.format.schema.properties.copy.required).toHaveLength(
+      freeSiteCopyKeysForSections({ about: true, tokenomics: false, howToBuy: false }).length,
+    );
+  });
+
   it("rejects a model response that writes copy for a section that was not requested", async () => {
-    // roadmapTitle was not asked for (roadmap disabled by default here), but
-    // the model wrote it anyway.
+    // howToBuyTitle was not asked for (howToBuy disabled by default here),
+    // but the model wrote it anyway.
     const overreaching = {
       theme: THEME,
-      copy: { ...copyForSections(FREE_SITE_SECTION_DEFAULTS), roadmapTitle: "Uninvited roadmap" },
+      copy: { ...copyForSections(FREE_SITE_SECTION_DEFAULTS), howToBuyTitle: "Uninvited how-to-buy" },
     };
     vi.stubGlobal("fetch", providerMock(overreaching));
 

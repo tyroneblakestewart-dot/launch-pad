@@ -49,6 +49,10 @@ const RETAIL_PROFILE: GeneratedPageAcceptanceProfile = {
   requireRetailMarketplacePresentation: true,
 };
 
+function withStyle(extra: string, css: string): string {
+  return validHtml(extra).replace(/<style>[\s\S]*?<\/style>/, `<style>${css}</style>`);
+}
+
 describe("generated full website document", () => {
   it("accepts a complete original single-file page with every required section", () => {
     expect(isCompleteGeneratedPageHtml(validHtml())).toBe(true);
@@ -151,5 +155,47 @@ describe("generated full website document", () => {
     expect(csp).toContain("img-src data:");
     expect(csp).toContain("script-src 'unsafe-inline'");
     expect(csp).toContain("connect-src 'none'");
+  });
+
+  // Layer 2 of the desktop/mobile responsiveness contract (issue #303): a
+  // generated page that has made no attempt at responsive CSS, or that
+  // hardcodes a desktop-only wide container outside any breakpoint, should
+  // never pass publish validation.
+  describe("responsive baseline", () => {
+    it("rejects a page with zero media queries and zero responsive units", () => {
+      const flat = withStyle(
+        "",
+        ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}img{max-width:100%}",
+      );
+      expect(isCompleteGeneratedPageHtml(flat)).toBe(false);
+    });
+
+    it("accepts a page whose only responsive signal is a fluid unit like clamp(), with no @media at all", () => {
+      const fluidOnly = withStyle(
+        "",
+        ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}img{max-width:100%}",
+      );
+      expect(isCompleteGeneratedPageHtml(fluidOnly)).toBe(true);
+    });
+
+    it("rejects a fixed wide pixel container outside any media query, even alongside real responsive markers", () => {
+      const overflowRisk = validHtml().replace("img{max-width:100%}", "img{max-width:100%}.wrapper{width:1900px}");
+      expect(isCompleteGeneratedPageHtml(overflowRisk)).toBe(false);
+    });
+
+    it("does not confuse a min-width/max-width media query threshold with a fixed-width container", () => {
+      // validHtml()'s only breakpoint is @media(max-width:700px) — the
+      // "700px" here is a query threshold, not a container width, and must
+      // not be flagged as an overflow risk.
+      expect(isCompleteGeneratedPageHtml(validHtml())).toBe(true);
+    });
+
+    it("does not flag a wide fixed width that only applies inside a desktop min-width breakpoint", () => {
+      const desktopOnlyWidth = validHtml().replace(
+        "@media(max-width:700px){.grid{grid-template-columns:1fr}section{padding:44px 20px}}",
+        "@media(max-width:700px){.grid{grid-template-columns:1fr}section{padding:44px 20px}}@media(min-width:1280px){.wrapper{width:1900px}}",
+      );
+      expect(isCompleteGeneratedPageHtml(desktopOnlyWidth)).toBe(true);
+    });
   });
 });

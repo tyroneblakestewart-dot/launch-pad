@@ -14,7 +14,6 @@ import {
   type FreeSiteFacts,
   type FreeSiteFontPairing,
   type FreeSiteHeroStyle,
-  type FreeSiteRoadmapStyle,
   type FreeSiteSections,
   type FreeSiteTheme,
   type FreeSiteTokenomicsStyle,
@@ -23,12 +22,12 @@ import {
 // Every existing test in this file predates the optional-section toggles
 // and asserts against copy that fills every section, so it renders with
 // every optional section enabled unless a test overrides `sections`.
+// Roadmap and FAQ were removed entirely from the free-site sections
+// (issue #303), so ALL_SECTIONS now only covers about/tokenomics/howToBuy.
 const ALL_SECTIONS: FreeSiteSections = {
   about: true,
   tokenomics: true,
-  roadmap: true,
   howToBuy: true,
-  faq: true,
 };
 
 const THEME: FreeSiteTheme = {
@@ -43,7 +42,6 @@ const THEME: FreeSiteTheme = {
   backgroundEffect: "cascade",
   heroStyle: "split",
   tokenomicsStyle: "terminal",
-  roadmapStyle: "timeline",
   aboutStyle: "numbered",
 };
 
@@ -58,21 +56,8 @@ const COPY: FreeSiteCopy = {
   about2Title: "Transparent launch",
   about2Body: "The contract and launch details stay clear for everyone.",
   about3Title: "Built to last",
-  about3Body: "The roadmap focuses on steady community-led growth.",
+  about3Body: "Growth stays steady and community-led.",
   tokenomicsTitle: "Simple tokenomics",
-  roadmapTitle: "The road ahead",
-  roadmap1Phase: "Phase 01",
-  roadmap1Title: "Launch",
-  roadmap1Body: "Open the gates and bring the first supporters together.",
-  roadmap2Phase: "Phase 02",
-  roadmap2Title: "Build",
-  roadmap2Body: "Expand the story, tools and community presence.",
-  roadmap3Phase: "Phase 03",
-  roadmap3Title: "Grow",
-  roadmap3Body: "Reach new holders through transparent community campaigns.",
-  roadmap4Phase: "Phase 04",
-  roadmap4Title: "Lead",
-  roadmap4Body: "Let the community shape the next chapter.",
   howToBuyTitle: "Join the community",
   howToBuy1Title: "Create a wallet",
   howToBuy1Body: "Set up a compatible wallet and protect the recovery phrase.",
@@ -83,17 +68,6 @@ const COPY: FreeSiteCopy = {
   howToBuy4Title: "Swap",
   howToBuy4Body: "Confirm the token address and complete the swap in the wallet.",
   communityTitle: "Find the crew",
-  faqTitle: "Questions answered",
-  faq1Q: "What is Hoodlums?",
-  faq1A: "A community-led meme token project with a New Sherwood story.",
-  faq2Q: "Where is the contract?",
-  faq2A: "The verified contract address appears at the top and bottom of the page.",
-  faq3Q: "Is liquidity locked?",
-  faq3A: "The current liquidity status is shown in the tokenomics section.",
-  faq4Q: "Where are announcements posted?",
-  faq4A: "Official updates are shared through the listed community channels.",
-  faq5Q: "Is this financial advice?",
-  faq5A: "No. Always research independently before making a decision.",
 };
 
 const FACTS: FreeSiteFacts = {
@@ -160,7 +134,6 @@ describe("renderFreeSiteTemplate", () => {
     expect(html).toContain('data-bg="cascade"');
     expect(html).toContain('data-hero="split"');
     expect(html).toContain('data-tokenomics="terminal"');
-    expect(html).toContain('data-roadmap="timeline"');
     expect(html).toContain('data-about="numbered"');
 
     expect(html.split(ARTWORK_PLACEHOLDER)).toHaveLength(2);
@@ -184,14 +157,13 @@ describe("renderFreeSiteTemplate", () => {
     expect(getBodyTag(html)).not.toMatch(/\bdata-palette=/i);
   });
 
-  it("applies all six style attributes exactly once on the body tag", () => {
+  it("applies all five style attributes exactly once on the body tag", () => {
     const theme: FreeSiteTheme = {
       ...THEME,
       fontPairing: "blocky",
       backgroundEffect: "gradients",
       heroStyle: "centred",
       tokenomicsStyle: "ledger",
-      roadmapStyle: "cards",
       aboutStyle: "quotes",
     };
     const bodyTag = getBodyTag(render(theme));
@@ -200,7 +172,6 @@ describe("renderFreeSiteTemplate", () => {
       "data-bg": theme.backgroundEffect,
       "data-hero": theme.heroStyle,
       "data-tokenomics": theme.tokenomicsStyle,
-      "data-roadmap": theme.roadmapStyle,
       "data-about": theme.aboutStyle,
     } as const;
 
@@ -235,7 +206,7 @@ describe("renderFreeSiteTemplate", () => {
     );
   });
 
-  it("renders every value of all six style unions", () => {
+  it("renders every value of all five style unions", () => {
     const fontPairings: FreeSiteFontPairing[] = [
       "street",
       "blocky",
@@ -253,7 +224,6 @@ describe("renderFreeSiteTemplate", () => {
     ];
     const heroStyles: FreeSiteHeroStyle[] = ["split", "centred", "stacked"];
     const tokenomicsStyles: FreeSiteTokenomicsStyle[] = ["terminal", "grid", "ledger"];
-    const roadmapStyles: FreeSiteRoadmapStyle[] = ["timeline", "cards", "path"];
     const aboutStyles: FreeSiteAboutStyle[] = ["numbered", "icons", "quotes"];
 
     for (const fontPairing of fontPairings) {
@@ -267,9 +237,6 @@ describe("renderFreeSiteTemplate", () => {
     }
     for (const tokenomicsStyle of tokenomicsStyles) {
       expect(() => render({ ...THEME, tokenomicsStyle })).not.toThrow();
-    }
-    for (const roadmapStyle of roadmapStyles) {
-      expect(() => render({ ...THEME, roadmapStyle })).not.toThrow();
     }
     for (const aboutStyle of aboutStyles) {
       expect(() => render({ ...THEME, aboutStyle })).not.toThrow();
@@ -315,6 +282,13 @@ describe("renderFreeSiteTemplate", () => {
     expect(html).toMatch(
       /addEventListener\('DOMContentLoaded',\s*\(\)\s*=>\s*\{\s*setTimeout\(\(\)\s*=>\s*\{\s*document\.querySelectorAll\('\.reveal:not\(\.in\)'\)\.forEach\(el => el\.classList\.add\('in'\)\);\s*\}, 1500\);/,
     );
+  });
+
+  it("keeps scroll-behavior: smooth for anchor navigation", () => {
+    const html = render();
+    const styleMatch = html.match(/<style>([\s\S]*?)<\/style>/);
+    expect(styleMatch).not.toBeNull();
+    expect(styleMatch![1]).toContain("scroll-behavior: smooth;");
   });
 
   describe("facts-driven tokenomics", () => {
@@ -449,17 +423,22 @@ describe("renderFreeSiteTemplate", () => {
 
     it("keeps nav anchors matching the sections actually rendered", () => {
       const html = render();
-      for (const id of ["about", "tokenomics", "roadmap", "how-to-buy", "community"]) {
+      for (const id of ["about", "tokenomics", "how-to-buy", "community"]) {
         expect(html).toContain(`href="#${id}"`);
       }
     });
 
     it("drops the community nav anchor when the community section is omitted", () => {
       const html = render(THEME, COPY, { ...FACTS, xHandle: "", telegram: "" });
-      for (const id of ["about", "tokenomics", "roadmap", "how-to-buy"]) {
+      for (const id of ["about", "tokenomics", "how-to-buy"]) {
         expect(html).toContain(`href="#${id}"`);
       }
       expect(html).not.toContain('href="#community"');
+    });
+
+    it("never links to a roadmap section: it has no toggle, no copy and no nav link any more", () => {
+      const html = render();
+      expect(html).not.toContain('href="#roadmap"');
     });
   });
 
@@ -536,9 +515,7 @@ describe("renderFreeSiteTemplate", () => {
     const ABOUT_ONLY: FreeSiteSections = {
       about: true,
       tokenomics: false,
-      roadmap: false,
       howToBuy: false,
-      faq: false,
     };
 
     it("renders only hero and about when the rest are disabled, with hidden empty placeholders for the others", () => {
@@ -549,13 +526,17 @@ describe("renderFreeSiteTemplate", () => {
 
       for (const [id, disabledCopy] of [
         ["tokenomics", COPY.tokenomicsTitle],
-        ["roadmap", COPY.roadmapTitle],
         ["how-to-buy", COPY.howToBuyTitle],
-        ["faq", COPY.faqTitle],
       ] as const) {
         expect(html).toContain(`<section id="${id}" aria-hidden="true" style="display:none"></section>`);
         expect(html).not.toContain(disabledCopy as string);
       }
+
+      // Roadmap has no toggle or copy any more (issue #303): the id stays
+      // only as an always-hidden marker, because REQUIRED_PAGE_SECTIONS in
+      // lib/generated-site-page.ts is shared with the bespoke AI pipeline,
+      // which still requires a roadmap section.
+      expect(html).toContain('<section id="roadmap" aria-hidden="true" style="display:none"></section>');
 
       // Every required id from lib/generated-site-page.ts stays present.
       expect(isCompleteGeneratedPageHtml(html)).toBe(true);
@@ -571,12 +552,10 @@ describe("renderFreeSiteTemplate", () => {
 
       expect(nav).toContain('href="#about"');
       expect(footer).toContain('href="#about"');
-      for (const id of ["tokenomics", "roadmap", "how-to-buy"]) {
+      for (const id of ["tokenomics", "how-to-buy"]) {
         expect(nav).not.toContain(`href="#${id}"`);
       }
-      for (const id of ["tokenomics", "roadmap"]) {
-        expect(footer).not.toContain(`href="#${id}"`);
-      }
+      expect(footer).not.toContain('href="#tokenomics"');
     });
 
     it("drops the facts-driven tokenomics stats along with the rest of the section when tokenomics is disabled", () => {
@@ -587,11 +566,9 @@ describe("renderFreeSiteTemplate", () => {
 
     it("renders every section when all toggles are enabled, matching the pre-toggle behaviour", () => {
       const html = render();
-      expect(html).toContain(COPY.roadmapTitle as string);
       expect(html).toContain(COPY.howToBuyTitle as string);
-      expect(html).toContain(COPY.faqTitle as string);
       const nav = getHeaderNavLinks(html);
-      for (const id of ["about", "tokenomics", "roadmap", "how-to-buy"]) {
+      for (const id of ["about", "tokenomics", "how-to-buy"]) {
         expect(nav).toContain(`href="#${id}"`);
       }
     });
@@ -624,17 +601,15 @@ describe("renderFreeSiteTemplate", () => {
 
     it("throws when a sections value is not a boolean", () => {
       expect(() =>
-        render(THEME, COPY, FACTS, { ...ALL_SECTIONS, roadmap: "yes" as unknown as boolean }),
-      ).toThrow(/Invalid sections value for roadmap/);
+        render(THEME, COPY, FACTS, { ...ALL_SECTIONS, howToBuy: "yes" as unknown as boolean }),
+      ).toThrow(/Invalid sections value for howToBuy/);
     });
 
-    it("defaults to about and tokenomics on, the rest off (issue #171)", () => {
+    it("defaults to about and tokenomics on, how to buy off (issue #171)", () => {
       expect(FREE_SITE_SECTION_DEFAULTS).toEqual({
         about: true,
         tokenomics: true,
-        roadmap: false,
         howToBuy: false,
-        faq: false,
       });
     });
 
@@ -642,23 +617,19 @@ describe("renderFreeSiteTemplate", () => {
       const allOff: FreeSiteSections = {
         about: false,
         tokenomics: false,
-        roadmap: false,
         howToBuy: false,
-        faq: false,
       };
       const html = render(THEME, COPY, FACTS, allOff);
 
-      for (const id of ["about", "tokenomics", "roadmap", "how-to-buy", "faq"]) {
+      for (const id of ["about", "tokenomics", "how-to-buy"]) {
         expect(html).toContain(`<section id="${id}" aria-hidden="true" style="display:none"></section>`);
       }
       const nav = getHeaderNavLinks(html);
       const footer = getFooterLinks(html);
-      for (const id of ["about", "tokenomics", "roadmap", "how-to-buy"]) {
+      for (const id of ["about", "tokenomics", "how-to-buy"]) {
         expect(nav).not.toContain(`href="#${id}"`);
       }
-      for (const id of ["about", "tokenomics", "roadmap"]) {
-        expect(footer).not.toContain(`href="#${id}"`);
-      }
+      expect(footer).not.toContain('href="#tokenomics"');
       expect(isCompleteGeneratedPageHtml(html)).toBe(true);
     });
   });

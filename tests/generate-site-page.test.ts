@@ -174,6 +174,16 @@ describe("POST /api/generate-site-page", () => {
     expect(finalRequest.input[0].content[0].text).toContain("Artwork owns the page identity");
     expect(finalRequest.input[0].content[0].text).toContain("bright, spacious discovery experience");
     expect(finalRequest.input[0].content[0].text).toContain("concise enough to finish");
+    // Desktop + mobile responsiveness, smooth scroll and layout-quality
+    // requirements are non-negotiable in the developer prompt (issue #303).
+    expect(finalRequest.input[0].content[0].text).toContain(
+      "RESPONSIVE & LAYOUT QUALITY REQUIREMENTS (NON-NEGOTIABLE)",
+    );
+    expect(finalRequest.input[0].content[0].text).toContain('name="viewport" content="width=device-width, initial-scale=1"');
+    expect(finalRequest.input[0].content[0].text).toContain("390px, 768px and 1280px+");
+    expect(finalRequest.input[0].content[0].text).toContain("centre all content inside a max-width container");
+    expect(finalRequest.input[0].content[0].text).toContain("scroll-behavior: smooth;");
+    expect(finalRequest.input[0].content[0].text).toContain("no element may be wider than the viewport");
     expect(finalRequest.input[1].content[0].text).toContain(INSPIRATION);
     expect(finalRequest.input[1].content[1]).toMatchObject({
       type: "input_image",

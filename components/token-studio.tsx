@@ -17,9 +17,7 @@ import { TokenPathChooser } from "./token-path-chooser";
 const SECTION_TOGGLE_FIELDS: ReadonlyArray<{ key: FreeSiteSectionKey; label: string }> = [
   { key: "about", label: "About" },
   { key: "tokenomics", label: "Tokenomics" },
-  { key: "roadmap", label: "Roadmap" },
   { key: "howToBuy", label: "How to buy" },
-  { key: "faq", label: "FAQ" },
 ];
 
 type EthereumProvider = {
