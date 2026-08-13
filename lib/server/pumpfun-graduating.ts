@@ -27,6 +27,8 @@ const BITQUERY_EAP_ENDPOINT = "https://streaming.bitquery.io/eap";
 const PUMP_FUN_PROGRAM_ADDRESS = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 
 const FEED_TIMEOUT_MS = 6_000;
+const ARTWORK_FETCH_TIMEOUT_MS = 3_000;
+const IPFS_GATEWAY_PREFIX = "https://ipfs.io/ipfs/";
 const MIN_PROGRESS_PERCENT = 60;
 const MAX_PROGRESS_PERCENT = 99;
 const MAX_TOKENS = 6;
@@ -186,6 +188,55 @@ export function mapBitqueryPoolsToGraduatingTokens(
     .slice(0, MAX_TOKENS);
 }
 
+function rewriteIpfsUri(uri: string): string {
+  if (!uri.startsWith("ipfs://")) return uri;
+  return IPFS_GATEWAY_PREFIX + uri.slice("ipfs://".length);
+}
+
+function looksLikeMetadataUri(uri: string): boolean {
+  const withoutQueryOrHash = uri.split(/[?#]/)[0] || "";
+  return withoutQueryOrHash.toLowerCase().endsWith(".json");
+}
+
+/**
+ * Bitquery's BaseCurrency.Uri is pump.fun's metadata JSON document (e.g.
+ * .../metadata/xxx.json), not an image — the "image" field inside it is.
+ * A direct image URI (no .json suffix) passes through unresolved instead of
+ * costing an extra request. Any fetch/parse failure or missing "image"
+ * field resolves to "" so the card falls back to the lime initial tile
+ * rather than a broken image.
+ */
+async function resolveArtworkUrl(rawUri: string): Promise<string> {
+  if (!rawUri) return "";
+  const uri = rewriteIpfsUri(rawUri);
+  if (!looksLikeMetadataUri(uri)) return uri;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ARTWORK_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(uri, { signal: controller.signal, cache: "no-store" });
+    if (!response.ok) return "";
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType && !contentType.toLowerCase().includes("json") && !looksLikeMetadataUri(uri)) {
+      return uri;
+    }
+    const metadata = (await response.json()) as { image?: unknown };
+    const image = typeof metadata?.image === "string" ? metadata.image.trim() : "";
+    return image ? rewriteIpfsUri(image) : "";
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Resolves every token's artwork in parallel, each independently timed out. */
+export async function resolveGraduatingTokensArtwork(tokens: GraduatingToken[]): Promise<GraduatingToken[]> {
+  return Promise.all(
+    tokens.map(async (token) => ({ ...token, artworkUrl: await resolveArtworkUrl(token.artworkUrl) })),
+  );
+}
+
 let graduatingFeedCache: { expiresAt: number; result: Promise<GraduatingFeedResult> } | null = null;
 
 export function resetGraduatingFeedCacheForTests(): void {
@@ -234,7 +285,9 @@ async function fetchGraduatingTokensUncached(): Promise<GraduatingFeedResult> {
       return { tokens: [], error: true };
     }
 
-    return { tokens: mapBitqueryPoolsToGraduatingTokens(payload, now), error: false };
+    const mapped = mapBitqueryPoolsToGraduatingTokens(payload, now);
+    const tokens = await resolveGraduatingTokensArtwork(mapped);
+    return { tokens, error: false };
   } catch (err) {
     console.error("[pumpfun-graduating] Bitquery request threw:", err);
     return { tokens: [], error: true };

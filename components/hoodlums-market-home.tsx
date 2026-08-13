@@ -2,6 +2,7 @@
 
 import type { MouseEvent } from "react";
 import type { PublicGeneratedSite } from "@/lib/public-site";
+import { HoodlumsGraduatingRow } from "@/components/hoodlums-graduating-row";
 import { HoodlumsPlansSection } from "@/components/hoodlums-plans-section";
 import { HoodlumsSocialShowcase } from "@/components/hoodlums-social-showcase";
 import { HoodlumsTokenGrid } from "@/components/hoodlums-token-grid";
@@ -85,6 +86,8 @@ export function HoodlumsMarketHome({
 
         <RobinhoodTrendingPanel />
       </div>
+
+      <HoodlumsGraduatingRow />
 
       {showPlans ? (
         <>

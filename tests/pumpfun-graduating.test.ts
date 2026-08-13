@@ -3,7 +3,9 @@ import {
   fetchGraduatingTokens,
   mapBitqueryPoolsToGraduatingTokens,
   resetGraduatingFeedCacheForTests,
+  resolveGraduatingTokensArtwork,
 } from "@/lib/server/pumpfun-graduating";
+import type { GraduatingToken } from "@/lib/server/pumpfun-graduating";
 
 const ORIGINAL_TOKEN = process.env.BITQUERY_ACCESS_TOKEN;
 
@@ -307,5 +309,150 @@ describe("fetchGraduatingTokens", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     now.mockRestore();
+  });
+});
+
+function graduatingToken(overrides: Partial<GraduatingToken> = {}): GraduatingToken {
+  return {
+    name: "Doggo",
+    ticker: "DOGGO",
+    address: "Addr1",
+    artworkUrl: "",
+    progressPercent: 80,
+    url: "https://pump.fun/coin/Addr1",
+    ...overrides,
+  };
+}
+
+describe("resolveGraduatingTokensArtwork (issue #295)", () => {
+  it("passes a direct (non-.json) artwork URI through unresolved, without fetching", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://example.com/doggo.png" }),
+    ]);
+
+    expect(tokens[0].artworkUrl).toBe("https://example.com/doggo.png");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rewrites a direct ipfs:// artwork URI to the public gateway without fetching", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "ipfs://bafybeidoggo/image.png" }),
+    ]);
+
+    expect(tokens[0].artworkUrl).toBe("https://ipfs.io/ipfs/bafybeidoggo/image.png");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fetches a .json metadata URI and resolves artworkUrl from its image field", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ image: "https://example.com/doggo-art.png" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+    ]);
+
+    expect(tokens[0].artworkUrl).toBe("https://example.com/doggo-art.png");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://pump.fun/metadata/addr1.json",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+  });
+
+  it("rewrites an ipfs:// image field found inside metadata JSON to the public gateway", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ image: "ipfs://bafybeidoggo/art.png" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+    ]);
+
+    expect(tokens[0].artworkUrl).toBe("https://ipfs.io/ipfs/bafybeidoggo/art.png");
+  });
+
+  it("resolves multiple tokens' artwork in parallel", async () => {
+    // A fresh Response per call: Response.json() can only be read once, and
+    // mockResolvedValue would otherwise hand back the same consumed body.
+    const fetchMock = vi.fn().mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ image: "https://example.com/art.png" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ address: "A", artworkUrl: "https://pump.fun/metadata/a.json" }),
+      graduatingToken({ address: "B", artworkUrl: "https://pump.fun/metadata/b.json" }),
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(tokens.map((t) => t.artworkUrl)).toEqual([
+      "https://example.com/art.png",
+      "https://example.com/art.png",
+    ]);
+  });
+
+  it("falls back to an empty artworkUrl when the metadata fetch fails, times out, or has no image field", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+    let tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+    ]);
+    expect(tokens[0].artworkUrl).toBe("");
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 })));
+    tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+    ]);
+    expect(tokens[0].artworkUrl).toBe("");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } }),
+      ),
+    );
+    tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+    ]);
+    expect(tokens[0].artworkUrl).toBe("");
+
+    // Same shape as what a real fetch does once the 3s AbortController fires.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(Object.assign(new Error("The operation was aborted"), { name: "AbortError" })),
+    );
+    tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+    ]);
+    expect(tokens[0].artworkUrl).toBe("");
+  });
+
+  it("leaves an already-empty artworkUrl empty without fetching", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tokens = await resolveGraduatingTokensArtwork([graduatingToken({ artworkUrl: "" })]);
+
+    expect(tokens[0].artworkUrl).toBe("");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
