@@ -6,26 +6,60 @@ import type { GraduatingFeedResult, GraduatingToken } from "@/lib/server/pumpfun
 import { clampShowcaseIndex, swipeDeltaToStep } from "@/lib/social-showcase";
 import styles from "./hoodlums-graduating-row.module.css";
 
-const POLL_INTERVAL_MS = 60_000;
+// 30s (down from 60s, issue #297), matching the server-side cache TTL in
+// lib/server/pumpfun-graduating.ts so the panel never polls faster than
+// fresh data can actually arrive. Do NOT lower further — each server
+// refresh this triggers spends Bitquery API points on the free plan.
+const POLL_INTERVAL_MS = 30_000;
 const MIN_GRADUATING_TOKENS = 2;
 const TOKENS_PER_PAGE = 4;
+// A hanging image never fires onError (seen live with an ipfs.io gateway
+// URL, issue #297) — this bounds how long a card waits before giving up
+// and swapping to the letter tile.
+const ARTWORK_LOAD_TIMEOUT_MS = 5_000;
 
 function initial(name: string): string {
   return name.trim().slice(0, 1).toUpperCase() || "?";
 }
 
 function GraduatingCard({ token }: { token: GraduatingToken }) {
-  const [artworkFailed, setArtworkFailed] = useState(false);
-  const showArt = Boolean(token.artworkUrl) && !artworkFailed;
+  const [status, setStatus] = useState<"loading" | "loaded" | "failed">(
+    token.artworkUrl ? "loading" : "failed",
+  );
+  // Resets `status` when the card is reused for a different artworkUrl
+  // (same token address, refreshed feed row) — adjusted during render per
+  // https://react.dev/learn/you-might-not-need-an-effect, so it doesn't
+  // trigger the extra render + setState-in-effect cascade a useEffect reset
+  // would.
+  const [trackedArtworkUrl, setTrackedArtworkUrl] = useState(token.artworkUrl);
+  if (token.artworkUrl !== trackedArtworkUrl) {
+    setTrackedArtworkUrl(token.artworkUrl);
+    setStatus(token.artworkUrl ? "loading" : "failed");
+  }
+
+  useEffect(() => {
+    if (status !== "loading") return;
+    const timeout = window.setTimeout(() => {
+      setStatus((prev) => (prev === "loading" ? "failed" : prev));
+    }, ARTWORK_LOAD_TIMEOUT_MS);
+    return () => window.clearTimeout(timeout);
+  }, [status]);
+
+  const showImage = status !== "failed" && Boolean(token.artworkUrl);
 
   return (
     <a href={token.url} target="_blank" rel="noreferrer" className={styles.card}>
       <div className={styles.art}>
-        {showArt ? (
-          <img src={token.artworkUrl} alt="" onError={() => setArtworkFailed(true)} />
-        ) : (
-          <span>{initial(token.name)}</span>
-        )}
+        <span>{initial(token.name)}</span>
+        {showImage ? (
+          <img
+            src={token.artworkUrl}
+            alt=""
+            className={status === "loaded" ? styles.artImageLoaded : styles.artImageLoading}
+            onLoad={() => setStatus("loaded")}
+            onError={() => setStatus("failed")}
+          />
+        ) : null}
       </div>
       <b className={styles.cardName}>{token.name}</b>
       <span className={styles.cardTicker}>${token.ticker}</span>
@@ -50,6 +84,8 @@ export function HoodlumsGraduatingRow() {
   const [tokens, setTokens] = useState<GraduatingToken[]>([]);
   const [eligible, setEligible] = useState(false);
   const [page, setPage] = useState(0);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [updatedSecondsAgo, setUpdatedSecondsAgo] = useState(0);
   const touchStartX = useRef<number | null>(null);
   const dragStartX = useRef<number | null>(null);
 
@@ -64,6 +100,7 @@ export function HoodlumsGraduatingRow() {
         const isEligible = !result.error && result.tokens.length >= MIN_GRADUATING_TOKENS;
         setTokens(isEligible ? result.tokens : []);
         setEligible(isEligible);
+        setUpdatedAt(Date.now());
       } catch {
         if (!cancelled) {
           setTokens([]);
@@ -79,6 +116,17 @@ export function HoodlumsGraduatingRow() {
       window.clearInterval(interval);
     };
   }, []);
+
+  // Ticks the "updated Xs ago" hint once a second rather than re-deriving it
+  // inline at render time, so it advances between polls instead of only
+  // jumping when a new feed result lands.
+  useEffect(() => {
+    if (updatedAt === null) return;
+    const tick = () => setUpdatedSecondsAgo(Math.max(0, Math.round((Date.now() - updatedAt) / 1000)));
+    tick();
+    const interval = window.setInterval(tick, 1_000);
+    return () => window.clearInterval(interval);
+  }, [updatedAt]);
 
   const pageCount = Math.max(1, Math.ceil(tokens.length / TOKENS_PER_PAGE));
   // Clamped at render time rather than mirrored into state: `page` can go
@@ -158,7 +206,12 @@ export function HoodlumsGraduatingRow() {
         </div>
       ) : null}
 
-      <p className={styles.caption}>live from pump.fun — Hoodlums graduations join this race at mainnet</p>
+      <p className={styles.caption}>
+        live from pump.fun — Hoodlums graduations join this race at mainnet
+        {updatedAt !== null ? (
+          <span className={styles.updatedHint}> · updated {updatedSecondsAgo}s ago</span>
+        ) : null}
+      </p>
     </section>
   );
 }

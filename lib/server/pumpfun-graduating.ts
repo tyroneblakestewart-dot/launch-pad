@@ -16,7 +16,7 @@ export type GraduatingFeedResult = { tokens: GraduatingToken[]; error: boolean }
  * including Vercel functions, so production requests from this app never
  * succeeded against it. Bitquery indexes the same on-chain pump.fun
  * bonding-curve pools and is built for server callers. This is a polling
- * GraphQL *query* (not a subscription) since the existing 60s cache below
+ * GraphQL *query* (not a subscription) since the existing 30s cache below
  * already handles polling; a missing/empty BITQUERY_ACCESS_TOKEN, a
  * non-2xx response, or a malformed payload all resolve to an error result
  * so the row just hides itself, same fail-safe contract as before.
@@ -28,14 +28,24 @@ const PUMP_FUN_PROGRAM_ADDRESS = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 
 const FEED_TIMEOUT_MS = 6_000;
 const ARTWORK_FETCH_TIMEOUT_MS = 3_000;
-const IPFS_GATEWAY_PREFIX = "https://ipfs.io/ipfs/";
+// cf-ipfs.com is a CDN-backed gateway and resolves noticeably faster than
+// plain ipfs.io, which frequently hangs (issue #297). ipfs.io is kept as a
+// same-request fallback for the metadata fetch below when the primary
+// gateway itself fails or times out; there's no runtime fallback for the
+// final rendered <img> src beyond the client-side load timeout (issue #297,
+// hoodlums-graduating-row.tsx), since only the metadata document is ever
+// fetched server-side.
+const IPFS_GATEWAYS = ["https://cf-ipfs.com/ipfs/", "https://ipfs.io/ipfs/"];
 const MIN_PROGRESS_PERCENT = 60;
 const MAX_PROGRESS_PERCENT = 99;
 const MAX_TOKENS = 6;
 // Filters both the Bitquery query itself and the mapped results: a pool
 // with no trade in this window is dropped rather than shown stale.
 const STALE_TRADE_WINDOW_MS = 10 * 60 * 1000;
-const GRADUATING_FEED_CACHE_TTL_MS = 60_000;
+// 30s (down from 60s, issue #297): halves worst-case staleness to ~1 minute
+// alongside the client panel's matching 30s poll below. Do NOT lower this
+// further — every cache miss spends Bitquery API points on the free plan.
+const GRADUATING_FEED_CACHE_TTL_MS = 30_000;
 
 // Bitquery's own documented example for pump.fun bonding-curve progress:
 // progress% = 100 - ((Base.PostAmount - POST_AMOUNT_AT_100_PERCENT) / POST_AMOUNT_RANGE * 100)
@@ -190,37 +200,49 @@ export function mapBitqueryPoolsToGraduatingTokens(
 
 function rewriteIpfsUri(uri: string): string {
   if (!uri.startsWith("ipfs://")) return uri;
-  return IPFS_GATEWAY_PREFIX + uri.slice("ipfs://".length);
+  return IPFS_GATEWAYS[0] + uri.slice("ipfs://".length);
 }
 
-function looksLikeMetadataUri(uri: string): boolean {
+/** The next gateway to retry with, or null if `uri` isn't on the primary IPFS gateway. */
+function ipfsFallbackUri(uri: string): string | null {
+  const [primary, fallback] = IPFS_GATEWAYS;
+  if (!uri.startsWith(primary)) return null;
+  return fallback + uri.slice(primary.length);
+}
+
+const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".avif", ".bmp", ".ico"];
+
+function looksLikeImageUri(uri: string): boolean {
   const withoutQueryOrHash = uri.split(/[?#]/)[0] || "";
-  return withoutQueryOrHash.toLowerCase().endsWith(".json");
+  const lower = withoutQueryOrHash.toLowerCase();
+  return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
 /**
- * Bitquery's BaseCurrency.Uri is pump.fun's metadata JSON document (e.g.
- * .../metadata/xxx.json), not an image — the "image" field inside it is.
- * A direct image URI (no .json suffix) passes through unresolved instead of
- * costing an extra request. Any fetch/parse failure or missing "image"
- * field resolves to "" so the card falls back to the lime initial tile
- * rather than a broken image.
+ * Fetches `uri` and, by content rather than filename (issue #297 — some
+ * pump.fun metadata URIs have no ".json" suffix, e.g.
+ * https://meta.<host>.uk/metadata/<id>), decides whether it's pump.fun's
+ * metadata JSON document (Bitquery's BaseCurrency.Uri, whose "image" field
+ * is the real artwork) or already an image being served without an
+ * extension. A JSON content-type, or a body that sniffs as JSON (starts
+ * with "{"), is parsed for "image"; anything else that fetched
+ * successfully is treated as the image itself. Any fetch/timeout/parse
+ * failure, non-2xx status, or missing "image" field resolves to "".
  */
-async function resolveArtworkUrl(rawUri: string): Promise<string> {
-  if (!rawUri) return "";
-  const uri = rewriteIpfsUri(rawUri);
-  if (!looksLikeMetadataUri(uri)) return uri;
-
+async function fetchArtworkFromUri(uri: string): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ARTWORK_FETCH_TIMEOUT_MS);
   try {
     const response = await fetch(uri, { signal: controller.signal, cache: "no-store" });
     if (!response.ok) return "";
-    const contentType = response.headers.get("content-type") || "";
-    if (contentType && !contentType.toLowerCase().includes("json") && !looksLikeMetadataUri(uri)) {
-      return uri;
-    }
-    const metadata = (await response.json()) as { image?: unknown };
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
+    if (contentType.startsWith("image/")) return uri;
+
+    const text = await response.text();
+    const trimmed = text.trimStart();
+    if (!contentType.includes("json") && !trimmed.startsWith("{")) return uri;
+
+    const metadata = JSON.parse(trimmed) as { image?: unknown };
     const image = typeof metadata?.image === "string" ? metadata.image.trim() : "";
     return image ? rewriteIpfsUri(image) : "";
   } catch {
@@ -228,6 +250,29 @@ async function resolveArtworkUrl(rawUri: string): Promise<string> {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/**
+ * A direct image URI (obvious by extension) passes through unresolved
+ * instead of costing an extra request. Everything else is a metadata-URI
+ * candidate: fetched and sniffed by content (see `fetchArtworkFromUri`). If
+ * the URI is on the primary IPFS gateway and that fetch comes back empty
+ * (timeout, hang, or non-2xx — the frequent ipfs.io failure mode this
+ * guards against), retry once against the fallback gateway before giving
+ * up to "".
+ */
+async function resolveArtworkUrl(rawUri: string): Promise<string> {
+  if (!rawUri) return "";
+  const uri = rewriteIpfsUri(rawUri);
+  if (!/^https?:\/\//i.test(uri)) return uri;
+  if (looksLikeImageUri(uri)) return uri;
+
+  const resolved = await fetchArtworkFromUri(uri);
+  if (resolved) return resolved;
+
+  const fallbackUri = ipfsFallbackUri(uri);
+  if (!fallbackUri) return "";
+  return fetchArtworkFromUri(fallbackUri);
 }
 
 /** Resolves every token's artwork in parallel, each independently timed out. */
@@ -299,7 +344,7 @@ async function fetchGraduatingTokensUncached(): Promise<GraduatingFeedResult> {
 /**
  * Server-only fetch of pump.fun tokens racing toward graduation, sourced
  * from Bitquery's indexed pump.fun bonding-curve pool state (see module doc
- * comment). 60s in-memory cache — any failure, missing token, or malformed
+ * comment). 30s in-memory cache — any failure, missing token, or malformed
  * response resolves to an empty, error-flagged result instead of throwing,
  * so the panel can hide the row rather than show a stale or dead grid.
  */

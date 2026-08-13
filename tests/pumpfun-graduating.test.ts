@@ -304,7 +304,7 @@ describe("fetchGraduatingTokens", () => {
     await fetchGraduatingTokens();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    now.mockReturnValue(1_000_000 + 60_001);
+    now.mockReturnValue(1_000_000 + 30_001);
     await fetchGraduatingTokens();
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
@@ -337,7 +337,7 @@ describe("resolveGraduatingTokensArtwork (issue #295)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("rewrites a direct ipfs:// artwork URI to the public gateway without fetching", async () => {
+  it("rewrites a direct ipfs:// artwork URI to the faster CDN-backed gateway without fetching", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -345,8 +345,102 @@ describe("resolveGraduatingTokensArtwork (issue #295)", () => {
       graduatingToken({ artworkUrl: "ipfs://bafybeidoggo/image.png" }),
     ]);
 
-    expect(tokens[0].artworkUrl).toBe("https://ipfs.io/ipfs/bafybeidoggo/image.png");
+    expect(tokens[0].artworkUrl).toBe("https://cf-ipfs.com/ipfs/bafybeidoggo/image.png");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("resolves a metadata URI with no recognizable suffix by fetching and sniffing its content-type (issue #297)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ image: "https://example.com/doggo-art.png" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://meta.example.uk/metadata/xyz" }),
+    ]);
+
+    expect(tokens[0].artworkUrl).toBe("https://example.com/doggo-art.png");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://meta.example.uk/metadata/xyz",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+  });
+
+  it("resolves a suffixless metadata URI by sniffing the response body when content-type doesn't say json", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ image: "https://example.com/doggo-art.png" }), { status: 200 }),
+      ),
+    );
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://meta.example.uk/metadata/xyz" }),
+    ]);
+
+    expect(tokens[0].artworkUrl).toBe("https://example.com/doggo-art.png");
+  });
+
+  it("treats a suffixless URI that resolves to actual image content as the artwork itself", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("<binary image bytes>", { status: 200, headers: { "Content-Type": "image/png" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://cdn.example.com/art/abc123" }),
+    ]);
+
+    expect(tokens[0].artworkUrl).toBe("https://cdn.example.com/art/abc123");
+  });
+
+  it("retries the fallback IPFS gateway when the primary gateway's metadata fetch fails", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error("The operation was aborted"), { name: "AbortError" }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ image: "https://example.com/doggo-art.png" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "ipfs://bafybeidoggo/metadata.json" }),
+    ]);
+
+    expect(tokens[0].artworkUrl).toBe("https://example.com/doggo-art.png");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://cf-ipfs.com/ipfs/bafybeidoggo/metadata.json");
+    expect(fetchMock.mock.calls[1][0]).toBe("https://ipfs.io/ipfs/bafybeidoggo/metadata.json");
+  });
+
+  it("gives up with an empty artworkUrl when both the primary and fallback IPFS gateways fail", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("network down"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "ipfs://bafybeidoggo/metadata.json" }),
+    ]);
+
+    expect(tokens[0].artworkUrl).toBe("");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a fallback gateway for a plain https metadata URI that fails", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("network down"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+    ]);
+
+    expect(tokens[0].artworkUrl).toBe("");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("fetches a .json metadata URI and resolves artworkUrl from its image field", async () => {
@@ -384,7 +478,7 @@ describe("resolveGraduatingTokensArtwork (issue #295)", () => {
       graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
     ]);
 
-    expect(tokens[0].artworkUrl).toBe("https://ipfs.io/ipfs/bafybeidoggo/art.png");
+    expect(tokens[0].artworkUrl).toBe("https://cf-ipfs.com/ipfs/bafybeidoggo/art.png");
   });
 
   it("resolves multiple tokens' artwork in parallel", async () => {
