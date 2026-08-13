@@ -9,9 +9,9 @@ async function source(file: string) {
 }
 
 describe("Hoodlums graduating row UI (issue #297)", () => {
-  it("polls every 30s, matching the server cache TTL, with a comment noting the Bitquery API-point tradeoff", async () => {
+  it("polls every 5 minutes, matching the server cache TTL, with a comment noting the Bitquery API-point tradeoff", async () => {
     const component = await source("components/hoodlums-graduating-row.tsx");
-    expect(component).toContain("const POLL_INTERVAL_MS = 30_000;");
+    expect(component).toContain("const POLL_INTERVAL_MS = 300_000;");
     expect(component).toMatch(/Bitquery API points/);
   });
 
@@ -39,11 +39,14 @@ describe("Hoodlums graduating row UI (issue #297)", () => {
     expect(component).toContain('onError={() => setStatus("failed")}');
   });
 
-  it("tracks and displays an updated-Xs-ago hint next to the row caption", async () => {
+  it("tracks and displays an updated-ago hint next to the row caption, in minutes once a minute has passed", async () => {
     const component = await source("components/hoodlums-graduating-row.tsx");
     expect(component).toContain("setUpdatedAt(Date.now());");
-    expect(component).toContain("updated {updatedSecondsAgo}s ago");
+    expect(component).toContain("updated {formatUpdatedAgo(updatedSecondsAgo)}");
     expect(component).toContain("styles.updatedHint");
+    expect(component).toMatch(/function formatUpdatedAgo\(seconds: number\): string \{/);
+    expect(component).toContain('return `${seconds}s ago`;');
+    expect(component).toContain('return `${Math.floor(seconds / 60)}m ago`;');
   });
 
   it("animates progress-bar width changes with a CSS transition", async () => {

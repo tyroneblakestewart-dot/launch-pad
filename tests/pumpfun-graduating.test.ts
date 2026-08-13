@@ -305,7 +305,7 @@ describe("fetchGraduatingTokens", () => {
     await fetchGraduatingTokens();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    now.mockReturnValue(1_000_000 + 30_001);
+    now.mockReturnValue(1_000_000 + 300_001);
     await fetchGraduatingTokens();
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
