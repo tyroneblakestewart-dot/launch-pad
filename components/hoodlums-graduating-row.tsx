@@ -6,11 +6,15 @@ import type { GraduatingFeedResult, GraduatingToken } from "@/lib/server/pumpfun
 import { clampShowcaseIndex, swipeDeltaToStep } from "@/lib/social-showcase";
 import styles from "./hoodlums-graduating-row.module.css";
 
-// 30s (down from 60s, issue #297), matching the server-side cache TTL in
-// lib/server/pumpfun-graduating.ts so the panel never polls faster than
-// fresh data can actually arrive. Do NOT lower further — each server
-// refresh this triggers spends Bitquery API points on the free plan.
-const POLL_INTERVAL_MS = 30_000;
+// 5 minutes (up from 30s, issue #305), matching the server-side cache TTL
+// in lib/server/pumpfun-graduating.ts so the panel never polls faster than
+// fresh data can actually arrive. The 30s+30s combo spent ~2,900 Bitquery
+// queries/day and exhausted the free-tier point allowance in under a day;
+// a "graduating now" board doesn't need sub-minute freshness, so 5 minutes
+// reads identically live to a visitor while cutting usage ~10x. Do NOT
+// lower further — each server refresh this triggers spends Bitquery API points
+// on the free plan.
+const POLL_INTERVAL_MS = 300_000;
 const MIN_GRADUATING_TOKENS = 2;
 const TOKENS_PER_PAGE = 4;
 // A hanging image never fires onError (seen live with an ipfs.io gateway
@@ -20,6 +24,13 @@ const ARTWORK_LOAD_TIMEOUT_MS = 5_000;
 
 function initial(name: string): string {
   return name.trim().slice(0, 1).toUpperCase() || "?";
+}
+
+// At the 5-minute poll cadence, "updated 240s ago" reads worse than
+// "updated 4m ago" — switch to whole minutes once a minute has passed.
+function formatUpdatedAgo(seconds: number): string {
+  if (seconds < 60) return `${seconds}s ago`;
+  return `${Math.floor(seconds / 60)}m ago`;
 }
 
 function GraduatingCard({ token }: { token: GraduatingToken }) {
@@ -209,7 +220,7 @@ export function HoodlumsGraduatingRow() {
       <p className={styles.caption}>
         live from pump.fun — Hoodlums graduations join this race at mainnet
         {updatedAt !== null ? (
-          <span className={styles.updatedHint}> · updated {updatedSecondsAgo}s ago</span>
+          <span className={styles.updatedHint}> · updated {formatUpdatedAgo(updatedSecondsAgo)}</span>
         ) : null}
       </p>
     </section>

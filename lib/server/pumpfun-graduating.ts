@@ -21,7 +21,7 @@ export type GraduatingFeedResult = { tokens: GraduatingToken[]; error: boolean }
  * including Vercel functions, so production requests from this app never
  * succeeded against it. Bitquery indexes the same on-chain pump.fun
  * bonding-curve pools and is built for server callers. This is a polling
- * GraphQL *query* (not a subscription) since the existing 30s cache below
+ * GraphQL *query* (not a subscription) since the existing 5-minute cache below
  * already handles polling; a missing/empty BITQUERY_ACCESS_TOKEN, a
  * non-2xx response, or a malformed payload all resolve to an error result
  * so the row just hides itself, same fail-safe contract as before.
@@ -47,10 +47,14 @@ const MAX_TOKENS = 6;
 // Filters both the Bitquery query itself and the mapped results: a pool
 // with no trade in this window is dropped rather than shown stale.
 const STALE_TRADE_WINDOW_MS = 10 * 60 * 1000;
-// 30s (down from 60s, issue #297): halves worst-case staleness to ~1 minute
-// alongside the client panel's matching 30s poll below. Do NOT lower this
-// further — every cache miss spends Bitquery API points on the free plan.
-const GRADUATING_FEED_CACHE_TTL_MS = 30_000;
+// 300s / 5 minutes (up from 30s, issue #305): the 30s cache + 30s client
+// poll spent ~2,900 Bitquery queries/day, exhausting the free-tier monthly
+// point allowance in under a day (production 402 "access restricted by
+// points limit"). A "graduating now" board doesn't need sub-minute
+// freshness — 5 minutes reads identically live to a visitor while cutting
+// usage ~10x to keep the free tier sustainable. Do NOT lower this further
+// without a paid Bitquery plan; every cache miss spends API points.
+const GRADUATING_FEED_CACHE_TTL_MS = 300_000;
 
 // Bitquery's own documented example for pump.fun bonding-curve progress:
 // progress% = 100 - ((Base.PostAmount - POST_AMOUNT_AT_100_PERCENT) / POST_AMOUNT_RANGE * 100)
@@ -398,9 +402,10 @@ async function fetchGraduatingTokensUncached(): Promise<GraduatingFeedResult> {
 /**
  * Server-only fetch of pump.fun tokens racing toward graduation, sourced
  * from Bitquery's indexed pump.fun bonding-curve pool state (see module doc
- * comment). 30s in-memory cache — any failure, missing token, or malformed
- * response resolves to an empty, error-flagged result instead of throwing,
- * so the panel can hide the row rather than show a stale or dead grid.
+ * comment). 5-minute in-memory cache (issue #305) — any failure, missing
+ * token, or malformed response resolves to an empty, error-flagged result
+ * instead of throwing, so the panel can hide the row rather than show a
+ * stale or dead grid.
  */
 export function fetchGraduatingTokens(): Promise<GraduatingFeedResult> {
   if (graduatingFeedCache && graduatingFeedCache.expiresAt > Date.now()) return graduatingFeedCache.result;
