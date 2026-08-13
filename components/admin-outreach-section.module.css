@@ -1,0 +1,316 @@
+.panel {
+  border: 1px solid rgba(188, 231, 89, 0.15);
+  border-radius: 16px;
+  background: rgba(10, 13, 11, 0.88);
+  padding: 18px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 1.05rem;
+}
+
+.sectionIntro {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: rgba(238, 243, 234, 0.62);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.refreshButton {
+  flex: none;
+  border-radius: 9px;
+  border: 1px solid rgba(188, 231, 89, 0.3);
+  background: transparent;
+  color: #bce759;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.refreshButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.dormantNotice {
+  margin: 0 0 12px;
+  border: 1px solid rgba(240, 191, 78, 0.3);
+  border-radius: 10px;
+  background: rgba(240, 191, 78, 0.1);
+  color: #f0bf4e;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.error {
+  margin: 0 0 12px;
+  border: 1px solid rgba(255, 119, 119, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 119, 119, 0.08);
+  color: #ff9a9a;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+}
+
+.empty {
+  margin: 12px 0 0;
+  color: rgba(238, 243, 234, 0.62);
+  font-size: 0.78rem;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.filter,
+.filterActive {
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.76rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.filter {
+  color: rgba(238, 243, 234, 0.65);
+  background: transparent;
+  border: 1px solid rgba(238, 243, 234, 0.16);
+}
+
+.filterActive {
+  color: #10150d;
+  background: #bce759;
+  border: 1px solid #bce759;
+}
+
+.itemList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  border: 1px solid rgba(238, 243, 234, 0.09);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.018);
+  padding: 14px;
+}
+
+.itemTop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.artwork {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.artworkFallback {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(188, 231, 89, 0.14);
+  color: #bce759;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.itemMeta {
+  flex: 1;
+  min-width: 0;
+}
+
+.itemTitle {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 0.9rem;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.ticker {
+  color: #bce759;
+  font-weight: 800;
+}
+
+.itemSub {
+  margin: 4px 0 0;
+  color: rgba(238, 243, 234, 0.55);
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+
+.badgePending,
+.badgePosted,
+.badgeFailed,
+.badgeDismissed {
+  flex: none;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badgePending {
+  color: #f0bf4e;
+  background: rgba(240, 191, 78, 0.1);
+  border: 1px solid rgba(240, 191, 78, 0.25);
+}
+
+.badgePosted {
+  color: #72e88d;
+  background: rgba(114, 232, 141, 0.1);
+  border: 1px solid rgba(114, 232, 141, 0.25);
+}
+
+.badgeFailed {
+  color: #ff9a9a;
+  background: rgba(255, 119, 119, 0.1);
+  border: 1px solid rgba(255, 119, 119, 0.28);
+}
+
+.badgeDismissed {
+  color: rgba(238, 243, 234, 0.6);
+  background: rgba(238, 243, 234, 0.06);
+  border: 1px solid rgba(238, 243, 234, 0.14);
+}
+
+.body {
+  margin: 0;
+  color: rgba(238, 243, 234, 0.85);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.failureReason {
+  margin: 8px 0 0;
+  color: #ff9a9a;
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.textInput {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  border-radius: 9px;
+  border: 1px solid rgba(188, 231, 89, 0.2);
+  background: rgba(0, 0, 0, 0.28);
+  color: #eef3ea;
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.textInput:focus {
+  outline: 2px solid rgba(188, 231, 89, 0.22);
+  outline-offset: 1px;
+}
+
+.itemActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.approveButton,
+.editButton,
+.dismissButton,
+.saveButton,
+.discardButton {
+  border-radius: 9px;
+  padding: 7px 11px;
+  font-size: 0.74rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.approveButton,
+.saveButton {
+  color: #10150d;
+  background: #bce759;
+  border: 1px solid #bce759;
+}
+
+.editButton {
+  color: #72e88d;
+  background: transparent;
+  border: 1px solid rgba(114, 232, 141, 0.3);
+}
+
+.dismissButton,
+.discardButton {
+  color: rgba(238, 243, 234, 0.7);
+  background: transparent;
+  border: 1px solid rgba(238, 243, 234, 0.16);
+}
+
+.approveButton:disabled,
+.editButton:disabled,
+.dismissButton:disabled,
+.saveButton:disabled,
+.discardButton:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* Mobile Safari is the primary UI target (CLAUDE.md rule 7) — verified at
+   the 390px iPhone viewport width. */
+@media (max-width: 520px) {
+  .panel {
+    padding: 14px;
+  }
+
+  .sectionHeader {
+    flex-direction: column;
+  }
+
+  .refreshButton {
+    align-self: flex-start;
+  }
+
+  .itemTop {
+    align-items: flex-start;
+  }
+
+  .itemActions button {
+    flex: 1;
+    min-width: 0;
+  }
+}

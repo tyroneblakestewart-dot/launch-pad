@@ -8,7 +8,15 @@ import { getPostgresPool } from "@/lib/server/postgres";
 export type SystemHealthStatus = "green" | "amber" | "red";
 
 export type SystemHealthCheck = {
-  id: "website-generation" | "database" | "contracts" | "deployment" | "subscribers" | "hoodchat" | "token-chat";
+  id:
+    | "website-generation"
+    | "database"
+    | "contracts"
+    | "deployment"
+    | "subscribers"
+    | "hoodchat"
+    | "token-chat"
+    | "outreach";
   label: string;
   status: SystemHealthStatus;
   message: string;
@@ -276,6 +284,41 @@ export async function checkTokenChatHealth(deps: { databaseUrl?: string; ping?: 
   return checkChatTableHealth("token-chat", "Token chat", "token_chat_messages", deps);
 }
 
+export type OutreachPing = () => Promise<unknown>;
+
+/**
+ * Reports whether the `outreach_queue_items` table backing the dormant X
+ * outreach bot (issue #298) is reachable, and surfaces the
+ * OUTREACH_QUEUE_ENABLED flag state (never the X_OUTREACH_* secret values —
+ * just "configured"/"not configured" is left to the pipeline drill-down).
+ */
+export async function checkOutreachHealth(
+  deps: { databaseUrl?: string; ping?: OutreachPing; env?: Record<string, string | undefined> } = {},
+): Promise<SystemHealthCheck> {
+  const id = "outreach" as const;
+  const label = "Outreach";
+  const env = deps.env ?? process.env;
+  const queueEnabled = (env.OUTREACH_QUEUE_ENABLED || "").trim() === "true";
+  const flagNote = queueEnabled ? "Queue flag is on." : "Queue flag is off (dormant).";
+
+  const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl && !deps.ping) {
+    return { id, label, status: "amber", message: `DATABASE_URL is not configured. ${flagNote}` };
+  }
+  const ping = deps.ping ?? (() => getPostgresPool(databaseUrl).query(`SELECT 1 FROM outreach_queue_items LIMIT 1`));
+  try {
+    await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, "Outreach health check timed out.");
+    return { id, label, status: "green", message: `The outreach_queue_items table is reachable. ${flagNote}` };
+  } catch {
+    return {
+      id,
+      label,
+      status: "red",
+      message: `The outreach_queue_items table is not reachable. Apply migration 013_outreach.sql. ${flagNote}`,
+    };
+  }
+}
+
 export type SystemHealthDeps = {
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
@@ -284,6 +327,7 @@ export type SystemHealthDeps = {
   subscribers?: Parameters<typeof checkSubscribersHealth>[0];
   hoodchat?: Parameters<typeof checkHoodchatHealth>[0];
   tokenChat?: Parameters<typeof checkTokenChatHealth>[0];
+  outreach?: Parameters<typeof checkOutreachHealth>[0];
 };
 
 /**
@@ -292,7 +336,7 @@ export type SystemHealthDeps = {
  * the others or the response as a whole.
  */
 export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<SystemHealthCheck[]> {
-  const [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat] = await Promise.all([
+  const [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat, outreach] = await Promise.all([
     checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
     checkDatabaseHealth(deps.database),
     checkContractsHealth(deps.contracts),
@@ -300,6 +344,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     checkSubscribersHealth(deps.subscribers),
     checkHoodchatHealth(deps.hoodchat),
     checkTokenChatHealth(deps.tokenChat),
+    checkOutreachHealth({ env: deps.env, ...deps.outreach }),
   ]);
-  return [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat];
+  return [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat, outreach];
 }

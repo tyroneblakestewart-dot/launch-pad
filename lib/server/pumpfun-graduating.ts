@@ -5,6 +5,11 @@ export type GraduatingToken = {
   artworkUrl: string;
   progressPercent: number;
   url: string;
+  // The token creator's own X/Twitter handle, read from the same pump.fun
+  // metadata document as artworkUrl (issue #298) — null until that metadata
+  // is resolved, and still null afterwards if the creator never published
+  // one. Never invented; only ever sourced from their own opt-in metadata.
+  creatorXHandle: string | null;
 };
 
 export type GraduatingFeedResult = { tokens: GraduatingToken[]; error: boolean };
@@ -191,6 +196,9 @@ export function mapBitqueryPoolsToGraduatingTokens(
         artworkUrl: candidate.artworkUrl,
         progressPercent: computeProgressPercent(candidate.postAmount),
         url: `https://pump.fun/coin/${candidate.address}`,
+        // Not yet resolved — only the metadata fetch in
+        // resolveGraduatingTokensArtwork can populate this.
+        creatorXHandle: null,
       }),
     )
     .filter((token) => token.progressPercent >= MIN_PROGRESS_PERCENT && token.progressPercent <= MAX_PROGRESS_PERCENT)
@@ -218,35 +226,77 @@ function looksLikeImageUri(uri: string): boolean {
   return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
+// X/Twitter handles are 1-15 characters of letters, digits and underscores.
+const TWITTER_HANDLE_PATTERN = /^[A-Za-z0-9_]{1,15}$/;
+
+/**
+ * Normalises pump.fun metadata's "twitter" field (issue #298) — a profile
+ * URL (https://x.com/handle or https://twitter.com/handle), a bare
+ * "@handle", or a bare "handle" — down to a plain handle, or null if the
+ * value is absent, not a string, or doesn't look like a real handle. Never
+ * invents a handle: this only ever echoes what the creator published
+ * themselves in their own token's metadata.
+ */
+function extractTwitterHandle(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const host = url.hostname.toLowerCase().replace(/^www\./, "");
+      if (host !== "x.com" && host !== "twitter.com") return null;
+      const segment = url.pathname.split("/").filter(Boolean)[0] || "";
+      return TWITTER_HANDLE_PATTERN.test(segment) ? segment : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const withoutAt = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
+  return TWITTER_HANDLE_PATTERN.test(withoutAt) ? withoutAt : null;
+}
+
+type MetadataResolution = { artworkUrl: string; creatorXHandle: string | null };
+
+const EMPTY_METADATA_RESOLUTION: MetadataResolution = { artworkUrl: "", creatorXHandle: null };
+
 /**
  * Fetches `uri` and, by content rather than filename (issue #297 — some
  * pump.fun metadata URIs have no ".json" suffix, e.g.
  * https://meta.<host>.uk/metadata/<id>), decides whether it's pump.fun's
  * metadata JSON document (Bitquery's BaseCurrency.Uri, whose "image" field
- * is the real artwork) or already an image being served without an
- * extension. A JSON content-type, or a body that sniffs as JSON (starts
- * with "{"), is parsed for "image"; anything else that fetched
- * successfully is treated as the image itself. Any fetch/timeout/parse
- * failure, non-2xx status, or missing "image" field resolves to "".
+ * is the real artwork and whose "twitter" field, if present, is the
+ * creator's own opt-in X handle — issue #298) or already an image being
+ * served without an extension. A JSON content-type, or a body that sniffs
+ * as JSON (starts with "{"), is parsed for "image"/"twitter"; anything else
+ * that fetched successfully is treated as the image itself (with no handle
+ * to read). Any fetch/timeout/parse failure, non-2xx status, or missing
+ * "image" field resolves artworkUrl to "". This is the single metadata
+ * fetch shared by both fields — no extra network request for the handle.
  */
-async function fetchArtworkFromUri(uri: string): Promise<string> {
+async function fetchArtworkFromUri(uri: string): Promise<MetadataResolution> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ARTWORK_FETCH_TIMEOUT_MS);
   try {
     const response = await fetch(uri, { signal: controller.signal, cache: "no-store" });
-    if (!response.ok) return "";
+    if (!response.ok) return EMPTY_METADATA_RESOLUTION;
     const contentType = (response.headers.get("content-type") || "").toLowerCase();
-    if (contentType.startsWith("image/")) return uri;
+    if (contentType.startsWith("image/")) return { artworkUrl: uri, creatorXHandle: null };
 
     const text = await response.text();
     const trimmed = text.trimStart();
-    if (!contentType.includes("json") && !trimmed.startsWith("{")) return uri;
+    if (!contentType.includes("json") && !trimmed.startsWith("{")) return { artworkUrl: uri, creatorXHandle: null };
 
-    const metadata = JSON.parse(trimmed) as { image?: unknown };
+    const metadata = JSON.parse(trimmed) as { image?: unknown; twitter?: unknown };
     const image = typeof metadata?.image === "string" ? metadata.image.trim() : "";
-    return image ? rewriteIpfsUri(image) : "";
+    return {
+      artworkUrl: image ? rewriteIpfsUri(image) : "",
+      creatorXHandle: extractTwitterHandle(metadata?.twitter),
+    };
   } catch {
-    return "";
+    return EMPTY_METADATA_RESOLUTION;
   } finally {
     clearTimeout(timeout);
   }
@@ -254,31 +304,35 @@ async function fetchArtworkFromUri(uri: string): Promise<string> {
 
 /**
  * A direct image URI (obvious by extension) passes through unresolved
- * instead of costing an extra request. Everything else is a metadata-URI
+ * instead of costing an extra request — no metadata document exists to read
+ * a creator handle from in that case. Everything else is a metadata-URI
  * candidate: fetched and sniffed by content (see `fetchArtworkFromUri`). If
- * the URI is on the primary IPFS gateway and that fetch comes back empty
- * (timeout, hang, or non-2xx — the frequent ipfs.io failure mode this
- * guards against), retry once against the fallback gateway before giving
- * up to "".
+ * the URI is on the primary IPFS gateway and that fetch comes back with no
+ * artwork (timeout, hang, or non-2xx — the frequent ipfs.io failure mode
+ * this guards against), retry once against the fallback gateway before
+ * giving up.
  */
-async function resolveArtworkUrl(rawUri: string): Promise<string> {
-  if (!rawUri) return "";
+async function resolveArtworkUrl(rawUri: string): Promise<MetadataResolution> {
+  if (!rawUri) return EMPTY_METADATA_RESOLUTION;
   const uri = rewriteIpfsUri(rawUri);
-  if (!/^https?:\/\//i.test(uri)) return uri;
-  if (looksLikeImageUri(uri)) return uri;
+  if (!/^https?:\/\//i.test(uri)) return { artworkUrl: uri, creatorXHandle: null };
+  if (looksLikeImageUri(uri)) return { artworkUrl: uri, creatorXHandle: null };
 
   const resolved = await fetchArtworkFromUri(uri);
-  if (resolved) return resolved;
+  if (resolved.artworkUrl) return resolved;
 
   const fallbackUri = ipfsFallbackUri(uri);
-  if (!fallbackUri) return "";
+  if (!fallbackUri) return EMPTY_METADATA_RESOLUTION;
   return fetchArtworkFromUri(fallbackUri);
 }
 
-/** Resolves every token's artwork in parallel, each independently timed out. */
+/** Resolves every token's artwork (and, from the same fetch, creator handle) in parallel, each independently timed out. */
 export async function resolveGraduatingTokensArtwork(tokens: GraduatingToken[]): Promise<GraduatingToken[]> {
   return Promise.all(
-    tokens.map(async (token) => ({ ...token, artworkUrl: await resolveArtworkUrl(token.artworkUrl) })),
+    tokens.map(async (token) => {
+      const resolved = await resolveArtworkUrl(token.artworkUrl);
+      return { ...token, artworkUrl: resolved.artworkUrl, creatorXHandle: resolved.creatorXHandle };
+    }),
   );
 }
 

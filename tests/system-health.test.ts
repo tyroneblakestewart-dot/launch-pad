@@ -4,6 +4,7 @@ import {
   checkDatabaseHealth,
   checkDeploymentHealth,
   checkHoodchatHealth,
+  checkOutreachHealth,
   checkSubscribersHealth,
   checkTokenChatHealth,
   checkWebsiteGenerationHealth,
@@ -169,8 +170,42 @@ describe("checkTokenChatHealth", () => {
   });
 });
 
+describe("checkOutreachHealth", () => {
+  it("is green when the outreach_queue_items table ping succeeds, and reports the queue flag state", async () => {
+    const off = await checkOutreachHealth({ ping: async () => ({ rows: [] }), env: {} });
+    expect(off).toMatchObject({ id: "outreach", status: "green" });
+    expect(off.message).toContain("dormant");
+
+    const on = await checkOutreachHealth({
+      ping: async () => ({ rows: [] }),
+      env: { OUTREACH_QUEUE_ENABLED: "true" },
+    });
+    expect(on.message).toContain("Queue flag is on");
+  });
+
+  it("is red when the ping rejects (e.g. the migration has not been applied)", async () => {
+    const result = await checkOutreachHealth({
+      ping: async () => Promise.reject(new Error(`relation "outreach_queue_items" does not exist`)),
+    });
+    expect(result).toMatchObject({ id: "outreach", status: "red" });
+  });
+
+  it("is amber when DATABASE_URL is not configured", async () => {
+    const result = await checkOutreachHealth({ databaseUrl: "", env: {} });
+    expect(result).toMatchObject({ id: "outreach", status: "amber" });
+  });
+
+  it("never leaks X_OUTREACH_* credential values into the message", async () => {
+    const result = await checkOutreachHealth({
+      ping: async () => ({ rows: [] }),
+      env: { X_OUTREACH_API_KEY: "super-secret-value" },
+    });
+    expect(result.message).not.toContain("super-secret-value");
+  });
+});
+
 describe("getSystemHealth", () => {
-  it("returns all seven checks, one per required area", async () => {
+  it("returns all eight checks, one per required area", async () => {
     const checks = await getSystemHealth({
       env: { NODE_ENV: "development" },
       database: { databaseUrl: "" },
@@ -178,9 +213,19 @@ describe("getSystemHealth", () => {
       subscribers: { databaseUrl: "" },
       hoodchat: { databaseUrl: "" },
       tokenChat: { databaseUrl: "" },
+      outreach: { databaseUrl: "" },
     });
     expect(checks.map((check) => check.id).sort()).toEqual(
-      ["contracts", "database", "deployment", "hoodchat", "subscribers", "token-chat", "website-generation"].sort(),
+      [
+        "contracts",
+        "database",
+        "deployment",
+        "hoodchat",
+        "outreach",
+        "subscribers",
+        "token-chat",
+        "website-generation",
+      ].sort(),
     );
   });
 

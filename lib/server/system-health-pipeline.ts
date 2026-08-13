@@ -571,6 +571,149 @@ export async function buildTokenChatPipeline(deps: ChatPipelineDeps = {}): Promi
 }
 
 // ---------------------------------------------------------------------------
+// Outreach
+// ---------------------------------------------------------------------------
+
+export type OutreachPipelineDeps = {
+  databaseUrl?: string;
+  getPool?: (databaseUrl: string) => PoolLike;
+  getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
+  env?: Record<string, string | undefined>;
+};
+
+function outreachQueueFlagStage(env: Record<string, string | undefined>): AdminPipelineStage {
+  const enabled = (env.OUTREACH_QUEUE_ENABLED || "").trim() === "true";
+  return stage(
+    "queue-flag",
+    "Queue flag (OUTREACH_QUEUE_ENABLED)",
+    enabled ? "green" : "amber",
+    enabled
+      ? "Draft generation is enabled; the cron reads the feed and queues drafts."
+      : "Draft generation is off; the cron no-ops (no feed read, no store writes).",
+  );
+}
+
+/** Reports credential presence by name only — values are never read into the message. */
+function outreachCredentialsStage(env: Record<string, string | undefined>): AdminPipelineStage {
+  const has = (name: string) => Boolean((env[name] || "").trim());
+  const names = ["X_OUTREACH_API_KEY", "X_OUTREACH_API_SECRET", "X_OUTREACH_ACCESS_TOKEN", "X_OUTREACH_ACCESS_SECRET"];
+  const missing = names.filter((name) => !has(name));
+  if (missing.length === 0) {
+    return stage(
+      "x-credentials",
+      "X_OUTREACH_* credentials",
+      "green",
+      "All four X_OUTREACH_* credentials are configured. Posting is enabled.",
+    );
+  }
+  return stage(
+    "x-credentials",
+    "X_OUTREACH_* credentials",
+    "amber",
+    `Posting is dormant: missing ${missing.join(", ")}. Approving a draft returns 503.`,
+  );
+}
+
+export async function buildOutreachPipeline(deps: OutreachPipelineDeps = {}): Promise<AdminServicePipeline> {
+  const env = deps.env ?? process.env;
+  const getServiceControl =
+    deps.getServiceControl ?? ((key: AdminServiceKey) => getAdminOperationsStore().getServiceControl(key));
+  const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
+
+  const isolationStage = await chatIsolationStage("outreach", getServiceControl);
+  const queueFlagStage = outreachQueueFlagStage(env);
+  const credentialsStage = outreachCredentialsStage(env);
+
+  if (!databaseUrl) {
+    const message = "DATABASE_URL is not configured.";
+    return {
+      id: "outreach",
+      label: "Outreach",
+      stages: [
+        isolationStage,
+        queueFlagStage,
+        credentialsStage,
+        stage("table-exists", "outreach_queue_items table exists", "amber", message),
+        stage("queue-counts", "Queue counts (pending/posted/dismissed/failed)", "amber", message),
+      ],
+    };
+  }
+
+  const pool = (deps.getPool ?? ((url: string) => getPostgresPool(url) as unknown as PoolLike))(databaseUrl);
+
+  let tableExists = false;
+  let tableExistsStage: AdminPipelineStage;
+  try {
+    const result = await withTimeout(
+      pool.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'outreach_queue_items'`,
+      ),
+      HEALTH_CHECK_TIMEOUT_MS,
+      "timed out",
+    );
+    tableExists = result.rows.length > 0;
+    tableExistsStage = tableExists
+      ? stage("table-exists", "outreach_queue_items table exists", "green", "The outreach_queue_items table is present.")
+      : stage(
+          "table-exists",
+          "outreach_queue_items table exists",
+          "red",
+          "Migration 013_outreach.sql has not been applied yet.",
+        );
+  } catch {
+    tableExistsStage = stage(
+      "table-exists",
+      "outreach_queue_items table exists",
+      "red",
+      "Could not check whether the outreach_queue_items table exists.",
+    );
+  }
+
+  let queueCountsStage: AdminPipelineStage;
+  if (!tableExists) {
+    queueCountsStage = stage(
+      "queue-counts",
+      "Queue counts (pending/posted/dismissed/failed)",
+      "amber",
+      "Not probed; the outreach_queue_items table does not exist yet.",
+    );
+  } else {
+    try {
+      const result = await withTimeout(
+        pool.query<{ status: string; count: number | string }>(
+          `SELECT status, COUNT(*)::int AS count FROM outreach_queue_items GROUP BY status`,
+        ),
+        HEALTH_CHECK_TIMEOUT_MS,
+        "timed out",
+      );
+      const counts: Record<string, number> = { pending: 0, posted: 0, dismissed: 0, failed: 0 };
+      for (const row of result.rows) {
+        if (row.status in counts) counts[row.status] = Number(row.count);
+      }
+      queueCountsStage = stage(
+        "queue-counts",
+        "Queue counts (pending/posted/dismissed/failed)",
+        "green",
+        `${counts.pending} pending, ${counts.posted} posted, ${counts.dismissed} dismissed, ${counts.failed} failed.`,
+      );
+    } catch {
+      queueCountsStage = stage(
+        "queue-counts",
+        "Queue counts (pending/posted/dismissed/failed)",
+        "red",
+        "Could not count outreach queue rows.",
+      );
+    }
+  }
+
+  return {
+    id: "outreach",
+    label: "Outreach",
+    stages: [isolationStage, queueFlagStage, credentialsStage, tableExistsStage, queueCountsStage],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // On-chain contracts
 // ---------------------------------------------------------------------------
 
@@ -816,6 +959,7 @@ export type SystemHealthPipelineDeps = {
   subscribers?: SubscribersPipelineDeps;
   hoodchat?: ChatPipelineDeps;
   tokenChat?: ChatPipelineDeps;
+  outreach?: OutreachPipelineDeps;
 };
 
 /** Builds a single service's pipeline on demand — used by the drill-down endpoint. */
@@ -842,5 +986,7 @@ export async function buildServicePipeline(
       return buildHoodchatPipeline(deps.hoodchat);
     case "token-chat":
       return buildTokenChatPipeline(deps.tokenChat);
+    case "outreach":
+      return buildOutreachPipeline({ env: deps.env, ...deps.outreach });
   }
 }

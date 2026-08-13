@@ -4,6 +4,7 @@ import {
   buildContractsPipeline,
   buildDatabasePipeline,
   buildDeploymentPipeline,
+  buildOutreachPipeline,
   buildServicePipeline,
   buildSubscribersPipeline,
   buildWebsiteGenerationPipeline,
@@ -431,5 +432,99 @@ describe("buildServicePipeline dispatch", () => {
 
     const subscribers = await buildServicePipeline("subscribers", { subscribers: { databaseUrl: "" } });
     expect(subscribers.id).toBe("subscribers");
+
+    const outreach = await buildServicePipeline("outreach", {
+      env: {},
+      outreach: { databaseUrl: "", getServiceControl: async () => activeControl({ key: "outreach" }) },
+    });
+    expect(outreach.id).toBe("outreach");
+  });
+});
+
+describe("buildOutreachPipeline", () => {
+  function fakePool(overrides: {
+    query?: (text: string, params?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>;
+  } = {}) {
+    return {
+      totalCount: 1,
+      idleCount: 1,
+      waitingCount: 0,
+      query:
+        overrides.query ??
+        (async (text: string) => {
+          if (text.includes("information_schema.tables")) return { rows: [{ table_name: "outreach_queue_items" }] };
+          if (text.includes("GROUP BY status")) {
+            return { rows: [{ status: "pending", count: 2 }, { status: "posted", count: 1 }] };
+          }
+          return { rows: [] };
+        }),
+    };
+  }
+
+  it("reports the queue-flag and credential stages from env, independent of the database", async () => {
+    const off = await buildOutreachPipeline({
+      databaseUrl: "",
+      env: {},
+      getServiceControl: async () => activeControl({ key: "outreach" }),
+    });
+    expect(stageById(off, "queue-flag")).toMatchObject({ status: "amber" });
+    expect(stageById(off, "x-credentials")).toMatchObject({ status: "amber" });
+
+    const on = await buildOutreachPipeline({
+      databaseUrl: "",
+      env: {
+        OUTREACH_QUEUE_ENABLED: "true",
+        X_OUTREACH_API_KEY: "a",
+        X_OUTREACH_API_SECRET: "b",
+        X_OUTREACH_ACCESS_TOKEN: "c",
+        X_OUTREACH_ACCESS_SECRET: "d",
+      },
+      getServiceControl: async () => activeControl({ key: "outreach" }),
+    });
+    expect(stageById(on, "queue-flag")).toMatchObject({ status: "green" });
+    expect(stageById(on, "x-credentials")).toMatchObject({ status: "green" });
+  });
+
+  it("never leaks credential values into the credentials stage message", async () => {
+    const pipeline = await buildOutreachPipeline({
+      databaseUrl: "",
+      env: { X_OUTREACH_API_KEY: "super-secret-value" },
+      getServiceControl: async () => activeControl({ key: "outreach" }),
+    });
+    expect(stageById(pipeline, "x-credentials").message).not.toContain("super-secret-value");
+  });
+
+  it("is green end to end and reports per-status counts when the table exists", async () => {
+    const pipeline = await buildOutreachPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      getPool: () => fakePool(),
+      getServiceControl: async () => activeControl({ key: "outreach" }),
+    });
+    expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "green" });
+    const counts = stageById(pipeline, "queue-counts");
+    expect(counts.status).toBe("green");
+    expect(counts.message).toContain("2 pending");
+    expect(counts.message).toContain("1 posted");
+  });
+
+  it("is red on table-exists and does not probe queue counts when the migration has not been applied", async () => {
+    const pipeline = await buildOutreachPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      getPool: () => fakePool({ query: async () => ({ rows: [] }) }),
+      getServiceControl: async () => activeControl({ key: "outreach" }),
+    });
+    expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "queue-counts")).toMatchObject({ status: "amber" });
+  });
+
+  it("surfaces isolation state from the shared chat-style isolation stage", async () => {
+    const pipeline = await buildOutreachPipeline({
+      databaseUrl: "",
+      env: {},
+      getServiceControl: async () => activeControl({ key: "outreach", isolated: true, reason: "maintenance" }),
+    });
+    expect(stageById(pipeline, "endpoint-reachable")).toMatchObject({ status: "amber" });
   });
 });
