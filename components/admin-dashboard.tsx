@@ -8,6 +8,7 @@ import {
   AdminOverview,
 } from "@/components/admin-operations-sections";
 import { AdminMoneySection } from "@/components/admin-money-section";
+import { AdminOutreachSection } from "@/components/admin-outreach-section";
 import { AdminPagesSection } from "@/components/admin-pages-section";
 import { AdminSubscribersSection } from "@/components/admin-subscribers-section";
 import { AdminSystemHealth } from "@/components/admin-system-health";
@@ -25,6 +26,7 @@ type SectionId =
   | "pages"
   | "subscribers"
   | "accounts"
+  | "outreach"
   | "system-health";
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
@@ -35,6 +37,7 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "pages", label: "Pages" },
   { id: "subscribers", label: "Subscribers" },
   { id: "accounts", label: "Accounts" },
+  { id: "outreach", label: "Outreach" },
   { id: "system-health", label: "System Health" },
 ];
 
@@ -158,7 +161,8 @@ export function AdminDashboard() {
     activeSection === "system-health" ||
     activeSection === "pages" ||
     activeSection === "subscribers" ||
-    activeSection === "accounts";
+    activeSection === "accounts" ||
+    activeSection === "outreach";
 
   return (
     <main className={styles.dashboard}>
@@ -238,6 +242,7 @@ export function AdminDashboard() {
         {activeSection === "pages" ? <AdminPagesSection /> : null}
         {activeSection === "subscribers" ? <AdminSubscribersSection /> : null}
         {activeSection === "accounts" ? <AdminAccountsSection /> : null}
+        {activeSection === "outreach" ? <AdminOutreachSection /> : null}
         {activeSection === "system-health" ? <AdminSystemHealth /> : null}
       </section>
     </main>

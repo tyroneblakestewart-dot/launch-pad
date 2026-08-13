@@ -92,6 +92,7 @@ describe("mapBitqueryPoolsToGraduatingTokens", () => {
         artworkUrl: "https://example.com/doggo.png",
         progressPercent: 77,
         url: "https://pump.fun/coin/Addr1",
+        creatorXHandle: null,
       },
     ]);
   });
@@ -320,6 +321,7 @@ function graduatingToken(overrides: Partial<GraduatingToken> = {}): GraduatingTo
     artworkUrl: "",
     progressPercent: 80,
     url: "https://pump.fun/coin/Addr1",
+    creatorXHandle: null,
     ...overrides,
   };
 }
@@ -548,5 +550,113 @@ describe("resolveGraduatingTokensArtwork (issue #295)", () => {
 
     expect(tokens[0].artworkUrl).toBe("");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("creator X handle extraction (issue #298)", () => {
+  function metadataResponse(metadata: Record<string, unknown>) {
+    return new Response(JSON.stringify(metadata), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  it("extracts a handle from a full x.com profile URL, from the same metadata fetch that resolves artwork", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      metadataResponse({ image: "https://example.com/doggo-art.png", twitter: "https://x.com/doggocreator" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+    ]);
+
+    expect(tokens[0].creatorXHandle).toBe("doggocreator");
+    expect(tokens[0].artworkUrl).toBe("https://example.com/doggo-art.png");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("extracts a handle from a legacy twitter.com profile URL", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(metadataResponse({ image: "https://example.com/art.png", twitter: "https://twitter.com/doggocreator/" })),
+    );
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+    ]);
+
+    expect(tokens[0].creatorXHandle).toBe("doggocreator");
+  });
+
+  it("extracts a handle from a bare @handle", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(metadataResponse({ image: "https://example.com/art.png", twitter: "@doggocreator" })),
+    );
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+    ]);
+
+    expect(tokens[0].creatorXHandle).toBe("doggocreator");
+  });
+
+  it("extracts a handle from a bare handle with no @ prefix", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(metadataResponse({ image: "https://example.com/art.png", twitter: "doggocreator" })),
+    );
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+    ]);
+
+    expect(tokens[0].creatorXHandle).toBe("doggocreator");
+  });
+
+  it("resolves to null when the twitter field is absent", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(metadataResponse({ image: "https://example.com/art.png" })));
+
+    const tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+    ]);
+
+    expect(tokens[0].creatorXHandle).toBeNull();
+  });
+
+  it("resolves to null for malformed twitter values instead of inventing a handle", async () => {
+    const cases: unknown[] = [
+      "https://example.com/doggocreator", // not x.com/twitter.com
+      "https://x.com/", // no handle segment
+      "this is not a handle at all", // spaces, too long, punctuation
+      "",
+      42,
+      null,
+    ];
+
+    for (const twitter of cases) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(metadataResponse({ image: "https://example.com/art.png", twitter })));
+      const tokens = await resolveGraduatingTokensArtwork([
+        graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+      ]);
+      expect(tokens[0].creatorXHandle).toBeNull();
+    }
+  });
+
+  it("leaves creatorXHandle null when there is no metadata to read (empty artwork uri, direct image, fetch failure)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    let tokens = await resolveGraduatingTokensArtwork([graduatingToken({ artworkUrl: "" })]);
+    expect(tokens[0].creatorXHandle).toBeNull();
+
+    tokens = await resolveGraduatingTokensArtwork([graduatingToken({ artworkUrl: "https://example.com/doggo.png" })]);
+    expect(tokens[0].creatorXHandle).toBeNull();
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+    tokens = await resolveGraduatingTokensArtwork([
+      graduatingToken({ artworkUrl: "https://pump.fun/metadata/addr1.json" }),
+    ]);
+    expect(tokens[0].creatorXHandle).toBeNull();
   });
 });

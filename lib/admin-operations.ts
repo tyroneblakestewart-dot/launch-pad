@@ -36,6 +36,13 @@ export const ADMIN_SERVICE_DEFINITIONS = [
     description: "Wallet-signed posting, reading and reporting on the per-token Hoodchat tab.",
     affectedRoutes: "/api/token-chat/challenge, /api/token-chat/messages, /api/token-chat/report",
   },
+  {
+    key: "outreach",
+    label: "Outreach",
+    description:
+      "Dormant-by-design, approve-first congratulatory X posting bot for graduating pump.fun tokens.",
+    affectedRoutes: "/api/admin/outreach, /api/admin/outreach/actions, /api/cron/outreach",
+  },
 ] as const;
 
 export type AdminServiceKey = (typeof ADMIN_SERVICE_DEFINITIONS)[number]["key"];
@@ -59,7 +66,9 @@ export type AdminActivityKind =
   | "page-content-published"
   | "payment-received"
   | "subscription-reminder-sent"
-  | "site-contract-address-attached";
+  | "site-contract-address-attached"
+  | "outreach-posted"
+  | "outreach-dismissed";
 
 export type AdminActivityItem = {
   id: string;
@@ -79,6 +88,7 @@ export const SYSTEM_HEALTH_CHECK_IDS = [
   "subscribers",
   "hoodchat",
   "token-chat",
+  "outreach",
 ] as const;
 
 export type SystemHealthCheckId = (typeof SYSTEM_HEALTH_CHECK_IDS)[number];

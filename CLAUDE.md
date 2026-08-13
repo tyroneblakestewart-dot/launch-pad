@@ -160,3 +160,15 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   `hoodchat` service-isolation switch; the main feed's headings are in the
   Pages CMS. Production migration and first write enablement must remain
   deliberate and owner-reviewed.
+- The X outreach bot (issue #298) — a congratulations-only, approve-first
+  posting queue for graduating pump.fun tokens — is implemented for review
+  but ships dormant. Draft generation (the `/api/cron/outreach` job, every
+  30 minutes) is gated behind `OUTREACH_QUEUE_ENABLED` (off unless exactly
+  `"true"`); posting is separately hard-gated on all four `X_OUTREACH_*`
+  credentials being present, checked both in the disabled Approve button and
+  independently in the approve API route. Dedupe-forever (by token mint and
+  by creator X handle, including dismissed drafts) is enforced by partial
+  unique indexes in `db/migrations/013_outreach.sql`, not application code
+  alone. Wired into System Health, the `outreach` service-isolation switch,
+  and a new Outreach admin section. Turning posting on for real is an
+  explicit future owner decision.

@@ -9,12 +9,19 @@
     },
     "app/api/cron/subscription-lifecycle/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/cron/outreach/route.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [
     {
       "path": "/api/cron/subscription-lifecycle",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/outreach",
+      "schedule": "*/30 * * * *"
     }
   ]
 }

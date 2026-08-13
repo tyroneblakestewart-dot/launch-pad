@@ -66,6 +66,7 @@ describe("scheduled reminders and Telegram integration", () => {
 
     expect(vercel.crons).toEqual([
       { path: "/api/cron/subscription-lifecycle", schedule: "0 9 * * *" },
+      { path: "/api/cron/outreach", schedule: "*/30 * * * *" },
     ]);
     expect(vercel.functions?.["app/api/cron/subscription-lifecycle/route.ts"]?.maxDuration).toBe(60);
     expect(route).toContain("process.env.CRON_SECRET");
