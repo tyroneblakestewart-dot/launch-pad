@@ -40,6 +40,7 @@
 }
 
 .art {
+  position: relative;
   display: grid;
   place-items: center;
   height: 96px;
@@ -52,10 +53,23 @@
 }
 
 .art img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   pointer-events: none;
+}
+
+/* The letter tile renders underneath from the start; the image fades in
+   once loaded rather than popping in over an empty box. */
+.artImageLoading {
+  opacity: 0;
+}
+
+.artImageLoaded {
+  opacity: 1;
+  transition: opacity 0.2s ease;
 }
 
 .cardName {
@@ -96,6 +110,7 @@
   height: 100%;
   background: #bce759;
   box-shadow: 0 0 6px rgba(188, 231, 89, 0.6);
+  transition: width 0.6s ease;
 }
 
 .dots {
@@ -123,6 +138,10 @@
   margin: 0;
   color: #3a4238;
   font: 500 9px/1.6 var(--mono);
+}
+
+.updatedHint {
+  color: #566054;
 }
 
 @media (max-width: 1099px) {
