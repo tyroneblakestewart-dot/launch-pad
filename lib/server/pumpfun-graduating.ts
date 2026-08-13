@@ -49,8 +49,8 @@ const MAX_POST_AMOUNT_FOR_60_PERCENT = 524_140_000;
 const GRADUATING_POOLS_QUERY = `
   query GraduatingPumpFunPools(
     $program: String!
-    $minPostAmount: Float!
-    $maxPostAmount: Float!
+    $minPostAmount: String!
+    $maxPostAmount: String!
     $since: DateTime!
     $limit: Int!
   ) {
@@ -201,8 +201,8 @@ async function fetchGraduatingTokensUncached(): Promise<GraduatingFeedResult> {
   const now = Date.now();
   const variables = {
     program: PUMP_FUN_PROGRAM_ADDRESS,
-    minPostAmount: MIN_POST_AMOUNT_FOR_99_PERCENT,
-    maxPostAmount: MAX_POST_AMOUNT_FOR_60_PERCENT,
+    minPostAmount: String(MIN_POST_AMOUNT_FOR_99_PERCENT),
+    maxPostAmount: String(MAX_POST_AMOUNT_FOR_60_PERCENT),
     since: new Date(now - STALE_TRADE_WINDOW_MS).toISOString(),
     limit: 50,
   };

@@ -246,8 +246,10 @@ describe("fetchGraduatingTokens", () => {
     const body = JSON.parse(init?.body as string);
     expect(body.query).toContain("DEXPools");
     expect(body.variables.program).toBe("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
-    expect(body.variables.minPostAmount).toBe(214_831_000);
-    expect(body.variables.maxPostAmount).toBe(524_140_000);
+    expect(body.query).toContain("$minPostAmount: String!");
+    expect(body.query).toContain("$maxPostAmount: String!");
+    expect(body.variables.minPostAmount).toBe("214831000");
+    expect(body.variables.maxPostAmount).toBe("524140000");
   });
 
   it("returns an error result when Bitquery responds with a non-success status", async () => {
