@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {FixedSupplyMemeToken} from "./FixedSupplyMemeToken.sol";
 import {HoodlumsTestBondingCurve} from "./HoodlumsTestBondingCurve.sol";
 import {
     MockWETH9,
+    MockUniswapV3Pool,
     MockUniswapV3Factory,
     MockNonfungiblePositionManager,
     FailingNonfungiblePositionManager
@@ -14,6 +17,22 @@ struct VmLog {
     bytes32[] topics;
     bytes data;
     address emitter;
+}
+
+/// @dev Bundled as a memory struct (a single stack slot) rather than four
+///      separate locals, since Solidity's legacy codegen stack-too-deeps a
+///      test function that threads several multi-value tuples plus this
+///      running state through nested calls.
+struct FeeAccrual {
+    uint256 treasury;
+    uint256 creator;
+    uint256 carry;
+    uint256 total;
+}
+
+struct GraduationDust {
+    uint256 leftoverToken;
+    uint256 leftoverWeth;
 }
 
 interface Vm {
@@ -835,6 +854,309 @@ contract HoodlumsTestBondingCurveTest {
             address(failCurve).balance == curveBalanceBeforeFinalBuy,
             "curve native balance changed despite reverted buy"
         );
+    }
+
+    /// @dev H-1: Uniswap V3 pool creation/initialization is permissionless, so
+    ///      an attacker who sees the curve nearing its graduation target can
+    ///      pre-create and pre-initialize the token/WETH pool at an extreme
+    ///      price. Proves the graduating buy reverts instead of depositing the
+    ///      whole graduation liquidity at that price, that the curve fully
+    ///      unwinds (not graduated, reserves/tokens/native balance intact),
+    ///      and that once the rigged pool's price is moved back within
+    ///      tolerance (simulating arbitrage self-correction) the very same
+    ///      retry succeeds and graduates normally.
+    function testPoolPreInitializedOutOfToleranceRevertsThenSucceedsAfterArbitrageCorrection() public {
+        uint256 target = 0.99 ether;
+        (FixedSupplyMemeToken riggedToken, HoodlumsTestBondingCurve riggedCurve) = _deployFreshFundedCurve(target);
+
+        vm.deal(BUYER, 2 ether);
+        vm.prank(BUYER);
+        riggedCurve.buy{value: 0.5 ether}(0, DEADLINE);
+        require(!riggedCurve.graduated(), "graduated before target reached");
+
+        (,, uint256 amount0Desired, uint256 amount1Desired) =
+            _predictGraduationDesiredAmounts(riggedCurve, riggedToken, 0.5 ether, target);
+        uint160 desiredSqrtPriceX96 = _sqrtPriceX96(amount0Desired, amount1Desired);
+        address riggedPool = _riggedPool(riggedToken, desiredSqrtPriceX96 / 10);
+
+        uint256 reserveBeforeAttempt = riggedCurve.nativeReserve();
+        uint256 tokensBeforeAttempt = riggedCurve.tokensAvailable();
+        uint256 balanceBeforeAttempt = address(riggedCurve).balance;
+
+        vm.prank(BUYER);
+        vm.expectRevert();
+        riggedCurve.buy{value: 0.5 ether}(0, DEADLINE);
+
+        require(!riggedCurve.graduated(), "graduated despite out-of-tolerance rigged pool");
+        require(riggedCurve.liquidityPool() == address(0), "pool recorded despite reverted graduation");
+        require(riggedCurve.lpTokenId() == 0, "lp token id set despite reverted graduation");
+        require(riggedCurve.nativeReserve() == reserveBeforeAttempt, "reserve changed despite revert");
+        require(riggedCurve.tokensAvailable() == tokensBeforeAttempt, "curve tokens changed despite revert");
+        require(address(riggedCurve).balance == balanceBeforeAttempt, "curve native balance changed despite revert");
+
+        // Arbitrage self-corrects the rigged pool back to the curve's own ratio.
+        // This is temporary protection, not a bricked state.
+        MockUniswapV3Pool(riggedPool).setSqrtPriceX96(desiredSqrtPriceX96);
+
+        vm.prank(BUYER);
+        riggedCurve.buy{value: 0.5 ether}(0, DEADLINE);
+
+        require(riggedCurve.graduated(), "curve failed to graduate after price correction");
+        require(riggedCurve.liquidityPool() == riggedPool, "graduation used a different pool");
+        require(riggedCurve.nativeReserve() == 0, "reserve not cleared after graduation");
+    }
+
+    function testPoolPreInitializedJustOutsideToleranceOnBothSidesRevertsWithPoolPriceOutOfTolerance() public {
+        uint256 target = 0.99 ether;
+        // 51 bps away from the curve's desired ratio on each side, just past
+        // the 50 bps (POOL_SQRT_PRICE_TOLERANCE_BPS) tolerance.
+        _assertOutOfToleranceReverts(target, 9_949);
+        _assertOutOfToleranceReverts(target, 10_051);
+    }
+
+    function testPoolPreInitializedJustInsideToleranceOnBothSidesGraduates() public {
+        uint256 target = 0.99 ether;
+        // 49 bps away from the curve's desired ratio on each side, just
+        // inside the 50 bps (POOL_SQRT_PRICE_TOLERANCE_BPS) tolerance.
+        _assertWithinToleranceGraduates(target, 9_951);
+        _assertWithinToleranceGraduates(target, 10_049);
+    }
+
+    /// @dev Review L-1 / mint floor: if the position manager (a mispriced
+    ///      pool) would only consume less than GRADUATION_MIN_DEPOSIT_BPS of
+    ///      either side, the mint's slippage floors must reject it and the
+    ///      whole buy — and graduation with it — must fully unwind.
+    function testGraduationMintBelowMinDepositFloorRevertsAndUnwindsCurveState() public {
+        uint256 target = 0.99 ether;
+        (, HoodlumsTestBondingCurve floorCurve) = _deployFreshFundedCurve(target);
+
+        vm.deal(BUYER, 2 ether);
+        vm.prank(BUYER);
+        floorCurve.buy{value: 0.5 ether}(0, DEADLINE);
+
+        positionManagerMock.setConsumptionBps(9_800); // 98% < GRADUATION_MIN_DEPOSIT_BPS (99%)
+
+        uint256 reserveBefore = floorCurve.nativeReserve();
+        uint256 tokensBefore = floorCurve.tokensAvailable();
+        uint256 balanceBefore = address(floorCurve).balance;
+
+        vm.prank(BUYER);
+        vm.expectRevert();
+        floorCurve.buy{value: 0.5 ether}(0, DEADLINE);
+
+        require(!floorCurve.graduated(), "graduated despite mint below the 99% floor");
+        require(floorCurve.liquidityPool() == address(0), "pool recorded despite reverted mint");
+        require(floorCurve.nativeReserve() == reserveBefore, "reserve changed despite reverted mint");
+        require(floorCurve.tokensAvailable() == tokensBefore, "curve tokens changed despite reverted mint");
+        require(address(floorCurve).balance == balanceBefore, "curve native balance changed despite reverted mint");
+    }
+
+    /// @dev Exact boundary: a mint consuming precisely GRADUATION_MIN_DEPOSIT_BPS
+    ///      (99%) of both sides must succeed, since the floor check is `>=`.
+    function testGraduationMintAtExactMinDepositFloorSucceeds() public {
+        uint256 target = 0.99 ether;
+        (, HoodlumsTestBondingCurve floorCurve) = _deployFreshFundedCurve(target);
+
+        vm.deal(BUYER, 2 ether);
+        vm.prank(BUYER);
+        floorCurve.buy{value: 0.5 ether}(0, DEADLINE);
+
+        positionManagerMock.setConsumptionBps(9_900); // == GRADUATION_MIN_DEPOSIT_BPS
+
+        vm.prank(BUYER);
+        floorCurve.buy{value: 0.5 ether}(0, DEADLINE);
+
+        require(floorCurve.graduated(), "curve failed to graduate at the exact 99% floor");
+    }
+
+    /// @dev Review L-1: dust left over after a mint that clears the floor but
+    ///      doesn't consume 100% must be swept, never stranded — leftover
+    ///      token burned, leftover WETH unwrapped and accrued through the
+    ///      same 60/40 treasury/creator fee split every trading fee already
+    ///      uses. Asserts exact balances, not just "some amount moved".
+    function testGraduationMintAboveFloorSweepsLeftoverWithExactBalances() public {
+        uint256 target = 0.99 ether;
+        (FixedSupplyMemeToken dustToken, HoodlumsTestBondingCurve dustCurve) = _deployFreshFundedCurve(target);
+        FeeAccrual memory acc;
+
+        vm.deal(BUYER, 2 ether);
+
+        _accrueExpectedFee(acc, dustCurve.quoteBuyFee(0.5 ether));
+        vm.prank(BUYER);
+        dustCurve.buy{value: 0.5 ether}(0, DEADLINE);
+
+        positionManagerMock.setConsumptionBps(9_950); // 99.5%: clears the floor, still leaves dust
+
+        GraduationDust memory dust = _predictGraduationDust(dustCurve, dustToken, 0.5 ether, target, 9_950);
+        require(dust.leftoverToken > 0 && dust.leftoverWeth > 0, "test setup produced no dust");
+
+        // The trading fee on the graduating buy accrues first (inside buy()),
+        // then the dust sweep accrues on top of it (inside _graduate()), so
+        // the carry must be threaded through in that same order.
+        _accrueExpectedFee(acc, dustCurve.quoteBuyFee(0.5 ether));
+        _accrueExpectedFee(acc, dust.leftoverWeth);
+
+        uint256 supplyBeforeGraduation = dustToken.totalSupply();
+
+        vm.recordLogs();
+        vm.prank(BUYER);
+        dustCurve.buy{value: 0.5 ether}(0, DEADLINE);
+        VmLog[] memory logs = vm.getRecordedLogs();
+
+        require(dustCurve.graduated(), "curve failed to graduate with dust-producing consumption");
+        require(dustToken.balanceOf(address(dustCurve)) == 0, "leftover token not fully burned");
+        require(wethMock.balanceOf(address(dustCurve)) == 0, "leftover weth not fully unwrapped");
+        require(
+            dustToken.totalSupply() == supplyBeforeGraduation - dust.leftoverToken,
+            "burned leftover amount mismatch"
+        );
+        require(dustCurve.treasuryFeeBalance() == acc.treasury, "treasury balance after sweep wrong");
+        require(dustCurve.creatorFeeBalance() == acc.creator, "creator balance after sweep wrong");
+        require(dustCurve.totalFeesAccrued() == acc.total, "total fees accrued after sweep wrong");
+        require(
+            dustCurve.treasuryFeeBalance() + dustCurve.creatorFeeBalance() == dustCurve.totalFeesAccrued(),
+            "60/40 split lost wei after dust sweep"
+        );
+
+        _assertDustEventEmitted(logs, address(dustCurve), dust.leftoverToken, dust.leftoverWeth);
+    }
+
+    /// @dev Mutates `acc` in place: Solidity passes memory structs by
+    ///      reference to internal functions within the same call.
+    function _accrueExpectedFee(FeeAccrual memory acc, uint256 fee) internal pure {
+        if (fee == 0) return;
+        uint256 scaled = fee * PROTOCOL_FEE_SHARE_BPS + acc.carry;
+        uint256 treasuryShare = scaled / BPS;
+        acc.carry = scaled % BPS;
+        acc.treasury += treasuryShare;
+        acc.creator += fee - treasuryShare;
+        acc.total += fee;
+    }
+
+    function _predictGraduationDust(
+        HoodlumsTestBondingCurve targetCurve,
+        FixedSupplyMemeToken targetToken,
+        uint256 finalBuyGross,
+        uint256 target,
+        uint256 consumptionBps
+    ) internal view returns (GraduationDust memory dust) {
+        (,, uint256 amount0Desired, uint256 amount1Desired) =
+            _predictGraduationDesiredAmounts(targetCurve, targetToken, finalBuyGross, target);
+        uint256 amount0Consumed = (amount0Desired * consumptionBps) / BPS;
+        uint256 amount1Consumed = (amount1Desired * consumptionBps) / BPS;
+        bool tokenIsToken0 = address(targetToken) < address(wethMock);
+        dust.leftoverToken = tokenIsToken0 ? amount0Desired - amount0Consumed : amount1Desired - amount1Consumed;
+        dust.leftoverWeth = tokenIsToken0 ? amount1Desired - amount1Consumed : amount0Desired - amount0Consumed;
+    }
+
+    function _assertDustEventEmitted(
+        VmLog[] memory logs,
+        address emitter,
+        uint256 expectedToken,
+        uint256 expectedWeth
+    ) internal pure {
+        bytes32 dustEventSignature = keccak256("GraduationDustSwept(uint256,uint256)");
+        bool foundDustEvent;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].emitter != emitter) continue;
+            if (logs[i].topics.length == 0 || logs[i].topics[0] != dustEventSignature) continue;
+            (uint256 tokenBurned, uint256 nativeAccrued) = abi.decode(logs[i].data, (uint256, uint256));
+            require(tokenBurned == expectedToken, "dust event token amount wrong");
+            require(nativeAccrued == expectedWeth, "dust event native amount wrong");
+            foundDustEvent = true;
+        }
+        require(foundDustEvent, "GraduationDustSwept event not emitted");
+    }
+
+    function _assertOutOfToleranceReverts(uint256 target, uint256 riggedBps) internal {
+        (FixedSupplyMemeToken riggedToken, HoodlumsTestBondingCurve riggedCurve) = _deployFreshFundedCurve(target);
+
+        vm.deal(BUYER, 2 ether);
+        vm.prank(BUYER);
+        riggedCurve.buy{value: 0.5 ether}(0, DEADLINE);
+
+        (,, uint256 amount0Desired, uint256 amount1Desired) =
+            _predictGraduationDesiredAmounts(riggedCurve, riggedToken, 0.5 ether, target);
+        uint160 desiredSqrtPriceX96 = _sqrtPriceX96(amount0Desired, amount1Desired);
+        uint160 riggedSqrtPriceX96 = uint160(Math.mulDiv(uint256(desiredSqrtPriceX96), riggedBps, BPS));
+        _riggedPool(riggedToken, riggedSqrtPriceX96);
+
+        vm.prank(BUYER);
+        (bool ok, bytes memory returndata) = address(riggedCurve).call{value: 0.5 ether}(
+            abi.encodeCall(HoodlumsTestBondingCurve.buy, (0, DEADLINE))
+        );
+        require(!ok, "buy succeeded despite out-of-tolerance rigged pool");
+        require(
+            _revertedWithSelector(returndata, HoodlumsTestBondingCurve.PoolPriceOutOfTolerance.selector),
+            "wrong revert reason for out-of-tolerance pool"
+        );
+        require(!riggedCurve.graduated(), "graduated despite out-of-tolerance rigged pool");
+    }
+
+    function _assertWithinToleranceGraduates(uint256 target, uint256 riggedBps) internal {
+        (FixedSupplyMemeToken riggedToken, HoodlumsTestBondingCurve riggedCurve) = _deployFreshFundedCurve(target);
+
+        vm.deal(BUYER, 2 ether);
+        vm.prank(BUYER);
+        riggedCurve.buy{value: 0.5 ether}(0, DEADLINE);
+
+        (,, uint256 amount0Desired, uint256 amount1Desired) =
+            _predictGraduationDesiredAmounts(riggedCurve, riggedToken, 0.5 ether, target);
+        uint160 desiredSqrtPriceX96 = _sqrtPriceX96(amount0Desired, amount1Desired);
+        uint160 riggedSqrtPriceX96 = uint160(Math.mulDiv(uint256(desiredSqrtPriceX96), riggedBps, BPS));
+        address riggedPool = _riggedPool(riggedToken, riggedSqrtPriceX96);
+
+        vm.prank(BUYER);
+        riggedCurve.buy{value: 0.5 ether}(0, DEADLINE);
+
+        require(riggedCurve.graduated(), "curve failed to graduate with in-tolerance rigged pool");
+        require(riggedCurve.liquidityPool() == riggedPool, "graduation used a different pool");
+    }
+
+    /// @dev Mirrors HoodlumsTestBondingCurve's own `_initialSqrtPriceX96` so
+    ///      tests can predict and rig prices against the exact same math.
+    function _sqrtPriceX96(uint256 amount0, uint256 amount1) internal pure returns (uint160) {
+        uint256 ratioX192 = Math.mulDiv(amount1, uint256(1) << 192, amount0);
+        return SafeCast.toUint160(Math.sqrt(ratioX192));
+    }
+
+    /// @dev Predicts the token0/token1 ordering and desired mint amounts
+    ///      `_graduate()` will use for the buy that brings `targetCurve` from
+    ///      its current reserve to `target`, without needing to duplicate the
+    ///      curve's quoting formula: `finalBuyGross` must be the exact gross
+    ///      input that buy already relies on elsewhere to land exactly on
+    ///      `target` (this file's tests always use two 0.5 ether buys against
+    ///      a 0.99 ether target for that reason).
+    function _predictGraduationDesiredAmounts(
+        HoodlumsTestBondingCurve targetCurve,
+        FixedSupplyMemeToken targetToken,
+        uint256 finalBuyGross,
+        uint256 target
+    ) internal view returns (address token0, address token1, uint256 amount0Desired, uint256 amount1Desired) {
+        uint256 tokenLiquidity = targetCurve.tokensAvailable() - targetCurve.quoteBuy(finalBuyGross);
+        uint256 nativeLiquidity = target;
+        bool tokenIsToken0 = address(targetToken) < address(wethMock);
+        token0 = tokenIsToken0 ? address(targetToken) : address(wethMock);
+        token1 = tokenIsToken0 ? address(wethMock) : address(targetToken);
+        amount0Desired = tokenIsToken0 ? tokenLiquidity : nativeLiquidity;
+        amount1Desired = tokenIsToken0 ? nativeLiquidity : tokenLiquidity;
+    }
+
+    /// @dev Pre-creates and pre-initializes the token/WETH pool the way a
+    ///      permissionless attacker could, ahead of the curve's own
+    ///      graduation call.
+    function _riggedPool(FixedSupplyMemeToken targetToken, uint160 sqrtPriceX96) internal returns (address pool) {
+        pool = uniswapFactoryMock.createPool(address(targetToken), address(wethMock), 10_000);
+        MockUniswapV3Pool(pool).initialize(sqrtPriceX96);
+    }
+
+    function _revertedWithSelector(bytes memory returndata, bytes4 expectedSelector) internal pure returns (bool) {
+        if (returndata.length < 4) return false;
+        bytes4 selector;
+        assembly {
+            selector := mload(add(returndata, 32))
+        }
+        return selector == expectedSelector;
     }
 
     function testTradingStopsAfterGraduation() public {
