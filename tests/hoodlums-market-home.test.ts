@@ -170,8 +170,8 @@ describe("Hoodlums bonding-market studio home (issue #185)", () => {
     const styles = await source("components", "hoodlums-graduating-row.module.css");
 
     expect(component).toContain("function initial(name: string): string");
-    expect(component).toContain("onError={() => setArtworkFailed(true)}");
-    expect(component).toContain("showArt ? (");
+    expect(component).toContain('onError={() => setStatus("failed")}');
+    expect(component).toContain("showImage ? (");
     expect(component).toContain("{initial(token.name)}");
     expect(styles).toContain(".art {");
     expect(styles).toContain("color: #bce759;");
