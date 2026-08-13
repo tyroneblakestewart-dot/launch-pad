@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { PublicGeneratedSite } from "@/lib/public-site";
+import { requestWorkspaceOpen } from "@/lib/workspace-open-request";
 import styles from "./hoodlums-token-grid.module.css";
 
 type Tab = "bonding" | "graduated" | "new";
@@ -24,25 +25,34 @@ export function HoodlumsTokenGrid({ liveSites }: { liveSites: PublicGeneratedSit
   // empty rather than faking a graduated state that can't exist yet.
   const visibleSites = tab === "graduated" ? [] : liveSites;
 
+  function handleCreateTokenClick() {
+    requestWorkspaceOpen("new");
+  }
+
   return (
     <section className={styles.section} aria-labelledby="hoodlums-tokens-title">
       <div className={styles.sectionHeader}>
         <p id="hoodlums-tokens-title" className={styles.eyebrow}>
           HOODLUMS TOKENS
         </p>
-        <div className={styles.tabs} role="tablist" aria-label="Token grid filter">
-          {TABS.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === item.key}
-              className={tab === item.key ? styles.tabActive : styles.tab}
-              onClick={() => setTab(item.key)}
-            >
-              {item.label}
-            </button>
-          ))}
+        <div className={styles.headerActions}>
+          <div className={styles.tabs} role="tablist" aria-label="Token grid filter">
+            {TABS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                role="tab"
+                aria-selected={tab === item.key}
+                className={tab === item.key ? styles.tabActive : styles.tab}
+                onClick={() => setTab(item.key)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <button type="button" className={styles.createTokenButton} onClick={handleCreateTokenClick}>
+            Create token
+          </button>
         </div>
       </div>
 
@@ -82,10 +92,6 @@ export function HoodlumsTokenGrid({ liveSites }: { liveSites: PublicGeneratedSit
               </div>
             </div>
           ))}
-          <a href="#launch-studio" className={styles.beNextCard}>
-            <span className={styles.beNextLabel}>Be next</span>
-            <span className={styles.beNextButton}>Create token</span>
-          </a>
         </div>
       )}
     </section>
