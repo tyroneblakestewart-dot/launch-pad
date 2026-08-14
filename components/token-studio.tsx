@@ -9,6 +9,7 @@ import { CHAIN_CONFIG, ROBINHOOD_MAINNET } from "@/lib/chains";
 import { FREE_SITE_SECTION_DEFAULTS, type FreeSiteSectionKey } from "@/lib/free-site-sections";
 import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
 import { launchPathLabel } from "@/lib/launch-paths";
+import { isPaidLaunchPath } from "@/lib/plan-payments";
 import { PROJECT_SAVE_RESULT_EVENT } from "@/lib/project-save-result";
 import { findSlugCollision, slugify, validateSlug } from "@/lib/slug";
 import {
@@ -360,11 +361,17 @@ export function TokenStudio() {
       return;
     }
     const saved = outcome.project;
+    const requiresPayment = isPaidLaunchPath(saved.launchPath);
     setProject(saved);
     setWallet(null);
     setShowProjects(false);
-    setNotice(`${saved.name} loaded. Reconnect the correct wallet before launching.`);
-    reopenGeneratedSite(saved);
+    setShowPathChooser(requiresPayment);
+    setNotice(
+      requiresPayment
+        ? `${saved.name} loaded. Verify the saved paid plan before the builder or generated preview can reopen.`
+        : `${saved.name} loaded. Reconnect the correct wallet before launching.`,
+    );
+    if (!requiresPayment) reopenGeneratedSite(saved);
   }
 
   async function handleImage(event: ChangeEvent<HTMLInputElement>) {
@@ -485,7 +492,11 @@ export function TokenStudio() {
         <p>{notice}</p>
       </section>
 
-      <section className="workspace">
+      <section
+        className="workspace"
+        aria-disabled={showPathChooser || undefined}
+        inert={showPathChooser || undefined}
+      >
         <aside
           className={showPathChooser ? "builder-panel path-locked" : "builder-panel"}
           role="group"
