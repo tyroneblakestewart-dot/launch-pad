@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { REOPEN_GENERATED_SITE_EVENT } from "@/components/full-website-generator";
 import { FREE_SITE_SECTION_KEYS, type FreeSiteSections } from "@/lib/free-site-sections";
 import {
   SITE_GENERATION_TIMEOUT_MS,
@@ -352,8 +353,33 @@ export function BuildSiteGate() {
       refresh();
     }
 
+    // A saved project's generated site can come back from either "Saved
+    // launches" or the "Reopen generated site" toolbar button — both paths
+    // dispatch this one event (issue #311), so unlocking here covers both
+    // without the gate needing to know which control triggered it. The
+    // event fires synchronously right after the studio calls setProject(),
+    // before React has re-rendered the builder panel's inputs with the
+    // reopened project's values — so refresh()'s readiness check would
+    // still read the *previous* project's (possibly incomplete) fields and
+    // could re-lock immediately. Unlock and reveal the preview right away
+    // regardless of that stale DOM, and defer the readiness-dependent
+    // refresh() to the next frame, by which point the panel reflects the
+    // reopened project.
+    function onReopen() {
+      clearGenerationTimeout();
+      generating = false;
+      unlocked = true;
+      if (hint) hint.textContent = "Your saved website preview is shown below.";
+      const elements = ensureElements();
+      if (elements) elements.previewPanel.classList.remove("site-builder-locked");
+      if (overlay) overlay.hidden = true;
+      document.querySelector(".preview-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.requestAnimationFrame(refresh);
+    }
+
     window.addEventListener("launchpad:site-generated", onGenerated);
     window.addEventListener("launchpad:site-generation-failed", onFailed);
+    window.addEventListener(REOPEN_GENERATED_SITE_EVENT, onReopen);
     const interval = window.setInterval(refresh, 250);
     refresh();
 
@@ -362,6 +388,7 @@ export function BuildSiteGate() {
       window.clearInterval(interval);
       window.removeEventListener("launchpad:site-generated", onGenerated);
       window.removeEventListener("launchpad:site-generation-failed", onFailed);
+      window.removeEventListener(REOPEN_GENERATED_SITE_EVENT, onReopen);
       gate?.remove();
       overlay?.remove();
       document.querySelector(".build-site-inspiration-field")?.remove();
