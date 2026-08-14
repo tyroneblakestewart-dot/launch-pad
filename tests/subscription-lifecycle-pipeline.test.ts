@@ -45,6 +45,7 @@ function getPool(options: {
   runStatus?: "completed" | "running" | "failed";
   reminderStatus?: "sent" | "failed";
   missingTables?: string[];
+  entitlementFailure?: boolean;
 } = {}) {
   return () => ({
     totalCount: 1,
@@ -56,6 +57,19 @@ function getPool(options: {
       }
       if (sql.includes("COUNT(*)::int AS count FROM subscriptions")) {
         return { rows: [{ count: 3 }] };
+      }
+      if (sql.includes("AS has_bond_pro_site_payment")) {
+        if (options.entitlementFailure) {
+          throw new Error("plan payment history unavailable");
+        }
+        return {
+          rows: [{
+            tier: null,
+            paid_until: null,
+            expires_at: null,
+            has_bond_pro_site_payment: false,
+          }],
+        };
       }
       if (sql.includes("table_name = ANY")) {
         const missing = new Set(options.missingTables || []);
@@ -109,6 +123,9 @@ describe("Subscribers and renewals System Health pipeline", () => {
     expect(configuration?.message).toContain("USDG stablecoin payments");
     expect(configuration?.message).toContain("Disabled token(s): USDT");
     expect(pipeline.stages.find((item) => item.id === "lifecycle-tables")).toMatchObject({
+      status: "green",
+    });
+    expect(pipeline.stages.find((item) => item.id === "bespoke-site-entitlement")).toMatchObject({
       status: "green",
     });
     expect(pipeline.stages.find((item) => item.id === "last-lifecycle-run")).toMatchObject({
@@ -166,6 +183,19 @@ describe("Subscribers and renewals System Health pipeline", () => {
     const configuration = pipeline.stages.find((item) => item.id === "lifecycle-configuration");
     expect(configuration).toMatchObject({ status: "red" });
     expect(configuration?.message).toContain("At least one payment token must be enabled");
+  });
+
+  it("turns the bespoke entitlement stage red when its server query fails", async () => {
+    const pipeline = await buildSubscriptionLifecyclePipeline({
+      databaseUrl: "postgres://example",
+      environment: environment(),
+      now: NOW,
+      getPool: getPool({ entitlementFailure: true }),
+    });
+
+    expect(pipeline.stages.find((item) => item.id === "bespoke-site-entitlement")).toMatchObject({
+      status: "red",
+    });
   });
 
   it("keeps Telegram optional but clearly amber when in-app reminders are the only channel", async () => {

@@ -135,6 +135,7 @@ describe("backend test inventory", () => {
       "lib/server/ai-responses-runtime.ts",
       "lib/server/api-protection.ts",
       "lib/server/artwork-identity-request.ts",
+      "lib/server/bespoke-site-entitlement.ts",
       "lib/server/chat-auth.ts",
       "lib/server/chat-moderation.ts",
       "lib/server/dexscreener.ts",
