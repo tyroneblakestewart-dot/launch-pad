@@ -36,12 +36,10 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
   const builderUnlockGuard = useRef(createPlanBuilderUnlockGuard());
 
   function beginCheckout(plan: PaidLaunchPath): void {
-    builderUnlockGuard.current.reset();
     setCheckoutPlan(plan);
   }
 
   function closeCheckout(): void {
-    builderUnlockGuard.current.reset();
     setCheckoutPlan(null);
   }
 
@@ -63,6 +61,10 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
       setPresetToConfirm(null);
     }
   }
+
+  useEffect(() => {
+    builderUnlockGuard.current.reset();
+  }, [checkoutPlan]);
 
   useEffect(() => {
     if (!open || !presetToConfirm) return;
