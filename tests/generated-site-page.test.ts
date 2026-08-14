@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ARTWORK_PLACEHOLDER,
@@ -266,6 +268,134 @@ describe("generated full website document", () => {
         );
         expect(isCompleteGeneratedPageHtml(autoFit)).toBe(true);
       });
+    });
+
+    // Issue #325 pattern 1: hasUnstackedMultiColumnGrid originally only
+    // matched `repeat(N, ...)`, missing the same three-or-more-column bug
+    // written out as an explicit track list.
+    describe("desktop-squish (explicit multi-track grid-template-columns list)", () => {
+      it("rejects an always-active explicit three-track list with no media query", () => {
+        const squished = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:96px 1fr 1fr;gap:20px}img{max-width:100%}",
+        );
+        expect(isCompleteGeneratedPageHtml(squished)).toBe(false);
+        expect(isGeneratedPageRejectedForLayoutOnly(squished)).toBe(true);
+      });
+
+      it("accepts an explicit three-track list when a max-width breakpoint stacks it", () => {
+        const stacked = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:240px auto 1fr;gap:20px}img{max-width:100%}@media(max-width:700px){.grid{grid-template-columns:1fr}}",
+        );
+        expect(isCompleteGeneratedPageHtml(stacked)).toBe(true);
+      });
+
+      it("does not flag an explicit two-track list with no fixed-width track", () => {
+        const twoUp = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}img{max-width:100%}",
+        );
+        expect(isCompleteGeneratedPageHtml(twoUp)).toBe(true);
+      });
+    });
+
+    // Issue #325 pattern 3: a two-track grid can still fail to fit a 390px
+    // viewport if one track is a wide fixed pixel value, even though the
+    // track count alone (2) is otherwise treated as a safe, common pattern.
+    describe("desktop-squish (two-track grid with a wide fixed-pixel track)", () => {
+      it("rejects an always-active two-track grid with a >=200px fixed track", () => {
+        const squished = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:320px 1fr;gap:20px}img{max-width:100%}",
+        );
+        expect(isCompleteGeneratedPageHtml(squished)).toBe(false);
+        expect(isGeneratedPageRejectedForLayoutOnly(squished)).toBe(true);
+      });
+
+      it("does not flag a two-track grid whose fixed track is below the 200px threshold", () => {
+        const safe = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:150px 1fr;gap:20px}img{max-width:100%}",
+        );
+        expect(isCompleteGeneratedPageHtml(safe)).toBe(true);
+      });
+
+      it("accepts a wide fixed two-track grid when a max-width breakpoint stacks it", () => {
+        const stacked = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:320px 1fr;gap:20px}img{max-width:100%}@media(max-width:700px){.grid{grid-template-columns:1fr}}",
+        );
+        expect(isCompleteGeneratedPageHtml(stacked)).toBe(true);
+      });
+    });
+
+    // Issue #325 pattern 2: an always-active flex row of content that can
+    // never wrap and has no mobile breakpoint switching it to a stacked
+    // column — the "icon | heading | paragraph" card clipped at the phone
+    // viewport edge. The detector deliberately keys off an explicit
+    // `flex-wrap: nowrap` rather than the mere absence of `flex-wrap: wrap`,
+    // so it does not misfire on ordinary flex chrome (nav bars, button
+    // rows, icon+label pairs, key/value rows) that never declares
+    // `flex-wrap` at all — see the FLEX_DISPLAY_PATTERN comment in
+    // lib/generated-site-page.ts for the full rationale.
+    describe("desktop-squish (unstacked flex row)", () => {
+      it("rejects an always-active flex row with explicit flex-wrap: nowrap and no stacking breakpoint", () => {
+        const squished = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.card{display:flex;flex-wrap:nowrap;align-items:center;gap:24px;padding:32px}.card .icon{width:84px;height:84px;flex-shrink:0}img{max-width:100%}",
+        );
+        expect(isCompleteGeneratedPageHtml(squished)).toBe(false);
+        expect(isGeneratedPageRejectedForLayoutOnly(squished)).toBe(true);
+      });
+
+      it("accepts the same flex row once a max-width breakpoint switches it to a column", () => {
+        const stacked = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.card{display:flex;flex-wrap:nowrap;align-items:center;gap:24px;padding:32px}.card .icon{width:84px;height:84px;flex-shrink:0}img{max-width:100%}@media(max-width:600px){.card{flex-direction:column}}",
+        );
+        expect(isCompleteGeneratedPageHtml(stacked)).toBe(true);
+      });
+
+      it("accepts the same flex row when it declares flex-wrap: wrap instead of stacking to a column", () => {
+        const wrapped = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.card{display:flex;flex-wrap:wrap;align-items:center;gap:24px;padding:32px}.card .icon{width:84px;height:84px;flex-shrink:0}img{max-width:100%}",
+        );
+        expect(isCompleteGeneratedPageHtml(wrapped)).toBe(true);
+      });
+
+      it("does not flag ordinary flex chrome (header row, icon+label pair) that never declares flex-wrap", () => {
+        const chrome = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px;display:flex;align-items:center;justify-content:space-between}.badge{display:flex;align-items:center;gap:8px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}img{max-width:100%}",
+        );
+        expect(isCompleteGeneratedPageHtml(chrome)).toBe(true);
+      });
+
+      it("does not flag a column flex container even with flex-wrap: nowrap", () => {
+        const column = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.stack{display:flex;flex-direction:column;flex-wrap:nowrap;gap:12px}img{max-width:100%}",
+        );
+        expect(isCompleteGeneratedPageHtml(column)).toBe(true);
+      });
+    });
+
+    // Issue #325: prove the new detector patterns above cause no regression
+    // against the free-site template's own shipped CSS — every palette,
+    // hero, tokenomics and about-card variant is authored in one shared
+    // stylesheet, so running that whole stylesheet through the detector
+    // once covers every variant combination.
+    it("does not flag any shipped free-site template variant as an unstacked layout", () => {
+      const source = readFileSync(
+        path.join(process.cwd(), "docs", "free-site-template-source.html"),
+        "utf8",
+      );
+      const styleMatch = source.match(/<style>([\s\S]*?)<\/style>/);
+      expect(styleMatch).not.toBeNull();
+      const templateCss = styleMatch![1];
+      expect(isCompleteGeneratedPageHtml(withStyle("", templateCss))).toBe(true);
     });
   });
 
