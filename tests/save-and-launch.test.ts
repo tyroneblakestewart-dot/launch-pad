@@ -20,7 +20,12 @@ describe("Save and launch", () => {
 
     const guardStart = source.lastIndexOf("{project.generatedSiteHtml &&", buttonIndex);
     expect(guardStart).toBeGreaterThan(-1);
-    expect(source.slice(guardStart, buttonIndex)).not.toContain("}");
+    // Slice to the button TAG, not the label: the label comes after
+    // onClick={saveAndLaunch}, whose closing brace made the original
+    // assertion unpassable against any onClick at all.
+    const tagStart = source.lastIndexOf("<button", buttonIndex);
+    expect(tagStart).toBeGreaterThan(guardStart);
+    expect(source.slice(guardStart, tagStart)).not.toContain("}");
   });
 
   it("reuses saveProject and only opens the launch summary modal on success", async () => {
