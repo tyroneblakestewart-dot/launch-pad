@@ -30,6 +30,7 @@ import {
   resolveAIResponsesRuntime,
   type AIResponsesRuntime,
 } from "@/lib/server/ai-responses-runtime";
+import { authoriseBespokeSiteGeneration } from "@/lib/server/bespoke-site-entitlement";
 import { sanitiseProviderDetail } from "@/lib/server/sanitise-provider-detail";
 import { requestArtworkIdentity } from "@/lib/server/artwork-identity-request";
 import {
@@ -49,6 +50,10 @@ const ANALYSIS_TIMEOUT_MS = 18_000;
 // Progress heartbeats for the "building-page" stage are throttled to this
 // interval so a long generation doesn't flood the NDJSON stream.
 const BUILDING_PAGE_PROGRESS_INTERVAL_MS = 15_000;
+
+type GenerateSitePageRequest = GenerateSiteStyleRequest & {
+  accessProof?: unknown;
+};
 
 type OpenAIRequestFailure = {
   ok: false;
@@ -189,20 +194,9 @@ export async function POST(request: Request) {
   const isolationResponse = await getServiceIsolationResponse("website-generation");
   if (isolationResponse) return isolationResponse;
 
-  const ai = resolveAIResponsesRuntime(process.env, getVercelOidcToken(request));
-  if (!ai) {
-    return NextResponse.json(
-      {
-        error:
-          "AI website generation is unavailable because neither OpenAI nor Vercel AI Gateway authentication is available.",
-      },
-      { status: 503, headers: noStoreHeaders(rateHeaders) },
-    );
-  }
-
-  let body: GenerateSiteStyleRequest;
+  let body: GenerateSitePageRequest;
   try {
-    body = (await request.json()) as GenerateSiteStyleRequest;
+    body = (await request.json()) as GenerateSitePageRequest;
   } catch {
     return NextResponse.json(
       { error: "Invalid request body." },
@@ -221,6 +215,54 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "Enter a valid public http or https inspiration website URL." },
       { status: 400, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  const authorisation = await authoriseBespokeSiteGeneration({
+    proof: body.accessProof,
+    project: input,
+    requestOrigin: request.headers.get("origin") || "",
+  });
+  if (authorisation.status === "invalid-proof") {
+    return NextResponse.json(
+      {
+        code: "bespoke-wallet-proof-required",
+        error: authorisation.message,
+      },
+      { status: 401, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+  if (authorisation.status === "unavailable") {
+    return NextResponse.json(
+      {
+        code: "bespoke-access-unavailable",
+        error: authorisation.message,
+      },
+      { status: 503, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+  if (authorisation.status === "upsell") {
+    return NextResponse.json(
+      {
+        code: "bespoke-plan-required",
+        upsell: true,
+        message: authorisation.message,
+      },
+      { status: 403, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  // Paid access has been decided by the server before provider resolution or
+  // any request that can spend AI tokens. Client state never reaches this line
+  // on its own.
+  const ai = resolveAIResponsesRuntime(process.env, getVercelOidcToken(request));
+  if (!ai) {
+    return NextResponse.json(
+      {
+        error:
+          "AI website generation is unavailable because neither OpenAI nor Vercel AI Gateway authentication is available.",
+      },
+      { status: 503, headers: noStoreHeaders(rateHeaders) },
     );
   }
 

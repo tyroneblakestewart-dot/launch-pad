@@ -9,6 +9,10 @@ import {
 } from "@/lib/server/plan-payment-config";
 import { getPostgresPool } from "@/lib/server/postgres";
 import {
+  getBespokeSiteAccess,
+  type BespokeSiteAccessQueryRow,
+} from "@/lib/server/subscribers";
+import {
   buildSubscribersPipeline,
   type SubscribersPipelineDeps,
 } from "@/lib/server/system-health-pipeline";
@@ -44,6 +48,9 @@ type ReminderRow = {
   sent_at: Date | string | null;
   error_message: string | null;
 };
+
+const ENTITLEMENT_PROBE_WALLET =
+  "0x0000000000000000000000000000000000000001";
 
 function stage(
   id: string,
@@ -127,6 +134,42 @@ function configurationStage(
     "green",
     `${paymentSummary}, daily lifecycle processing and Telegram reminders are configured.${disabledSummary}`,
   );
+}
+
+async function bespokeEntitlementStage(
+  pool: PoolLike,
+): Promise<AdminPipelineStage> {
+  try {
+    const access = await withTimeout(
+      getBespokeSiteAccess(ENTITLEMENT_PROBE_WALLET, {
+        query: (text, params) =>
+          pool.query<BespokeSiteAccessQueryRow>(text, params),
+      }),
+      HEALTH_CHECK_TIMEOUT_MS,
+      "Bespoke entitlement probe timed out.",
+    );
+    if (access.status === "unavailable") {
+      return stage(
+        "bespoke-site-entitlement",
+        "Bespoke AI entitlement gate",
+        "red",
+        "The server could not resolve wallet access from subscriptions and permanent one-off payment history.",
+      );
+    }
+    return stage(
+      "bespoke-site-entitlement",
+      "Bespoke AI entitlement gate",
+      "green",
+      "The server-only wallet entitlement query reached subscriptions and permanent Bond + Pro Site payment history.",
+    );
+  } catch {
+    return stage(
+      "bespoke-site-entitlement",
+      "Bespoke AI entitlement gate",
+      "red",
+      "The server-only bespoke entitlement query failed or timed out.",
+    );
+  }
 }
 
 function lifecycleRunStage(
@@ -247,6 +290,12 @@ export async function buildSubscriptionLifecyclePipeline(
           "DATABASE_URL is not configured.",
         ),
         stage(
+          "bespoke-site-entitlement",
+          "Bespoke AI entitlement gate",
+          "amber",
+          "DATABASE_URL is not configured.",
+        ),
+        stage(
           "last-lifecycle-run",
           "Last daily lifecycle run",
           "amber",
@@ -275,8 +324,9 @@ export async function buildSubscriptionLifecyclePipeline(
   let tablesStage: AdminPipelineStage;
   let lastRun: LifecycleRunRow | undefined;
   let lastReminder: ReminderRow | undefined;
+  let entitlementStage: AdminPipelineStage;
   try {
-    const [tables, runs, reminders] = await withTimeout(
+    const [tables, runs, reminders, entitlement] = await withTimeout(
       Promise.all([
         pool.query<{ table_name: string }>(
           `SELECT table_name
@@ -301,6 +351,7 @@ export async function buildSubscriptionLifecyclePipeline(
             ORDER BY attempted_at DESC
             LIMIT 1`,
         ),
+        bespokeEntitlementStage(pool),
       ]),
       HEALTH_CHECK_TIMEOUT_MS,
       "Subscription lifecycle health lookup timed out.",
@@ -322,12 +373,19 @@ export async function buildSubscriptionLifecyclePipeline(
         );
     lastRun = runs.rows[0];
     lastReminder = reminders.rows[0];
+    entitlementStage = entitlement;
   } catch {
     tablesStage = stage(
       "lifecycle-tables",
       "Lifecycle tables",
       "red",
       "Lifecycle health data could not be read. Apply migrations through 011_plan_payments.sql.",
+    );
+    entitlementStage = stage(
+      "bespoke-site-entitlement",
+      "Bespoke AI entitlement gate",
+      "red",
+      "The bespoke entitlement health probe could not complete.",
     );
   }
 
@@ -338,6 +396,7 @@ export async function buildSubscriptionLifecyclePipeline(
       ...base.stages,
       configuration,
       tablesStage,
+      entitlementStage,
       lifecycleRunStage(lastRun, deps.now ?? new Date()),
       reminderStage(lastReminder),
     ],

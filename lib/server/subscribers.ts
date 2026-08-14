@@ -1,3 +1,4 @@
+import { getAddress } from "viem";
 import {
   type AdminSubscriberPayment,
   type AdminSubscriberRow,
@@ -49,6 +50,42 @@ export type SubscribersQuery = (
 export type ListSubscribersDeps = {
   databaseUrl?: string;
   query?: SubscribersQuery;
+  now?: Date;
+};
+
+export const BESPOKE_SITE_ACCESS_TIERS = [
+  "bond_pro_site",
+  "pro",
+  "pro_bundle",
+] as const;
+export type BespokeSiteAccessTier =
+  (typeof BESPOKE_SITE_ACCESS_TIERS)[number];
+
+export type BespokeSiteAccess = {
+  status: "ready" | "unavailable";
+  walletAddress: string;
+  allowed: boolean;
+  tier: BespokeSiteAccessTier | null;
+  permanent: boolean;
+  paidUntil: string | null;
+  message: string;
+};
+
+export type BespokeSiteAccessQueryRow = {
+  tier: string | null;
+  paid_until: Date | string | null;
+  expires_at: Date | string | null;
+  has_bond_pro_site_payment: boolean | string | number | null;
+};
+
+export type BespokeSiteAccessQuery = (
+  text: string,
+  params?: unknown[],
+) => Promise<{ rows: BespokeSiteAccessQueryRow[] }>;
+
+export type GetBespokeSiteAccessDeps = {
+  databaseUrl?: string;
+  query?: BespokeSiteAccessQuery;
   now?: Date;
 };
 
@@ -104,6 +141,25 @@ const SUBSCRIBERS_QUERY = `
   FROM site_wallets sw
   FULL OUTER JOIN subscriptions sub ON sub.wallet_address = sw.wallet_address
   ORDER BY COALESCE(sw.wallet_address, sub.wallet_address)
+`;
+
+const BESPOKE_SITE_ACCESS_QUERY = `
+  SELECT
+    subscription.tier,
+    subscription.paid_until,
+    subscription.expires_at,
+    EXISTS (
+      SELECT 1
+        FROM plan_payment_events payment
+       WHERE payment.wallet_address = wallet.wallet_address
+         AND payment.plan_id = 'bond-pro-site'
+         AND COALESCE(payment.billing_period, 'one_off') = 'one_off'
+         AND COALESCE(payment.payment_kind, 'one_off') = 'one_off'
+    ) AS has_bond_pro_site_payment
+    FROM (SELECT $1::varchar AS wallet_address) wallet
+    LEFT JOIN subscriptions subscription
+      ON subscription.wallet_address = wallet.wallet_address
+   LIMIT 1
 `;
 
 function asIso(value: Date | string | null): string | null {
@@ -173,6 +229,109 @@ function rowFromQueryRow(row: SubscribersQueryRow, now: Date): AdminSubscriberRo
     lastPaymentAt: asIso(row.created_at),
     paymentHistory: (row.payment_history || []).map(paymentFromQueryRow),
   };
+}
+
+function recordedOneOff(value: BespokeSiteAccessQueryRow["has_bond_pro_site_payment"]): boolean {
+  return value === true || value === 1 || value === "1" || value === "t" || value === "true";
+}
+
+function unavailableAccess(walletAddress: string, message: string): BespokeSiteAccess {
+  return {
+    status: "unavailable",
+    walletAddress,
+    allowed: false,
+    tier: null,
+    permanent: false,
+    paidUntil: null,
+    message,
+  };
+}
+
+/**
+ * The server-only source of truth for bespoke site access. A verified
+ * Bond + Pro Site one-off payment never expires; active Pro and Pro Bundle
+ * subscriptions are also accepted. Browser flags and saved projects are
+ * never inputs to this decision.
+ */
+export async function getBespokeSiteAccess(
+  walletAddress: string,
+  deps: GetBespokeSiteAccessDeps = {},
+): Promise<BespokeSiteAccess> {
+  let normalised = "";
+  try {
+    normalised = getAddress(walletAddress.trim()).toLowerCase();
+  } catch {
+    return {
+      status: "ready",
+      walletAddress: walletAddress.trim().toLowerCase(),
+      allowed: false,
+      tier: null,
+      permanent: false,
+      paidUntil: null,
+      message: "A valid EVM wallet is required.",
+    };
+  }
+
+  const databaseUrl = deps.databaseUrl ?? process.env.DATABASE_URL?.trim() ?? "";
+  const query = deps.query ?? (databaseUrl
+    ? ((text: string, params?: unknown[]) =>
+        getPostgresPool(databaseUrl).query(text, params)) as BespokeSiteAccessQuery
+    : null);
+  if (!query) {
+    return unavailableAccess(normalised, "DATABASE_URL is not configured.");
+  }
+
+  try {
+    const result = await query(BESPOKE_SITE_ACCESS_QUERY, [normalised]);
+    const row = result.rows[0];
+    const currentTier = row?.tier;
+    const paidUntil = asIso(row?.paid_until ?? row?.expires_at ?? null);
+    const permanent =
+      currentTier === "bond_pro_site" ||
+      recordedOneOff(row?.has_bond_pro_site_payment ?? null);
+
+    if (currentTier === "pro" || currentTier === "pro_bundle") {
+      const status = subscriptionStatusAt(paidUntil, deps.now ?? new Date());
+      if (status !== "expired") {
+        return {
+          status: "ready",
+          walletAddress: normalised,
+          allowed: true,
+          tier: currentTier,
+          permanent,
+          paidUntil,
+          message: "An active higher-tier subscription includes bespoke site access.",
+        };
+      }
+    }
+
+    if (permanent) {
+      return {
+        status: "ready",
+        walletAddress: normalised,
+        allowed: true,
+        tier: "bond_pro_site",
+        permanent: true,
+        paidUntil: null,
+        message: "Permanent Bond + Pro Site access is active.",
+      };
+    }
+
+    return {
+      status: "ready",
+      walletAddress: normalised,
+      allowed: false,
+      tier: null,
+      permanent: false,
+      paidUntil,
+      message: "No eligible bespoke-site entitlement was found.",
+    };
+  } catch {
+    return unavailableAccess(
+      normalised,
+      "Bespoke-site entitlement data could not be read.",
+    );
+  }
 }
 
 /**
