@@ -522,7 +522,13 @@ label small { display: block; margin-top: 5px; color: #5f6a61; font: 10px var(--
 }
 .modal-card {
   width: min(100%, 520px);
-  max-height: min(760px, calc(100vh - 40px));
+  /* 100svh (small viewport height), not 100vh: on iOS Safari with the
+     address bar shown, 100vh reports the *large* viewport height (as if the
+     bar were hidden), which is taller than what's actually visible. Sizing
+     against that oversized box let a centred modal land partly above the
+     visible screen on some real-device states this couldn't be reproduced
+     for in automated/headless viewports (issue #313 Part C). */
+  max-height: min(760px, calc(100svh - 40px));
   overflow: auto;
   padding: 22px;
   border: 1px solid rgba(85,255,120,.28);

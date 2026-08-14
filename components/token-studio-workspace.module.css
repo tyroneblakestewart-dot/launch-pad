@@ -111,6 +111,13 @@
   backdrop-filter: blur(14px);
 }
 
+/* This sticky bar creates its own stacking context, so it can paint over
+   the generated-site full screen preview's fixed, very-high-z-index
+   container even though that container is meant to cover everything
+   (issue #313 — same stacking-context trap as app-navigation.module.css'
+   .sidebar rule). Hide it while full screen is open. */
+:global(body:has(.full-generated-page-fullscreen)) .workspaceBar { display: none !important; }
+
 .workspaceActions {
   display: flex;
   align-items: center;

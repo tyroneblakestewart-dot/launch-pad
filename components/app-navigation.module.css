@@ -45,3 +45,16 @@
 :global(body:has(.public-generated-site)) .sidebar,
 :global(body:has(.public-generated-site)) .mobileHeader,
 :global(body:has(.public-generated-site)) .bottomNav { display:none !important; }
+
+/* Full screen preview (components/full-website-generator.tsx) must be a
+   completely unobstructed view of the generated site (issue #313). Its
+   fixed container gets an enormous z-index, but #launch-studio .preview-panel
+   is `position: sticky` at >=1081px, which creates its own stacking context
+   — so that huge z-index only wins inside the panel's context and loses to
+   this fixed sidebar's z-index:90 everywhere else. Hiding the chrome while
+   fullscreen is open sidesteps the stacking-context trap entirely instead of
+   trying to out-rank it. */
+:global(body:has(.full-generated-page-fullscreen)) .sidebar,
+:global(body:has(.full-generated-page-fullscreen)) .mobileHeader,
+:global(body:has(.full-generated-page-fullscreen)) .mobileMenu,
+:global(body:has(.full-generated-page-fullscreen)) .bottomNav { display:none !important; }
