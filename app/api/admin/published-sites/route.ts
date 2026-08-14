@@ -3,6 +3,10 @@ import { isAdminRequestOriginAllowed } from "@/lib/server/api-protection";
 import { hashAdminSessionToken, parseAdminSessionCookie } from "@/lib/server/admin-auth";
 import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
 import { AdminSessionStoreUnavailableError, isAdminSessionValid } from "@/lib/server/admin-session-store";
+import {
+  listAdminPublishedSiteDomains,
+  PublicSiteSubdomainStoreUnavailableError,
+} from "@/lib/server/public-site-subdomain";
 import { isValidContractAddressFormat } from "@/lib/server/published-site-validation";
 import { PublishStoreUnavailableError, getPublishStore } from "@/lib/server/publish-store";
 import { validateSlug } from "@/lib/slug";
@@ -21,6 +25,39 @@ function storageUnavailableResponse() {
     { error: "Durable publishing is not configured. Set DATABASE_URL and try again." },
     { status: 503, headers: NO_STORE_HEADERS },
   );
+}
+
+/** Read-only Pages view of path, paid subdomain and canonical URLs. */
+export async function GET(request: Request) {
+  try {
+    if (!(await isAuthenticated(request))) {
+      return NextResponse.json(
+        { error: "Admin sign-in is required." },
+        { status: 401, headers: NO_STORE_HEADERS },
+      );
+    }
+
+    const search = new URL(request.url).searchParams;
+    const page = Number(search.get("page") || 1);
+    const pageSize = Number(search.get("pageSize") || 20);
+    const result = await listAdminPublishedSiteDomains({ page, pageSize });
+    return NextResponse.json(result, { status: 200, headers: NO_STORE_HEADERS });
+  } catch (error) {
+    if (
+      error instanceof AdminSessionStoreUnavailableError ||
+      error instanceof PublicSiteSubdomainStoreUnavailableError
+    ) {
+      return storageUnavailableResponse();
+    }
+    console.error(
+      "Admin published-site domain list failed unexpectedly.",
+      error instanceof Error ? (error.stack ?? error.message) : error,
+    );
+    return NextResponse.json(
+      { error: "Published-site domains could not be loaded. Try again." },
+      { status: 500, headers: NO_STORE_HEADERS },
+    );
+  }
 }
 
 /**

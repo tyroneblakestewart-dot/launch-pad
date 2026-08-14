@@ -9,6 +9,7 @@ import {
   isAdminSessionValid,
 } from "@/lib/server/admin-session-store";
 import { getVercelOidcToken } from "@/lib/server/ai-responses-runtime";
+import { buildSubdomainRoutingHealthStage } from "@/lib/server/public-site-subdomain";
 import { buildSubscriptionLifecyclePipeline } from "@/lib/server/subscription-lifecycle-pipeline";
 import { buildServicePipeline } from "@/lib/server/system-health-pipeline";
 
@@ -42,11 +43,22 @@ export async function GET(request: Request) {
       );
     }
 
-    const pipeline = service === "subscribers"
-      ? await buildSubscriptionLifecyclePipeline()
-      : await buildServicePipeline(service, {
-          requestOidcToken: getVercelOidcToken(request),
-        });
+    let pipeline;
+    if (service === "subscribers") {
+      const [subscriptions, subdomainRouting] = await Promise.all([
+        buildSubscriptionLifecyclePipeline(),
+        buildSubdomainRoutingHealthStage(),
+      ]);
+      pipeline = {
+        ...subscriptions,
+        stages: [...subscriptions.stages, subdomainRouting],
+      };
+    } else {
+      pipeline = await buildServicePipeline(service, {
+        requestOidcToken: getVercelOidcToken(request),
+      });
+    }
+
     return NextResponse.json(
       { pipeline, checkedAt: new Date().toISOString() },
       { status: 200, headers: { "Cache-Control": "no-store" } },

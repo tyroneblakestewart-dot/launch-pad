@@ -13,7 +13,7 @@ async function source(...parts: string[]): Promise<string> {
 }
 
 describe("Bond + Pro Site promise audit", () => {
-  it("keeps the approved price and existing honest card copy unchanged", () => {
+  it("keeps the approved price and marks the implemented subdomain promise live", () => {
     const plan = LAUNCH_PATH_OPTIONS.find(
       (option) => option.id === "bond-pro-site",
     );
@@ -25,7 +25,7 @@ describe("Bond + Pro Site promise audit", () => {
     expect(plan?.tagline.toLowerCase()).not.toContain("domain");
     expect(plan?.bullets).toEqual([
       "Everything in Bond + Site",
-      "[token].hoodlums.dev subdomain — coming soon",
+      "[token].hoodlums.dev subdomain",
       "Premium bespoke AI design",
       "Full HTML export — coming soon; publish at hoodlums.dev/slug today",
       "Dexscreener chart + holder stats",

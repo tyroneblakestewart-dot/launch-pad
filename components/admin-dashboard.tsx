@@ -10,6 +10,7 @@ import {
 import { AdminMoneySection } from "@/components/admin-money-section";
 import { AdminOutreachSection } from "@/components/admin-outreach-section";
 import { AdminPagesSection } from "@/components/admin-pages-section";
+import { AdminSiteDomainsSection } from "@/components/admin-site-domains-section";
 import { AdminSubscribersSection } from "@/components/admin-subscribers-section";
 import { AdminSystemHealth } from "@/components/admin-system-health";
 import type {
@@ -239,7 +240,12 @@ export function AdminDashboard() {
             onSetIsolation={handleSetIsolation}
           />
         ) : null}
-        {activeSection === "pages" ? <AdminPagesSection /> : null}
+        {activeSection === "pages" ? (
+          <>
+            <AdminSiteDomainsSection />
+            <AdminPagesSection />
+          </>
+        ) : null}
         {activeSection === "subscribers" ? <AdminSubscribersSection /> : null}
         {activeSection === "accounts" ? <AdminAccountsSection /> : null}
         {activeSection === "outreach" ? <AdminOutreachSection /> : null}
