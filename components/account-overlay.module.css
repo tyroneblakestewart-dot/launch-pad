@@ -8,6 +8,16 @@
   padding: 18px 24px 2px;
 }
 
+/* The floating Account launcher isn't fixed/sticky app chrome covered by the
+   sidebar/topbar hide rules elsewhere, but on mobile .accountDock becomes
+   position: fixed (see the max-width query below) and paints over the
+   generated-site overlay (windowed or full screen — both carry
+   .full-generated-page-container) the same way those surfaces did before
+   the issue #313 fix. Hide it while the overlay is open. */
+:global(body:has(.full-generated-page-container)) .accountDock {
+  display: none !important;
+}
+
 .launcher {
   position: static;
   min-height: 38px;

@@ -46,12 +46,13 @@
 :global(body:has(.public-generated-site)) .mobileHeader,
 :global(body:has(.public-generated-site)) .bottomNav { display:none !important; }
 
-/* Full screen preview must be a completely unobstructed view of the generated
-   site — the fixed/sticky app chrome would otherwise paint over it because the
-   studio preview panel's `position: sticky` traps the preview's z-index inside
-   its own stacking context (issue #313). */
-:global(body:has(.full-generated-page-fullscreen)) { padding-left:0 !important; padding-bottom:0 !important; }
-:global(body:has(.full-generated-page-fullscreen)) .sidebar,
-:global(body:has(.full-generated-page-fullscreen)) .mobileHeader,
-:global(body:has(.full-generated-page-fullscreen)) .mobileMenu,
-:global(body:has(.full-generated-page-fullscreen)) .bottomNav { display:none !important; }
+/* The generated-site overlay (windowed or full screen — both carry
+   .full-generated-page-container) must be a completely unobstructed view of
+   the generated site — the fixed/sticky app chrome would otherwise paint
+   over it because the studio preview panel's `position: sticky` traps the
+   preview's z-index inside its own stacking context (issue #313). */
+:global(body:has(.full-generated-page-container)) { padding-left:0 !important; padding-bottom:0 !important; }
+:global(body:has(.full-generated-page-container)) .sidebar,
+:global(body:has(.full-generated-page-container)) .mobileHeader,
+:global(body:has(.full-generated-page-container)) .mobileMenu,
+:global(body:has(.full-generated-page-container)) .bottomNav { display:none !important; }
