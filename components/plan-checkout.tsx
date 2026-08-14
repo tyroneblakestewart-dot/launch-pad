@@ -10,6 +10,10 @@ import {
   type RecoverablePlanPayment,
 } from "@/lib/plan-payment-recovery";
 import {
+  createPlanBuilderUnlockGuard,
+  requireServerVerifiedPlanPayment,
+} from "@/lib/plan-payment-unlock";
+import {
   formatUsdCents,
   planPaymentDefinition,
   type PaidLaunchPath,
@@ -29,7 +33,7 @@ import styles from "./plan-checkout.module.css";
 type PlanCheckoutProps = {
   plan: PaidLaunchPath;
   initialBilling?: SubscriptionBillingPeriod;
-  onBuilderUnlocked: (plan: PaidLaunchPath) => void;
+  onBuilderUnlocked: (verification: PlanPaymentVerification) => void;
   onClose: () => void;
 };
 
@@ -39,6 +43,7 @@ type CheckoutPhase =
   | "sending"
   | "verifying"
   | "success"
+  | "unconfigured"
   | "error";
 
 type PaymentPreflight = {
@@ -46,6 +51,11 @@ type PaymentPreflight = {
   origin?: string;
   recoveryOrigin?: string | null;
   error?: string;
+};
+
+type PaymentApiFailure = {
+  message: string;
+  code: string | null;
 };
 
 const VERIFY_ATTEMPTS = 30;
@@ -84,15 +94,26 @@ function normaliseChainId(value: unknown): string | null {
   return trimmed;
 }
 
-async function responseError(response: Response): Promise<string> {
+async function responseFailure(response: Response): Promise<PaymentApiFailure> {
   try {
-    const body = (await response.json()) as { error?: unknown };
-    return typeof body.error === "string"
-      ? body.error
-      : `Request failed (${response.status}).`;
+    const body = (await response.json()) as { error?: unknown; code?: unknown };
+    return {
+      message:
+        typeof body.error === "string"
+          ? body.error
+          : `Request failed (${response.status}).`,
+      code: typeof body.code === "string" ? body.code : null,
+    };
   } catch {
-    return `Request failed (${response.status}).`;
+    return {
+      message: `Request failed (${response.status}).`,
+      code: null,
+    };
   }
+}
+
+async function responseError(response: Response): Promise<string> {
+  return (await responseFailure(response)).message;
 }
 
 async function readPreflight(response: Response): Promise<PaymentPreflight> {
@@ -133,6 +154,7 @@ export function PlanCheckout({
   const [storedRecovery, setStoredRecovery] =
     useState<RecoverablePlanPayment | null>(null);
   const mounted = useRef(true);
+  const builderUnlockGuard = useRef(createPlanBuilderUnlockGuard());
 
   const expectedBilling = subscription ? billingPeriod : "one_off";
   const currentQuote =
@@ -146,6 +168,7 @@ export function PlanCheckout({
   const selectionLocked = busy || Boolean(transactionHash);
   const needsWalletInteraction = !transactionHash || !paymentSignature;
   const validRecoveryHash = isHash(recoveryHash.trim());
+  const paymentUnavailable = phase === "unconfigured";
 
   function showError(nextMessage: string): void {
     if (!mounted.current) return;
@@ -250,7 +273,22 @@ export function PlanCheckout({
     ])
       .then(async ([quoteResponse, preflightResponse]) => {
         if (!quoteResponse.ok) {
-          throw new Error(await responseError(quoteResponse));
+          const failure = await responseFailure(quoteResponse);
+          if (!mounted.current || controller.signal.aborted) return;
+          if (
+            quoteResponse.status === 503 ||
+            failure.code === "payments-not-configured"
+          ) {
+            setQuote(null);
+            setSendOriginAllowed(false);
+            setRecoveryOrigin(null);
+            setPhase("unconfigured");
+            setMessage(
+              `Payments are not configured for ${definition.label} on this deployment. No wallet transaction will be requested. The site owner must add the required server-side payment settings in Vercel and redeploy.`,
+            );
+            return;
+          }
+          throw new Error(failure.message);
         }
         const nextQuote = (await quoteResponse.json()) as PlanPaymentQuote;
         const preflight = await readPreflight(preflightResponse);
@@ -291,9 +329,10 @@ export function PlanCheckout({
       });
 
     return () => controller.abort();
-  }, [expectedBilling, paymentToken, plan, subscription]);
+  }, [definition.label, expectedBilling, paymentToken, plan, subscription]);
 
   function resetForSelection(): void {
+    builderUnlockGuard.current.reset();
     setQuote(null);
     setSendOriginAllowed(false);
     setPhase("loading");
@@ -433,7 +472,14 @@ export function PlanCheckout({
         );
       }
 
-      if (response.ok) return (await response.json()) as PlanPaymentVerification;
+      if (response.ok) {
+        return requireServerVerifiedPlanPayment(await response.json(), {
+          plan,
+          billingPeriod: currentQuote.billingPeriod,
+          walletAddress,
+          transactionHash: hash,
+        });
+      }
       if (response.status !== 202) throw new Error(await responseError(response));
       setMessage(
         `Transaction ${hash} is saved. Waiting for Robinhood Chain confirmation…`,
@@ -460,8 +506,14 @@ export function PlanCheckout({
     clearRecoverablePayment(hash);
     setVerification(result);
     if (result.destination === "builder") {
+      const verifiedPlan = builderUnlockGuard.current.consume(result, plan);
+      if (!verifiedPlan) {
+        throw new Error(
+          "The server verification was already consumed or did not authorize this builder.",
+        );
+      }
       setMessage("Payment confirmed. Opening the Pro Site builder…");
-      onBuilderUnlocked(plan);
+      onBuilderUnlocked(result);
       return;
     }
     setPhase("success");
@@ -844,9 +896,19 @@ export function PlanCheckout({
 
       <section className={styles.status} aria-live="polite" aria-busy={busy}>
         <span>
-          {phase === "error" ? "PAYMENT NOT UNLOCKED" : "PAYMENT STATUS"}
+          {paymentUnavailable
+            ? "PAYMENTS NOT CONFIGURED"
+            : phase === "error"
+              ? "PAYMENT NOT UNLOCKED"
+              : "PAYMENT STATUS"}
         </span>
-        <p className={phase === "error" ? styles.error : undefined}>{message}</p>
+        <p
+          className={
+            phase === "error" || paymentUnavailable ? styles.error : undefined
+          }
+        >
+          {message}
+        </p>
         {transactionHash ? (
           <code className={styles.receipt}>{transactionHash}</code>
         ) : null}

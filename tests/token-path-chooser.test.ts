@@ -143,7 +143,9 @@ describe("token path chooser overlay", () => {
     const component = await readFile(path.join(ROOT, "components", "token-path-chooser.tsx"), "utf8");
 
     expect(component).toContain("const preset = consumeLaunchPathPreset();");
-    expect(component).toContain("setCheckoutPlan(preset && isPaidLaunchPath(preset) ? preset : null);");
+    expect(component).toContain("const nextSelection = preset ?? selected;");
+    expect(component).toContain("if (nextSelection && isPaidLaunchPath(nextSelection))");
+    expect(component).toContain("beginCheckout(nextSelection);");
     expect(component).toContain("setPresetToConfirm(preset && !isPaidLaunchPath(preset) ? preset : null);");
     expect(component).toContain("onConfirm(presetToConfirm);");
     expect(component).toContain("if (!open || presetToConfirm) return null;");
@@ -153,10 +155,31 @@ describe("token path chooser overlay", () => {
     const component = await readFile(path.join(ROOT, "components", "token-path-chooser.tsx"), "utf8");
     expect(component).toContain("function continueWithPending()");
     expect(component).toContain("if (isPaidLaunchPath(pending))");
-    expect(component).toContain("setCheckoutPlan(pending)");
+    expect(component).toContain("beginCheckout(pending)");
     expect(component).toContain("onConfirm(pending)");
     expect(component).toContain("<PlanCheckout");
     expect(component).toContain("onBuilderUnlocked={unlockPaidBuilder}");
+  });
+
+  it("never confirms a paid preset or saved path before a verified checkout response", async () => {
+    const component = await readFile(path.join(ROOT, "components", "token-path-chooser.tsx"), "utf8");
+    const openStart = component.indexOf("if (open !== wasOpen) {");
+    const openEnd = component.indexOf("useEffect(() => {", openStart);
+    const openBlock = component.slice(openStart, openEnd);
+
+    expect(openBlock).toContain("beginCheckout(nextSelection);");
+    expect(openBlock).not.toContain("onConfirm(nextSelection)");
+
+    const unlockStart = component.indexOf("function unlockPaidBuilder(");
+    const unlockEnd = component.indexOf("if (!open || presetToConfirm)", unlockStart);
+    const unlockBlock = component.slice(unlockStart, unlockEnd);
+    expect(unlockBlock).toContain("builderUnlockGuard.current.consume(");
+    expect(unlockBlock).toContain("verification");
+    expect(unlockBlock).toContain("checkoutPlan");
+    expect(unlockBlock).toContain("onConfirm(verifiedPlan)");
+    expect(unlockBlock.indexOf("builderUnlockGuard.current.consume(")).toBeLessThan(
+      unlockBlock.indexOf("onConfirm(verifiedPlan)"),
+    );
   });
 
   it("fits all five cards on one desktop row without introducing horizontal scrolling", async () => {
@@ -197,11 +220,18 @@ describe("token studio path-chooser wiring", () => {
     expect(studio).toContain("onConfirm={confirmLaunchPath}");
   });
 
-  it("keeps the form inert while selection or payment remains open", async () => {
+  it("keeps the full workspace inert while selection or payment remains open", async () => {
     const studio = await readFile(path.join(ROOT, "components", "token-studio.tsx"), "utf8");
     const css = await readFile(path.join(ROOT, "app", "globals.css"), "utf8");
     expect(studio).toContain('className={showPathChooser ? "builder-panel path-locked" : "builder-panel"}');
     expect(studio).toContain("inert={showPathChooser || undefined}");
+
+    const workspaceStart = studio.indexOf('className="workspace"');
+    const workspaceEnd = studio.indexOf(">", workspaceStart);
+    const workspaceOpeningTag = studio.slice(workspaceStart, workspaceEnd);
+    expect(workspaceOpeningTag).toContain("aria-disabled={showPathChooser || undefined}");
+    expect(workspaceOpeningTag).toContain("inert={showPathChooser || undefined}");
+
     expect(css).toContain(".builder-panel.path-locked {");
     expect(css).toContain("pointer-events: none;");
   });

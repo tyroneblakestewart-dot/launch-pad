@@ -117,6 +117,9 @@ describe("Saved launches", () => {
     expect(loadBlock).toContain("if (!outcome.success) {");
     expect(loadBlock).toContain("setProject(saved);");
     expect(loadBlock).toContain("reopenGeneratedSite(saved);");
+    expect(loadBlock).toContain("const requiresPayment = isPaidLaunchPath(saved.launchPath);");
+    expect(loadBlock).toContain("setShowPathChooser(requiresPayment);");
+    expect(loadBlock).toContain("if (!requiresPayment) reopenGeneratedSite(saved);");
 
     for (const field of [
       "name",
@@ -134,6 +137,16 @@ describe("Saved launches", () => {
     }
     expect(studio).toContain("project.launchPath");
     expect(studio).toContain("project.siteSections");
+  });
+
+  it("keeps the full workspace and saved generated preview inert until paid resume is verified", async () => {
+    const studio = await source("components", "token-studio.tsx");
+    const workspaceStart = studio.indexOf('<section\n        className="workspace"');
+    const workspaceEnd = studio.indexOf(">", workspaceStart);
+    const workspaceOpeningTag = studio.slice(workspaceStart, workspaceEnd);
+
+    expect(workspaceOpeningTag).toContain("aria-disabled={showPathChooser || undefined}");
+    expect(workspaceOpeningTag).toContain("inert={showPathChooser || undefined}");
   });
 
   it("discards transient flow UI before opening a saved launch", async () => {

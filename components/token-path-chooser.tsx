@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
 import {
   PLAN_CHOOSER_OPTIONS,
   consumeLaunchPathPreset,
   launchPathLabel,
 } from "@/lib/launch-paths";
-import { isPaidLaunchPath, type PaidLaunchPath } from "@/lib/plan-payments";
+import { createPlanBuilderUnlockGuard } from "@/lib/plan-payment-unlock";
+import {
+  isPaidLaunchPath,
+  type PaidLaunchPath,
+  type PlanPaymentVerification,
+} from "@/lib/plan-payments";
 import type { LaunchPath } from "@/lib/types";
 import {
   OPEN_WORKSPACE_REQUEST_EVENT,
@@ -28,20 +33,38 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
   const [presetToConfirm, setPresetToConfirm] = useState<LaunchPath | null>(null);
   const [wasOpen, setWasOpen] = useState(open);
   const [dismissed, setDismissed] = useState(false);
+  const builderUnlockGuard = useRef(createPlanBuilderUnlockGuard());
+
+  function beginCheckout(plan: PaidLaunchPath): void {
+    setCheckoutPlan(plan);
+  }
+
+  function closeCheckout(): void {
+    setCheckoutPlan(null);
+  }
 
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
       const preset = consumeLaunchPathPreset();
-      setPending(preset ?? selected);
-      setCheckoutPlan(preset && isPaidLaunchPath(preset) ? preset : null);
+      const nextSelection = preset ?? selected;
+      setPending(nextSelection);
+      if (nextSelection && isPaidLaunchPath(nextSelection)) {
+        beginCheckout(nextSelection);
+      } else {
+        closeCheckout();
+      }
       setPresetToConfirm(preset && !isPaidLaunchPath(preset) ? preset : null);
       setDismissed(false);
     } else {
-      setCheckoutPlan(null);
+      closeCheckout();
       setPresetToConfirm(null);
     }
   }
+
+  useEffect(() => {
+    builderUnlockGuard.current.reset();
+  }, [checkoutPlan]);
 
   useEffect(() => {
     if (!open || !presetToConfirm) return;
@@ -55,8 +78,13 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
       if (action !== "new" || !launchPath) return;
       consumeLaunchPathPreset();
       setPending(launchPath);
-      setCheckoutPlan(isPaidLaunchPath(launchPath) ? launchPath : null);
-      setPresetToConfirm(isPaidLaunchPath(launchPath) ? null : launchPath);
+      if (isPaidLaunchPath(launchPath)) {
+        beginCheckout(launchPath);
+        setPresetToConfirm(null);
+      } else {
+        closeCheckout();
+        setPresetToConfirm(launchPath);
+      }
       setDismissed(false);
     }
 
@@ -86,15 +114,21 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
   function continueWithPending(): void {
     if (!pending) return;
     if (isPaidLaunchPath(pending)) {
-      setCheckoutPlan(pending);
+      beginCheckout(pending);
       return;
     }
     onConfirm(pending);
   }
 
-  function unlockPaidBuilder(plan: PaidLaunchPath): void {
+  function unlockPaidBuilder(verification: PlanPaymentVerification): void {
+    if (!checkoutPlan) return;
+    const verifiedPlan = builderUnlockGuard.current.consume(
+      verification,
+      checkoutPlan,
+    );
+    if (!verifiedPlan) return;
     setCheckoutPlan(null);
-    onConfirm(plan);
+    onConfirm(verifiedPlan);
   }
 
   if (!open || presetToConfirm) return null;
@@ -157,7 +191,7 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
           <PlanCheckout
             plan={checkoutPlan}
             onBuilderUnlocked={unlockPaidBuilder}
-            onClose={() => setCheckoutPlan(null)}
+            onClose={closeCheckout}
           />
         ) : (
           <>

@@ -20,7 +20,7 @@ describe("shared plan purchase flow", () => {
     expect(chooser).toContain("if (isPaidLaunchPath(pending))");
   });
 
-  it("keeps free plans direct and prevents paid confirmation before server verification", async () => {
+  it("keeps free plans direct and prevents paid confirmation before exact server verification", async () => {
     const chooser = await source("components", "token-path-chooser.tsx");
     const checkout = await source("components", "plan-checkout.tsx");
 
@@ -30,10 +30,16 @@ describe("shared plan purchase flow", () => {
     );
     expect(checkout).toContain('fetch("/api/plan-payments/verify"');
     expect(checkout).toContain("walletSignature");
+    expect(checkout).toContain("requireServerVerifiedPlanPayment");
     expect(checkout).toContain('if (result.destination === "builder")');
-    expect(checkout).toContain("onBuilderUnlocked(plan)");
+    expect(checkout).toContain("builderUnlockGuard.current.consume(result, plan)");
+    expect(checkout).toContain("onBuilderUnlocked(result)");
+    expect(checkout).not.toContain("onBuilderUnlocked(plan)");
     expect(checkout.indexOf("verifyUntilConfirmed(walletAddress, hash, walletSignature)")).toBeLessThan(
-      checkout.indexOf("onBuilderUnlocked(plan)"),
+      checkout.indexOf("builderUnlockGuard.current.consume(result, plan)"),
+    );
+    expect(checkout.indexOf("builderUnlockGuard.current.consume(result, plan)")).toBeLessThan(
+      checkout.indexOf("onBuilderUnlocked(result)"),
     );
   });
 
@@ -97,18 +103,27 @@ describe("shared plan purchase flow", () => {
     expect(proof).toContain("`Token: ${paymentToken");
   });
 
-  it("resets quote state from selection handlers rather than synchronously inside the fetch effect", async () => {
+  it("keeps quote resets out of effect setup and success, while clearing stale data on configuration failure", async () => {
     const checkout = await source("components", "plan-checkout.tsx");
     const effectStart = checkout.indexOf("useEffect(() => {");
     const effectEnd = checkout.indexOf("function resetForSelection", effectStart);
     const effect = checkout.slice(effectStart, effectEnd);
+    const requestStart = effect.indexOf("Promise.all([");
+    const successStart = effect.indexOf("const nextQuote");
+    const effectSetup = effect.slice(0, requestStart);
+    const failureBranch = effect.slice(requestStart, successStart);
+    const successBranch = effect.slice(successStart);
     const handlers = checkout.slice(
       effectEnd,
       checkout.indexOf("async function requestWalletProof"),
     );
 
-    expect(effect).not.toContain("setQuote(null)");
-    expect(effect).not.toContain('setPhase("loading")');
+    expect(effectSetup).not.toContain("setQuote(null)");
+    expect(successBranch).not.toContain("setQuote(null)");
+    expect(failureBranch).toContain("setQuote(null)");
+    expect(failureBranch).toContain('setPhase("unconfigured")');
+    expect(effectSetup).not.toContain('setPhase("loading")');
+    expect(successBranch).not.toContain('setPhase("loading")');
     expect(handlers).toContain("setQuote(null)");
     expect(handlers).toContain('setPhase("loading")');
     expect(handlers).toContain("setPaymentToken(nextToken)");
@@ -158,6 +173,19 @@ describe("shared plan purchase flow", () => {
     expect(checkout).toContain("Payment failed unexpectedly");
     expect(checkout).toContain('setPhase("error")');
   });
+
+  it("fails closed with a friendly payments-not-configured state", async () => {
+    const checkout = await source("components", "plan-checkout.tsx");
+    const quoteRoute = await source("app", "api", "plan-payments", "quote", "route.ts");
+
+    expect(quoteRoute).toContain('code: "payments-not-configured"');
+    expect(quoteRoute).toContain("process.env.DATABASE_URL");
+    expect(quoteRoute).toContain("PlanPaymentConfigurationError");
+    expect(checkout).toContain('phase === "unconfigured"');
+    expect(checkout).toContain("PAYMENTS NOT CONFIGURED");
+    expect(checkout).toContain("No wallet transaction will be requested");
+    expect(checkout).toContain("required server-side payment settings in Vercel");
+  });
 });
 
 describe("server verification and admin revenue standing rule", () => {
@@ -188,6 +216,15 @@ describe("server verification and admin revenue standing rule", () => {
     expect(adminMoney).toContain("Recent verified plan payments");
     expect(adminMoney).toContain("payment.amountDisplay");
     expect(adminMoney).toContain("payment.asset");
+  });
+
+  it("keeps Bond + Pro Site configuration visible in System Health", async () => {
+    const health = await source("lib", "server", "subscription-lifecycle-pipeline.ts");
+
+    expect(health).toContain('"HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI"');
+    expect(health).toContain('getPlanPaymentQuote("bond-pro-site", "one_off", environment)');
+    expect(health).toContain("Bond + Pro Site native payment");
+    expect(health).toContain("plan_payment_events");
   });
 
   it("keeps treasury, token catalog and native price configuration server-only", async () => {
