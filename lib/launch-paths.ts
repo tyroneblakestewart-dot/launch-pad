@@ -74,7 +74,7 @@ export const LAUNCH_PATH_OPTIONS: readonly LaunchPathOption[] = [
     tagline: "Your token. Your premium design. Your brand.",
     bullets: [
       "Everything in Bond + Site",
-      "[token].hoodlums.dev subdomain — coming soon",
+      "[token].hoodlums.dev subdomain",
       "Premium bespoke AI design",
       "Full HTML export — coming soon; publish at hoodlums.dev/slug today",
       "Dexscreener chart + holder stats",

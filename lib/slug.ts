@@ -1,27 +1,37 @@
 /**
- * Shared slug rules used by both the studio save flow and the public
- * `app/[slug]` route, so a slug that is rejected at save time can never
- * differ from what the public route considers valid.
+ * Shared slug rules used by the studio save flow, publishing, the public
+ * `app/[slug]` route and paid subdomain routing. A value rejected here can
+ * never be claimed as either a website path or a Hoodlums subdomain.
  */
 
 export const MAX_SLUG_LENGTH = 48;
 
 /**
- * Exact reserved words that would otherwise collide with an existing
- * top-level route (or a likely future one).
+ * Exact reserved words that collide with current routes or infrastructure
+ * hostnames. Keep this as the one shared path/subdomain source of truth.
  */
 export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
-  "api",
   "account",
-  "testnet",
-  "providers",
-  "allocations",
-  "manager",
-  "liquidity-lab",
-  "monad",
-  "social",
-  "bonding-curve",
   "admin",
+  "allocations",
+  "api",
+  "app",
+  "assets",
+  "bonding-curve",
+  "cdn",
+  "dev",
+  "docs",
+  "hoodchat",
+  "liquidity-lab",
+  "mail",
+  "manager",
+  "monad",
+  "providers",
+  "social",
+  "staging",
+  "status",
+  "testnet",
+  "token",
   "www",
 ]);
 
@@ -87,8 +97,8 @@ export function slugify(value: string): string {
  * Finds another record (excluding `excludeId`) that already uses `slug`.
  * This is a local, browser-storage-only guard — it cannot see other
  * browsers or devices, so it is not an authoritative uniqueness check.
- * The future publish endpoint must still enforce an atomic server-side
- * unique-slug constraint.
+ * The publish endpoint still enforces an atomic server-side unique-slug
+ * constraint.
  */
 export function findSlugCollision<T extends { id: string; websiteSlug: string }>(
   records: readonly T[],

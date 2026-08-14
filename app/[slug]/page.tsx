@@ -16,7 +16,9 @@ import { lookupDexscreenerPair } from "@/lib/server/dexscreener";
 import { resolvePageContent } from "@/lib/server/page-content";
 import { getPublicGeneratedSiteBySlug } from "@/lib/server/public-generated-sites";
 import { decodeArtworkDataUrl } from "@/lib/server/public-site-artwork";
+import { resolvePublicSiteCanonicalUrls } from "@/lib/server/public-site-subdomain";
 import { lookupTokenHolderStats } from "@/lib/server/token-holders";
+import { publicSitePathUrl } from "@/lib/subdomain-routing";
 import { validateSlug } from "@/lib/slug";
 import { canAccessPublishedSite, draftPreviewTokenMatches } from "./draft-preview";
 
@@ -72,18 +74,27 @@ export async function generateMetadata({ params, searchParams }: PublicSiteRoute
   }
 
   const title = `${site.name} ($${site.ticker})`;
-  const canonical = `https://hoodlums.dev/${slug}`;
+  const pathUrl = publicSitePathUrl(slug);
+  const urls = isDraft
+    ? {
+        pageUrl: pathUrl,
+        artworkUrl: `${pathUrl}/artwork`,
+        subdomainActive: false,
+      }
+    : await resolvePublicSiteCanonicalUrls(slug);
   const hasArtwork = !isDraft && Boolean(decodeArtworkDataUrl(site.heroImage));
-  const images = hasArtwork ? [`/${slug}/artwork`] : undefined;
+  const images = hasArtwork
+    ? [urls.subdomainActive ? urls.artworkUrl : `/${slug}/artwork`]
+    : undefined;
 
   return {
     title,
     description: site.description,
-    alternates: { canonical },
+    alternates: { canonical: urls.pageUrl },
     robots: isDraft ? DRAFT_ROBOTS : undefined,
     openGraph: {
       type: "website",
-      url: canonical,
+      url: urls.pageUrl,
       title,
       description: site.description,
       images,
