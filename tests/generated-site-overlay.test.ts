@@ -94,16 +94,23 @@ describe("the generated-site overlay replaces the heist preview mock (issue #318
 });
 
 describe("the branded overlay window (issue #318)", () => {
-  it("mounts a real backdrop that the hide-all-children exception rule does not swallow", async () => {
+  it("mounts the backdrop and container on document.body, not inside .site-preview (issue #320)", async () => {
     const generator = await generatorSource();
 
     expect(generator).toContain('backdrop.className = "full-generated-page-backdrop";');
-    expect(generator).toContain("site.append(backdrop, container);");
-    // Regression for the owner-reported defect: the backdrop must be named
-    // in the exception list alongside the container and status, or the
-    // "hide every other child" rule swallows it back to display:none.
+    // Regression for the owner-reported positioning trap: .preview-panel
+    // applies a `filter` while the build gate is locked, and a filtered
+    // ancestor becomes the containing block for `position: fixed`
+    // descendants — mounting outside .site-preview permanently escapes
+    // that (and every other ancestor filter/transform/sticky trap).
+    expect(generator).toContain("document.body.append(backdrop, container);");
+    expect(generator).not.toContain("site.append(backdrop, container);");
+    // Since the backdrop/container are no longer .site-preview children,
+    // the hide-the-rest rule no longer needs exceptions for them — only
+    // the status banner (which is still appended directly to .site-preview)
+    // stays visible.
     expect(generator).toContain(
-      ".site-preview.full-generated-page > :not(.full-generated-page-container):not(.full-generated-page-status):not(.full-generated-page-backdrop) { display: none !important; }",
+      ".site-preview.full-generated-page > :not(.full-generated-page-status) { display: none !important; }",
     );
     expect(generator).toContain(".full-generated-page-backdrop {");
     expect(generator).toContain("position: fixed;");

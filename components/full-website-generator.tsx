@@ -91,6 +91,12 @@ type RenderedPreview = {
   onClose: () => void;
   onToggleFullScreen: () => void;
   controlCleanups: Array<() => void>;
+  // Windowed mode renders the iframe at a larger design width, scaled down
+  // (see computeGeneratedPreviewScale), so applyHeight/applyLayout must be
+  // able to recompute that layout whenever the reported content height or
+  // the available viewport width changes.
+  applyHeight: (reportedHeight: number) => void;
+  applyLayout: () => void;
 };
 
 // Finds a studio control button by its visible label. Used to drive "Save
@@ -105,11 +111,30 @@ function findStudioButtonByLabel(label: string): HTMLButtonElement | undefined {
 }
 
 const MOBILE_PREVIEW_QUERY = "(max-width: 767px)";
-export const MOBILE_PREVIEW_HEIGHT = "70svh";
 
-export function getGeneratedPreviewFrameHeight(reportedHeight: number, mobile: boolean): string {
-  if (mobile) return MOBILE_PREVIEW_HEIGHT;
-  return `${Math.min(16_000, Math.max(700, Math.ceil(reportedHeight)))}px`;
+// Windowed preview scaling (issue #320 part 3): the iframe is laid out at a
+// design width wider than the space actually available, then visually
+// shrunk with a CSS transform, so the visitor sees more of the page
+// composition (hero plus the next section or two) instead of just a nav bar
+// and one tall block. Desktop uses a fixed design width; phones scale the
+// device width itself so the result still fills the screen edge to edge
+// once shrunk (design width = available width / MOBILE_PREVIEW_SCALE).
+export const DESKTOP_PREVIEW_DESIGN_WIDTH = 1280;
+export const MOBILE_PREVIEW_SCALE = 0.82;
+
+export function computeGeneratedPreviewScale(
+  availableWidth: number,
+  mobile: boolean,
+): { designWidth: number; scale: number } {
+  const width = Math.max(1, availableWidth);
+  if (mobile) {
+    return { designWidth: width / MOBILE_PREVIEW_SCALE, scale: MOBILE_PREVIEW_SCALE };
+  }
+  return { designWidth: DESKTOP_PREVIEW_DESIGN_WIDTH, scale: Math.min(1, width / DESKTOP_PREVIEW_DESIGN_WIDTH) };
+}
+
+export function getGeneratedPreviewDesignHeight(reportedHeight: number): number {
+  return Math.min(16_000, Math.max(700, Math.ceil(reportedHeight)));
 }
 
 
@@ -383,10 +408,6 @@ function previewHtmlFor(rawHtml: string, contractAddress: string): string {
     : rawHtml;
 }
 
-function applyGeneratedPreviewHeight(frame: HTMLIFrameElement, reportedHeight: number) {
-  frame.style.height = getGeneratedPreviewFrameHeight(reportedHeight, isMobilePreviewViewport());
-}
-
 function renderGeneratedWebsite(
   html: string,
   artworkDataUrl: string,
@@ -437,6 +458,9 @@ function renderGeneratedWebsite(
   const viewport = document.createElement("div");
   viewport.className = "full-generated-page-viewport";
 
+  const scale = document.createElement("div");
+  scale.className = "full-generated-page-scale";
+
   const frame = document.createElement("iframe");
   frame.className = "full-generated-page-frame";
   frame.title = "Generated token landing page";
@@ -444,8 +468,32 @@ function renderGeneratedWebsite(
   frame.setAttribute("referrerpolicy", "no-referrer");
   frame.setAttribute("loading", "eager");
   frame.setAttribute("scrolling", "yes");
-  applyGeneratedPreviewHeight(frame, 1800);
   frame.srcdoc = prepared;
+
+  // Windowed mode lays the iframe out at a larger design width and scales
+  // it down (issue #320 part 3) so more of the page composition is
+  // visible; full screen is forced back to a 1:1 real render by the
+  // `.full-generated-page-fullscreen` CSS (width/height/transform are all
+  // `!important` there), so this always computes the windowed values and
+  // lets that CSS override them when full screen is active — no branch
+  // needed here, and toggling never remounts the iframe.
+  let reportedHeight = 1800;
+  function layout() {
+    const availableWidth = viewport.clientWidth || container.clientWidth || 1;
+    const mobile = isMobilePreviewViewport();
+    const { designWidth, scale: factor } = computeGeneratedPreviewScale(availableWidth, mobile);
+    const designHeight = getGeneratedPreviewDesignHeight(reportedHeight);
+    frame.style.width = `${Math.round(designWidth)}px`;
+    frame.style.height = `${designHeight}px`;
+    frame.style.transform = `scale(${factor})`;
+    frame.style.transformOrigin = "top left";
+    scale.style.width = `${Math.round(designWidth * factor)}px`;
+    scale.style.height = `${Math.round(designHeight * factor)}px`;
+  }
+  function applyHeight(nextReportedHeight: number) {
+    reportedHeight = nextReportedHeight;
+    layout();
+  }
 
   const listen = (button: HTMLButtonElement, listener: () => void) => {
     button.addEventListener("click", listener);
@@ -456,6 +504,11 @@ function renderGeneratedWebsite(
     const fullScreen = container.classList.toggle("full-generated-page-fullscreen");
     fullScreenButton.textContent = fullScreen ? "Exit full screen" : "Full screen";
     fullScreenButton.setAttribute("aria-pressed", String(fullScreen));
+    // Re-measure: windowed and full screen expose different available
+    // widths (and, on desktop, different scale factors), so the layout
+    // must be recomputed on every toggle even though the same iframe node
+    // is reused throughout.
+    layout();
   };
   const onClose = () => onClosePreview();
 
@@ -542,11 +595,22 @@ function renderGeneratedWebsite(
   fullScreenButton.addEventListener("click", onToggleFullScreen);
   closeButton.addEventListener("click", onClose);
   controls.append(publishStatus, publishButton, fullScreenButton, saveButton, closeButton);
-  viewport.appendChild(frame);
+  scale.appendChild(frame);
+  viewport.appendChild(scale);
   container.append(controls, viewport);
 
   site.classList.add("full-generated-page");
-  site.append(backdrop, container);
+  // The backdrop and container mount on document.body, not inside
+  // .site-preview. .preview-panel toggles a `filter` rule while the build
+  // gate is locked (see components/build-site-gate.tsx), and a filtered
+  // ancestor becomes the containing block for any `position: fixed`
+  // descendant — that re-anchored this overlay to .site-preview's own box
+  // instead of the viewport, so the "full-bleed" phone layout rendered
+  // offset by .site-preview's corner instead of sitting at (0, 0).
+  // Mounting on body permanently escapes every ancestor
+  // filter/transform/sticky containing-block trap.
+  document.body.append(backdrop, container);
+  layout();
 
   return {
     container,
@@ -557,6 +621,8 @@ function renderGeneratedWebsite(
     onClose,
     onToggleFullScreen,
     controlCleanups,
+    applyHeight,
+    applyLayout: layout,
   };
 }
 
@@ -565,7 +631,6 @@ export function FullWebsiteGenerator() {
     let activePreview: RenderedPreview | null = null;
     let activeController: AbortController | null = null;
     let generationNumber = 0;
-    let lastReportedHeight = 1800;
 
     function restoreStudioControls() {
       const site = document.querySelector<HTMLElement>(".site-preview");
@@ -578,8 +643,7 @@ export function FullWebsiteGenerator() {
     }
 
     function applyActiveFrameHeight() {
-      if (!activePreview) return;
-      applyGeneratedPreviewHeight(activePreview.frame, lastReportedHeight);
+      activePreview?.applyLayout();
     }
 
     function onMessage(event: MessageEvent) {
@@ -588,8 +652,7 @@ export function FullWebsiteGenerator() {
       if (data?.type !== "hoodlums-generated-page-height") return;
       const height = typeof data.height === "number" ? data.height : Number(data.height);
       if (!Number.isFinite(height)) return;
-      lastReportedHeight = height;
-      applyActiveFrameHeight();
+      activePreview.applyHeight(height);
     }
 
     function onViewportResize() {
@@ -602,7 +665,6 @@ export function FullWebsiteGenerator() {
       const currentGeneration = ++generationNumber;
       activeController?.abort();
       restoreStudioControls();
-      lastReportedHeight = 1800;
       const controller = new AbortController();
       activeController = controller;
       const hasInspiration = Boolean(detail.inspirationUrl);
@@ -678,7 +740,6 @@ export function FullWebsiteGenerator() {
       activeController?.abort();
       activeController = null;
       restoreStudioControls();
-      lastReportedHeight = 1800;
       const previewHtml = previewHtmlFor(site.generatedSiteHtml, site.contractAddress);
       activePreview = renderGeneratedWebsite(previewHtml, detail?.imageDataUrl || "", site, () => {
         generationNumber += 1;
@@ -711,7 +772,11 @@ export function FullWebsiteGenerator() {
         min-height: 760px;
       }
       .site-preview.full-generated-page::after { display: none; }
-      .site-preview.full-generated-page > :not(.full-generated-page-container):not(.full-generated-page-status):not(.full-generated-page-backdrop) { display: none !important; }
+      /* The backdrop and container mount on document.body (see
+         renderGeneratedWebsite), not inside .site-preview, so this only
+         needs to hide .site-preview's own remaining children (the empty
+         state / reopen card) while the status banner stays visible. */
+      .site-preview.full-generated-page > :not(.full-generated-page-status) { display: none !important; }
       .full-generated-page-backdrop {
         position: fixed;
         inset: 0;
@@ -790,9 +855,18 @@ export function FullWebsiteGenerator() {
       .full-generated-page-viewport {
         width: 100%;
         overflow: auto;
+        overflow-x: hidden;
+        touch-action: pan-y;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
         background: #fff;
+      }
+      /* Windowed mode: sized by layout()/applyHeight() in JS to the scaled
+         iframe box (design width/height * the scale factor) so the visible
+         footprint never exceeds what's actually available — nothing to
+         scroll sideways into. Full screen clears this back to 100% below. */
+      .full-generated-page-scale {
+        overflow: hidden;
       }
       .full-generated-page-frame {
         display: block;
@@ -801,7 +875,8 @@ export function FullWebsiteGenerator() {
         border: 0;
         background: #fff;
         overflow: auto;
-        touch-action: pan-x pan-y;
+        overflow-x: hidden;
+        touch-action: pan-y;
       }
       .full-generated-page-container.full-generated-page-fullscreen {
         inset: 0;
@@ -816,10 +891,16 @@ export function FullWebsiteGenerator() {
         min-height: 0;
         height: 100%;
       }
+      .full-generated-page-fullscreen .full-generated-page-scale {
+        width: 100% !important;
+        height: 100% !important;
+      }
       .full-generated-page-fullscreen .full-generated-page-frame {
+        width: 100% !important;
         height: 100% !important;
         min-height: 0;
         max-height: none;
+        transform: none !important;
       }
       .site-preview.full-page-generating,
       .site-preview.full-page-failed {
@@ -879,27 +960,29 @@ export function FullWebsiteGenerator() {
           min-height: 0;
           overflow: visible;
         }
+        /* Issue #320 part 1: the overlay used to float mid-screen on
+           phones, leaving dead space above the tab bar. Windowed mode now
+           pins the tab bar to the very top and lets the site fill the
+           entire remaining screen, edge to edge — the same full-bleed
+           footprint full screen already used, so the only difference
+           between the two states on a phone is the part-3 content scale,
+           never the container's own size or position. */
         .full-generated-page-container:not(.full-generated-page-fullscreen) {
-          width: calc(100vw - 20px);
-          height: calc(70svh + 56px);
-          max-height: calc(70svh + 56px);
+          inset: 0;
+          width: 100vw;
+          height: 100svh;
+          max-width: none;
+          max-height: none;
+          border-radius: 0;
+          transform: none;
         }
         .full-generated-page-controls {
           flex-wrap: wrap;
           justify-content: stretch;
-          padding: 8px;
+          padding: calc(8px + env(safe-area-inset-top)) 8px 8px;
         }
         .full-generated-page-publish-status { flex: 1 0 100%; }
         .full-generated-page-controls button { flex: 1 1 120px; min-height: 40px; }
-        .full-generated-page-container:not(.full-generated-page-fullscreen) .full-generated-page-viewport {
-          height: 70svh;
-          max-height: 70svh;
-        }
-        .full-generated-page-container:not(.full-generated-page-fullscreen) .full-generated-page-frame {
-          height: 70svh !important;
-          min-height: 0;
-          max-height: 70svh;
-        }
         .site-preview.full-page-generating,
         .site-preview.full-page-failed,
         .full-generated-page-status { min-height: 700px; }
