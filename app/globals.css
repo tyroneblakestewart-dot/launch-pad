@@ -51,6 +51,11 @@ a { color: inherit; text-decoration: none; }
   z-index: 30;
   backdrop-filter: blur(16px);
 }
+/* The sticky topbar creates its own stacking context, which traps the full
+   screen generated-site preview's z-index below it (issue #313) — its
+   ghost button ends up sitting exactly on top of "Exit full screen". Hide
+   the topbar while full screen is active so it can't intercept clicks. */
+body:has(.full-generated-page-fullscreen) .topbar { display: none !important; }
 .brand-lockup, .topbar-actions, .panel-heading, .modal-heading,
 .summary-token, .wallet-row, .readiness-title { display: flex; align-items: center; }
 .brand-lockup { gap: 13px; }
@@ -522,7 +527,7 @@ label small { display: block; margin-top: 5px; color: #5f6a61; font: 10px var(--
 }
 .modal-card {
   width: min(100%, 520px);
-  max-height: min(760px, calc(100vh - 40px));
+  max-height: min(760px, calc(100svh - 40px));
   overflow: auto;
   padding: 22px;
   border: 1px solid rgba(85,255,120,.28);

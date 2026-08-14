@@ -111,6 +111,13 @@
   backdrop-filter: blur(14px);
 }
 
+/* The sticky workspace bar creates its own stacking context, which traps the
+   full screen preview's z-index below it (issue #313). Hide it while full
+   screen is active so it can't paint over the preview. */
+:global(body:has(.full-generated-page-fullscreen)) .workspaceBar {
+  display: none !important;
+}
+
 .workspaceActions {
   display: flex;
   align-items: center;
