@@ -102,11 +102,26 @@
   line-height: 1.08;
 }
 
+/* All four slide mockups are always mounted, stacked in this one grid cell
+   (grid-area: 1 / 1 below) — the browser sizes this track to the tallest of
+   them regardless of which one is visible, so rotating slides can never
+   change the section's total layout height (issue #323 part 2). */
 .visual {
   grid-area: visual;
   display: grid;
-  place-items: center;
   min-height: 300px;
+}
+
+.visualLayer {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  width: 100%;
+}
+
+.visualLayerHidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .body {

@@ -17,6 +17,7 @@ import {
   buildGeneratedPageAcceptanceProfile,
   buildGeneratedSitePageRequestBody,
   buildPageArtworkIdentityRequestBody,
+  describeGeneratedSitePageRejection,
   parseGeneratedSitePageResponse,
 } from "@/lib/site-page-openai-pipeline";
 import {
@@ -50,6 +51,13 @@ const ANALYSIS_TIMEOUT_MS = 18_000;
 // Progress heartbeats for the "building-page" stage are throttled to this
 // interval so a long generation doesn't flood the NDJSON stream.
 const BUILDING_PAGE_PROGRESS_INTERVAL_MS = 15_000;
+
+// Issue #323 part 1: a page rejected only for the responsive-layout baseline
+// (not for any safety/completeness/evidence reason) gets exactly one
+// automatic regeneration with this note appended to the prompt, instead of
+// failing the whole request over a fixable layout mistake.
+const LAYOUT_RETRY_CORRECTIVE_FEEDBACK =
+  "The previous attempt failed the required responsive-layout check. It either omitted the viewport meta tag, made no attempt at responsive CSS (no media queries and no fluid units like clamp()/vw/vh/%), used a fixed pixel container 480px or wider outside any desktop media query, or declared an always-active multi-column CSS grid (e.g. grid-template-columns: repeat(3, 1fr)) with no max-width media query that ever stacks it back to a single column for phones. Rebuild the page so it genuinely reflows to one column at 390px and centres inside a max-width container at 1280px+.";
 
 type GenerateSitePageRequest = GenerateSiteStyleRequest & {
   accessProof?: unknown;
@@ -369,18 +377,43 @@ export async function POST(request: Request) {
 
         const briefIds = getFusionBriefIds(artworkIdentity, inspirationAnalysis);
         const acceptance = buildGeneratedPageAcceptanceProfile(artworkIdentity, inspirationAnalysis);
-        const generationBody = buildGeneratedSitePageRequestBody(input, model, artworkIdentity, inspirationAnalysis);
 
         send({ type: "progress", stage: "building-page" });
 
         let lastProgressAt = Date.now();
-        const generation = await requestStreamedFullPageGeneration(ai, generationBody, request.signal, () => {
+        const onBuildingPageProgress = () => {
           const now = Date.now();
           if (now - lastProgressAt >= BUILDING_PAGE_PROGRESS_INTERVAL_MS) {
             lastProgressAt = now;
             send({ type: "progress", stage: "building-page" });
           }
-        });
+        };
+
+        let generation = await requestStreamedFullPageGeneration(
+          ai,
+          buildGeneratedSitePageRequestBody(input, model, artworkIdentity, inspirationAnalysis),
+          request.signal,
+          onBuildingPageProgress,
+        );
+
+        // One automatic retry with corrective feedback when the only problem
+        // was the responsive-layout baseline (issue #323) — every other
+        // rejection reason (missing section, unsafe embed, wrong evidence
+        // id) still fails on the first attempt.
+        if (generation.ok && describeGeneratedSitePageRejection(generation.payload, briefIds, acceptance) === "layout") {
+          generation = await requestStreamedFullPageGeneration(
+            ai,
+            buildGeneratedSitePageRequestBody(
+              input,
+              model,
+              artworkIdentity,
+              inspirationAnalysis,
+              LAYOUT_RETRY_CORRECTIVE_FEEDBACK,
+            ),
+            request.signal,
+            onBuildingPageProgress,
+          );
+        }
 
         if (!generation.ok) {
           send({

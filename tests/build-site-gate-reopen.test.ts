@@ -54,7 +54,11 @@ describe("BuildSiteGate unlocks and scrolls to a reopened saved site (issue #311
 
     expect(body).toContain('elements.previewPanel.classList.remove("site-builder-locked")');
     expect(body).toContain("overlay.hidden = true;");
-    expect(body).toContain("window.requestAnimationFrame(refresh);");
+    // Not `requestAnimationFrame(refresh)` directly (issue #323 part 2.5):
+    // rAF invokes its callback with a high-res timestamp, which would land
+    // in refresh's new `fromPoll` parameter and wrongly apply the
+    // input-focus poll guard to this real, event-driven reopen refresh.
+    expect(body).toContain("window.requestAnimationFrame(() => refresh());");
   });
 
   it("scrolls the preview panel into view, matching the fresh-generation path", async () => {

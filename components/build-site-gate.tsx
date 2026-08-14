@@ -146,11 +146,24 @@ export function BuildSiteGate() {
     let checklist: HTMLDivElement | null = null;
     let hint: HTMLParagraphElement | null = null;
     let generationTimeout: number | null = null;
+    let lastReady = false;
+    let lastChecklistHtml: string | null = null;
 
     function clearGenerationTimeout() {
       if (generationTimeout === null) return;
       window.clearTimeout(generationTimeout);
       generationTimeout = null;
+    }
+
+    // Issue #323 part 2.5: while the visitor is typing inside the builder
+    // panel, the 250ms poll below must not rewrite the checklist DOM (a
+    // contributor to the page-skipping bug) unless readiness genuinely
+    // flipped — a real state change is worth the interruption, routine
+    // polling noise is not.
+    function isBuilderTextInputFocused(panel: Element): boolean {
+      const active = document.activeElement;
+      if (!active || !panel.contains(active)) return false;
+      return active.tagName === "INPUT" || active.tagName === "TEXTAREA";
     }
 
     function currentDetail(panel: Element, mode: GenerateMode): GenerateDetail {
@@ -259,7 +272,7 @@ export function BuildSiteGate() {
       return { panel, previewPanel };
     }
 
-    function refresh() {
+    function refresh(fromPoll = false) {
       const elements = ensureElements();
       if (!elements || !button || !checklist || !overlay) return;
 
@@ -283,15 +296,23 @@ export function BuildSiteGate() {
         });
       }
       const ready = checks.every((item) => item.complete);
+      const readinessFlipped = ready !== lastReady;
+
+      if (fromPoll && !readinessFlipped && isBuilderTextInputFocused(elements.panel)) return;
+      lastReady = ready;
 
       if (!ready) unlocked = false;
 
-      checklist.innerHTML = checks
+      const checklistHtml = checks
         .map(
           (item) =>
             `<span class="${item.complete ? "complete" : ""}">${item.complete ? "✓" : "·"} ${item.label}</span>`,
         )
         .join("");
+      if (checklistHtml !== lastChecklistHtml) {
+        checklist.innerHTML = checklistHtml;
+        lastChecklistHtml = checklistHtml;
+      }
 
       button.disabled = !ready || generating;
       button.setAttribute("aria-busy", String(generating));
@@ -374,13 +395,16 @@ export function BuildSiteGate() {
       if (elements) elements.previewPanel.classList.remove("site-builder-locked");
       if (overlay) overlay.hidden = true;
       document.querySelector(".preview-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      window.requestAnimationFrame(refresh);
+      window.requestAnimationFrame(() => refresh());
     }
 
     window.addEventListener("launchpad:site-generated", onGenerated);
     window.addEventListener("launchpad:site-generation-failed", onFailed);
     window.addEventListener(REOPEN_GENERATED_SITE_EVENT, onReopen);
-    const interval = window.setInterval(refresh, 250);
+    // fromPoll=true only for this routine timer — every event-driven call
+    // above (generated/failed/reopen) always applies immediately regardless
+    // of input focus, since those reflect a real state change, not polling.
+    const interval = window.setInterval(() => refresh(true), 250);
     refresh();
 
     return () => {

@@ -186,3 +186,25 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Hero (always), About, Tokenomics, How to Buy, Community. Stale
   `siteSections.roadmap` / `.faq` flags on projects saved before this
   change are ignored, not migrated or rejected.
+- Generated-site layout enforcement and page-skipping fixes (issue #323):
+  `isCompleteGeneratedPageHtml` now also rejects an always-active
+  three-or-more-column CSS grid with no max-width breakpoint that ever
+  stacks it (the "desktop layout squished onto the phone" bug); a bespoke
+  page rejected for that reason alone gets one automatic regeneration with
+  corrective feedback (`app/api/generate-site-page/route.ts`) before
+  failing. `prepareGeneratedPageForPreview` and the served `/[slug]` page
+  shell (`app/[slug]/public-site-reset.css`) both carry a code-enforced
+  `overflow-x: hidden` safety net independent of that validator. The
+  homepage `HoodlumsSocialShowcase` now keeps every slide's visual mounted
+  in one CSS-stacked grid cell (so rotating slides can never change the
+  section's layout height) and pauses its auto-advance timer while
+  scrolled off screen; `BuildSiteGate`'s 250ms poll only rewrites the
+  checklist DOM when its content changed, and skips itself entirely while
+  a builder-panel text input has focus unless readiness truly flipped. The
+  generated-page preview's height-report bridge is debounced to once per
+  animation frame, and the consumer ignores sub-24px height deltas and
+  refuses to shrink the frame while the window is mid-scroll. The free-site
+  template's ledger tokenomics variant now derives its surface and ink
+  from the same `--surface`/`--text` theme variables as the rest of the
+  template instead of a color-mix that always resolved to a near-white
+  paper card regardless of palette.

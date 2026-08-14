@@ -344,11 +344,31 @@ const SLIDE_VISUALS: Record<(typeof SOCIAL_SHOWCASE_SLIDES)[number]["id"], () =>
 
 export function HoodlumsSocialShowcase() {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [isVisible, setIsVisible] = useState(true);
   const touchStartX = useRef<number | null>(null);
+  const sectionRef = useRef<HTMLElement | null>(null);
   const total = SOCIAL_SHOWCASE_SLIDES.length;
+
+  // Issue #323 part 2: auto-advancing while the showcase is scrolled off
+  // screen still changed the page's total layout height (see the `.visual`
+  // stacked-layer fix below) on the homepage's own clock, contributing to
+  // the scroll-anchoring jumps the owner reported elsewhere on the page.
+  // Pausing while off screen removes that background clock entirely.
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") return;
+    const node = sectionRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(([entry]) => setIsVisible(entry.isIntersecting), {
+      threshold: 0,
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!isVisible) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     const timer = window.setInterval(() => {
@@ -356,7 +376,7 @@ export function HoodlumsSocialShowcase() {
     }, SOCIAL_SHOWCASE_AUTO_ADVANCE_MS);
 
     return () => window.clearInterval(timer);
-  }, [total, activeIndex]);
+  }, [total, activeIndex, isVisible]);
 
   function goToSlide(index: number) {
     setActiveIndex(clampShowcaseIndex(index, total));
@@ -381,13 +401,13 @@ export function HoodlumsSocialShowcase() {
   }
 
   const slide = SOCIAL_SHOWCASE_SLIDES[activeIndex];
-  const SlideVisual = SLIDE_VISUALS[slide.id];
 
   return (
     <section
       id="social-studio-showcase"
       className={styles.section}
       aria-labelledby="social-showcase-title"
+      ref={sectionRef}
     >
       <div className={styles.glow} aria-hidden="true" />
       <div className={styles.inner}>
@@ -404,8 +424,26 @@ export function HoodlumsSocialShowcase() {
           <article key={slide.id} className={styles.slide}>
             <span className={styles.step}>{slide.step}</span>
             <h3 className={styles.title}>{slide.title}</h3>
+            {/* Every slide's visual mockup stays mounted, stacked in the
+                same grid cell (see .visual/.visualLayer in the module CSS),
+                so the container's height is always the CSS-computed max
+                across all four — rotating slides can never change this
+                section's layout height (issue #323 part 2). Only the active
+                one is visible and reachable. */}
             <div className={styles.visual}>
-              <SlideVisual />
+              {SOCIAL_SHOWCASE_SLIDES.map((visualSlide, index) => {
+                const SlideVisual = SLIDE_VISUALS[visualSlide.id];
+                const active = index === activeIndex;
+                return (
+                  <div
+                    key={visualSlide.id}
+                    className={active ? styles.visualLayer : `${styles.visualLayer} ${styles.visualLayerHidden}`}
+                    aria-hidden={active ? undefined : true}
+                  >
+                    <SlideVisual />
+                  </div>
+                );
+              })}
             </div>
             <p className={styles.body}>{slide.body}</p>
             <div className={styles.actions}>
