@@ -2,16 +2,24 @@
 
 import { useEffect } from "react";
 import { createWalletClient, custom } from "viem";
-import { createUnsignedBespokeSiteAccessProof } from "@/lib/bespoke-site-access";
+import {
+  BESPOKE_SITE_UPSELL_EVENT,
+  type BespokeSiteChallengeResponse,
+  type BespokeSiteUpsellEventDetail,
+} from "@/lib/bespoke-site-access";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 
 const GENERATE_SITE_STYLE_HEADER = "x-hoodlums-api-key";
 const PROTECTED_GENERATION_ROUTES = [
   "/api/generate-site-style",
+  "/api/generate-site-page/challenge",
   "/api/generate-site-page",
   "/api/generate-free-site",
 ] as const;
+const BESPOKE_CHALLENGE_ROUTE = "/api/generate-site-page/challenge";
 const BESPOKE_GENERATION_ROUTE = "/api/generate-site-page";
+const FALLBACK_UPSELL =
+  "Bespoke AI design requires Bond + Pro Site, Pro, or Pro Bundle. Your free artwork-matched site remains available.";
 
 function requestPath(input: RequestInfo | URL): string {
   const value =
@@ -38,7 +46,38 @@ function generationAbort(message: string): Error {
   return error;
 }
 
-async function withBespokeWalletProof(init: RequestInit | undefined): Promise<RequestInit> {
+function showUpgrade(message: string): Error {
+  window.dispatchEvent(
+    new CustomEvent<BespokeSiteUpsellEventDetail>(BESPOKE_SITE_UPSELL_EVENT, {
+      detail: { message, checkoutPlan: "bond-pro-site" },
+    }),
+  );
+  return generationAbort(message);
+}
+
+function protectedHeaders(
+  init: RequestInit | undefined,
+  secret: string | undefined,
+): Headers {
+  const headers = new Headers(init?.headers);
+  if (secret) headers.set(GENERATE_SITE_STYLE_HEADER, secret);
+  return headers;
+}
+
+async function responsePayload(response: Response): Promise<{
+  code?: unknown;
+  error?: unknown;
+  message?: unknown;
+}> {
+  return response.clone().json().catch(() => ({}));
+}
+
+async function withBespokeWalletProof(input: {
+  init: RequestInit | undefined;
+  originalFetch: typeof window.fetch;
+  secret: string | undefined;
+}): Promise<RequestInit> {
+  const { init, originalFetch, secret } = input;
   if (typeof init?.body !== "string") {
     throw generationAbort(
       "The bespoke generation request could not be prepared. Your free site generator remains available.",
@@ -56,43 +95,89 @@ async function withBespokeWalletProof(init: RequestInit | undefined): Promise<Re
 
   const provider = getInjectedEvmProvider();
   if (!provider) {
-    throw generationAbort(
-      "Connect the EVM wallet that owns Bond + Pro Site, Pro, or Pro Bundle to generate a bespoke AI design. The free site generator remains available.",
+    throw showUpgrade(
+      "Bespoke AI design is a premium feature. Connect the wallet that already owns access, or continue to the Bond + Pro Site checkout; the free site generator remains available.",
     );
   }
 
+  const walletClient = createWalletClient({ transport: custom(provider) });
+  let walletAddress: `0x${string}`;
   try {
-    const walletClient = createWalletClient({ transport: custom(provider) });
-    const [walletAddress] = await walletClient.requestAddresses();
-    if (!walletAddress) {
-      throw new Error("The wallet returned no account.");
+    const [account] = await walletClient.requestAddresses();
+    if (!account) throw new Error("The wallet returned no account.");
+    walletAddress = account;
+  } catch (error) {
+    const code = (error as { code?: unknown })?.code;
+    throw generationAbort(
+      code === 4001
+        ? "Wallet connection was cancelled. No funds were sent, and the free site generator remains available."
+        : "The wallet could not be connected for plan verification. No funds were sent, and the free site generator remains available.",
+    );
+  }
+
+  const challengeResponse = await originalFetch(BESPOKE_CHALLENGE_ROUTE, {
+    method: "POST",
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: protectedHeaders(
+      { headers: { "Content-Type": "application/json" } },
+      secret,
+    ),
+    body: JSON.stringify({ walletAddress, project: body }),
+  });
+
+  if (!challengeResponse.ok) {
+    const payload = await responsePayload(challengeResponse);
+    const message =
+      typeof payload.message === "string"
+        ? payload.message
+        : typeof payload.error === "string"
+          ? payload.error
+          : "Bespoke plan access could not be checked. Your free site generator remains available.";
+    if (challengeResponse.status === 403 && payload.code === "bespoke-plan-required") {
+      throw showUpgrade(message || FALLBACK_UPSELL);
     }
+    throw generationAbort(message);
+  }
 
-    const { proof, message } = createUnsignedBespokeSiteAccessProof({
-      walletAddress,
-      origin: window.location.origin,
-      project: body,
-    });
-    const signature = await walletClient.signMessage({
+  const challenge =
+    (await challengeResponse.json()) as BespokeSiteChallengeResponse;
+  if (
+    typeof challenge.challengeId !== "string" ||
+    typeof challenge.nonce !== "string" ||
+    typeof challenge.message !== "string"
+  ) {
+    throw generationAbort(
+      "The one-time wallet approval was invalid. No AI generation was started.",
+    );
+  }
+
+  let signature: `0x${string}`;
+  try {
+    signature = await walletClient.signMessage({
       account: walletAddress,
-      message,
+      message: challenge.message,
     });
-
-    return {
-      ...init,
-      body: JSON.stringify({
-        ...body,
-        accessProof: { ...proof, signature },
-      }),
-    };
   } catch (error) {
     const code = (error as { code?: unknown })?.code;
     throw generationAbort(
       code === 4001
         ? "Wallet verification was cancelled. No funds were sent, and the free site generator remains available."
-        : "The connected wallet could not prove plan access. No funds were sent, and the free site generator remains available.",
+        : "The connected wallet could not sign the one-time bespoke approval. No funds were sent, and the free site generator remains available.",
     );
   }
+
+  return {
+    ...init,
+    body: JSON.stringify({
+      ...body,
+      accessProof: {
+        challengeId: challenge.challengeId,
+        nonce: challenge.nonce,
+        signature,
+      },
+    }),
+  };
 }
 
 export function GenerateSiteStyleAuthBridge() {
@@ -109,22 +194,18 @@ export function GenerateSiteStyleAuthBridge() {
 
       const nextInit =
         path === BESPOKE_GENERATION_ROUTE
-          ? await withBespokeWalletProof(init)
+          ? await withBespokeWalletProof({ init, originalFetch, secret })
           : { ...(init ?? {}) };
-      const headers = new Headers(nextInit.headers);
-      if (secret) headers.set(GENERATE_SITE_STYLE_HEADER, secret);
+      const headers = protectedHeaders(nextInit, secret);
 
       const response = await originalFetch(input, { ...nextInit, headers });
       if (path === BESPOKE_GENERATION_ROUTE && response.status === 403) {
-        const payload = (await response.clone().json().catch(() => ({}))) as {
-          code?: unknown;
-          message?: unknown;
-        };
+        const payload = await responsePayload(response);
         if (payload.code === "bespoke-plan-required") {
-          throw generationAbort(
+          throw showUpgrade(
             typeof payload.message === "string"
               ? payload.message
-              : "Bespoke AI design requires Bond + Pro Site, Pro, or Pro Bundle. Your free site generator remains available.",
+              : FALLBACK_UPSELL,
           );
         }
       }

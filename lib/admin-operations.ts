@@ -3,7 +3,8 @@ export const ADMIN_SERVICE_DEFINITIONS = [
     key: "website-generation",
     label: "Website generation",
     description: "AI artwork analysis, site copy, styling and full-page generation.",
-    affectedRoutes: "/api/generate-free-site, /api/generate-site-page, /api/generate-site-style",
+    affectedRoutes:
+      "/api/generate-free-site, /api/generate-site-page/challenge, /api/generate-site-page, /api/generate-site-style",
   },
   {
     key: "public-publishing",
@@ -216,6 +217,7 @@ export type AdminSubscriberRow = {
   walletAddress: string;
   tier: AdminSubscriberTier;
   status: AdminSubscriberStatus;
+  bespokeSiteAccess: boolean;
   slugs: string[];
   xHandle: string | null;
   telegram: string | null;
