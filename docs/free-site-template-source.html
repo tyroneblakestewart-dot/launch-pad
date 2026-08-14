@@ -391,7 +391,7 @@ body[data-tokenomics="ledger"] .terminal-path::before { content: "\2605  RECEIPT
 body[data-tokenomics="ledger"] .terminal-body { padding: 12px 32px 40px; color: var(--text); font-family: var(--font-mono); }
 body[data-tokenomics="ledger"] .terminal-body > .prompt { display: none; }
 body[data-tokenomics="ledger"] .stat-grid { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
-body[data-tokenomics="ledger"] .stat { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; background: transparent; border: 0; border-bottom: 1px dashed var(--border); border-radius: 0; padding: 16px 0; }
+body[data-tokenomics="ledger"] .stat { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 16px; background: transparent; border: 0; border-bottom: 1px dashed var(--border); border-radius: 0; padding: 16px 0; }
 body[data-tokenomics="ledger"] .stat:last-child { border-bottom: 0; }
 body[data-tokenomics="ledger"] .stat-k { color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
 body[data-tokenomics="ledger"] .stat-v { color: var(--text); font-family: var(--font-mono); font-size: 15px; margin-top: 0; font-weight: 700; text-align: right; }
@@ -406,6 +406,13 @@ body[data-about="icons"] .card .icon { width: 84px; height: 84px; border-radius:
 body[data-about="icons"] .card .icon svg { width: 36px; height: 36px; }
 body[data-about="icons"] .card h3 { font-size: clamp(24px, 3vw, 34px); }
 body[data-about="icons"] .card p { font-size: 16px; }
+/* Issue #325: the icon/heading/paragraph row above is a side-by-side flex
+   layout with no wrap, which clips the paragraph at the edge of a phone
+   viewport. Stack it into a single column below the tablet breakpoint;
+   desktop (the 768px row layout and its even-card reversal) is unchanged. */
+@media (max-width: 560px) {
+  body[data-about="icons"] .card { flex-direction: column; align-items: flex-start; gap: 16px; padding: 28px; }
+}
 @media (min-width: 768px) {
   body[data-about="icons"] .card:nth-child(even) { flex-direction: row-reverse; text-align: right; }
 }

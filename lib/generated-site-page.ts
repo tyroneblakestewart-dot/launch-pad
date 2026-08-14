@@ -73,22 +73,122 @@ const RESPONSIVE_UNIT_PATTERN =
 // 390px viewport.
 const FIXED_WIDE_WIDTH_PATTERN = /(?<![\w-])width\s*:\s*(\d{3,5})px/gi;
 const MIN_OVERFLOW_RISK_WIDTH_PX = 480;
-// A grid with three or more explicit fixed/fractional tracks declared via
-// `repeat(N, ...)` outside any media query (e.g. `repeat(3, 1fr)`) is the
-// clearest, most common way a generated page lays out side-by-side columns
-// that are never told to stack — the "desktop layout squished onto the
-// phone" failure mode from issue #323. The threshold starts at three, not
-// two, because an always-active two-up grid (e.g. a stat-pair row) is a
-// common, legitimate mobile-safe pattern already shipped in the free-site
-// template's own tokenomics variants (docs/free-site-template-source.html);
-// flagging it would reject known-good output. `repeat(auto-fit, ...)` and
-// `repeat(auto-fill, ...)` are excluded because those are inherently
-// responsive (the browser recomputes the track count from available width),
-// so the numeric capture below only matches an explicit integer count.
-const ALWAYS_ACTIVE_MULTI_COLUMN_GRID_PATTERN =
-  /grid-template-columns\s*:\s*repeat\(\s*(?:[3-9]|[1-9]\d+)\s*,/i;
+// A grid with three or more explicit fixed/fractional tracks outside any
+// media query is the clearest, most common way a generated page lays out
+// side-by-side columns that are never told to stack — the "desktop layout
+// squished onto the phone" failure mode from issue #323. The threshold
+// starts at three, not two, because an always-active two-up grid (e.g. a
+// stat-pair row) is a common, legitimate mobile-safe pattern already shipped
+// in the free-site template's own tokenomics variants
+// (docs/free-site-template-source.html); flagging it would reject known-good
+// output. Issue #325 extended this beyond `repeat(N, ...)` (the only shape
+// the original pattern matched) to explicit track lists
+// (`grid-template-columns: 96px 1fr 1fr`) and to a two-track grid where
+// either track is a fixed pixel value wide enough that it alone cannot fit a
+// 390px viewport — see isUnstackedGridDeclaration below. `repeat(auto-fit,
+// ...)` and `repeat(auto-fill, ...)` stay excluded because those are
+// inherently responsive: the browser recomputes the track count from
+// available width.
+const GRID_TEMPLATE_COLUMNS_VALUE_PATTERN = /grid-template-columns\s*:\s*([^;{}]+)/gi;
 const GRID_TEMPLATE_COLUMNS_DECLARATION_PATTERN = /grid-template-columns\s*:/i;
 const MAX_WIDTH_MEDIA_CONDITION_PATTERN = /max-width\s*:\s*\d+(?:\.\d+)?px/i;
+const AUTO_FIT_OR_FILL_REPEAT_PATTERN = /repeat\(\s*(?:auto-fit|auto-fill)/i;
+const LITERAL_REPEAT_TRACK_PATTERN = /^repeat\(\s*(\d+)\s*,\s*([\s\S]+)\)$/i;
+const FIXED_PX_TRACK_PATTERN = /^(\d+(?:\.\d+)?)px$/i;
+// A single fixed-pixel grid track this wide cannot fit next to any other
+// content inside a 390px viewport, even paired with just one other track —
+// the "two-track grids where a track is a wide fixed px value" pattern from
+// issue #325.
+const MIN_FIXED_GRID_TRACK_WIDTH_PX = 200;
+// Caps how many times a literal `repeat(N, ...)` is expanded into individual
+// tracks, purely to keep the check O(1) against a pathological huge N; no
+// real layout declares more tracks than this.
+const MAX_EXPANDED_REPEAT_TRACKS = 24;
+
+// Splits a grid-template-columns value into its top-level tracks, respecting
+// parens so a function call like `minmax(200px, 1fr)` counts as one track,
+// not two.
+function splitTopLevelGridTracks(value: string): string[] {
+  const tracks: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const char of value) {
+    if (char === "(") depth++;
+    if (char === ")") depth--;
+    if (/\s/.test(char) && depth === 0) {
+      if (current) {
+        tracks.push(current);
+        current = "";
+      }
+    } else {
+      current += char;
+    }
+  }
+  if (current) tracks.push(current);
+  return tracks;
+}
+
+// Expands a literal `repeat(N, X)` token (N a plain integer, not
+// auto-fit/auto-fill) into N copies of X, so `repeat(3, 1fr)` and
+// `1fr 1fr 1fr` are recognised as the same three-track shape.
+function expandGridTracks(value: string): string[] {
+  const tracks: string[] = [];
+  for (const token of splitTopLevelGridTracks(value)) {
+    const repeated = token.match(LITERAL_REPEAT_TRACK_PATTERN);
+    const count = repeated ? Number(repeated[1]) : NaN;
+    if (repeated && Number.isInteger(count) && count > 0 && count <= MAX_EXPANDED_REPEAT_TRACKS) {
+      for (let i = 0; i < count; i++) tracks.push(repeated[2].trim());
+    } else {
+      tracks.push(token);
+    }
+  }
+  return tracks;
+}
+
+function isUnstackedGridDeclaration(rawValue: string): boolean {
+  const value = rawValue.trim();
+  if (!value || AUTO_FIT_OR_FILL_REPEAT_PATTERN.test(value)) return false;
+  const tracks = expandGridTracks(value);
+  if (tracks.length >= 3) return true;
+  if (tracks.length === 2) {
+    return tracks.some((track) => {
+      const match = track.match(FIXED_PX_TRACK_PATTERN);
+      return Boolean(match) && Number(match![1]) >= MIN_FIXED_GRID_TRACK_WIDTH_PX;
+    });
+  }
+  return false;
+}
+
+// A row of content laid out with `display: flex` that can never wrap and is
+// never told to switch to a column on a mobile breakpoint is the flexbox
+// equivalent of the unstacked-grid pattern above — issue #325's "icon |
+// heading | paragraph" card rows clipped at the phone's edge. Detecting this
+// precisely needs a real CSS parser (matching a `display: flex` declaration
+// to how many, and how wide, its actual children are); the intentionally
+// narrow, low-false-positive proxy used here requires the rule to also
+// declare `flex-wrap: nowrap` explicitly. Plain everyday flex chrome (nav
+// bars, button rows, icon+label pairs, key/value rows like the free-site
+// ledger tokenomics variant) never states `nowrap` — it's already the
+// default — so only a deliberate "never let this row wrap" declaration, the
+// shape an always-active multi-card flex row actually takes, trips this
+// check.
+const FLEX_DISPLAY_PATTERN = /display\s*:\s*flex\b/i;
+const FLEX_WRAP_NOWRAP_PATTERN = /flex-wrap\s*:\s*nowrap\b/i;
+const FLEX_WRAP_WRAP_PATTERN = /flex-wrap\s*:\s*wrap\b/i;
+const FLEX_DIRECTION_COLUMN_PATTERN = /flex-direction\s*:\s*column\b/i;
+
+// Returns the `{ ... }` body of every top-level CSS rule in `css`. Callers
+// pass CSS that has already had its `@media` blocks stripped, so there is no
+// rule nesting left to worry about.
+function extractTopLevelRuleBodies(css: string): string[] {
+  const bodies: string[] = [];
+  const pattern = /\{([^{}]*)\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(css))) {
+    bodies.push(match[1]);
+  }
+  return bodies;
+}
 
 function extractStyleBlocksCss(html: string): string {
   return (html.match(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi) || [])
@@ -153,23 +253,58 @@ function extractMediaBlocks(css: string): { condition: string; body: string }[] 
   return blocks;
 }
 
-// Layer 2b of the responsiveness contract (issue #323): a page can pass the
-// media-query/fixed-width checks above and still be the exact "desktop
-// squished onto the phone" bug the owner reported — an always-active
-// multi-column grid with no breakpoint that ever collapses it. This does not
-// try to prove the breakpoint targets the *same* grid selector (that needs a
-// real CSS parser); it only requires that some max-width breakpoint touches
-// `grid-template-columns` at all, which the mechanical-baseline philosophy in
-// docs/responsive-qa.md accepts as a reasonable proxy.
+// Layer 2b of the responsiveness contract (issue #323, extended by #325): a
+// page can pass the media-query/fixed-width checks above and still be the
+// exact "desktop squished onto the phone" bug the owner reported — an
+// always-active multi-column grid with no breakpoint that ever collapses it.
+// This does not try to prove the breakpoint targets the *same* grid selector
+// (that needs a real CSS parser); it only requires that some max-width
+// breakpoint touches `grid-template-columns` at all, which the
+// mechanical-baseline philosophy in docs/responsive-qa.md accepts as a
+// reasonable proxy.
 function hasUnstackedMultiColumnGrid(html: string): boolean {
   const styleCss = extractStyleBlocksCss(html);
   const alwaysActiveCss = stripMediaQueryBlocks(styleCss);
-  if (!ALWAYS_ACTIVE_MULTI_COLUMN_GRID_PATTERN.test(alwaysActiveCss)) return false;
+
+  GRID_TEMPLATE_COLUMNS_VALUE_PATTERN.lastIndex = 0;
+  let declarationMatch: RegExpExecArray | null;
+  let hasUnstackedDeclaration = false;
+  while ((declarationMatch = GRID_TEMPLATE_COLUMNS_VALUE_PATTERN.exec(alwaysActiveCss))) {
+    if (isUnstackedGridDeclaration(declarationMatch[1])) {
+      hasUnstackedDeclaration = true;
+      break;
+    }
+  }
+  if (!hasUnstackedDeclaration) return false;
 
   const hasMobileStackingBreakpoint = extractMediaBlocks(styleCss).some(
     (block) =>
       MAX_WIDTH_MEDIA_CONDITION_PATTERN.test(block.condition) &&
       GRID_TEMPLATE_COLUMNS_DECLARATION_PATTERN.test(block.body),
+  );
+  return !hasMobileStackingBreakpoint;
+}
+
+// Issue #325's flexbox counterpart to hasUnstackedMultiColumnGrid above —
+// see the FLEX_DISPLAY_PATTERN comment for why the trigger is deliberately
+// narrow (an explicit `flex-wrap: nowrap`, not merely the absence of
+// `flex-wrap: wrap`).
+function hasUnstackedFlexRow(html: string): boolean {
+  const styleCss = extractStyleBlocksCss(html);
+  const alwaysActiveCss = stripMediaQueryBlocks(styleCss);
+
+  const hasUnstackedFlexBody = extractTopLevelRuleBodies(alwaysActiveCss).some(
+    (body) =>
+      FLEX_DISPLAY_PATTERN.test(body) &&
+      FLEX_WRAP_NOWRAP_PATTERN.test(body) &&
+      !FLEX_DIRECTION_COLUMN_PATTERN.test(body),
+  );
+  if (!hasUnstackedFlexBody) return false;
+
+  const hasMobileStackingBreakpoint = extractMediaBlocks(styleCss).some(
+    (block) =>
+      MAX_WIDTH_MEDIA_CONDITION_PATTERN.test(block.condition) &&
+      (FLEX_DIRECTION_COLUMN_PATTERN.test(block.body) || FLEX_WRAP_WRAP_PATTERN.test(block.body)),
   );
   return !hasMobileStackingBreakpoint;
 }
@@ -187,6 +322,7 @@ function hasResponsiveBaseline(html: string): boolean {
     if (Number(match[1]) >= MIN_OVERFLOW_RISK_WIDTH_PX) return false;
   }
   if (hasUnstackedMultiColumnGrid(html)) return false;
+  if (hasUnstackedFlexRow(html)) return false;
   return true;
 }
 
