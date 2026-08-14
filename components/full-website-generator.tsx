@@ -10,6 +10,7 @@ import {
   splitNdjsonLines,
   type GenerateSitePageProgressStage,
 } from "@/lib/generate-site-page-stream-protocol";
+import { PROJECT_SAVE_RESULT_EVENT, type ProjectSaveResultDetail } from "@/lib/project-save-result";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 
 type GenerateDetail = {
@@ -83,6 +84,7 @@ type RequestGeneratedWebsiteOptions = {
 
 type RenderedPreview = {
   container: HTMLElement;
+  backdrop: HTMLElement;
   frame: HTMLIFrameElement;
   closeButton: HTMLButtonElement;
   fullScreenButton: HTMLButtonElement;
@@ -90,6 +92,17 @@ type RenderedPreview = {
   onToggleFullScreen: () => void;
   controlCleanups: Array<() => void>;
 };
+
+// Finds a studio control button by its visible label. Used to drive "Save
+// preview" through the exact same durable save path as the studio's own
+// "Save project" button (see components/token-studio-workspace.tsx's
+// saveAndClose, which does the same thing for "Save & close") instead of
+// duplicating the IndexedDB + localStorage write here.
+function findStudioButtonByLabel(label: string): HTMLButtonElement | undefined {
+  return Array.from(document.querySelectorAll<HTMLButtonElement>("#launch-studio button")).find(
+    (button) => button.textContent?.toLowerCase().includes(label.toLowerCase()),
+  );
+}
 
 const MOBILE_PREVIEW_QUERY = "(max-width: 767px)";
 export const MOBILE_PREVIEW_HEIGHT = "70svh";
@@ -339,6 +352,7 @@ function disposeRenderedPreview(preview: RenderedPreview | null) {
   preview.container.classList.remove("full-generated-page-fullscreen");
   disposeFrame(preview.frame);
   preview.container.remove();
+  preview.backdrop.remove();
 }
 
 function isAbortError(error: unknown): boolean {
@@ -406,10 +420,19 @@ function renderGeneratedWebsite(
   fullScreenButton.textContent = "Full screen";
   fullScreenButton.setAttribute("aria-pressed", "false");
 
+  const saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.className = "full-generated-page-save-button";
+  saveButton.textContent = "Save preview";
+
   const closeButton = document.createElement("button");
   closeButton.type = "button";
   closeButton.className = "full-generated-page-close-button";
   closeButton.textContent = "Close preview";
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "full-generated-page-backdrop";
+  backdrop.setAttribute("aria-hidden", "true");
 
   const viewport = document.createElement("div");
   viewport.className = "full-generated-page-viewport";
@@ -435,6 +458,37 @@ function renderGeneratedWebsite(
     fullScreenButton.setAttribute("aria-pressed", String(fullScreen));
   };
   const onClose = () => onClosePreview();
+
+  // Save preview reuses the studio's own "Save project" button (found by
+  // label, the same trick components/token-studio-workspace.tsx's
+  // saveAndClose uses for "Save & close") so it goes through the exact same
+  // durable IndexedDB + localStorage path, then reports back whatever
+  // PROJECT_SAVE_RESULT_EVENT actually says instead of assuming success.
+  let pendingSaveResultListener: ((event: Event) => void) | null = null;
+  const clearPendingSaveResultListener = () => {
+    if (!pendingSaveResultListener) return;
+    window.removeEventListener(PROJECT_SAVE_RESULT_EVENT, pendingSaveResultListener);
+    pendingSaveResultListener = null;
+  };
+  const onSavePreview = () => {
+    const studioSaveButton = findStudioButtonByLabel("save project");
+    if (!studioSaveButton) {
+      publishStatus.textContent = "Save preview is unavailable right now.";
+      return;
+    }
+    clearPendingSaveResultListener();
+    publishStatus.textContent = "Saving preview…";
+    pendingSaveResultListener = (event: Event) => {
+      const detail = (event as CustomEvent<ProjectSaveResultDetail>).detail;
+      clearPendingSaveResultListener();
+      publishStatus.textContent = detail?.success
+        ? "Preview saved."
+        : "The preview could not be saved.";
+    };
+    window.addEventListener(PROJECT_SAVE_RESULT_EVENT, pendingSaveResultListener);
+    studioSaveButton.click();
+  };
+  controlCleanups.push(clearPendingSaveResultListener);
 
   const onPublishDraft = async () => {
     publishButton.disabled = true;
@@ -484,17 +538,19 @@ function renderGeneratedWebsite(
   };
 
   listen(publishButton, () => { void onPublishDraft(); });
+  listen(saveButton, onSavePreview);
   fullScreenButton.addEventListener("click", onToggleFullScreen);
   closeButton.addEventListener("click", onClose);
-  controls.append(publishStatus, publishButton, fullScreenButton, closeButton);
+  controls.append(publishStatus, publishButton, fullScreenButton, saveButton, closeButton);
   viewport.appendChild(frame);
   container.append(controls, viewport);
 
   site.classList.add("full-generated-page");
-  site.appendChild(container);
+  site.append(backdrop, container);
 
   return {
     container,
+    backdrop,
     frame,
     closeButton,
     fullScreenButton,
@@ -653,59 +709,83 @@ export function FullWebsiteGenerator() {
     <style>{`
       .site-preview.full-generated-page {
         min-height: 760px;
-        overflow: hidden;
-        border-radius: 12px;
-        background: #fff;
       }
       .site-preview.full-generated-page::after { display: none; }
-      .site-preview.full-generated-page > :not(.full-generated-page-container):not(.full-generated-page-status) { display: none !important; }
+      .site-preview.full-generated-page > :not(.full-generated-page-container):not(.full-generated-page-status):not(.full-generated-page-backdrop) { display: none !important; }
+      .full-generated-page-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 2147482998;
+        background: rgba(4, 8, 5, .82);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+      }
       .full-generated-page-container {
-        width: 100%;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        z-index: 2147483000;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        width: min(1180px, calc(100vw - 32px));
+        height: min(88vh, 900px);
         overflow: hidden;
+        border-radius: 14px;
         background: #fff;
+        box-shadow: 0 40px 140px rgba(0, 0, 0, .6);
+        transform: translate(-50%, -50%);
       }
       .full-generated-page-controls {
-        position: sticky;
-        top: 0;
+        position: relative;
         z-index: 3;
         display: flex;
+        flex-wrap: wrap;
+        align-items: center;
         justify-content: flex-end;
-        gap: 10px;
-        min-height: 52px;
-        padding: 8px 10px;
-        border-bottom: 1px solid rgba(19, 37, 54, .14);
-        background: rgba(248, 251, 253, .96);
-        backdrop-filter: blur(12px);
+        gap: 8px;
+        min-height: 56px;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(198, 245, 62, .18);
+        background: rgba(6, 10, 7, .94);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
       }
       .full-generated-page-controls button {
-        min-height: 36px;
-        padding: 0 14px;
-        border: 1px solid rgba(49, 95, 123, .28);
-        border-radius: 8px;
-        background: #fff;
-        color: #183448;
-        font: 800 12px/1 system-ui, sans-serif;
+        min-height: 40px;
+        padding: 0 16px;
+        border: 1px solid rgba(198, 245, 62, .32);
+        border-radius: 999px;
+        background: rgba(10, 14, 11, .92);
+        color: #f3f6ef;
+        font: 800 11px/1 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: border-color .16s ease, background-color .16s ease, color .16s ease;
       }
+      .full-generated-page-controls button:hover { border-color: rgba(198, 245, 62, .62); }
       .full-generated-page-controls button:focus-visible {
-        outline: 3px solid rgba(49, 95, 123, .28);
+        outline: 2px solid #c6f53e;
         outline-offset: 2px;
       }
       .full-generated-page-controls button:disabled { opacity: .55; cursor: wait; }
       .full-generated-page-publish-status {
         min-width: 0;
         margin-right: auto;
-        color: #526878;
-        font: 700 11px/1.35 system-ui, sans-serif;
+        color: #a9b3ab;
+        font: 700 11px/1.35 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
       }
       .full-generated-page-publish-status:empty { display: none; }
       .full-generated-page-publish-button,
       .full-generated-page-live-button {
-        background: #315f7b !important;
-        color: #fff !important;
+        border-color: rgba(198, 245, 62, .6) !important;
+        background: #c6f53e !important;
+        color: #0b100c !important;
       }
-      .full-generated-page-close-button {
-        background: #183448 !important;
-        color: #fff !important;
+      .full-generated-page-fullscreen-button[aria-pressed="true"] {
+        border-color: #c6f53e !important;
+        color: #c6f53e !important;
+        box-shadow: inset 0 -2px 0 #c6f53e;
       }
       .full-generated-page-viewport {
         width: 100%;
@@ -724,18 +804,14 @@ export function FullWebsiteGenerator() {
         touch-action: pan-x pan-y;
       }
       .full-generated-page-container.full-generated-page-fullscreen {
-        position: fixed;
         inset: 0;
-        z-index: 2147483000;
-        display: grid;
-        grid-template-rows: auto minmax(0, 1fr);
         width: 100vw;
         height: 100svh;
         max-width: none;
         border-radius: 0;
+        transform: none;
         background: #fff;
       }
-      .full-generated-page-fullscreen .full-generated-page-controls { position: relative; }
       .full-generated-page-fullscreen .full-generated-page-viewport {
         min-height: 0;
         height: 100%;
@@ -804,7 +880,9 @@ export function FullWebsiteGenerator() {
           overflow: visible;
         }
         .full-generated-page-container:not(.full-generated-page-fullscreen) {
-          max-height: calc(70svh + 52px);
+          width: calc(100vw - 20px);
+          height: calc(70svh + 56px);
+          max-height: calc(70svh + 56px);
         }
         .full-generated-page-controls {
           flex-wrap: wrap;
@@ -812,7 +890,7 @@ export function FullWebsiteGenerator() {
           padding: 8px;
         }
         .full-generated-page-publish-status { flex: 1 0 100%; }
-        .full-generated-page-controls button { flex: 1 1 120px; }
+        .full-generated-page-controls button { flex: 1 1 120px; min-height: 40px; }
         .full-generated-page-container:not(.full-generated-page-fullscreen) .full-generated-page-viewport {
           height: 70svh;
           max-height: 70svh;

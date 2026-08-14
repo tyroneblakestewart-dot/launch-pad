@@ -112,9 +112,10 @@
 }
 
 /* The sticky workspace bar creates its own stacking context, which traps the
-   full screen preview's z-index below it (issue #313). Hide it while full
-   screen is active so it can't paint over the preview. */
-:global(body:has(.full-generated-page-fullscreen)) .workspaceBar {
+   generated-site overlay's z-index below it (issue #313), whether it's
+   windowed or full screen — .full-generated-page-container is present in
+   both states. Hide it while the overlay is open so it can't paint over it. */
+:global(body:has(.full-generated-page-container)) .workspaceBar {
   display: none !important;
 }
 
