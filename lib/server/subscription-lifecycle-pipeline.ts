@@ -4,6 +4,7 @@ import type {
 } from "@/lib/admin-operations";
 import {
   getConfiguredPaymentTokens,
+  getPlanPaymentQuote,
   PlanPaymentConfigurationError,
 } from "@/lib/server/plan-payment-config";
 import { getPostgresPool } from "@/lib/server/postgres";
@@ -67,6 +68,7 @@ function configurationStage(
     "CRON_SECRET",
     "HOODLUMS_TREASURY_ADDRESS",
     "HOODLUMS_PAYMENT_RPC_URL",
+    "HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI",
   ];
   const missingRequired = required.filter(
     (name) => !(environment[name] || "").trim(),
@@ -83,6 +85,7 @@ function configurationStage(
   let enabledTokens: string[];
   let disabledTokens: string[];
   try {
+    getPlanPaymentQuote("bond-pro-site", "one_off", environment);
     const tokens = getConfiguredPaymentTokens(environment);
     enabledTokens = tokens.filter((token) => token.enabled).map((token) => token.symbol);
     disabledTokens = tokens.filter((token) => !token.enabled).map((token) => token.symbol);
@@ -93,7 +96,7 @@ function configurationStage(
       "red",
       error instanceof PlanPaymentConfigurationError
         ? error.message
-        : "Payment token configuration is invalid.",
+        : "Payment configuration is invalid.",
     );
   }
 
@@ -105,7 +108,7 @@ function configurationStage(
   const missingTelegram = telegram.filter(
     (name) => !(environment[name] || "").trim(),
   );
-  const tokenSummary = `${enabledTokens.join(", ")} stablecoin payments`;
+  const paymentSummary = `Bond + Pro Site native payment and ${enabledTokens.join(", ")} stablecoin payments`;
   const disabledSummary = disabledTokens.length
     ? ` Disabled token(s): ${disabledTokens.join(", ")}.`
     : "";
@@ -114,7 +117,7 @@ function configurationStage(
       "lifecycle-configuration",
       "Payment, cron and reminder configuration",
       "amber",
-      `${tokenSummary} and daily lifecycle processing are configured.${disabledSummary} Telegram reminders are optional and currently missing: ${missingTelegram.join(", ")}. In-app reminders remain available.`,
+      `${paymentSummary} and daily lifecycle processing are configured.${disabledSummary} Telegram reminders are optional and currently missing: ${missingTelegram.join(", ")}. In-app reminders remain available.`,
     );
   }
 
@@ -122,7 +125,7 @@ function configurationStage(
     "lifecycle-configuration",
     "Payment, cron and reminder configuration",
     "green",
-    `${tokenSummary}, daily lifecycle processing and Telegram reminders are configured.${disabledSummary}`,
+    `${paymentSummary}, daily lifecycle processing and Telegram reminders are configured.${disabledSummary}`,
   );
 }
 
@@ -233,6 +236,7 @@ export async function buildSubscriptionLifecyclePipeline(
   if (!databaseUrl) {
     return {
       ...base,
+      label: "Plan payments, subscribers and renewals",
       stages: [
         ...base.stages,
         configuration,
@@ -329,7 +333,7 @@ export async function buildSubscriptionLifecyclePipeline(
 
   return {
     ...base,
-    label: "Subscribers and renewals",
+    label: "Plan payments, subscribers and renewals",
     stages: [
       ...base.stages,
       configuration,
