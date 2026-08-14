@@ -3,6 +3,8 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import {
   REOPEN_GENERATED_SITE_EVENT,
+  SAVE_GENERATED_SITE_EVENT,
+  SAVE_GENERATED_SITE_RESULT_EVENT,
   type PublishableSitePayload,
 } from "@/components/full-website-generator";
 import { CHAIN_CONFIG, ROBINHOOD_MAINNET } from "@/lib/chains";
@@ -217,6 +219,40 @@ export function TokenStudio() {
     window.addEventListener("launchpad:site-generated", onSiteGenerated);
     return () => window.removeEventListener("launchpad:site-generated", onSiteGenerated);
   }, []);
+
+  // The "Save preview" control in the generated-site overlay lives outside
+  // this component (components/full-website-generator.tsx), so it asks for
+  // a save over this event instead of holding a reference to saveProject
+  // directly. This reuses the exact same durable IndexedDB + localStorage
+  // persistence path as the "Save project" button (issue #318) rather than
+  // adding a second way to save a project.
+  useEffect(() => {
+    function onSavePreviewRequest() {
+      saveProject()
+        .then((success) => {
+          window.dispatchEvent(
+            new CustomEvent(SAVE_GENERATED_SITE_RESULT_EVENT, {
+              detail: {
+                success,
+                message: success
+                  ? "Preview saved. Your generated site is kept with this launch."
+                  : "The preview could not be saved — see the notice above for details.",
+              },
+            }),
+          );
+        })
+        .catch(() => {
+          window.dispatchEvent(
+            new CustomEvent(SAVE_GENERATED_SITE_RESULT_EVENT, {
+              detail: { success: false, message: "The preview could not be saved." },
+            }),
+          );
+        });
+    }
+
+    window.addEventListener(SAVE_GENERATED_SITE_EVENT, onSavePreviewRequest);
+    return () => window.removeEventListener(SAVE_GENERATED_SITE_EVENT, onSavePreviewRequest);
+  }, [project, projects]);
 
   const chain = CHAIN_CONFIG[project.chain];
   // Projects saved before this field existed have none; fall back to the
@@ -770,7 +806,18 @@ export function TokenStudio() {
           <div className="preview-toolbar">
             <div>
               <span className="live-dot" /> Live website preview
-              {project.generatedSiteHtml && (
+            </div>
+            <span>/{displaySlug}</span>
+          </div>
+
+          <div className="site-preview">
+            {project.generatedSiteHtml && (
+              <div className="site-preview-reopen-card">
+                <strong>Your generated site is saved</strong>
+                <p>
+                  Closing the preview keeps your generated site. Reopen the branded overlay to
+                  review it, publish a draft, or save it again.
+                </p>
                 <button
                   type="button"
                   className="reopen-generated-site-button"
@@ -778,108 +825,17 @@ export function TokenStudio() {
                 >
                   Reopen generated site
                 </button>
-              )}
-            </div>
-            <span>/{displaySlug}</span>
-          </div>
-
-          <div className="site-preview">
-            <div className="matrix-rain" aria-hidden="true">
-              {Array.from({ length: 26 }, (_, index) => (
-                <span key={index} style={{ left: `${index * 4}%`, animationDelay: `${-(index % 8)}s` }}>
-                  01<br />10<br />$<br />01<br />H<br />00<br />1
-                </span>
-              ))}
-            </div>
-
-            <nav className="preview-nav">
-              <strong>{displayName.toUpperCase()}</strong>
-              <div>
-                <a href="#tokenomics">Tokenomics</a>
-                <a href="#roadmap">The heist</a>
-                <a href="#buy">Buy</a>
               </div>
-              <button>BUY ${displayTicker}</button>
-            </nav>
-
-            <section className="hero-section">
-              <div className="hero-copy">
-                <p className="terminal-line">root@{displaySlug}:~$ initiate_heist</p>
-                <h2>{displayName.toUpperCase()}</h2>
-                <div className="graffiti-ticker">${displayTicker}</div>
-                <p>{project.description || "Give the crew a story worth joining."}</p>
-                <div className="hero-buttons">
-                  <button>JOIN THE HEIST</button>
-                  <button className="outline">VIEW CHART ↗</button>
-                </div>
-                <div className="contract-strip">
-                  <span>CA:</span>
-                  <code>
-                    {project.contractAddress
-                      ? shortAddress(project.contractAddress)
-                      : "appears-after-wallet-launch"}
-                  </code>
-                  <b>COPY</b>
-                </div>
+            )}
+            {!project.generatedSiteHtml && (
+              <div className="site-preview-empty-state">
+                <strong>Your generated site will appear here</strong>
+                <p>
+                  Upload artwork, fill in the project details, then generate a site to see a live
+                  preview.
+                </p>
               </div>
-
-              <div className="hero-art">
-                <div className="spray-ring" />
-                {project.heroImage ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={project.heroImage} alt={`${displayName} artwork`} />
-                ) : (
-                  <div className="hooded-placeholder">
-                    <span className="hood" />
-                    <span className="face">H</span>
-                    <span className="body" />
-                    <small>UPLOAD<br />THE CREW</small>
-                  </div>
-                )}
-                <div className="chain-stamp">LIVE ON<br /><b>{CHAIN_DISPLAY_LABEL[project.chain]}</b></div>
-              </div>
-            </section>
-
-            <div className="ticker-tape">
-              {Array.from({ length: 5 }, (_, index) => (
-                <span key={index}>${displayTicker} ✦ STEAL THE MEMES ✦ {chain.shortLabel} ✦ </span>
-              ))}
-            </div>
-
-            <section className="preview-content" id="tokenomics">
-              <div className="section-tag">// THE LOOT</div>
-              <h3>TOKENOMICS</h3>
-              <div className="terminal-card">
-                <div className="terminal-bar"><i /><i /><i /><span>tokenomics.sh</span></div>
-                <div className="token-stats">
-                  <article><span>SUPPLY</span><strong>{formatSupply(project.supply || "0")}</strong></article>
-                  <article><span>TAX</span><strong>0 / 0</strong></article>
-                  <article><span>CHAIN</span><strong>{chain.shortLabel}</strong></article>
-                  <article><span>STATUS</span><strong>{project.status.toUpperCase()}</strong></article>
-                </div>
-                <pre>{`> mint_authority: decide_before_launch\n> freeze_authority: decide_before_launch\n> private_keys_stored: false\n> wallet_signature_required: true`}</pre>
-              </div>
-            </section>
-
-            <section className="preview-content road-section" id="roadmap">
-              <div className="section-tag">// THE PLAN</div>
-              <h3>THE HEIST</h3>
-              <div className="roadmap-grid">
-                <article><b>01</b><h4>ASSEMBLE</h4><p>Build the identity, website and social pack.</p></article>
-                <article><b>02</b><h4>BREACH</h4><p>Launch through a wallet-signed transaction.</p></article>
-                <article><b>03</b><h4>ESCAPE</h4><p>Publish the contract and bring in the crew.</p></article>
-              </div>
-            </section>
-
-            <section className="buy-section" id="buy">
-              <p className="terminal-line">READY WHEN THE WALLET SIGNS</p>
-              <h3>TAKE FROM THE RICH.<br />GIVE TO THE MEMES.</h3>
-              <button>BUY ${displayTicker}</button>
-              <div className="social-row">
-                <span>{project.xHandle || "X account pending"}</span>
-                <span>{project.telegram || "Telegram pending"}</span>
-              </div>
-            </section>
+            )}
           </div>
         </section>
       </section>

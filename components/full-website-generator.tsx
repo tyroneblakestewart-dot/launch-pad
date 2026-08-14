@@ -58,6 +58,18 @@ type ReopenGeneratedSiteDetail = {
   site: PublishableSitePayload;
 };
 
+// The overlay's "Save preview" button asks the studio (components/token-studio.tsx)
+// to bank the generated site with the launch over these two events rather than
+// holding a reference to the studio's own save logic — the same event-bus
+// pattern REOPEN_GENERATED_SITE_EVENT already uses (issue #318).
+export const SAVE_GENERATED_SITE_EVENT = "launchpad:save-generated-site";
+export const SAVE_GENERATED_SITE_RESULT_EVENT = "launchpad:save-generated-site-result";
+
+export type SaveGeneratedSiteResultDetail = {
+  success: boolean;
+  message: string;
+};
+
 type PublishChallengeResponse = {
   challengeId: string;
   nonce: string;
@@ -82,6 +94,7 @@ type RequestGeneratedWebsiteOptions = {
 };
 
 type RenderedPreview = {
+  backdrop: HTMLElement;
   container: HTMLElement;
   frame: HTMLIFrameElement;
   closeButton: HTMLButtonElement;
@@ -339,6 +352,7 @@ function disposeRenderedPreview(preview: RenderedPreview | null) {
   preview.container.classList.remove("full-generated-page-fullscreen");
   disposeFrame(preview.frame);
   preview.container.remove();
+  preview.backdrop.remove();
 }
 
 function isAbortError(error: unknown): boolean {
@@ -383,6 +397,9 @@ function renderGeneratedWebsite(
   const prepared = prepareGeneratedPageForPreview(html, artworkDataUrl);
   clearPreviewStatus(site);
 
+  const backdrop = document.createElement("div");
+  backdrop.className = "full-generated-page-backdrop";
+
   const container = document.createElement("section");
   container.className = "full-generated-page-container";
   container.setAttribute("aria-label", "Generated website preview");
@@ -405,6 +422,11 @@ function renderGeneratedWebsite(
   fullScreenButton.className = "full-generated-page-fullscreen-button";
   fullScreenButton.textContent = "Full screen";
   fullScreenButton.setAttribute("aria-pressed", "false");
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.className = "full-generated-page-save-button";
+  saveButton.textContent = "Save preview";
 
   const closeButton = document.createElement("button");
   closeButton.type = "button";
@@ -483,17 +505,35 @@ function renderGeneratedWebsite(
     }
   };
 
+  const onSavePreviewResult = (event: Event) => {
+    const detail = (event as CustomEvent<SaveGeneratedSiteResultDetail>).detail;
+    saveButton.disabled = false;
+    publishStatus.textContent = detail?.message || "The preview could not be saved.";
+  };
+  window.addEventListener(SAVE_GENERATED_SITE_RESULT_EVENT, onSavePreviewResult);
+  controlCleanups.push(() =>
+    window.removeEventListener(SAVE_GENERATED_SITE_RESULT_EVENT, onSavePreviewResult),
+  );
+
+  const onSavePreview = () => {
+    saveButton.disabled = true;
+    publishStatus.textContent = "Saving preview…";
+    window.dispatchEvent(new CustomEvent(SAVE_GENERATED_SITE_EVENT));
+  };
+
   listen(publishButton, () => { void onPublishDraft(); });
   fullScreenButton.addEventListener("click", onToggleFullScreen);
+  listen(saveButton, onSavePreview);
   closeButton.addEventListener("click", onClose);
-  controls.append(publishStatus, publishButton, fullScreenButton, closeButton);
+  controls.append(publishStatus, publishButton, fullScreenButton, saveButton, closeButton);
   viewport.appendChild(frame);
   container.append(controls, viewport);
 
   site.classList.add("full-generated-page");
-  site.appendChild(container);
+  site.append(backdrop, container);
 
   return {
+    backdrop,
     container,
     frame,
     closeButton,
@@ -652,17 +692,38 @@ export function FullWebsiteGenerator() {
   return (
     <style>{`
       .site-preview.full-generated-page {
-        min-height: 760px;
+        min-height: 0;
         overflow: hidden;
         border-radius: 12px;
         background: #fff;
       }
       .site-preview.full-generated-page::after { display: none; }
       .site-preview.full-generated-page > :not(.full-generated-page-container):not(.full-generated-page-status) { display: none !important; }
+      /* The generated site opens as ONE branded overlay window on top of the
+         studio — not embedded inline in the page — so it reads as the
+         product, not a section of the builder (issue #318). "Full screen"
+         (below) expands the same container edge-to-edge; this is its
+         windowed default, identical concept on desktop and mobile. */
+      .full-generated-page-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 2147482999;
+        background: rgba(6, 12, 18, .62);
+        backdrop-filter: blur(3px);
+      }
       .full-generated-page-container {
-        width: 100%;
+        position: fixed;
+        z-index: 2147483000;
+        inset: 0;
+        margin: auto;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        width: min(1080px, 94vw);
+        height: min(820px, 88svh);
         overflow: hidden;
+        border-radius: 16px;
         background: #fff;
+        box-shadow: 0 30px 90px rgba(4, 10, 16, .5);
       }
       .full-generated-page-controls {
         position: sticky;
@@ -726,6 +787,7 @@ export function FullWebsiteGenerator() {
       .full-generated-page-container.full-generated-page-fullscreen {
         position: fixed;
         inset: 0;
+        margin: 0;
         z-index: 2147483000;
         display: grid;
         grid-template-rows: auto minmax(0, 1fr);

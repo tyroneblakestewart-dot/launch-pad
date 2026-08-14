@@ -83,7 +83,7 @@ describe("reopening a previously generated site (issue #198)", () => {
     const studio = await studioSource();
 
     expect(studio).toContain(
-      'import {\n  REOPEN_GENERATED_SITE_EVENT,\n  type PublishableSitePayload,\n} from "@/components/full-website-generator"',
+      'import {\n  REOPEN_GENERATED_SITE_EVENT,\n  SAVE_GENERATED_SITE_EVENT,\n  SAVE_GENERATED_SITE_RESULT_EVENT,\n  type PublishableSitePayload,\n} from "@/components/full-website-generator"',
     );
     expect(studio).toContain("function reopenGeneratedSite(target: TokenProject)");
     // The generatedSiteHtml guard lives in publishableSiteFromProject, which

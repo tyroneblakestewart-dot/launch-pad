@@ -55,3 +55,12 @@
 :global(body:has(.full-generated-page-fullscreen)) .mobileHeader,
 :global(body:has(.full-generated-page-fullscreen)) .mobileMenu,
 :global(body:has(.full-generated-page-fullscreen)) .bottomNav { display:none !important; }
+
+/* The branded generated-site overlay (issue #318) is a fixed window even
+   before "Full screen" is pressed, so it inherits the same stacking trap —
+   hide this chrome for the whole overlay, not just its fullscreen toggle. */
+:global(body:has(.full-generated-page-container)) { padding-left:0 !important; padding-bottom:0 !important; }
+:global(body:has(.full-generated-page-container)) .sidebar,
+:global(body:has(.full-generated-page-container)) .mobileHeader,
+:global(body:has(.full-generated-page-container)) .mobileMenu,
+:global(body:has(.full-generated-page-container)) .bottomNav { display:none !important; }
