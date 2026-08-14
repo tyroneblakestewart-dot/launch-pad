@@ -137,6 +137,10 @@ export function getGeneratedPreviewDesignHeight(reportedHeight: number): number 
   return Math.min(16_000, Math.max(700, Math.ceil(reportedHeight)));
 }
 
+// A reported height within this many pixels of the current one is treated
+// as noise, not a real layout change (issue #323 part 2.4).
+export const HEIGHT_REPORT_IGNORE_THRESHOLD_PX = 24;
+
 
 function publishableSiteFromGeneration(detail: GenerateDetail, html: string): PublishableSitePayload {
   return {
@@ -490,7 +494,32 @@ function renderGeneratedWebsite(
     scale.style.width = `${Math.round(designWidth * factor)}px`;
     scale.style.height = `${Math.round(designHeight * factor)}px`;
   }
+
+  // Issue #323 part 2.4: the bridge posts a height on close to every DOM
+  // mutation inside the generated page. Ignoring sub-threshold noise and
+  // refusing to shrink the frame while the visitor is mid-scroll stops those
+  // reports from yanking the scaled preview (and the page's scroll position
+  // with it) around under a reader who is just scrolling the page.
+  let isWindowScrolling = false;
+  let scrollIdleTimer: number | null = null;
+  const onScrollActivity = () => {
+    isWindowScrolling = true;
+    if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
+    scrollIdleTimer = window.setTimeout(() => {
+      isWindowScrolling = false;
+      scrollIdleTimer = null;
+    }, 200);
+  };
+  window.addEventListener("scroll", onScrollActivity, { passive: true });
+  controlCleanups.push(() => {
+    window.removeEventListener("scroll", onScrollActivity);
+    if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
+  });
+
   function applyHeight(nextReportedHeight: number) {
+    const delta = nextReportedHeight - reportedHeight;
+    if (Math.abs(delta) < HEIGHT_REPORT_IGNORE_THRESHOLD_PX) return;
+    if (delta < 0 && isWindowScrolling) return;
     reportedHeight = nextReportedHeight;
     layout();
   }

@@ -633,4 +633,40 @@ describe("renderFreeSiteTemplate", () => {
       expect(isCompleteGeneratedPageHtml(html)).toBe(true);
     });
   });
+
+  // Issue #323 part 3: the ledger tokenomics variant used to render its
+  // surface as `color-mix(in oklab, var(--text) 94%, var(--background))`,
+  // which resolved to a near-white paper card regardless of palette, because
+  // every shipped palette's --text is a near-white colour. It must now
+  // derive from the same --surface/--text/--border/--primary variables the
+  // rest of the template uses (the receipt rows/dashed-rule/zigzag concept
+  // can stay), with the same accessible surface/ink pairing already relied
+  // on elsewhere in the template.
+  describe("tokenomics ledger variant is themed, not a fixed white paper (issue #323 part 3)", () => {
+    it("derives the ledger card's surface and ink from theme variables, not a fixed white paper", async () => {
+      const { readFile } = await import("node:fs/promises");
+      const path = await import("node:path");
+      const source = await readFile(
+        path.join(process.cwd(), "docs", "free-site-template-source.html"),
+        "utf8",
+      );
+      const ledgerStart = source.indexOf('body[data-tokenomics="ledger"] .terminal {');
+      const ledgerEnd = source.indexOf(
+        'body[data-tokenomics="ledger"] .stat-v {',
+        ledgerStart,
+      );
+      const ledgerBlock = source.slice(ledgerStart, ledgerEnd);
+
+      expect(ledgerBlock).toContain("background: var(--surface);");
+      expect(ledgerBlock).toContain("color: var(--text);");
+      expect(ledgerBlock).not.toContain("color-mix(in oklab, var(--text)");
+      expect(ledgerBlock).not.toContain("color: var(--background);");
+    });
+
+    it("still renders under every palette without a fixed near-white background value", () => {
+      const html = render({ ...THEME, tokenomicsStyle: "ledger" });
+      expect(isCompleteGeneratedPageHtml(html)).toBe(true);
+      expect(html).toContain('data-tokenomics="ledger"');
+    });
+  });
 });

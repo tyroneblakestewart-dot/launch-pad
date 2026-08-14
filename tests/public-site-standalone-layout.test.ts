@@ -52,8 +52,16 @@ describe("published site route does not inherit the launchpad studio shell", () 
     const reset = await source("app", "[slug]", "public-site-reset.css");
 
     expect(reset).not.toContain("sidebar");
-    expect(reset).not.toContain("overflow-x");
+    expect(reset).not.toContain("overscroll-behavior-x");
+    expect(reset).not.toContain("touch-action");
+    expect(reset).not.toContain(".app-shell");
+    expect(reset).not.toContain("#launch-studio");
     expect(reset).not.toMatch(/padding-left:\s*\d/);
+    // issue #323 part 1: a minimal, generated-page-agnostic overflow clamp
+    // on the page shell itself — not the studio's multi-selector viewport
+    // lock machinery from mobile-viewport-lock.css, which this test still
+    // keeps out of the public reset.
+    expect(reset).toContain("overflow-x: hidden;");
   });
 
   it("still mounts the studio shell and studio stylesheets for the launchpad app routes", async () => {

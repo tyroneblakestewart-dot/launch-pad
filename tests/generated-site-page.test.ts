@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   ARTWORK_PLACEHOLDER,
   CHART_EMBED_PLACEHOLDER,
+  describeGeneratedPageRejection,
   isCompleteGeneratedPageHtml,
+  isGeneratedPageRejectedForLayoutOnly,
   parseGeneratedPagePayload,
   prepareGeneratedPageForPreview,
   type GeneratedPageAcceptanceProfile,
@@ -157,6 +159,28 @@ describe("generated full website document", () => {
     expect(csp).toContain("connect-src 'none'");
   });
 
+  // Issue #323 part 1: a code-enforced overflow clamp injected into every
+  // prepared page — the served /[slug] route and the studio preview both
+  // call prepareGeneratedPageForPreview, so this one injection point covers
+  // both surfaces — regardless of what the generated markup itself does.
+  it("injects a code-enforced overflow clamp that no generated markup can remove", () => {
+    const prepared = prepareGeneratedPageForPreview(
+      validHtml(),
+      "data:image/webp;base64,aGVsbG8=",
+    );
+    expect(prepared).toContain("html,body{max-width:100%;overflow-x:hidden}");
+    expect(prepared).toContain("img,video,table,pre{max-width:100%}");
+  });
+
+  it("debounces the height-report bridge to once per animation frame instead of once per DOM mutation", () => {
+    const prepared = prepareGeneratedPageForPreview(
+      validHtml(),
+      "data:image/webp;base64,aGVsbG8=",
+    );
+    expect(prepared).toContain("requestAnimationFrame(function(){scheduled=null;send()})");
+    expect(prepared).toContain("new MutationObserver(scheduleSend)");
+  });
+
   // Layer 2 of the desktop/mobile responsiveness contract (issue #303): a
   // generated page that has made no attempt at responsive CSS, or that
   // hardcodes a desktop-only wide container outside any breakpoint, should
@@ -171,9 +195,13 @@ describe("generated full website document", () => {
     });
 
     it("accepts a page whose only responsive signal is a fluid unit like clamp(), with no @media at all", () => {
+      // The grid here uses repeat(auto-fit, ...), not a fixed track count —
+      // auto-fit is inherently responsive, so this fixture stays focused on
+      // proving clamp() alone satisfies the baseline, not on the unstacked
+      // multi-column-grid check covered separately below.
       const fluidOnly = withStyle(
         "",
-        ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}img{max-width:100%}",
+        ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:20px}img{max-width:100%}",
       );
       expect(isCompleteGeneratedPageHtml(fluidOnly)).toBe(true);
     });
@@ -196,6 +224,82 @@ describe("generated full website document", () => {
         "@media(max-width:700px){.grid{grid-template-columns:1fr}section{padding:44px 20px}}@media(min-width:1280px){.wrapper{width:1900px}}",
       );
       expect(isCompleteGeneratedPageHtml(desktopOnlyWidth)).toBe(true);
+    });
+
+    // Desktop-squish detection (issue #323 part 1): an always-active
+    // multi-column grid with no breakpoint that ever stacks it is the exact
+    // "desktop layout squished onto the phone" bug the owner reported.
+    describe("desktop-squish (unstacked multi-column grid)", () => {
+      it("rejects an always-active 3-column grid with no media query at all", () => {
+        const squished = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}img{max-width:100%}",
+        );
+        expect(isCompleteGeneratedPageHtml(squished)).toBe(false);
+        expect(isGeneratedPageRejectedForLayoutOnly(squished)).toBe(true);
+      });
+
+      it("rejects an always-active 3-column grid even when a media query exists but never touches grid-template-columns", () => {
+        const squished = validHtml().replace(
+          "@media(max-width:700px){.grid{grid-template-columns:1fr}section{padding:44px 20px}}",
+          "@media(max-width:700px){section{padding:44px 20px}}",
+        );
+        expect(isCompleteGeneratedPageHtml(squished)).toBe(false);
+      });
+
+      it("accepts validHtml() unchanged, whose @media(max-width:700px) block does stack the grid", () => {
+        expect(isCompleteGeneratedPageHtml(validHtml())).toBe(true);
+      });
+
+      it("does not flag an always-active two-column grid — a common, legitimate mobile-safe pattern", () => {
+        const twoUp = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}img{max-width:100%}",
+        );
+        expect(isCompleteGeneratedPageHtml(twoUp)).toBe(true);
+      });
+
+      it("does not flag repeat(auto-fit, ...) or repeat(auto-fill, ...) — those are inherently responsive", () => {
+        const autoFit = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px}img{max-width:100%}",
+        );
+        expect(isCompleteGeneratedPageHtml(autoFit)).toBe(true);
+      });
+    });
+  });
+
+  describe("rejection reasons and the one-retry-on-layout signal (issue #323)", () => {
+    it("reports 'layout' only when the page is otherwise complete and safe", () => {
+      const evidence = { artworkBriefId: "art-1234abcd", inspirationBriefId: "url-8765dcba" };
+      const squished = withStyle(
+        "",
+        ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}img{max-width:100%}",
+      );
+
+      expect(
+        describeGeneratedPageRejection({ html: squished, ...evidence }, evidence),
+      ).toBe("layout");
+      expect(
+        describeGeneratedPageRejection({ html: validHtml(), ...evidence }, evidence),
+      ).toBe("ok");
+    });
+
+    it("reports 'other', not 'layout', for an unrelated rejection reason a layout retry would never fix", () => {
+      const evidence = { artworkBriefId: "art-1234abcd", inspirationBriefId: "url-8765dcba" };
+
+      expect(
+        describeGeneratedPageRejection(
+          { html: validHtml().replace('id="community"', 'id="missing"'), ...evidence },
+          evidence,
+        ),
+      ).toBe("other");
+      expect(
+        describeGeneratedPageRejection(
+          { html: validHtml(), artworkBriefId: "wrong", inspirationBriefId: evidence.inspirationBriefId },
+          evidence,
+        ),
+      ).toBe("other");
     });
   });
 });

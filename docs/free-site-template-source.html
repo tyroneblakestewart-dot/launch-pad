@@ -361,10 +361,17 @@ body[data-tokenomics="grid"] .stat { padding: 40px 28px; border-radius: 20px; ba
 body[data-tokenomics="grid"] .stat-k { font-size: 12px; }
 body[data-tokenomics="grid"] .stat-v { font-family: var(--font-display); font-size: clamp(36px, 5vw, 56px); margin-top: 18px; line-height: 1; letter-spacing: .01em; font-weight: 400; }
 
+/* Ledger receipt, themed (issue #323 part 3): the zigzag/dashed-rule receipt
+   concept stays, but its paper and ink now come from the same --surface /
+   --text / --border / --primary variables every other section uses, instead
+   of a color-mix that always resolved to a near-white card no matter which
+   palette was active. --surface/--text is the same paper-and-ink pairing
+   already relied on elsewhere in this file (.terminal-body, .card p, …), so
+   it carries the same accessible contrast as the rest of the template. */
 body[data-tokenomics="ledger"] .terminal {
   max-width: 620px; margin: 48px auto 0;
-  background: color-mix(in oklab, var(--text) 94%, var(--background));
-  color: var(--background); border: 0; border-radius: 0;
+  background: var(--surface);
+  color: var(--text); border: 1px solid var(--border); border-radius: 0;
   box-shadow: 0 40px 80px -20px rgba(0,0,0,.55);
   position: relative; overflow: visible;
 }
@@ -377,17 +384,17 @@ body[data-tokenomics="ledger"] .terminal::after {
 }
 body[data-tokenomics="ledger"] .terminal::before { top: -1px; }
 body[data-tokenomics="ledger"] .terminal::after  { bottom: -1px; transform: scaleY(-1); }
-body[data-tokenomics="ledger"] .terminal-chrome { background: transparent; border-bottom: 2px dashed color-mix(in oklab, var(--background) 45%, transparent); padding: 32px 32px 18px; justify-content: center; gap: 10px; }
+body[data-tokenomics="ledger"] .terminal-chrome { background: transparent; border-bottom: 2px dashed var(--border); padding: 32px 32px 18px; justify-content: center; gap: 10px; }
 body[data-tokenomics="ledger"] .dots { display: none; }
-body[data-tokenomics="ledger"] .terminal-path { color: var(--background); font-family: var(--font-display); font-size: 20px; letter-spacing: .18em; text-transform: uppercase; }
+body[data-tokenomics="ledger"] .terminal-path { color: var(--primary); font-family: var(--font-display); font-size: 20px; letter-spacing: .18em; text-transform: uppercase; }
 body[data-tokenomics="ledger"] .terminal-path::before { content: "\2605  RECEIPT  \2605  "; }
-body[data-tokenomics="ledger"] .terminal-body { padding: 12px 32px 40px; color: var(--background); font-family: var(--font-mono); }
+body[data-tokenomics="ledger"] .terminal-body { padding: 12px 32px 40px; color: var(--text); font-family: var(--font-mono); }
 body[data-tokenomics="ledger"] .terminal-body > .prompt { display: none; }
 body[data-tokenomics="ledger"] .stat-grid { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
-body[data-tokenomics="ledger"] .stat { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; background: transparent; border: 0; border-bottom: 1px dashed color-mix(in oklab, var(--background) 45%, transparent); border-radius: 0; padding: 16px 0; }
+body[data-tokenomics="ledger"] .stat { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; background: transparent; border: 0; border-bottom: 1px dashed var(--border); border-radius: 0; padding: 16px 0; }
 body[data-tokenomics="ledger"] .stat:last-child { border-bottom: 0; }
-body[data-tokenomics="ledger"] .stat-k { color: color-mix(in oklab, var(--background) 70%, transparent); font-family: var(--font-mono); font-size: 11px; }
-body[data-tokenomics="ledger"] .stat-v { color: var(--background); font-family: var(--font-mono); font-size: 15px; margin-top: 0; font-weight: 700; text-align: right; }
+body[data-tokenomics="ledger"] .stat-k { color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+body[data-tokenomics="ledger"] .stat-v { color: var(--text); font-family: var(--font-mono); font-size: 15px; margin-top: 0; font-weight: 700; text-align: right; }
 
 /* ============================================================
    ABOUT VARIANTS — body[data-about]

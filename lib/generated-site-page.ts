@@ -73,6 +73,22 @@ const RESPONSIVE_UNIT_PATTERN =
 // 390px viewport.
 const FIXED_WIDE_WIDTH_PATTERN = /(?<![\w-])width\s*:\s*(\d{3,5})px/gi;
 const MIN_OVERFLOW_RISK_WIDTH_PX = 480;
+// A grid with three or more explicit fixed/fractional tracks declared via
+// `repeat(N, ...)` outside any media query (e.g. `repeat(3, 1fr)`) is the
+// clearest, most common way a generated page lays out side-by-side columns
+// that are never told to stack — the "desktop layout squished onto the
+// phone" failure mode from issue #323. The threshold starts at three, not
+// two, because an always-active two-up grid (e.g. a stat-pair row) is a
+// common, legitimate mobile-safe pattern already shipped in the free-site
+// template's own tokenomics variants (docs/free-site-template-source.html);
+// flagging it would reject known-good output. `repeat(auto-fit, ...)` and
+// `repeat(auto-fill, ...)` are excluded because those are inherently
+// responsive (the browser recomputes the track count from available width),
+// so the numeric capture below only matches an explicit integer count.
+const ALWAYS_ACTIVE_MULTI_COLUMN_GRID_PATTERN =
+  /grid-template-columns\s*:\s*repeat\(\s*(?:[3-9]|[1-9]\d+)\s*,/i;
+const GRID_TEMPLATE_COLUMNS_DECLARATION_PATTERN = /grid-template-columns\s*:/i;
+const MAX_WIDTH_MEDIA_CONDITION_PATTERN = /max-width\s*:\s*\d+(?:\.\d+)?px/i;
 
 function extractStyleBlocksCss(html: string): string {
   return (html.match(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi) || [])
@@ -111,6 +127,53 @@ function stripMediaQueryBlocks(css: string): string {
   return result;
 }
 
+// Splits CSS into its top-level `@media (...) { ... }` blocks, each as its
+// raw condition text plus its body, so a caller can check whether a
+// mobile-range breakpoint actually touches a given property — unlike
+// `stripMediaQueryBlocks`, which only needs to discard that content.
+function extractMediaBlocks(css: string): { condition: string; body: string }[] {
+  const blocks: { condition: string; body: string }[] = [];
+  let index = 0;
+  while (index < css.length) {
+    const mediaIndex = css.indexOf("@media", index);
+    if (mediaIndex === -1) break;
+    const braceStart = css.indexOf("{", mediaIndex);
+    if (braceStart === -1) break;
+    const condition = css.slice(mediaIndex + "@media".length, braceStart);
+    let depth = 1;
+    let cursor = braceStart + 1;
+    while (cursor < css.length && depth > 0) {
+      if (css[cursor] === "{") depth++;
+      else if (css[cursor] === "}") depth--;
+      cursor++;
+    }
+    blocks.push({ condition, body: css.slice(braceStart + 1, cursor - 1) });
+    index = cursor;
+  }
+  return blocks;
+}
+
+// Layer 2b of the responsiveness contract (issue #323): a page can pass the
+// media-query/fixed-width checks above and still be the exact "desktop
+// squished onto the phone" bug the owner reported — an always-active
+// multi-column grid with no breakpoint that ever collapses it. This does not
+// try to prove the breakpoint targets the *same* grid selector (that needs a
+// real CSS parser); it only requires that some max-width breakpoint touches
+// `grid-template-columns` at all, which the mechanical-baseline philosophy in
+// docs/responsive-qa.md accepts as a reasonable proxy.
+function hasUnstackedMultiColumnGrid(html: string): boolean {
+  const styleCss = extractStyleBlocksCss(html);
+  const alwaysActiveCss = stripMediaQueryBlocks(styleCss);
+  if (!ALWAYS_ACTIVE_MULTI_COLUMN_GRID_PATTERN.test(alwaysActiveCss)) return false;
+
+  const hasMobileStackingBreakpoint = extractMediaBlocks(styleCss).some(
+    (block) =>
+      MAX_WIDTH_MEDIA_CONDITION_PATTERN.test(block.condition) &&
+      GRID_TEMPLATE_COLUMNS_DECLARATION_PATTERN.test(block.body),
+  );
+  return !hasMobileStackingBreakpoint;
+}
+
 function hasResponsiveBaseline(html: string): boolean {
   const styleCss = extractStyleBlocksCss(html);
   const hasMediaQuery = MEDIA_QUERY_PATTERN.test(styleCss);
@@ -123,6 +186,7 @@ function hasResponsiveBaseline(html: string): boolean {
   while ((match = FIXED_WIDE_WIDTH_PATTERN.exec(alwaysActiveCss))) {
     if (Number(match[1]) >= MIN_OVERFLOW_RISK_WIDTH_PX) return false;
   }
+  if (hasUnstackedMultiColumnGrid(html)) return false;
   return true;
 }
 
@@ -148,9 +212,14 @@ function hasRetailMarketplacePresentation(html: string): boolean {
   );
 }
 
-export function isCompleteGeneratedPageHtml(
+// Everything isCompleteGeneratedPageHtml checks except the responsive
+// baseline, factored out so a caller (the one-retry-on-layout-rejection flow
+// in lib/site-page-openai-pipeline.ts) can tell "this page is otherwise
+// complete and safe, it only failed the layout check" apart from every other
+// rejection reason, without duplicating the whole gate.
+function isStructurallyCompleteGeneratedPageHtml(
   value: unknown,
-  acceptance: GeneratedPageAcceptanceProfile = {},
+  acceptance: GeneratedPageAcceptanceProfile,
 ): value is string {
   if (typeof value !== "string") return false;
   const html = value.trim();
@@ -163,7 +232,6 @@ export function isCompleteGeneratedPageHtml(
   if (!lower.includes("<head") || !lower.includes("<body")) return false;
   if (!lower.includes("<style") || !lower.includes("<script")) return false;
   if (!lower.includes('name="viewport"') && !lower.includes("name='viewport'")) return false;
-  if (!hasResponsiveBaseline(html)) return false;
   if (!html.includes(ARTWORK_PLACEHOLDER)) return false;
 
   for (const section of REQUIRED_PAGE_SECTIONS) {
@@ -198,6 +266,30 @@ export function isCompleteGeneratedPageHtml(
   return true;
 }
 
+export function isCompleteGeneratedPageHtml(
+  value: unknown,
+  acceptance: GeneratedPageAcceptanceProfile = {},
+): value is string {
+  return (
+    isStructurallyCompleteGeneratedPageHtml(value, acceptance) && hasResponsiveBaseline(value as string)
+  );
+}
+
+// True only when a page is otherwise complete, safe and evidence-matched,
+// and the responsive/layout baseline is the sole reason it was rejected —
+// the signal the one-automatic-retry flow (issue #323) uses to decide
+// whether to retry the AI generation with corrective feedback, rather than
+// retrying a page that was rejected for an unrelated reason (missing
+// section, unsafe embed, wrong evidence id) that a layout note won't fix.
+export function isGeneratedPageRejectedForLayoutOnly(
+  value: unknown,
+  acceptance: GeneratedPageAcceptanceProfile = {},
+): value is string {
+  return (
+    isStructurallyCompleteGeneratedPageHtml(value, acceptance) && !hasResponsiveBaseline(value as string)
+  );
+}
+
 export function parseGeneratedPagePayload(
   value: unknown,
   expected: GeneratedPageEvidence,
@@ -213,6 +305,25 @@ export function parseGeneratedPagePayload(
     artworkBriefId: expected.artworkBriefId,
     inspirationBriefId: expected.inspirationBriefId,
   };
+}
+
+export type GeneratedPageRejectionReason = "ok" | "layout" | "other";
+
+// Same evidence/shape checks as parseGeneratedPagePayload, but reports why a
+// rejected page failed instead of only null, so the one-retry-on-layout flow
+// can target its corrective feedback precisely.
+export function describeGeneratedPageRejection(
+  value: unknown,
+  expected: GeneratedPageEvidence,
+  acceptance: GeneratedPageAcceptanceProfile = {},
+): GeneratedPageRejectionReason {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "other";
+  const item = value as Record<string, unknown>;
+  if (item.artworkBriefId !== expected.artworkBriefId) return "other";
+  if (item.inspirationBriefId !== expected.inspirationBriefId) return "other";
+  if (isCompleteGeneratedPageHtml(item.html, acceptance)) return "ok";
+  if (isGeneratedPageRejectedForLayoutOnly(item.html, acceptance)) return "layout";
+  return "other";
 }
 
 function escapeForHtmlAttribute(value: string): string {
@@ -240,10 +351,25 @@ export function prepareGeneratedPageForPreview(html: string, artworkDataUrl: str
     "base-uri 'none'",
     "frame-src https://dexscreener.com",
   ].join("; ");
-  const bridge = `<script>(function(){var send=function(){var h=Math.max(document.body?document.body.scrollHeight:0,document.documentElement?document.documentElement.scrollHeight:0);parent.postMessage({type:'hoodlums-generated-page-height',height:h},'*')};addEventListener('load',send);addEventListener('resize',send);new MutationObserver(send).observe(document.documentElement,{subtree:true,childList:true,attributes:true});setTimeout(send,60);setTimeout(send,500);setTimeout(send,1500)})();<\/script>`;
+  // Issue #323 part 1: a code-enforced safety net so no generated markup —
+  // however it slipped past the mechanical responsive-baseline validator —
+  // can force horizontal scrolling in the sandboxed iframe. This is
+  // deliberately in addition to, not instead of, that validator.
+  const overflowClamp =
+    "<style>html,body{max-width:100%;overflow-x:hidden}img,video,table,pre{max-width:100%}</style>";
+  // Issue #323 part 2.4: the previous bridge posted a height on every single
+  // DOM mutation, which under a busy generated page (animations, a
+  // MutationObserver-driven counter, etc.) could fire dozens of times a
+  // second. Coalescing mutation-triggered sends into one per animation frame
+  // keeps the parent's height reports meaningful instead of a flood the
+  // consumer then has to filter through.
+  const bridge = `<script>(function(){var send=function(){var h=Math.max(document.body?document.body.scrollHeight:0,document.documentElement?document.documentElement.scrollHeight:0);parent.postMessage({type:'hoodlums-generated-page-height',height:h},'*')};var scheduled=null;var scheduleSend=function(){if(scheduled)return;scheduled=requestAnimationFrame(function(){scheduled=null;send()})};addEventListener('load',send);addEventListener('resize',scheduleSend);new MutationObserver(scheduleSend).observe(document.documentElement,{subtree:true,childList:true,attributes:true});setTimeout(send,60);setTimeout(send,500);setTimeout(send,1500)})();<\/script>`;
 
   let output = html.replaceAll(ARTWORK_PLACEHOLDER, artwork);
-  output = output.replace(/<head([^>]*)>/i, `<head$1><meta http-equiv="Content-Security-Policy" content="${csp}">`);
+  output = output.replace(
+    /<head([^>]*)>/i,
+    `<head$1><meta http-equiv="Content-Security-Policy" content="${csp}">${overflowClamp}`,
+  );
   output = output.replace(/<\/body>/i, `${bridge}</body>`);
   return output;
 }

@@ -1,7 +1,9 @@
 import {
   ARTWORK_PLACEHOLDER,
+  describeGeneratedPageRejection,
   parseGeneratedPagePayload,
   type GeneratedPageAcceptanceProfile,
+  type GeneratedPageRejectionReason,
 } from "@/lib/generated-site-page";
 import {
   TOKEN_LANDING_PAGE_GENERATOR_PREFIX,
@@ -149,6 +151,7 @@ export function buildGeneratedSitePageRequestBody(
   model: string,
   artworkIdentity: ArtworkIdentity,
   inspirationAnalysis = NO_URL_PRESENTATION_BRIEF,
+  correctiveFeedback?: string,
 ) {
   const ids = getFusionBriefIds(artworkIdentity, inspirationAnalysis);
   const acceptance = buildGeneratedPageAcceptanceProfile(artworkIdentity, inspirationAnalysis);
@@ -178,6 +181,7 @@ export function buildGeneratedSitePageRequestBody(
     "- Include responsive, genuinely different desktop and mobile layouts.",
     "- Required section IDs: hero, about, tokenomics, roadmap, how-to-buy, community.",
     "- Include a useful header/navigation, a strong hero, multiple presentation patterns, clear CTA hierarchy, animated but readable interactions and at least one artwork click easter egg.",
+    "- The tokenomics section must be styled from the same palette variables (colours, surfaces, borders) as the rest of the page. Never render it as a fixed white/paper card that ignores the page's own theme — a stylised receipt or ledger presentation is fine as long as its surface and ink colours come from the page's own palette with readable contrast, not a hardcoded white background.",
     "- Keep the document focused and concise enough to finish within the structured response budget; do not repeat large blocks of CSS or copy.",
     "",
     "RESPONSIVE & LAYOUT QUALITY REQUIREMENTS (NON-NEGOTIABLE):",
@@ -188,6 +192,9 @@ export function buildGeneratedSitePageRequestBody(
     "- Add `scroll-behavior: smooth;` to the page (and respect `prefers-reduced-motion` by turning it off there). Any sticky, fixed or absolutely positioned element must never cover page content on small screens.",
     "- Use a consistent spacing scale and sensible section rhythm. Images must use `object-fit` so they never distort, and must never overflow their container.",
     ...presentationRules,
+    ...(correctiveFeedback
+      ? ["", "CORRECTIVE FEEDBACK FROM THE REJECTED PREVIOUS ATTEMPT (fix this specifically, everything else above still applies):", correctiveFeedback]
+      : []),
     "- Echo both supplied brief IDs exactly in artworkBriefId and inspirationBriefId.",
     "- Output only the schema-compliant JSON object.",
   ].join("\n");
@@ -242,6 +249,24 @@ export function buildGeneratedSitePageRequestBody(
       },
     },
   };
+}
+
+// Lets the caller (the generate-site-page route) distinguish "the page was
+// rejected for a layout reason worth one automatic retry with corrective
+// feedback" from every other rejection reason, without re-parsing the raw
+// provider response itself.
+export function describeGeneratedSitePageRejection(
+  response: OpenAIResponse,
+  expectedIds: FusionBriefIds,
+  acceptance: GeneratedPageAcceptanceProfile = {},
+): GeneratedPageRejectionReason {
+  const text = extractOutputText(response);
+  if (!text) return "other";
+  try {
+    return describeGeneratedPageRejection(JSON.parse(text) as unknown, expectedIds, acceptance);
+  } catch {
+    return "other";
+  }
 }
 
 export function parseGeneratedSitePageResponse(

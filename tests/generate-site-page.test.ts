@@ -366,6 +366,99 @@ describe("POST /api/generate-site-page", () => {
     expect(errorEvent.error).toContain("incomplete, unsafe");
   });
 
+  // Issue #323 part 1: a page rejected only for the responsive-layout
+  // baseline gets exactly one automatic retry with corrective feedback,
+  // instead of failing the whole request over a fixable layout mistake.
+  function squishedHtml() {
+    return html().replace("@media(max-width:700px){.cards{grid-template-columns:1fr}}", "");
+  }
+
+  describe("one automatic retry on a layout-only rejection", () => {
+    it("retries once with corrective feedback and succeeds on the second attempt", async () => {
+      const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(outputText(ARTWORK))
+        .mockResolvedValueOnce(streamedPage({ html: squishedHtml(), ...ids }))
+        .mockResolvedValueOnce(streamedPage({ html: html(), ...ids }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(
+        request({
+          name: "Journey",
+          ticker: "RIDE",
+          description: "A community token inspired by finding your route through London.",
+          imageDataUrl: VALID_IMAGE,
+          inspirationUrl: "",
+        }),
+      );
+      const events = await readNdjsonEvents(response);
+      const completeEvent = events.at(-1) as { type: string; html: string };
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      const retryBody = JSON.parse(fetchMock.mock.calls[2]![1]!.body as string) as {
+        input: Array<{ role: string; content: Array<{ type: string; text?: string }> }>;
+      };
+      const developerText = retryBody.input.find((item) => item.role === "developer")?.content[0]?.text || "";
+      expect(developerText).toContain("CORRECTIVE FEEDBACK FROM THE REJECTED PREVIOUS ATTEMPT");
+      expect(developerText).toContain("responsive-layout check");
+
+      expect(completeEvent.type).toBe("complete");
+      expect(completeEvent.html).toBe(html());
+    });
+
+    it("does not retry, and fails immediately, when the rejection reason is not layout", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(outputText(ARTWORK))
+        .mockResolvedValueOnce(
+          streamedPage({ html: html().replace('id="community"', 'id="missing"'), ...getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF) }),
+        );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(
+        request({
+          name: "Journey",
+          ticker: "RIDE",
+          description: "A community token inspired by finding your route through London.",
+          imageDataUrl: VALID_IMAGE,
+          inspirationUrl: "",
+        }),
+      );
+      const events = await readNdjsonEvents(response);
+      const errorEvent = events.at(-1) as { type: string };
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(errorEvent.type).toBe("error");
+    });
+
+    it("surfaces the second attempt's own failure if the retry itself does not succeed", async () => {
+      const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(outputText(ARTWORK))
+        .mockResolvedValueOnce(streamedPage({ html: squishedHtml(), ...ids }))
+        .mockResolvedValueOnce(streamedPage({ html: squishedHtml(), ...ids }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(
+        request({
+          name: "Journey",
+          ticker: "RIDE",
+          description: "A community token inspired by finding your route through London.",
+          imageDataUrl: VALID_IMAGE,
+          inspirationUrl: "",
+        }),
+      );
+      const events = await readNdjsonEvents(response);
+      const errorEvent = events.at(-1) as { type: string; error: string };
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(errorEvent.type).toBe("error");
+      expect(errorEvent.error).toContain("incomplete, unsafe");
+    });
+  });
+
   it("keeps uploaded artwork mandatory", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

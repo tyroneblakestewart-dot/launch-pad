@@ -123,6 +123,36 @@ describe("AI Social Studio showcase wiring", () => {
     expect(component).toContain("goToSlide(dotIndex)");
   });
 
+  // Issue #323 part 2: auto-advancing while scrolled off screen still moved
+  // the page's total layout height on the showcase's own clock, contributing
+  // to the scroll-anchoring jumps reported on iPhone. Pausing while off
+  // screen removes that background clock; a stacked, always-mounted visual
+  // layer per slide removes the height change itself.
+  it("pauses auto-advance while scrolled off screen via IntersectionObserver", async () => {
+    const component = await source("components", "hoodlums-social-showcase.tsx");
+
+    expect(component).toContain("new IntersectionObserver");
+    expect(component).toContain("setIsVisible(entry.isIntersecting)");
+    expect(component).toContain("observer.disconnect()");
+    expect(component).toContain("if (!isVisible) return;");
+    expect(component.indexOf("if (!isVisible) return;")).toBeLessThan(
+      component.indexOf("window.setInterval"),
+    );
+  });
+
+  it("keeps every slide's visual mounted in one stacked grid cell so rotating slides can never change the section's layout height", async () => {
+    const component = await source("components", "hoodlums-social-showcase.tsx");
+    const css = await source("components", "hoodlums-social-showcase.module.css");
+
+    expect(component).toContain("SOCIAL_SHOWCASE_SLIDES.map((visualSlide, index) => {");
+    expect(component).toContain("const active = index === activeIndex;");
+    expect(component).toContain("styles.visualLayerHidden");
+    expect(component).toContain('aria-hidden={active ? undefined : true}');
+
+    expect(css).toMatch(/\.visualLayer\s*{[^}]*grid-area:\s*1\s*\/\s*1;/s);
+    expect(css).toMatch(/\.visualLayerHidden\s*{[^}]*visibility:\s*hidden;/s);
+  });
+
   it("handles mobile swipe gestures via touch handlers", async () => {
     const component = await source("components", "hoodlums-social-showcase.tsx");
 
