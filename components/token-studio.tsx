@@ -445,6 +445,16 @@ export function TokenStudio() {
     setShowLaunchSummary(true);
   }
 
+  // Once a site is generated, this is a one-step shortcut to saving and
+  // opening the launch summary. It reuses saveProject directly rather than
+  // routing through prepareLaunch's separate launch-readiness gate, since
+  // generating a site already required the artwork/copy those checks look
+  // for. The launch window never opens if the save fails.
+  async function saveAndLaunch() {
+    if (!(await saveProject("prepared"))) return;
+    setShowLaunchSummary(true);
+  }
+
   function exportProject() {
     const payload = JSON.stringify(
       {
@@ -746,6 +756,11 @@ export function TokenStudio() {
               Prepare launch
             </button>
           </div>
+          {project.generatedSiteHtml && (
+            <button className="primary-button full-width" onClick={saveAndLaunch}>
+              Save and launch
+            </button>
+          )}
           <button className="text-button" onClick={exportProject}>
             Export project JSON
           </button>
