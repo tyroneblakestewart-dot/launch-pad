@@ -10,6 +10,10 @@ import {
   splitNdjsonLines,
   type GenerateSitePageProgressStage,
 } from "@/lib/generate-site-page-stream-protocol";
+import {
+  PROJECT_SAVE_RESULT_EVENT,
+  type ProjectSaveResultDetail,
+} from "@/lib/project-save-result";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 
 type GenerateDetail = {
@@ -83,6 +87,7 @@ type RequestGeneratedWebsiteOptions = {
 
 type RenderedPreview = {
   container: HTMLElement;
+  backdrop: HTMLElement;
   frame: HTMLIFrameElement;
   closeButton: HTMLButtonElement;
   fullScreenButton: HTMLButtonElement;
@@ -285,8 +290,8 @@ function stageMessage(stage: GenerateSitePageProgressStage, hasInspiration: bool
   switch (stage) {
     case "analysing-artwork":
       return hasInspiration
-        ? "Analysing the uploaded artwork and the inspiration website, then combining them into one original standalone page. The old Hoodlums preview is hidden because it is not the result."
-        : "Analysing the uploaded artwork and building one original standalone page. The old Hoodlums preview is hidden because it is not the result.";
+        ? "Analysing the uploaded artwork and the inspiration website, then combining them into one original standalone page. The placeholder preview stays hidden until this finished page is ready."
+        : "Analysing the uploaded artwork and building one original standalone page. The placeholder preview stays hidden until this finished page is ready.";
     case "preparing-design":
       return "Combining the verified artwork identity and inspiration brief into one design direction.";
     case "building-page":
@@ -339,6 +344,7 @@ function disposeRenderedPreview(preview: RenderedPreview | null) {
   preview.container.classList.remove("full-generated-page-fullscreen");
   disposeFrame(preview.frame);
   preview.container.remove();
+  preview.backdrop.remove();
 }
 
 function isAbortError(error: unknown): boolean {
@@ -373,6 +379,19 @@ function applyGeneratedPreviewHeight(frame: HTMLIFrameElement, reportedHeight: n
   frame.style.height = getGeneratedPreviewFrameHeight(reportedHeight, isMobilePreviewViewport());
 }
 
+// "Save preview" (issue #318) intentionally does not duplicate the durable
+// save logic — it drives the studio's own "Save project" button so it goes
+// through the exact same IndexedDB + localStorage path (and slug/collision
+// validation) as a manual save, then reports back whatever that save
+// actually did via PROJECT_SAVE_RESULT_EVENT instead of assuming success.
+function findStudioSaveButton(): HTMLButtonElement | null {
+  return (
+    Array.from(document.querySelectorAll<HTMLButtonElement>(".builder-panel button")).find(
+      (button) => button.textContent?.trim().toLowerCase() === "save project",
+    ) || null
+  );
+}
+
 function renderGeneratedWebsite(
   html: string,
   artworkDataUrl: string,
@@ -382,6 +401,13 @@ function renderGeneratedWebsite(
   const site = previewElement();
   const prepared = prepareGeneratedPageForPreview(html, artworkDataUrl);
   clearPreviewStatus(site);
+
+  // A dimmed backdrop sibling, not a wrapper around the container — the
+  // container needs its own stacking/position so "Full screen" can resize
+  // it in place without reparenting anything (single iframe stays put).
+  const backdrop = document.createElement("div");
+  backdrop.className = "full-generated-page-backdrop";
+  backdrop.setAttribute("aria-hidden", "true");
 
   const container = document.createElement("section");
   container.className = "full-generated-page-container";
@@ -405,6 +431,11 @@ function renderGeneratedWebsite(
   fullScreenButton.className = "full-generated-page-fullscreen-button";
   fullScreenButton.textContent = "Full screen";
   fullScreenButton.setAttribute("aria-pressed", "false");
+
+  const savePreviewButton = document.createElement("button");
+  savePreviewButton.type = "button";
+  savePreviewButton.className = "full-generated-page-save-button";
+  savePreviewButton.textContent = "Save preview";
 
   const closeButton = document.createElement("button");
   closeButton.type = "button";
@@ -435,6 +466,30 @@ function renderGeneratedWebsite(
     fullScreenButton.setAttribute("aria-pressed", String(fullScreen));
   };
   const onClose = () => onClosePreview();
+
+  let cleanupPendingSaveResult: (() => void) | null = null;
+  const onSavePreview = () => {
+    cleanupPendingSaveResult?.();
+    const saveButton = findStudioSaveButton();
+    if (!saveButton) {
+      publishStatus.textContent = "Could not find the studio's save control.";
+      return;
+    }
+    savePreviewButton.disabled = true;
+    publishStatus.textContent = "Saving preview…";
+    const onResult = (event: Event) => {
+      cleanupPendingSaveResult = null;
+      window.removeEventListener(PROJECT_SAVE_RESULT_EVENT, onResult);
+      savePreviewButton.disabled = false;
+      const detail = (event as CustomEvent<ProjectSaveResultDetail>).detail;
+      publishStatus.textContent = detail?.success
+        ? "Preview saved with this launch."
+        : "The preview could not be saved — check the notice above and try again.";
+    };
+    window.addEventListener(PROJECT_SAVE_RESULT_EVENT, onResult);
+    cleanupPendingSaveResult = () => window.removeEventListener(PROJECT_SAVE_RESULT_EVENT, onResult);
+    saveButton.click();
+  };
 
   const onPublishDraft = async () => {
     publishButton.disabled = true;
@@ -484,17 +539,20 @@ function renderGeneratedWebsite(
   };
 
   listen(publishButton, () => { void onPublishDraft(); });
+  listen(savePreviewButton, onSavePreview);
+  controlCleanups.push(() => cleanupPendingSaveResult?.());
   fullScreenButton.addEventListener("click", onToggleFullScreen);
   closeButton.addEventListener("click", onClose);
-  controls.append(publishStatus, publishButton, fullScreenButton, closeButton);
+  controls.append(publishStatus, publishButton, fullScreenButton, savePreviewButton, closeButton);
   viewport.appendChild(frame);
   container.append(controls, viewport);
 
   site.classList.add("full-generated-page");
-  site.appendChild(container);
+  site.append(backdrop, container);
 
   return {
     container,
+    backdrop,
     frame,
     closeButton,
     fullScreenButton,
@@ -599,7 +657,7 @@ export function FullWebsiteGenerator() {
           error instanceof Error ? error.message : "The full website could not be generated.";
         setPreviewStatus(
           "failed",
-          `${message} The terminal-style base preview has not been accepted as your generated website.`,
+          `${message} The placeholder preview has not been shown as your generated website.`,
         );
         window.dispatchEvent(
           new CustomEvent("launchpad:site-generation-failed", {
@@ -658,11 +716,37 @@ export function FullWebsiteGenerator() {
         background: #fff;
       }
       .site-preview.full-generated-page::after { display: none; }
-      .site-preview.full-generated-page > :not(.full-generated-page-container):not(.full-generated-page-status) { display: none !important; }
+      /* The backdrop is a sibling of the container inside .site-preview (not
+         a wrapper around it), so it must be named alongside the container
+         and status in this exception list — otherwise it is just another
+         "everything else" child and gets caught by the blanket hide rule,
+         rendering as 0x0 with no dim behind the floating window (issue #318). */
+      .site-preview.full-generated-page > :not(.full-generated-page-container):not(.full-generated-page-backdrop):not(.full-generated-page-status) { display: none !important; }
+      .full-generated-page-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 2147482999;
+        background: rgba(4, 9, 6, .74);
+        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(6px);
+      }
+      /* The overlay is ONE branded window on top of the studio (issue #318):
+         position: fixed and centred by default, not just in full screen —
+         "Full screen" only resizes this same box to edge-to-edge below. */
       .full-generated-page-container {
-        width: 100%;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        z-index: 2147483000;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        width: min(1180px, 94vw);
+        height: min(900px, 88svh);
         overflow: hidden;
+        border-radius: 16px;
         background: #fff;
+        box-shadow: 0 40px 140px rgba(0, 0, 0, .55);
+        transform: translate(-50%, -50%);
       }
       .full-generated-page-controls {
         position: sticky;
@@ -703,12 +787,18 @@ export function FullWebsiteGenerator() {
         background: #315f7b !important;
         color: #fff !important;
       }
+      .full-generated-page-save-button {
+        background: #f1cf55 !important;
+        border-color: rgba(49, 95, 123, .28) !important;
+        color: #183448 !important;
+      }
       .full-generated-page-close-button {
         background: #183448 !important;
         color: #fff !important;
       }
       .full-generated-page-viewport {
         width: 100%;
+        height: 100%;
         overflow: auto;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
@@ -723,23 +813,22 @@ export function FullWebsiteGenerator() {
         overflow: auto;
         touch-action: pan-x pan-y;
       }
+      /* Windowed (non-full-screen) is now a fixed-size dialog rather than an
+         inline embed that grows with content, so the frame fills its
+         viewport row and the generated page scrolls internally — the same
+         approach full screen already used, applied consistently (#318). */
+      .full-generated-page-container:not(.full-generated-page-fullscreen) .full-generated-page-frame {
+        height: 100% !important;
+        min-height: 0;
+      }
       .full-generated-page-container.full-generated-page-fullscreen {
-        position: fixed;
         inset: 0;
-        z-index: 2147483000;
-        display: grid;
-        grid-template-rows: auto minmax(0, 1fr);
         width: 100vw;
         height: 100svh;
-        max-width: none;
         border-radius: 0;
-        background: #fff;
+        transform: none;
       }
       .full-generated-page-fullscreen .full-generated-page-controls { position: relative; }
-      .full-generated-page-fullscreen .full-generated-page-viewport {
-        min-height: 0;
-        height: 100%;
-      }
       .full-generated-page-fullscreen .full-generated-page-frame {
         height: 100% !important;
         min-height: 0;
@@ -804,7 +893,8 @@ export function FullWebsiteGenerator() {
           overflow: visible;
         }
         .full-generated-page-container:not(.full-generated-page-fullscreen) {
-          max-height: calc(70svh + 52px);
+          width: 96vw;
+          height: min(calc(70svh + 52px), 92svh);
         }
         .full-generated-page-controls {
           flex-wrap: wrap;

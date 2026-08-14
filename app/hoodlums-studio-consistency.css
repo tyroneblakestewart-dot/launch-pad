@@ -30,9 +30,8 @@
  * Token setup form redesign, matching public/design-refs/hoodlums-token-studio-form.html:
  * a dark lime-on-black card system, IBM Plex Mono labels and pill controls.
  * Everything below is scoped under #launch-studio so it cannot leak into the
- * dashboard, the generated-site preview mockup (dexscreener-site-section.tsx
- * shares .preview-content/.section-tag), or any other page that reuses a
- * class name like .field-label or .primary-button.
+ * dashboard or any other page that reuses a class name like .field-label or
+ * .primary-button.
  */
 #launch-studio {
   --hoodlums-green: #c6f53e;
@@ -573,9 +572,10 @@
   line-height: 1.65 !important;
 }
 
-/* Preview frame keeps its own generated-site mockup styling; only the
-   surrounding chrome picks up the new palette so dexscreener-site-section.tsx
-   (which shares .preview-content/.section-tag) is left untouched. */
+/* The preview panel's own honest empty-state/reopen-card styling (issue
+   #318) lives in the shared .site-preview-placeholder rules in
+   app/globals.css; only the surrounding toolbar chrome picks up the new
+   palette here. */
 #launch-studio .preview-toolbar {
   min-height: 34px;
   margin: 0 0 10px;

@@ -318,3 +318,13 @@
     font-size: 7px;
   }
 }
+
+/* The floating Account launcher is fixed above the app content on mobile
+   (max-width: 1099px, see .accountDock above) and would otherwise paint on
+   top of the generated-site preview overlay — the same stacking trap as the
+   sidebar/topbar/workspace bar (issue #313, extended to this overlay by
+   issue #318). Hide it whenever the overlay is open, windowed or full
+   screen. */
+:global(body:has(.full-generated-page-container)) .accountDock {
+  display: none !important;
+}

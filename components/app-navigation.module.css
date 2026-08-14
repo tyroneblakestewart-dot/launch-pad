@@ -46,12 +46,16 @@
 :global(body:has(.public-generated-site)) .mobileHeader,
 :global(body:has(.public-generated-site)) .bottomNav { display:none !important; }
 
-/* Full screen preview must be a completely unobstructed view of the generated
-   site — the fixed/sticky app chrome would otherwise paint over it because the
-   studio preview panel's `position: sticky` traps the preview's z-index inside
-   its own stacking context (issue #313). */
-:global(body:has(.full-generated-page-fullscreen)) { padding-left:0 !important; padding-bottom:0 !important; }
-:global(body:has(.full-generated-page-fullscreen)) .sidebar,
-:global(body:has(.full-generated-page-fullscreen)) .mobileHeader,
-:global(body:has(.full-generated-page-fullscreen)) .mobileMenu,
-:global(body:has(.full-generated-page-fullscreen)) .bottomNav { display:none !important; }
+/* The generated-site preview overlay must be a completely unobstructed view
+   of the generated site — the fixed/sticky app chrome would otherwise paint
+   over it because the studio preview panel's `position: sticky` traps the
+   preview's z-index inside its own stacking context (issue #313). The
+   overlay is `position: fixed` in both its windowed and full screen states
+   (issue #318), so key every rule off `.full-generated-page-container`,
+   which is present whenever the overlay is open at all, not just full
+   screen. */
+:global(body:has(.full-generated-page-container)) { padding-left:0 !important; padding-bottom:0 !important; }
+:global(body:has(.full-generated-page-container)) .sidebar,
+:global(body:has(.full-generated-page-container)) .mobileHeader,
+:global(body:has(.full-generated-page-container)) .mobileMenu,
+:global(body:has(.full-generated-page-container)) .bottomNav { display:none !important; }

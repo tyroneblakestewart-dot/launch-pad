@@ -395,7 +395,7 @@ describe("full website frontend wiring", () => {
     expect(generator).toContain("hoodlums-generated-page-height");
     expect(generator).toContain("full-page-generating");
     expect(generator).toContain("full-page-failed");
-    expect(generator).toContain("The terminal-style base preview has not been accepted");
+    expect(generator).toContain("The placeholder preview has not been shown");
     expect(generator).toContain("previewAvailable: false");
     expect(bridge).toContain('"/api/generate-site-page"');
   });

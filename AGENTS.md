@@ -186,3 +186,24 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Hero (always), About, Tokenomics, How to Buy, Community. Stale
   `siteSections.roadmap` / `.faq` flags on projects saved before this
   change are ignored, not migrated or rejected.
+- The fake inline "heist" preview is gone (issue #318). The studio's
+  generated-site preview (`components/full-website-generator.tsx`) now
+  always opens as ONE branded overlay window — fixed, centred, with a real
+  dimmed backdrop — on top of the studio, on both generate and reopen,
+  instead of embedding inline; "Full screen" expands the same container
+  edge-to-edge. The control bar is Publish draft · Full screen · Save
+  preview · Close preview; "Save preview" drives the studio's existing
+  "Save project" button so it reuses the exact same durable local
+  (IndexedDB + localStorage) persistence path and reports success/failure
+  from `PROJECT_SAVE_RESULT_EVENT` honestly. The studio's inline preview
+  panel (`components/token-studio.tsx`) shows an honest empty state before
+  generation and a small "Reopen generated site" card afterwards — the
+  hardcoded "heist" mock (`initiate_heist`, JOIN THE HEIST, STEAL THE
+  MEMES, THE LOOT/THE PLAN terminal cards) is deleted, along with its
+  now-dead CSS and the `DexscreenerSiteSection` studio mount that only
+  anchored inside it (the component itself is untouched for reuse
+  elsewhere). The issue #313 stacking-context fix (hiding fixed/sticky app
+  chrome — sidebar, topbar, mobile header/menu, bottom nav, the floating
+  Account launcher, the workspace bar — via `body:has(...)`) is now keyed
+  off `.full-generated-page-container`, present whenever the overlay is
+  open at all, not just `.full-generated-page-fullscreen`.
