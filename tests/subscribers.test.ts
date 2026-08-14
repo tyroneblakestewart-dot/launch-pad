@@ -24,6 +24,7 @@ function row(overrides: Partial<SubscribersQueryRow> = {}): SubscribersQueryRow 
     slugs: null,
     x_handles: null,
     telegrams: null,
+    has_bond_pro_site_payment: false,
     payment_history: null,
     ...overrides,
   };
@@ -53,7 +54,7 @@ describe("listSubscribers", () => {
     expect(snapshot).toMatchObject({ status: "unavailable", rows: [] });
   });
 
-  it("degrades gracefully when lifecycle migrations are not applied", async () => {
+  it("degrades gracefully when lifecycle or bespoke challenge migrations are not applied", async () => {
     const snapshot = await listSubscribers({
       databaseUrl: "postgres://example",
       query: async () => {
@@ -61,7 +62,7 @@ describe("listSubscribers", () => {
       },
     });
     expect(snapshot).toMatchObject({ status: "unavailable", rows: [] });
-    expect(snapshot.message).toContain("011_plan_payments.sql");
+    expect(snapshot.message).toContain("014_bespoke_site_challenges.sql");
   });
 
   it("returns a ready empty snapshot when there are no subscribers", async () => {
@@ -72,7 +73,7 @@ describe("listSubscribers", () => {
     expect(snapshot).toMatchObject({ status: "ready", rows: [] });
   });
 
-  it("marks a publisher with no subscription row as free tier", async () => {
+  it("marks a publisher with no subscription row as free tier without bespoke access", async () => {
     const snapshot = await listSubscribers({
       databaseUrl: "postgres://example",
       query: async () => ({
@@ -82,6 +83,7 @@ describe("listSubscribers", () => {
     expect(snapshot.rows[0]).toMatchObject({
       tier: "free",
       status: "free",
+      bespokeSiteAccess: false,
       slugs: ["my-token"],
       xHandle: "@myhandle",
       telegram: null,
@@ -90,7 +92,7 @@ describe("listSubscribers", () => {
     });
   });
 
-  it("keeps permanent one-off paid tiers active when they have no paid_until", async () => {
+  it("keeps permanent one-off paid tiers active with bespoke access when they have no paid_until", async () => {
     const snapshot = await listSubscribers({
       databaseUrl: "postgres://example",
       now: new Date("2030-01-01T00:00:00.000Z"),
@@ -101,6 +103,7 @@ describe("listSubscribers", () => {
             status: "active",
             paid_until: null,
             expires_at: null,
+            has_bond_pro_site_payment: true,
             last_payment_asset: "ETH",
             last_payment_amount: "0.001",
           }),
@@ -110,13 +113,14 @@ describe("listSubscribers", () => {
     expect(snapshot.rows[0]).toMatchObject({
       tier: "bond_pro_site",
       status: "active",
+      bespokeSiteAccess: true,
       paidUntil: null,
       lastPaymentAsset: "ETH",
       lastPaymentAmount: "0.001",
     });
   });
 
-  it("derives active and expiring states from paid_until rather than trusting stored status", async () => {
+  it("derives active and expiring states from paid_until and grants both higher tiers bespoke access", async () => {
     const now = new Date("2026-06-01T00:00:00.000Z");
     const active = await listSubscribers({
       databaseUrl: "postgres://example",
@@ -139,6 +143,7 @@ describe("listSubscribers", () => {
     expect(active.rows[0]).toMatchObject({
       tier: "pro",
       status: "active",
+      bespokeSiteAccess: true,
       paidFrom: "2026-05-20T00:00:00.000Z",
       paidUntil: "2026-07-01T00:00:00.000Z",
       lastPaymentAsset: "USDT",
@@ -155,13 +160,15 @@ describe("listSubscribers", () => {
     expect(expiring.rows[0]).toMatchObject({
       tier: "pro_bundle",
       status: "expiring",
+      bespokeSiteAccess: true,
     });
   });
 
-  it("derives expired from paid_until and retains the row and history", async () => {
-    const snapshot = await listSubscribers({
+  it("blocks an expired recurring-only row but preserves permanent access from one-off history", async () => {
+    const now = new Date("2026-06-10T00:00:00.000Z");
+    const recurringOnly = await listSubscribers({
       databaseUrl: "postgres://example",
-      now: new Date("2026-06-10T00:00:00.000Z"),
+      now,
       query: async () => ({
         rows: [
           row({
@@ -173,12 +180,32 @@ describe("listSubscribers", () => {
         ],
       }),
     });
-    expect(snapshot.rows[0]).toMatchObject({
+    expect(recurringOnly.rows[0]).toMatchObject({
       tier: "pro",
       status: "expired",
+      bespokeSiteAccess: false,
       paidUntil: "2026-06-01T00:00:00.000Z",
     });
-    expect(snapshot.rows[0].paymentHistory).toHaveLength(1);
+    expect(recurringOnly.rows[0].paymentHistory).toHaveLength(1);
+
+    const withPermanentHistory = await listSubscribers({
+      databaseUrl: "postgres://example",
+      now,
+      query: async () => ({
+        rows: [
+          row({
+            tier: "pro",
+            status: "expired",
+            paid_until: "2026-06-01T00:00:00.000Z",
+            has_bond_pro_site_payment: true,
+          }),
+        ],
+      }),
+    });
+    expect(withPermanentHistory.rows[0]).toMatchObject({
+      status: "expired",
+      bespokeSiteAccess: true,
+    });
   });
 
   it("shows linked Telegram identity and complete USDT/upfront payment history", async () => {
@@ -205,6 +232,7 @@ describe("listSubscribers", () => {
       }),
     });
     expect(snapshot.rows[0]).toMatchObject({
+      bespokeSiteAccess: true,
       telegramLinked: true,
       telegram: "@hoodlum_user",
     });
@@ -224,7 +252,11 @@ describe("listSubscribers", () => {
         rows: [row({ tier: "pro", paid_until: "2027-01-01T00:00:00.000Z", slugs: null })],
       }),
     });
-    expect(paid.rows[0]).toMatchObject({ tier: "pro", slugs: [] });
+    expect(paid.rows[0]).toMatchObject({
+      tier: "pro",
+      bespokeSiteAccess: true,
+      slugs: [],
+    });
 
     const published = await listSubscribers({
       databaseUrl: "postgres://example",

@@ -3,6 +3,8 @@ import { timingSafeEqual } from "node:crypto";
 export const GENERATE_SITE_STYLE_HEADER = "x-hoodlums-api-key";
 export const GENERATE_SITE_STYLE_LIMIT = 10;
 export const GENERATE_SITE_STYLE_WINDOW_MS = 60 * 60 * 1000;
+export const BESPOKE_SITE_CHALLENGE_LIMIT = 20;
+export const BESPOKE_SITE_CHALLENGE_WINDOW_MS = 60 * 60 * 1000;
 export const PUBLISH_CHALLENGE_LIMIT = 20;
 export const PUBLISH_SITE_LIMIT = 10;
 export const PUBLISH_WINDOW_MS = 60 * 60 * 1000;
@@ -83,7 +85,7 @@ type GlobalWithNamedRateStores = typeof globalThis & {
   __hoodlumsNamedRateStores?: Map<string, RateStore>;
 };
 
-/** Generic named-store lookup, used for the six chat endpoint limiters below. */
+/** Generic named-store lookup for route-specific flood limits. */
 function namedRateStore(name: string): RateStore {
   const globalScope = globalThis as GlobalWithNamedRateStores;
   if (!globalScope.__hoodlumsNamedRateStores) {
@@ -216,6 +218,21 @@ export function consumeGenerateSiteStyleRateLimit(ip: string, now = Date.now()) 
   );
 }
 
+/**
+ * Challenge issuance is separate from the expensive 10/hour generation
+ * budget, so a successful generation still consumes exactly one generation
+ * slot while challenge spam remains independently bounded.
+ */
+export function consumeBespokeSiteChallengeRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(
+    namedRateStore("bespoke-site-challenge"),
+    ip,
+    BESPOKE_SITE_CHALLENGE_LIMIT,
+    BESPOKE_SITE_CHALLENGE_WINDOW_MS,
+    now,
+  );
+}
+
 export function consumePublishChallengeRateLimit(ip: string, now = Date.now()) {
   return consumeRateLimit(
     publishChallengeRateStore(),
@@ -264,6 +281,10 @@ export function consumeAdminLoginRateLimit(ip: string, now = Date.now()) {
 
 export function resetGenerateSiteStyleRateLimitForTests() {
   generateRateStore().clear();
+}
+
+export function resetBespokeSiteChallengeRateLimitForTests() {
+  namedRateStore("bespoke-site-challenge").clear();
 }
 
 export function resetPublishRateLimitsForTests() {

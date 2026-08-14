@@ -13,7 +13,7 @@ async function source(...parts: string[]): Promise<string> {
 }
 
 describe("Bond + Pro Site promise audit", () => {
-  it("keeps the approved price while removing or marking the unbuilt claims", () => {
+  it("keeps the approved price and existing honest card copy unchanged", () => {
     const plan = LAUNCH_PATH_OPTIONS.find(
       (option) => option.id === "bond-pro-site",
     );
@@ -32,7 +32,7 @@ describe("Bond + Pro Site promise audit", () => {
     ]);
   });
 
-  it("keeps client and server project-proof normalization identical", () => {
+  it("keeps client and server project-challenge normalization identical", () => {
     const raw = {
       name: `  ${"A".repeat(50)}  `,
       ticker: ` ${"T".repeat(20)} `,
@@ -46,11 +46,18 @@ describe("Bond + Pro Site promise audit", () => {
     );
   });
 
-  it("keeps free-template generation available and gates only the bespoke AI route", async () => {
+  it("keeps free-template generation open and wraps only the bespoke route in paid wallet auth", async () => {
     const freeRoute = await source(
       "app",
       "api",
       "generate-free-site",
+      "route.ts",
+    );
+    const challengeRoute = await source(
+      "app",
+      "api",
+      "generate-site-page",
+      "challenge",
       "route.ts",
     );
     const bespokeRoute = await source(
@@ -63,12 +70,29 @@ describe("Bond + Pro Site promise audit", () => {
       "components",
       "generate-site-style-auth-bridge.tsx",
     );
+    const premiumController = await source(
+      "components",
+      "bespoke-site-premium-controller.tsx",
+    );
 
     expect(freeRoute).not.toContain("authoriseBespokeSiteGeneration");
+    expect(freeRoute).not.toContain("issueBespokeSiteGenerationChallenge");
+    expect(challengeRoute).toContain("issueBespokeSiteGenerationChallenge");
+    expect(challengeRoute).toContain("isGenerateSiteStyleRequestAuthorised");
+    expect(challengeRoute).toContain("consumeBespokeSiteChallengeRateLimit");
     expect(bespokeRoute).toContain("authoriseBespokeSiteGeneration");
     expect(bespokeRoute).toContain('code: "bespoke-plan-required"');
-    expect(bridge).toContain("createUnsignedBespokeSiteAccessProof");
-    expect(bridge).toContain("accessProof: { ...proof, signature }");
+    expect(bridge).toContain('"/api/generate-site-page/challenge"');
+    expect(bridge).toContain("challenge.message");
+    expect(bridge).toContain("challengeId: challenge.challengeId");
+    expect(bridge).toContain("nonce: challenge.nonce");
+    expect(bridge).toContain("signature");
+    expect(bridge).not.toContain("createUnsignedBespokeSiteAccessProof");
+    expect(premiumController).toContain("PREMIUM · GENERATE BESPOKE AI SITE");
+    expect(premiumController).toContain(
+      'storeLaunchPathPreset(detail?.checkoutPlan || "bond-pro-site")',
+    );
+    expect(premiumController).toContain(".change-plan-button");
     expect(
       bespokeRoute.indexOf(
         "const authorisation = await authoriseBespokeSiteGeneration",
@@ -76,6 +100,24 @@ describe("Bond + Pro Site promise audit", () => {
     ).toBeLessThan(
       bespokeRoute.indexOf("const ai = resolveAIResponsesRuntime"),
     );
+  });
+
+  it("keeps the paid responsive prompt and mechanical validator intact around the new gate", async () => {
+    const prompt = await source("lib", "site-page-openai-pipeline.ts");
+    const validator = await source("lib", "generated-site-page.ts");
+
+    expect(prompt).toContain(
+      "RESPONSIVE & LAYOUT QUALITY REQUIREMENTS (NON-NEGOTIABLE)",
+    );
+    expect(prompt).toContain("390px, 768px and 1280px+");
+    expect(prompt).toContain("roughly 1100-1300px");
+    expect(prompt).toContain("no element may be wider than the viewport");
+    expect(prompt).toContain("prefers-reduced-motion");
+    expect(prompt).toContain("inline CSS and inline JavaScript");
+    expect(validator).toContain("export function isCompleteGeneratedPageHtml");
+    expect(validator).toContain("function hasResponsiveBaseline");
+    expect(validator).toContain("MEDIA_QUERY_PATTERN");
+    expect(validator).toContain("RESPONSIVE_UNIT_PATTERN");
   });
 
   it("gives free and bespoke generations the same publish flow without mounting a second preview", async () => {
@@ -133,7 +175,14 @@ describe("Bond + Pro Site promise audit", () => {
     expect(payments).toContain("definition.subscriptionTier");
   });
 
-  it("keeps the admin subscriber label for the permanent paid tier", () => {
+  it("keeps the admin subscriber label and shows the server gate decision", async () => {
+    const subscribers = await source(
+      "components",
+      "admin-subscribers-section.tsx",
+    );
     expect(SUBSCRIBER_TIER_LABEL.bond_pro_site).toBe("Bond+Pro Site");
+    expect(subscribers).toContain("Bespoke AI site");
+    expect(subscribers).toContain("Allowed by server entitlement");
+    expect(subscribers).toContain("Blocked · upgrade or renew");
   });
 });

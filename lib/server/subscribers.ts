@@ -39,6 +39,7 @@ export type SubscribersQueryRow = {
   slugs: Array<string | null> | null;
   x_handles: Array<string | null> | null;
   telegrams: Array<string | null> | null;
+  has_bond_pro_site_payment: boolean | string | number | null;
   payment_history: SubscribersPaymentQueryRow[] | null;
 };
 
@@ -76,6 +77,7 @@ export type BespokeSiteAccessQueryRow = {
   paid_until: Date | string | null;
   expires_at: Date | string | null;
   has_bond_pro_site_payment: boolean | string | number | null;
+  challenge_store_ready?: boolean | string | number | null;
 };
 
 export type BespokeSiteAccessQuery = (
@@ -117,6 +119,14 @@ const SUBSCRIBERS_QUERY = `
     sw.slugs,
     sw.x_handles,
     sw.telegrams,
+    EXISTS (
+      SELECT 1
+        FROM plan_payment_events payment
+       WHERE payment.wallet_address = COALESCE(sw.wallet_address, sub.wallet_address)
+         AND payment.plan_id = 'bond-pro-site'
+         AND COALESCE(payment.billing_period, 'one_off') = 'one_off'
+         AND COALESCE(payment.payment_kind, 'one_off') = 'one_off'
+    ) AS has_bond_pro_site_payment,
     COALESCE(
       (
         SELECT jsonb_agg(
@@ -148,6 +158,8 @@ const BESPOKE_SITE_ACCESS_QUERY = `
     subscription.tier,
     subscription.paid_until,
     subscription.expires_at,
+    to_regclass('public.bespoke_site_challenges') IS NOT NULL
+      AS challenge_store_ready,
     EXISTS (
       SELECT 1
         FROM plan_payment_events payment
@@ -199,11 +211,27 @@ function subscriberStatus(
   return "active";
 }
 
+function recordedOneOff(
+  value: boolean | string | number | null | undefined,
+): boolean {
+  return value === true || value === 1 || value === "1" || value === "t" || value === "true";
+}
+
+function challengeStoreMissing(
+  value: BespokeSiteAccessQueryRow["challenge_store_ready"],
+): boolean {
+  return value === false || value === 0 || value === "0" || value === "f" || value === "false";
+}
+
 function rowFromQueryRow(row: SubscribersQueryRow, now: Date): AdminSubscriberRow {
   const hasSubscription = Boolean(row.tier);
   const paidUntil = asIso(row.paid_until ?? row.expires_at);
   const tier = (hasSubscription ? row.tier : "free") as AdminSubscriberTier;
   const status = subscriberStatus(tier, paidUntil, now);
+  const permanentBespokeAccess =
+    tier === "bond_pro_site" || recordedOneOff(row.has_bond_pro_site_payment);
+  const recurringBespokeAccess =
+    (tier === "pro" || tier === "pro_bundle") && status !== "expired";
   const slugs = [...new Set((row.slugs || []).filter((slug): slug is string => Boolean(slug)))].sort((a, b) =>
     a.localeCompare(b),
   );
@@ -215,6 +243,7 @@ function rowFromQueryRow(row: SubscribersQueryRow, now: Date): AdminSubscriberRo
     walletAddress: row.wallet_address,
     tier,
     status,
+    bespokeSiteAccess: permanentBespokeAccess || recurringBespokeAccess,
     slugs,
     xHandle: firstNonEmpty(row.x_handles),
     telegram: linkedTelegram || firstNonEmpty(row.telegrams),
@@ -229,10 +258,6 @@ function rowFromQueryRow(row: SubscribersQueryRow, now: Date): AdminSubscriberRo
     lastPaymentAt: asIso(row.created_at),
     paymentHistory: (row.payment_history || []).map(paymentFromQueryRow),
   };
-}
-
-function recordedOneOff(value: BespokeSiteAccessQueryRow["has_bond_pro_site_payment"]): boolean {
-  return value === true || value === 1 || value === "1" || value === "t" || value === "true";
 }
 
 function unavailableAccess(walletAddress: string, message: string): BespokeSiteAccess {
@@ -284,6 +309,13 @@ export async function getBespokeSiteAccess(
   try {
     const result = await query(BESPOKE_SITE_ACCESS_QUERY, [normalised]);
     const row = result.rows[0];
+    if (row && challengeStoreMissing(row.challenge_store_ready)) {
+      return unavailableAccess(
+        normalised,
+        "The bespoke-site challenge store is missing. Apply migration 014_bespoke_site_challenges.sql.",
+      );
+    }
+
     const currentTier = row?.tier;
     const paidUntil = asIso(row?.paid_until ?? row?.expires_at ?? null);
     const permanent =
@@ -353,14 +385,14 @@ export async function listSubscribers(deps: ListSubscribersDeps = {}): Promise<A
     const result = await query(SUBSCRIBERS_QUERY);
     return {
       status: "ready",
-      message: "Live subscription lifecycle and payment history from Postgres.",
+      message: "Live subscription lifecycle, bespoke access and payment history from Postgres.",
       rows: result.rows.map((row) => rowFromQueryRow(row, now)),
     };
   } catch {
     return {
       status: "unavailable",
       message:
-        "Subscriber lifecycle data could not be loaded. Apply migrations through 011_plan_payments.sql and try again.",
+        "Subscriber lifecycle data could not be loaded. Apply migrations through 014_bespoke_site_challenges.sql and try again.",
       rows: [],
     };
   }

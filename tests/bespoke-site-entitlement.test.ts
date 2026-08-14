@@ -2,14 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Address, Hash } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { POST } from "@/app/api/generate-site-page/route";
+import type { BespokeSiteAccessProof } from "@/lib/bespoke-site-access";
 import {
-  createUnsignedBespokeSiteAccessProof,
-  type BespokeSiteAccessProof,
-} from "@/lib/bespoke-site-access";
+  createMemoryBespokeSiteChallengeStore,
+  type BespokeSiteChallengeStore,
+} from "@/lib/server/bespoke-site-challenge-store";
 import {
   BESPOKE_SITE_UPSELL_MESSAGE,
   authoriseBespokeSiteGeneration,
+  issueBespokeSiteGenerationChallenge,
   resetBespokeSiteAuthoriserForTests,
+  resetBespokeSiteChallengeIssuerForTests,
   setBespokeSiteAuthoriserForTests,
 } from "@/lib/server/bespoke-site-entitlement";
 import {
@@ -21,11 +24,15 @@ import {
   getBespokeSiteAccess,
   type BespokeSiteAccess,
   type BespokeSiteAccessQueryRow,
+  type BespokeSiteAccessTier,
 } from "@/lib/server/subscribers";
 
 const PRIVATE_KEY =
   "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const OTHER_PRIVATE_KEY =
+  "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd";
 const ACCOUNT = privateKeyToAccount(PRIVATE_KEY);
+const OTHER_ACCOUNT = privateKeyToAccount(OTHER_PRIVATE_KEY);
 const WALLET = ACCOUNT.address as Address;
 const HASH = `0x${"ab".repeat(32)}` as Hash;
 const ORIGIN = "https://hoodlums.dev";
@@ -47,6 +54,7 @@ function accessRow(
     paid_until: null,
     expires_at: null,
     has_bond_pro_site_payment: false,
+    challenge_store_ready: true,
     ...overrides,
   };
 }
@@ -55,32 +63,62 @@ function accessQuery(row: BespokeSiteAccessQueryRow) {
   return async () => ({ rows: [row] });
 }
 
-function permanentAccess(
+function accessFor(
+  tier: BespokeSiteAccessTier,
   walletAddress: string = WALLET,
 ): BespokeSiteAccess {
   return {
     status: "ready",
     walletAddress: walletAddress.toLowerCase(),
     allowed: true,
-    tier: "bond_pro_site",
-    permanent: true,
-    paidUntil: null,
-    message: "Permanent Bond + Pro Site access is active.",
+    tier,
+    permanent: tier === "bond_pro_site",
+    paidUntil:
+      tier === "bond_pro_site" ? null : "2027-01-01T00:00:00.000Z",
+    message: "Eligible paid access is active.",
   };
 }
 
-async function signedProof(
-  project = PROJECT,
-  now = NOW,
-): Promise<BespokeSiteAccessProof> {
-  const { proof, message } = createUnsignedBespokeSiteAccessProof({
-    walletAddress: WALLET,
-    origin: ORIGIN,
-    project,
-    now,
+async function signedOneTimeProof(input: {
+  tier: BespokeSiteAccessTier;
+  store: BespokeSiteChallengeStore;
+  now?: Date;
+  account?: typeof ACCOUNT;
+  project?: typeof PROJECT;
+}): Promise<{
+  proof: BespokeSiteAccessProof;
+  challengeId: string;
+}> {
+  const now = input.now ?? NOW;
+  const project = input.project ?? PROJECT;
+  const issued = await issueBespokeSiteGenerationChallenge(
+    {
+      walletAddress: WALLET,
+      project,
+      requestOrigin: ORIGIN,
+    },
+    {
+      now,
+      store: input.store,
+      accessLookup: async (walletAddress) =>
+        accessFor(input.tier, walletAddress),
+    },
+  );
+  if (issued.status !== "issued") {
+    throw new Error(`Expected challenge, received ${issued.status}`);
+  }
+  const signer = input.account ?? ACCOUNT;
+  const signature = await signer.signMessage({
+    message: issued.challenge.message,
   });
-  const signature = await ACCOUNT.signMessage({ message });
-  return { ...proof, signature };
+  return {
+    challengeId: issued.challenge.challengeId,
+    proof: {
+      challengeId: issued.challenge.challengeId,
+      nonce: issued.challenge.nonce,
+      signature,
+    },
+  };
 }
 
 function routeRequest() {
@@ -98,10 +136,11 @@ function routeRequest() {
 }
 
 beforeEach(() => {
-  // The global generation fixture marks existing AI-pipeline tests as paid.
-  // These tests reset it so they exercise the real gate or their explicit
-  // route-level decision.
+  // Existing AI-pipeline suites receive a paid fixture from tests/setup.ts.
+  // These focused tests reset it so the real challenge and entitlement
+  // boundary, or the explicit route decision under test, is exercised.
   resetBespokeSiteAuthoriserForTests();
+  resetBespokeSiteChallengeIssuerForTests();
   delete process.env.OPENAI_API_KEY;
   delete process.env.AI_GATEWAY_API_KEY;
   vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -109,6 +148,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetBespokeSiteAuthoriserForTests();
+  resetBespokeSiteChallengeIssuerForTests();
   delete process.env.OPENAI_API_KEY;
   delete process.env.AI_GATEWAY_API_KEY;
   vi.unstubAllGlobals();
@@ -116,12 +156,14 @@ afterEach(() => {
 });
 
 describe("server subscriber source of truth", () => {
-  it("records Bond + Pro Site as tier bond_pro_site and resolves permanent access years later", async () => {
+  it("commits Bond + Pro Site as bond_pro_site before the same-session challenge can be issued", async () => {
     let recordedTier: string | null = null;
+    let committed = false;
     const statements: string[] = [];
     const client: PlanPaymentDatabaseClient = {
       query: (async (sql: string, params?: unknown[]) => {
         statements.push(sql);
+        if (sql === "COMMIT") committed = true;
         if (sql.includes("INSERT INTO plan_payment_events")) {
           return {
             rows: [{
@@ -172,30 +214,52 @@ describe("server subscriber source of truth", () => {
       destination: "builder",
     });
     expect(recordedTier).toBe("bond_pro_site");
+    expect(committed).toBe(true);
     expect(
       statements.some((sql) => sql.includes("SELECT paid_until, expires_at")),
     ).toBe(false);
 
-    const access = await getBespokeSiteAccess(WALLET, {
+    const store = createMemoryBespokeSiteChallengeStore();
+    const issued = await issueBespokeSiteGenerationChallenge(
+      {
+        walletAddress: WALLET,
+        project: PROJECT,
+        requestOrigin: ORIGIN,
+      },
+      {
+        now: NOW,
+        store,
+        accessLookup: async (walletAddress) => {
+          expect(committed).toBe(true);
+          return accessFor("bond_pro_site", walletAddress);
+        },
+      },
+    );
+    expect(issued).toMatchObject({
+      status: "issued",
+      challenge: { tier: "bond_pro_site" },
+    });
+  });
+
+  it("resolves one-off access years later and keeps it after an expired recurring tier overwrites the current row", async () => {
+    const permanent = await getBespokeSiteAccess(WALLET, {
       now: new Date("2050-01-01T00:00:00.000Z"),
       query: accessQuery(
         accessRow({
-          tier: recordedTier,
+          tier: "bond_pro_site",
           has_bond_pro_site_payment: true,
         }),
       ),
     });
-    expect(access).toMatchObject({
+    expect(permanent).toMatchObject({
       status: "ready",
       allowed: true,
       tier: "bond_pro_site",
       permanent: true,
       paidUntil: null,
     });
-  });
 
-  it("keeps the one-off entitlement when a later expired recurring tier overwrites the current row", async () => {
-    const access = await getBespokeSiteAccess(WALLET, {
+    const overwritten = await getBespokeSiteAccess(WALLET, {
       now: NOW,
       query: accessQuery(
         accessRow({
@@ -205,8 +269,7 @@ describe("server subscriber source of truth", () => {
         }),
       ),
     });
-
-    expect(access).toMatchObject({
+    expect(overwritten).toMatchObject({
       allowed: true,
       tier: "bond_pro_site",
       permanent: true,
@@ -214,22 +277,25 @@ describe("server subscriber source of truth", () => {
     });
   });
 
-  it("allows an active higher tier but refuses an unpaid or expired recurring-only wallet", async () => {
-    const active = await getBespokeSiteAccess(WALLET, {
+  it.each([
+    ["pro", "2026-12-01T00:00:00.000Z"],
+    ["pro_bundle", "2026-12-01T00:00:00.000Z"],
+  ] as const)("allows active %s access", async (tier, paidUntil) => {
+    const access = await getBespokeSiteAccess(WALLET, {
       now: NOW,
       query: accessQuery(
-        accessRow({
-          tier: "pro_bundle",
-          paid_until: "2026-12-01T00:00:00.000Z",
-        }),
+        accessRow({ tier, paid_until: paidUntil }),
       ),
     });
-    expect(active).toMatchObject({
+    expect(access).toMatchObject({
+      status: "ready",
       allowed: true,
-      tier: "pro_bundle",
+      tier,
       permanent: false,
     });
+  });
 
+  it("refuses unpaid and expired recurring-only wallets and fails closed when the challenge store is missing", async () => {
     const expired = await getBespokeSiteAccess(WALLET, {
       now: NOW,
       query: accessQuery(
@@ -250,47 +316,125 @@ describe("server subscriber source of truth", () => {
       allowed: false,
       permanent: false,
     });
-  });
 
-  it("fails closed as unavailable when the entitlement store cannot be reached", async () => {
-    const access = await getBespokeSiteAccess(WALLET, { databaseUrl: "" });
-    expect(access).toMatchObject({
+    const missingMigration = await getBespokeSiteAccess(WALLET, {
+      query: accessQuery(accessRow({ challenge_store_ready: false })),
+    });
+    expect(missingMigration).toMatchObject({
       status: "unavailable",
       allowed: false,
     });
+    expect(missingMigration.message).toContain(
+      "014_bespoke_site_challenges.sql",
+    );
   });
 });
 
-describe("wallet-bound bespoke generation authorisation", () => {
-  it("allows a paid Bond + Pro Site wallet after a valid project-bound signature", async () => {
-    const proof = await signedProof();
-    const lookup = vi.fn(async (walletAddress: string) =>
-      permanentAccess(walletAddress),
-    );
+describe("single-use wallet challenge", () => {
+  it.each(["bond_pro_site", "pro", "pro_bundle"] as const)(
+    "allows a valid one-time signature for %s",
+    async (tier) => {
+      const store = createMemoryBespokeSiteChallengeStore();
+      const { proof } = await signedOneTimeProof({ tier, store });
 
-    const result = await authoriseBespokeSiteGeneration(
-      {
-        proof,
-        project: PROJECT,
-        requestOrigin: ORIGIN,
-      },
-      { now: NOW, accessLookup: lookup },
-    );
+      const result = await authoriseBespokeSiteGeneration(
+        { proof, project: PROJECT, requestOrigin: ORIGIN },
+        {
+          now: NOW,
+          store,
+          accessLookup: async (walletAddress) =>
+            accessFor(tier, walletAddress),
+        },
+      );
 
-    expect(result).toMatchObject({
-      status: "allowed",
+      expect(result).toMatchObject({
+        status: "allowed",
+        tier,
+        permanent: tier === "bond_pro_site",
+      });
+    },
+  );
+
+  it("refuses replay after one successful generation authorisation", async () => {
+    const store = createMemoryBespokeSiteChallengeStore();
+    const { proof } = await signedOneTimeProof({
       tier: "bond_pro_site",
-      permanent: true,
+      store,
     });
-    expect(lookup).toHaveBeenCalledWith(
-      expect.stringMatching(/^0x[0-9a-f]{40}$/i),
-      { now: NOW },
+    const lookup = vi.fn(async (walletAddress: string) =>
+      accessFor("bond_pro_site", walletAddress),
     );
+
+    const first = await authoriseBespokeSiteGeneration(
+      { proof, project: PROJECT, requestOrigin: ORIGIN },
+      { now: NOW, store, accessLookup: lookup },
+    );
+    const replay = await authoriseBespokeSiteGeneration(
+      { proof, project: PROJECT, requestOrigin: ORIGIN },
+      { now: NOW, store, accessLookup: lookup },
+    );
+
+    expect(first.status).toBe("allowed");
+    expect(replay).toMatchObject({ status: "invalid-proof" });
+    if (replay.status === "invalid-proof") {
+      expect(replay.message).toContain("already been used");
+    }
+    expect(lookup).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects a tampered or expired proof before consulting subscriber access", async () => {
-    const proof = await signedProof();
-    const lookup = vi.fn(async () => permanentAccess());
+  it("refuses a forged signature and burns that one-time challenge", async () => {
+    const store = createMemoryBespokeSiteChallengeStore();
+    const forged = await signedOneTimeProof({
+      tier: "bond_pro_site",
+      store,
+      account: OTHER_ACCOUNT as typeof ACCOUNT,
+    });
+
+    const rejected = await authoriseBespokeSiteGeneration(
+      { proof: forged.proof, project: PROJECT, requestOrigin: ORIGIN },
+      {
+        now: NOW,
+        store,
+        accessLookup: async (walletAddress) =>
+          accessFor("bond_pro_site", walletAddress),
+      },
+    );
+    expect(rejected.status).toBe("invalid-proof");
+
+    const issuedAgain = await issueBespokeSiteGenerationChallenge(
+      { walletAddress: WALLET, project: PROJECT, requestOrigin: ORIGIN },
+      {
+        now: NOW,
+        store,
+        accessLookup: async (walletAddress) =>
+          accessFor("bond_pro_site", walletAddress),
+      },
+    );
+    expect(issuedAgain.status).toBe("issued");
+
+    // The forged challenge itself cannot be recovered with a later correct
+    // signature because it was atomically consumed before verification.
+    const replayForged = await authoriseBespokeSiteGeneration(
+      { proof: forged.proof, project: PROJECT, requestOrigin: ORIGIN },
+      {
+        now: NOW,
+        store,
+        accessLookup: async (walletAddress) =>
+          accessFor("bond_pro_site", walletAddress),
+      },
+    );
+    expect(replayForged).toMatchObject({ status: "invalid-proof" });
+  });
+
+  it("refuses a tampered project or an expired challenge before AI access", async () => {
+    const store = createMemoryBespokeSiteChallengeStore();
+    const { proof } = await signedOneTimeProof({
+      tier: "bond_pro_site",
+      store,
+    });
+    const lookup = vi.fn(async (walletAddress: string) =>
+      accessFor("bond_pro_site", walletAddress),
+    );
 
     const tampered = await authoriseBespokeSiteGeneration(
       {
@@ -298,19 +442,25 @@ describe("wallet-bound bespoke generation authorisation", () => {
         project: { ...PROJECT, ticker: "OTHER" },
         requestOrigin: ORIGIN,
       },
-      { now: NOW, accessLookup: lookup },
+      { now: NOW, store, accessLookup: lookup },
     );
     expect(tampered.status).toBe("invalid-proof");
     expect(lookup).not.toHaveBeenCalled();
 
+    const expiredStore = createMemoryBespokeSiteChallengeStore();
+    const expiredProof = await signedOneTimeProof({
+      tier: "bond_pro_site",
+      store: expiredStore,
+    });
     const expired = await authoriseBespokeSiteGeneration(
       {
-        proof,
+        proof: expiredProof.proof,
         project: PROJECT,
         requestOrigin: ORIGIN,
       },
       {
         now: new Date("2026-08-14T12:06:00.000Z"),
+        store: expiredStore,
         accessLookup: lookup,
       },
     );
@@ -346,7 +496,24 @@ describe("POST /api/generate-site-page entitlement boundary", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("lets an eligible Bond + Pro Site decision enter the AI pipeline", async () => {
+  it("returns a structured proof refusal with zero AI calls", async () => {
+    setBespokeSiteAuthoriserForTests(async () => ({
+      status: "invalid-proof",
+      message: "A fresh one-time wallet approval is required.",
+    }));
+    process.env.OPENAI_API_KEY = "test-key";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(routeRequest());
+    const body = (await response.json()) as { code: string; error: string };
+    expect(response.status).toBe(401);
+    expect(body.code).toBe("bespoke-wallet-proof-required");
+    expect(body.error).toContain("one-time wallet approval");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("lets an eligible paid-tier decision enter the unchanged AI pipeline", async () => {
     setBespokeSiteAuthoriserForTests(async () => ({
       status: "allowed",
       walletAddress: WALLET,

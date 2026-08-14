@@ -46,6 +46,7 @@ function getPool(options: {
   reminderStatus?: "sent" | "failed";
   missingTables?: string[];
   entitlementFailure?: boolean;
+  challengeStoreMissing?: boolean;
 } = {}) {
   return () => ({
     totalCount: 1,
@@ -67,6 +68,7 @@ function getPool(options: {
             tier: null,
             paid_until: null,
             expires_at: null,
+            challenge_store_ready: !options.challengeStoreMissing,
             has_bond_pro_site_payment: false,
           }],
         };
@@ -108,7 +110,7 @@ function getPool(options: {
 }
 
 describe("Subscribers and renewals System Health pipeline", () => {
-  it("reports enabled and disabled stablecoins with healthy lifecycle services", async () => {
+  it("reports enabled payments, lifecycle services and the bespoke gate as healthy", async () => {
     const pipeline = await buildSubscriptionLifecyclePipeline({
       databaseUrl: "postgres://example",
       environment: environment(),
@@ -191,6 +193,19 @@ describe("Subscribers and renewals System Health pipeline", () => {
       environment: environment(),
       now: NOW,
       getPool: getPool({ entitlementFailure: true }),
+    });
+
+    expect(pipeline.stages.find((item) => item.id === "bespoke-site-entitlement")).toMatchObject({
+      status: "red",
+    });
+  });
+
+  it("turns the bespoke entitlement stage red when the single-use challenge migration is missing", async () => {
+    const pipeline = await buildSubscriptionLifecyclePipeline({
+      databaseUrl: "postgres://example",
+      environment: environment(),
+      now: NOW,
+      getPool: getPool({ challengeStoreMissing: true }),
     });
 
     expect(pipeline.stages.find((item) => item.id === "bespoke-site-entitlement")).toMatchObject({

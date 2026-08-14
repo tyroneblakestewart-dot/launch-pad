@@ -1,8 +1,8 @@
 import { getAddress, isHash, keccak256, stringToHex } from "viem";
 
-export const BESPOKE_SITE_ACCESS_PROOF_TTL_MS = 5 * 60 * 1_000;
-export const BESPOKE_SITE_ACCESS_PROOF_FUTURE_SKEW_MS = 60 * 1_000;
+export const BESPOKE_SITE_CHALLENGE_TTL_MS = 5 * 60 * 1_000;
 export const BESPOKE_SITE_ACCESS_PURPOSE = "generate_bespoke_site";
+export const BESPOKE_SITE_UPSELL_EVENT = "launchpad:bespoke-site-upsell";
 
 export type BespokeSiteProjectIdentity = {
   name?: unknown;
@@ -11,7 +11,9 @@ export type BespokeSiteProjectIdentity = {
   inspirationUrl?: unknown;
 };
 
-export type UnsignedBespokeSiteAccessProof = {
+export type BespokeSiteChallengeMessageInput = {
+  challengeId: string;
+  nonce: string;
   walletAddress: string;
   origin: string;
   issuedAt: string;
@@ -19,8 +21,20 @@ export type UnsignedBespokeSiteAccessProof = {
   projectHash: `0x${string}`;
 };
 
-export type BespokeSiteAccessProof = UnsignedBespokeSiteAccessProof & {
+export type BespokeSiteChallengeResponse = BespokeSiteChallengeMessageInput & {
+  message: string;
+  tier: "bond_pro_site" | "pro" | "pro_bundle";
+};
+
+export type BespokeSiteAccessProof = {
+  challengeId: string;
+  nonce: string;
   signature: `0x${string}`;
+};
+
+export type BespokeSiteUpsellEventDetail = {
+  message: string;
+  checkoutPlan: "bond-pro-site";
 };
 
 function text(value: unknown): string {
@@ -48,9 +62,10 @@ export function normaliseBespokeSiteOrigin(value: unknown): string | null {
 }
 
 /**
- * Binds the wallet proof to the small project identity fields that shape the
- * bespoke prompt. The artwork data URL is deliberately excluded so an iPhone
- * does not duplicate several megabytes of image data merely to hash it.
+ * Binds a one-time wallet challenge to the small project identity fields that
+ * shape the bespoke prompt. The artwork data URL is deliberately excluded so
+ * an iPhone does not duplicate several megabytes of image data merely to hash
+ * it; the generation route still validates the artwork independently.
  */
 export function hashBespokeSiteProject(
   value: BespokeSiteProjectIdentity,
@@ -65,44 +80,32 @@ export function hashBespokeSiteProject(
   return keccak256(stringToHex(JSON.stringify(canonical)));
 }
 
-export function buildBespokeSiteAccessMessage(
-  proof: UnsignedBespokeSiteAccessProof,
+export function buildBespokeSiteChallengeMessage(
+  challenge: BespokeSiteChallengeMessageInput,
 ): string {
-  const origin = normaliseBespokeSiteOrigin(proof.origin);
-  if (!origin || !isHash(proof.projectHash)) {
-    throw new Error("The bespoke-site wallet proof is invalid.");
+  const origin = normaliseBespokeSiteOrigin(challenge.origin);
+  if (
+    !origin ||
+    !challenge.challengeId.trim() ||
+    !challenge.nonce.trim() ||
+    !isHash(challenge.projectHash)
+  ) {
+    throw new Error("The bespoke-site wallet challenge is invalid.");
   }
-  const walletAddress = getAddress(proof.walletAddress);
+  const walletAddress = getAddress(challenge.walletAddress);
   const host = new URL(origin).host;
 
-  return `${host} wants you to authorize a bespoke Hoodlums website request with your Ethereum account:
+  return `${host} wants you to authorize one bespoke Hoodlums website generation with your Ethereum account:
 ${walletAddress}
 
-This is a message signature only. It does not send a transaction, spend gas, or give Hoodlums control of your wallet.
+This is a one-time message signature only. It does not send a transaction, spend gas, or give Hoodlums control of your wallet.
 
 URI: ${origin}
 Version: 1
 Purpose: ${BESPOKE_SITE_ACCESS_PURPOSE}
-Issued At: ${proof.issuedAt}
-Expiration Time: ${proof.expiresAt}
-Project Hash: ${proof.projectHash}`;
-}
-
-export function createUnsignedBespokeSiteAccessProof(input: {
-  walletAddress: string;
-  origin: string;
-  project: BespokeSiteProjectIdentity;
-  now?: Date;
-}): { proof: UnsignedBespokeSiteAccessProof; message: string } {
-  const issuedAt = input.now ?? new Date();
-  const proof: UnsignedBespokeSiteAccessProof = {
-    walletAddress: getAddress(input.walletAddress),
-    origin: normaliseBespokeSiteOrigin(input.origin) || "",
-    issuedAt: issuedAt.toISOString(),
-    expiresAt: new Date(
-      issuedAt.getTime() + BESPOKE_SITE_ACCESS_PROOF_TTL_MS,
-    ).toISOString(),
-    projectHash: hashBespokeSiteProject(input.project),
-  };
-  return { proof, message: buildBespokeSiteAccessMessage(proof) };
+Nonce: ${challenge.nonce}
+Issued At: ${challenge.issuedAt}
+Expiration Time: ${challenge.expiresAt}
+Request ID: ${challenge.challengeId}
+Project Hash: ${challenge.projectHash}`;
 }

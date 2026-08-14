@@ -22,6 +22,7 @@ type SubscriberRow = {
   walletAddress: string;
   tier: SubscriberTier;
   status: SubscriberStatus;
+  bespokeSiteAccess: boolean;
   slugs: string[];
   xHandle: string | null;
   telegram: string | null;
@@ -169,7 +170,7 @@ export function AdminSubscribersSection() {
         <div>
           <h2 className={styles.sectionTitle}>Subscribers</h2>
           <p className={styles.sectionIntro}>
-            Manual-renewal lifecycle for every wallet: active, expiring or expired, with all verified payment history retained.
+            Server-verified plan state for every wallet, including bespoke AI-site eligibility and complete payment history.
           </p>
         </div>
         <button type="button" className={styles.refreshButton} onClick={() => void loadSubscribers()} disabled={loading}>
@@ -221,6 +222,7 @@ export function AdminSubscribersSection() {
 
             <div className={styles.rowGrid}>
               <div><p className={styles.fieldLabel}>Plan</p><p className={styles.fieldValue}>{TIER_LABEL[row.tier]}</p></div>
+              <div><p className={styles.fieldLabel}>Bespoke AI site</p><p className={styles.fieldValue}>{row.bespokeSiteAccess ? "Allowed by server entitlement" : "Blocked · upgrade or renew"}</p></div>
               <div><p className={styles.fieldLabel}>Paid from</p><p className={styles.fieldValue}>{formatDate(row.paidFrom)}</p></div>
               <div><p className={styles.fieldLabel}>Paid until</p><p className={styles.fieldValue}>{formatDate(row.paidUntil)}</p></div>
               <div><p className={styles.fieldLabel}>Last payment</p><p className={styles.fieldValue}>{row.lastPaymentAmount ? `${row.lastPaymentAmount} ${row.lastPaymentAsset || ""}` : "—"}{row.lastPaymentAt ? ` · ${formatDate(row.lastPaymentAt)}` : ""}</p></div>

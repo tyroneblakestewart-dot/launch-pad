@@ -1,4 +1,5 @@
 import { ArtworkUploadController } from "@/components/artwork-upload-controller";
+import { BespokeSitePremiumController } from "@/components/bespoke-site-premium-controller";
 import { BuildSiteGate } from "@/components/build-site-gate";
 import { DexscreenerSiteSection } from "@/components/dexscreener-site-section";
 import { FullWebsiteGenerator } from "@/components/full-website-generator";
@@ -28,6 +29,7 @@ export default async function Home({ searchParams }: HomePageProps) {
       <DexscreenerSiteSection />
       <GeneratedSiteProjectGuard />
       <BuildSiteGate />
+      <BespokeSitePremiumController />
       <RobinhoodTestnetDeploymentController />
       <HoodlumsMarketHome
         liveSites={liveSites}
