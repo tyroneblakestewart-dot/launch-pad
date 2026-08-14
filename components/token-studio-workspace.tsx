@@ -9,7 +9,7 @@ import {
   type ProjectSaveResultDetail,
 } from "@/lib/project-save-result";
 import {
-  parseSavedTokenProjects,
+  parseSavedProjectIndex,
   TOKEN_STUDIO_PROJECTS_STORAGE_KEY,
 } from "@/lib/token-project-storage";
 import type { TokenProject } from "@/lib/types";
@@ -26,7 +26,7 @@ function cleanUpSeededHoodlumsLaunch() {
   try {
     const raw = localStorage.getItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY);
     if (!raw) return;
-    const parsed = parseSavedTokenProjects(raw);
+    const parsed = parseSavedProjectIndex(raw);
 
     const cleaned = removeSeededHoodlumsLaunch(parsed);
     if (cleaned.length !== parsed.length) {
@@ -158,7 +158,7 @@ export function TokenStudioWorkspace() {
   }
 
   function openSavedLaunches() {
-    const savedLaunches = parseSavedTokenProjects(
+    const savedLaunches = parseSavedProjectIndex(
       localStorage.getItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY),
     );
 

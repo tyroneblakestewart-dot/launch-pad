@@ -11,6 +11,13 @@ import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
 import { launchPathLabel } from "@/lib/launch-paths";
 import { PROJECT_SAVE_RESULT_EVENT } from "@/lib/project-save-result";
 import { findSlugCollision, slugify, validateSlug } from "@/lib/slug";
+import { deleteProjectBlob, getProjectBlob, putProjectBlob } from "@/lib/token-project-db";
+import {
+  migrateLegacySavedProjects,
+  serialiseSavedProjectIndex,
+  TOKEN_STUDIO_PROJECTS_STORAGE_KEY,
+  type SavedProjectIndexEntry,
+} from "@/lib/token-project-storage";
 import type { LaunchPath, SupportedChain, TokenProject, WalletState } from "@/lib/types";
 import { TokenPathChooser } from "./token-path-chooser";
 
@@ -41,7 +48,7 @@ declare global {
   }
 }
 
-const STORAGE_KEY = "private-meme-token-studio-projects-v1";
+const STORAGE_KEY = TOKEN_STUDIO_PROJECTS_STORAGE_KEY;
 
 const DEFAULT_PROJECT: TokenProject = {
   id: "",
@@ -135,7 +142,7 @@ const IDENTITY_KEYS = new Set<keyof TokenProject>([
 
 export function TokenStudio() {
   const [project, setProject] = useState<TokenProject>(DEFAULT_PROJECT);
-  const [projects, setProjects] = useState<TokenProject[]>([]);
+  const [projects, setProjects] = useState<SavedProjectIndexEntry[]>([]);
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [notice, setNotice] = useState(
     "Safe mode is on — no launch transaction can be sent from this build.",
@@ -146,14 +153,44 @@ export function TokenStudio() {
   const [showPathChooser, setShowPathChooser] = useState(false);
 
   useEffect(() => {
-    try {
+    let cancelled = false;
+
+    async function loadSavedProjects() {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
-      const parsed = JSON.parse(raw) as TokenProject[];
-      if (Array.isArray(parsed)) setProjects(parsed);
-    } catch {
-      setNotice("Saved projects could not be read. A new local workspace was opened.");
+
+      try {
+        const { index, blobs, droppedCount } = migrateLegacySavedProjects(raw);
+
+        // Move any heavy generatedSiteHtml/heroImage still sitting inline in
+        // localStorage (from before this fix) into IndexedDB. A failed blob
+        // write here just means that one project's site won't reopen yet —
+        // it must not block every other saved launch from loading.
+        if (blobs.length > 0) {
+          await Promise.all(blobs.map((blob) => putProjectBlob(blob).catch(() => null)));
+        }
+        if (cancelled) return;
+
+        localStorage.setItem(STORAGE_KEY, serialiseSavedProjectIndex(index));
+        setProjects(index);
+        if (droppedCount > 0) {
+          setNotice(
+            `${droppedCount} saved project${droppedCount === 1 ? "" : "s"} could not be recovered and ${
+              droppedCount === 1 ? "was" : "were"
+            } removed.`,
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setNotice("Saved projects could not be read. A new local workspace was opened.");
+        }
+      }
     }
+
+    loadSavedProjects();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -226,12 +263,14 @@ export function TokenStudio() {
     }));
   }
 
-  function persist(nextProjects: TokenProject[]) {
+  function persist(nextProjects: SavedProjectIndexEntry[]) {
+    localStorage.setItem(STORAGE_KEY, serialiseSavedProjectIndex(nextProjects));
     setProjects(nextProjects);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextProjects));
   }
 
-  function saveProject(nextStatus: TokenProject["status"] = project.status): boolean {
+  async function saveProject(
+    nextStatus: TokenProject["status"] = project.status,
+  ): Promise<boolean> {
     const slug = displaySlug;
     const validation = validateSlug(slug);
     if (!validation.valid) {
@@ -263,12 +302,34 @@ export function TokenStudio() {
       ticker: project.ticker.trim().toUpperCase(),
       websiteSlug: slug,
     };
+    const { heroImage: _heroImage, generatedSiteHtml: _html, ...indexEntry } = saved;
     const nextProjects = [
-      saved,
+      indexEntry,
       ...projects.filter((item) => item.id !== saved.id),
     ];
+
+    // The heavy blob must land in IndexedDB before anything is persisted or
+    // reflected as saved — a failed write here must never leave a "Saved
+    // launches" row that can't be reopened (issue #307).
+    try {
+      await putProjectBlob({
+        id: saved.id,
+        heroImage: saved.heroImage,
+        generatedSiteHtml: saved.generatedSiteHtml ?? null,
+        generatedSiteVersion: saved.generatedSiteVersion ?? null,
+      });
+      persist(nextProjects);
+    } catch (error) {
+      setNotice(
+        `${saved.name || "Project"} could not be saved: ${getErrorMessage(error)}. Nothing was added to Saved launches.`,
+      );
+      window.dispatchEvent(
+        new CustomEvent(PROJECT_SAVE_RESULT_EVENT, { detail: { success: false } }),
+      );
+      return false;
+    }
+
     setProject(saved);
-    persist(nextProjects);
     setNotice(`${saved.name || "Project"} saved privately in this browser.`);
     window.dispatchEvent(
       new CustomEvent(PROJECT_SAVE_RESULT_EVENT, { detail: { success: true } }),
@@ -293,19 +354,41 @@ export function TokenStudio() {
     setShowPathChooser(true);
   }
 
-  function deleteProject(id: string) {
+  async function deleteProject(id: string) {
     const nextProjects = projects.filter((item) => item.id !== id);
-    persist(nextProjects);
-    if (project.id === id) setProject(makeProject());
-    setNotice("Project removed from local storage.");
+    try {
+      await deleteProjectBlob(id);
+    } catch {
+      // Best effort: still drop the index entry below even if the blob
+      // could not be removed, so the user isn't stuck with a row they
+      // explicitly asked to delete.
+    }
+    try {
+      persist(nextProjects);
+      if (project.id === id) setProject(makeProject());
+      setNotice("Project removed from local storage.");
+    } catch (error) {
+      setNotice(`The project could not be removed: ${getErrorMessage(error)}`);
+    }
   }
 
-  function loadProject(saved: TokenProject) {
-    setProject(saved);
-    setWallet(null);
-    setShowProjects(false);
-    setNotice(`${saved.name} loaded. Reconnect the correct wallet before launching.`);
-    reopenGeneratedSite(saved);
+  async function loadProject(entry: SavedProjectIndexEntry) {
+    try {
+      const blob = await getProjectBlob(entry.id);
+      const saved: TokenProject = {
+        ...entry,
+        heroImage: blob?.heroImage ?? "",
+        generatedSiteHtml: blob?.generatedSiteHtml ?? null,
+        generatedSiteVersion: blob?.generatedSiteVersion ?? entry.generatedSiteVersion ?? null,
+      };
+      setProject(saved);
+      setWallet(null);
+      setShowProjects(false);
+      setNotice(`${saved.name} loaded. Reconnect the correct wallet before launching.`);
+      reopenGeneratedSite(saved);
+    } catch (error) {
+      setNotice(`${entry.name || "Project"} could not be opened: ${getErrorMessage(error)}`);
+    }
   }
 
   async function handleImage(event: ChangeEvent<HTMLInputElement>) {
@@ -369,13 +452,13 @@ export function TokenStudio() {
     }
   }
 
-  function prepareLaunch() {
+  async function prepareLaunch() {
     const essentials = readiness.slice(0, 5);
     if (!essentials.every((item) => item.complete)) {
       setNotice("Complete the required launch checks before preparing the transaction.");
       return;
     }
-    if (!saveProject("prepared")) return;
+    if (!(await saveProject("prepared"))) return;
     setShowLaunchSummary(true);
   }
 

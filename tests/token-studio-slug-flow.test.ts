@@ -20,7 +20,7 @@ describe("Token studio save flow wiring", () => {
     expect(studio.indexOf("return false")).toBeGreaterThan(-1);
     expect(studio.indexOf("return false")).toBeLessThan(studio.indexOf("persist(nextProjects)"));
 
-    expect(studio).toContain("if (!saveProject(\"prepared\")) return;");
+    expect(studio).toContain("if (!(await saveProject(\"prepared\"))) return;");
 
     expect(studio).toContain("<span>hoodlums.dev/</span>");
     expect(studio).not.toContain("launchpad.site/");

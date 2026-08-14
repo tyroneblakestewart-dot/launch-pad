@@ -2,8 +2,10 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  parseSavedTokenProjects,
-  serialiseSavedTokenProjects,
+  migrateLegacySavedProjects,
+  parseSavedProjectIndex,
+  serialiseSavedProjectIndex,
+  type SavedProjectIndexEntry,
 } from "@/lib/token-project-storage";
 import type { TokenProject } from "@/lib/types";
 
@@ -40,6 +42,11 @@ const PARTIAL_LAUNCH: TokenProject = {
   launchPath: "bond-pro-site",
 };
 
+const PARTIAL_LAUNCH_INDEX_ENTRY: SavedProjectIndexEntry = (() => {
+  const { heroImage: _heroImage, generatedSiteHtml: _html, ...rest } = PARTIAL_LAUNCH;
+  return rest;
+})();
+
 describe("Saved launches", () => {
   it("renders a deliberate empty state with the requested copy and dark muted styling", async () => {
     const workspace = await source("components", "token-studio-workspace.tsx");
@@ -52,12 +59,21 @@ describe("Saved launches", () => {
     expect(css).toContain("background: #080c09;");
   });
 
-  it("round-trips every TokenProject field for a partially completed launch", () => {
-    const raw = serialiseSavedTokenProjects([PARTIAL_LAUNCH]);
-    const restored = parseSavedTokenProjects(raw);
+  // The localStorage index intentionally no longer carries the two fields
+  // that can exceed the ~5MB quota (issue #307) — everything else still
+  // round-trips exactly.
+  it("round-trips every field except the heavy generated-site data through the lightweight localStorage index", () => {
+    const raw = serialiseSavedProjectIndex([PARTIAL_LAUNCH_INDEX_ENTRY]);
+    const restored = parseSavedProjectIndex(raw);
 
-    expect(restored).toEqual([PARTIAL_LAUNCH]);
-    expect(Object.keys(restored[0]).sort()).toEqual(Object.keys(PARTIAL_LAUNCH).sort());
+    expect(restored).toEqual([PARTIAL_LAUNCH_INDEX_ENTRY]);
+    expect(Object.keys(restored[0]).sort()).toEqual(
+      Object.keys(PARTIAL_LAUNCH_INDEX_ENTRY).sort(),
+    );
+    expect(raw).not.toContain("heroImage");
+    expect(raw).not.toContain("generatedSiteHtml");
+    expect(raw).not.toContain(PARTIAL_LAUNCH.heroImage);
+    expect(raw).not.toContain("saved preview");
   });
 
   // Roadmap and FAQ were removed entirely from the free-site sections
@@ -69,12 +85,12 @@ describe("Saved launches", () => {
   it("keeps a legacy project with stale roadmap/faq site-section flags intact", () => {
     const legacyRaw = JSON.stringify([
       {
-        ...PARTIAL_LAUNCH,
+        ...PARTIAL_LAUNCH_INDEX_ENTRY,
         siteSections: { about: true, tokenomics: true, howToBuy: false, roadmap: true, faq: true },
       },
     ]);
 
-    const restored = parseSavedTokenProjects(legacyRaw);
+    const restored = parseSavedProjectIndex(legacyRaw);
 
     expect(restored).toHaveLength(1);
     expect(restored[0].id).toBe(PARTIAL_LAUNCH.id);
@@ -87,6 +103,60 @@ describe("Saved launches", () => {
     });
   });
 
+  // The bug this issue fixes: a full TokenProject (heroImage + generated
+  // HTML inline) is exactly what earlier builds wrote straight into
+  // localStorage. Migration must recover both the lightweight index entry
+  // and the heavy blob so it can be moved into IndexedDB, and the
+  // re-serialised index must never carry the heavy data forward.
+  it("moves legacy heroImage/generatedSiteHtml out of localStorage and into an IndexedDB-ready blob", () => {
+    const legacyRaw = JSON.stringify([PARTIAL_LAUNCH]);
+    const { index, blobs, droppedCount } = migrateLegacySavedProjects(legacyRaw);
+
+    expect(droppedCount).toBe(0);
+    expect(blobs).toEqual([
+      {
+        id: PARTIAL_LAUNCH.id,
+        heroImage: PARTIAL_LAUNCH.heroImage,
+        generatedSiteHtml: PARTIAL_LAUNCH.generatedSiteHtml,
+        generatedSiteVersion: PARTIAL_LAUNCH.generatedSiteVersion,
+      },
+    ]);
+    expect(index).toHaveLength(1);
+    expect(index[0]).not.toHaveProperty("heroImage");
+    expect(index[0]).not.toHaveProperty("generatedSiteHtml");
+    expect(index[0].id).toBe(PARTIAL_LAUNCH.id);
+
+    const reserialised = serialiseSavedProjectIndex(index);
+    expect(reserialised).not.toContain(PARTIAL_LAUNCH.heroImage);
+    expect(reserialised).not.toContain("saved preview");
+  });
+
+  // A single malformed row must never hide every other saved launch — it is
+  // dropped and counted so the studio can tell the user, while every
+  // recoverable entry still loads.
+  it("drops unrecoverable rows during migration without losing the rest of the batch", () => {
+    const legacyRaw = JSON.stringify([PARTIAL_LAUNCH, { not: "a project" }, null, "oops", 42]);
+    const { index, droppedCount } = migrateLegacySavedProjects(legacyRaw);
+
+    expect(index).toHaveLength(1);
+    expect(index[0].id).toBe(PARTIAL_LAUNCH.id);
+    expect(droppedCount).toBe(4);
+  });
+
+  it("is idempotent so it can safely run on every load", () => {
+    const first = migrateLegacySavedProjects(JSON.stringify([PARTIAL_LAUNCH]));
+    const second = migrateLegacySavedProjects(serialiseSavedProjectIndex(first.index));
+
+    expect(second.blobs).toEqual([]);
+    expect(second.droppedCount).toBe(0);
+    expect(second.index).toEqual(first.index);
+  });
+
+  it("throws on a payload that isn't a parseable array, so the caller can show a clear notice", () => {
+    expect(() => migrateLegacySavedProjects("not-json")).toThrow();
+    expect(() => migrateLegacySavedProjects("{}")).toThrow();
+  });
+
   it("keeps the complete project object as the save and restore source of truth", async () => {
     const studio = await source("components", "token-studio.tsx");
 
@@ -97,7 +167,7 @@ describe("Saved launches", () => {
     expect(saveBlock).toContain("...project,");
     expect(saveBlock).toContain("persist(nextProjects);");
 
-    const loadStart = studio.indexOf("function loadProject(saved: TokenProject) {");
+    const loadStart = studio.indexOf("async function loadProject(entry: SavedProjectIndexEntry) {");
     const loadEnd = studio.indexOf("async function handleImage", loadStart);
     const loadBlock = studio.slice(loadStart, loadEnd);
     expect(loadBlock).toContain("setProject(saved);");
@@ -128,7 +198,7 @@ describe("Saved launches", () => {
     const resumeEnd = workspace.indexOf("function saveAndClose", resumeStart);
     const resumeBlock = workspace.slice(resumeStart, resumeEnd);
 
-    expect(resumeBlock).toContain("parseSavedTokenProjects(");
+    expect(resumeBlock).toContain("parseSavedProjectIndex(");
     expect(resumeBlock).toContain("setStudioInstanceKey((current) => current + 1);");
     expect(resumeBlock).toContain('setPendingAction("saved");');
     expect(workspace).toContain("key={studioInstanceKey}");
@@ -136,8 +206,8 @@ describe("Saved launches", () => {
   });
 
   it("handles missing or corrupt local storage as an empty vault", () => {
-    expect(parseSavedTokenProjects(null)).toEqual([]);
-    expect(parseSavedTokenProjects("not-json")).toEqual([]);
-    expect(parseSavedTokenProjects("{}" )).toEqual([]);
+    expect(parseSavedProjectIndex(null)).toEqual([]);
+    expect(parseSavedProjectIndex("not-json")).toEqual([]);
+    expect(parseSavedProjectIndex("{}")).toEqual([]);
   });
 });
