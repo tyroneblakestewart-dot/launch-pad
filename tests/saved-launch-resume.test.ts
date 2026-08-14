@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseSavedTokenProjects,
   serialiseSavedTokenProjects,
+  toIndexEntry,
 } from "@/lib/token-project-storage";
 import type { TokenProject } from "@/lib/types";
 
@@ -52,12 +53,21 @@ describe("Saved launches", () => {
     expect(css).toContain("background: #080c09;");
   });
 
-  it("round-trips every TokenProject field for a partially completed launch", () => {
-    const raw = serialiseSavedTokenProjects([PARTIAL_LAUNCH]);
+  // The localStorage index is deliberately lightweight (issue #307) — it
+  // never carries heroImage or generatedSiteHtml, which routinely blow past
+  // the ~5MB localStorage quota. Those two fields live in IndexedDB instead
+  // (see tests/token-project-db.test.ts and
+  // tests/token-project-persistence.test.ts) and are merged back in when a
+  // saved launch is reopened.
+  it("round-trips every lightweight index field for a partially completed launch, excluding heavy blob fields", () => {
+    const indexEntry = toIndexEntry(PARTIAL_LAUNCH);
+    const raw = serialiseSavedTokenProjects([indexEntry]);
     const restored = parseSavedTokenProjects(raw);
 
-    expect(restored).toEqual([PARTIAL_LAUNCH]);
-    expect(Object.keys(restored[0]).sort()).toEqual(Object.keys(PARTIAL_LAUNCH).sort());
+    expect(restored).toEqual([indexEntry]);
+    expect(Object.keys(restored[0]).sort()).toEqual(Object.keys(indexEntry).sort());
+    expect(restored[0]).not.toHaveProperty("heroImage");
+    expect(restored[0]).not.toHaveProperty("generatedSiteHtml");
   });
 
   // Roadmap and FAQ were removed entirely from the free-site sections
@@ -69,7 +79,7 @@ describe("Saved launches", () => {
   it("keeps a legacy project with stale roadmap/faq site-section flags intact", () => {
     const legacyRaw = JSON.stringify([
       {
-        ...PARTIAL_LAUNCH,
+        ...toIndexEntry(PARTIAL_LAUNCH),
         siteSections: { about: true, tokenomics: true, howToBuy: false, roadmap: true, faq: true },
       },
     ]);
@@ -87,19 +97,24 @@ describe("Saved launches", () => {
     });
   });
 
-  it("keeps the complete project object as the save and restore source of truth", async () => {
+  it("keeps the full project as the save and restore source of truth, via IndexedDB-backed helpers instead of a single localStorage blob", async () => {
     const studio = await source("components", "token-studio.tsx");
 
-    const saveStart = studio.indexOf("function saveProject(");
-    const saveEnd = studio.indexOf("function startNewProject", saveStart);
+    const saveStart = studio.indexOf("async function saveProject(");
+    const saveEnd = studio.indexOf("async function deleteProject", saveStart);
     const saveBlock = studio.slice(saveStart, saveEnd);
     expect(saveBlock).toContain("const saved: TokenProject = {");
     expect(saveBlock).toContain("...project,");
-    expect(saveBlock).toContain("persist(nextProjects);");
+    expect(saveBlock).toContain("const outcome = await saveProjectToStorage(saved, projects);");
+    expect(saveBlock).toContain("if (!outcome.success) {");
+    expect(saveBlock).toContain("setNotice(outcome.error);");
+    expect(saveBlock).toContain("setProjects(outcome.index);");
 
-    const loadStart = studio.indexOf("function loadProject(saved: TokenProject) {");
+    const loadStart = studio.indexOf("async function loadProject(entry: SavedProjectIndexEntry) {");
     const loadEnd = studio.indexOf("async function handleImage", loadStart);
     const loadBlock = studio.slice(loadStart, loadEnd);
+    expect(loadBlock).toContain("const outcome = await loadProjectFromStorage(entry);");
+    expect(loadBlock).toContain("if (!outcome.success) {");
     expect(loadBlock).toContain("setProject(saved);");
     expect(loadBlock).toContain("reopenGeneratedSite(saved);");
 

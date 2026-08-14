@@ -99,8 +99,8 @@ describe("reopening a previously generated site (issue #198)", () => {
 
   it("reopens automatically when a saved project is loaded, without regenerating", async () => {
     const studio = await studioSource();
-    const loadProjectStart = studio.indexOf("function loadProject(saved: TokenProject) {");
-    const loadProjectEnd = studio.indexOf("\n  }\n", loadProjectStart);
+    const loadProjectStart = studio.indexOf("async function loadProject(entry: SavedProjectIndexEntry) {");
+    const loadProjectEnd = studio.indexOf("\n  async function handleImage", loadProjectStart);
     const loadProjectBody = studio.slice(loadProjectStart, loadProjectEnd);
 
     expect(loadProjectBody).toContain("reopenGeneratedSite(saved)");
