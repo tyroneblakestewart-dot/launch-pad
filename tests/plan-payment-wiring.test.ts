@@ -103,18 +103,27 @@ describe("shared plan purchase flow", () => {
     expect(proof).toContain("`Token: ${paymentToken");
   });
 
-  it("resets quote state from selection handlers rather than synchronously inside the fetch effect", async () => {
+  it("keeps quote resets out of effect setup and success, while clearing stale data on configuration failure", async () => {
     const checkout = await source("components", "plan-checkout.tsx");
     const effectStart = checkout.indexOf("useEffect(() => {");
     const effectEnd = checkout.indexOf("function resetForSelection", effectStart);
     const effect = checkout.slice(effectStart, effectEnd);
+    const requestStart = effect.indexOf("Promise.all([");
+    const successStart = effect.indexOf("const nextQuote");
+    const effectSetup = effect.slice(0, requestStart);
+    const failureBranch = effect.slice(requestStart, successStart);
+    const successBranch = effect.slice(successStart);
     const handlers = checkout.slice(
       effectEnd,
       checkout.indexOf("async function requestWalletProof"),
     );
 
-    expect(effect).not.toContain("setQuote(null)");
-    expect(effect).not.toContain('setPhase("loading")');
+    expect(effectSetup).not.toContain("setQuote(null)");
+    expect(successBranch).not.toContain("setQuote(null)");
+    expect(failureBranch).toContain("setQuote(null)");
+    expect(failureBranch).toContain('setPhase("unconfigured")');
+    expect(effectSetup).not.toContain('setPhase("loading")');
+    expect(successBranch).not.toContain('setPhase("loading")');
     expect(handlers).toContain("setQuote(null)");
     expect(handlers).toContain('setPhase("loading")');
     expect(handlers).toContain("setPaymentToken(nextToken)");
