@@ -155,7 +155,7 @@ export function TestnetLauncher() {
         })) as string[];
         if (!accounts[0]) throw new Error("No EVM account was returned.");
         setWallet(accounts[0]);
-        setStatus("Robinhood Chain testnet wallet connected.");
+        setStatus("Robinhood Chain wallet connected.");
       } else {
         const provider = getPhantomProvider();
         if (!provider) throw new Error("Install Phantom first.");
@@ -312,7 +312,7 @@ export function TestnetLauncher() {
 
   async function deploy() {
     if (!valid || !wallet) {
-      setStatus("Complete the form, connect a wallet and confirm the testnet warning.");
+      setStatus("Complete the form, connect a wallet and confirm the warning.");
       return;
     }
 
@@ -356,7 +356,7 @@ export function TestnetLauncher() {
               className={network === "robinhood-testnet" ? styles.active : ""}
               onClick={() => selectNetwork("robinhood-testnet")}
             >
-              <i className={styles.robinhoodDot} /> Robinhood testnet
+              <i className={styles.robinhoodDot} /> Robinhood Chain
             </button>
             <button
               className={network === "solana-devnet" ? styles.active : ""}
@@ -435,7 +435,7 @@ export function TestnetLauncher() {
               <strong>{shortAddress(result.address)}</strong>
               <code>{result.address}</code>
               <a href={result.explorerUrl} target="_blank" rel="noreferrer">
-                Open in testnet explorer ↗
+                Open in explorer ↗
               </a>
             </div>
           )}
@@ -444,7 +444,7 @@ export function TestnetLauncher() {
 
       <section className={styles.notes}>
         <article>
-          <b>Robinhood testnet</b>
+          <b>Robinhood Chain</b>
           <p>Deploys a burnable ERC-20 with a fixed constructor supply, no owner and no external mint function.</p>
         </article>
         <article>

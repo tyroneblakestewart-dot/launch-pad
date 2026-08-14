@@ -48,7 +48,7 @@ async function renderTokenPage(chain: string, address: string): Promise<TokenPag
 }
 
 describe("TokenPage", () => {
-  it("renders TokenPageView with chain, address, chainInfo and trade links", async () => {
+  it("renders TokenPageView with chain, address and chainInfo", async () => {
     stubFetch();
     delete process.env[BONDING_CURVE_ADDRESSES_ENV_VAR];
 
@@ -57,7 +57,14 @@ describe("TokenPage", () => {
     expect(props.chain).toBe("robinhood");
     expect(props.address).toBe(ADDRESS);
     expect(props.chainInfo.shortLabel).toBe("RHC TEST");
-    expect(props.tradeLinks.length).toBeGreaterThan(0);
+  });
+
+  it("returns no trade-terminal links while the page still operates on testnet 46630 (issue #308)", async () => {
+    stubFetch();
+
+    const props = await renderTokenPage("robinhood", ADDRESS);
+
+    expect(props.tradeLinks).toEqual([]);
   });
 
   it("has chart: passes a found chart and non-null liquidity through from a live Dexscreener pair", async () => {

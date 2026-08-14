@@ -14,6 +14,15 @@ import { findSlugCollision, slugify, validateSlug } from "@/lib/slug";
 import type { LaunchPath, SupportedChain, TokenProject, WalletState } from "@/lib/types";
 import { TokenPathChooser } from "./token-path-chooser";
 
+// CHAIN_CONFIG.label carries the wallet-facing "Robinhood Chain Testnet"
+// name (lib/chains.ts is left untouched, since that name must stay accurate
+// wherever a wallet reads it); this is neutral display copy for the studio's
+// own chain picker/labels instead (issue #308).
+const CHAIN_DISPLAY_LABEL: Record<SupportedChain, string> = {
+  solana: CHAIN_CONFIG.solana.label,
+  robinhood: "Robinhood Chain · 46630",
+};
+
 const SECTION_TOGGLE_FIELDS: ReadonlyArray<{ key: FreeSiteSectionKey; label: string }> = [
   { key: "about", label: "About" },
   { key: "tokenomics", label: "Tokenomics" },
@@ -490,7 +499,7 @@ export function TokenStudio() {
                       </svg>
                     )}
                   </span>
-                  <span>{CHAIN_CONFIG[item].label}</span>
+                  <span>{CHAIN_DISPLAY_LABEL[item]}</span>
                   <span className={`chain-dot ${item}`} />
                 </button>
               ))}
@@ -751,7 +760,7 @@ export function TokenStudio() {
                     <small>UPLOAD<br />THE CREW</small>
                   </div>
                 )}
-                <div className="chain-stamp">LIVE ON<br /><b>{chain.label}</b></div>
+                <div className="chain-stamp">LIVE ON<br /><b>{CHAIN_DISPLAY_LABEL[project.chain]}</b></div>
               </div>
             </section>
 
@@ -814,7 +823,7 @@ export function TokenStudio() {
                   <article key={saved.id}>
                     <button className="project-main" onClick={() => loadProject(saved)}>
                       <span className={`chain-dot ${saved.chain}`} />
-                      <span><b>{saved.name || "Untitled"}</b><small>${saved.ticker || "TOKEN"} · {CHAIN_CONFIG[saved.chain].label}</small></span>
+                      <span><b>{saved.name || "Untitled"}</b><small>${saved.ticker || "TOKEN"} · {CHAIN_DISPLAY_LABEL[saved.chain]}</small></span>
                       <em>{saved.status}</em>
                     </button>
                     <button className="delete-button" onClick={() => deleteProject(saved.id)}>Delete</button>
@@ -839,7 +848,7 @@ export function TokenStudio() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={project.heroImage} alt="" />
               ) : "H"}</div>
-              <span><b>{displayName}</b><small>${displayTicker} on {chain.label}</small></span>
+              <span><b>{displayName}</b><small>${displayTicker} on {CHAIN_DISPLAY_LABEL[project.chain]}</small></span>
             </div>
             <dl>
               <div><dt>Total supply</dt><dd>{formatSupply(project.supply)}</dd></div>
@@ -850,7 +859,7 @@ export function TokenStudio() {
             </dl>
             <div className="warning-box">
               Deployment isn&apos;t connected yet — this preview shows what your transaction will
-              look like once it is. The next step is a testnet-only wallet transaction, followed
+              look like once it is. The next step is a wallet-signed test transaction, followed
               by a reviewed mainnet switch.
             </div>
             <button className="primary-button full-width" onClick={() => setShowLaunchSummary(false)}>Return to builder</button>

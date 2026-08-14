@@ -29,7 +29,7 @@ export function PublicDexscreenerSection({
   heading = "Dexscreener",
   openLabel = "OPEN DEXSCREENER ↗",
   emptyHeading = "Chart activates once trading is indexed",
-  emptyCopy = "Dexscreener doesn't index Robinhood Chain Testnet, so no pair will show here while trading stays on testnet. The chart activates automatically once this token trades on a network Dexscreener indexes.",
+  emptyCopy = "Dexscreener doesn't index Robinhood Chain yet, so no pair will show here. The chart activates automatically once this token trades on a network Dexscreener indexes.",
   checkLabel = "CHECK DEXSCREENER ↗",
 }: PublicDexscreenerSectionProps) {
   const [result, setResult] = useState<DexscreenerPairResult>({ found: false });

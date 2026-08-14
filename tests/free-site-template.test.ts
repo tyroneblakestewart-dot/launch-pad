@@ -387,7 +387,7 @@ describe("renderFreeSiteTemplate", () => {
     it("frames the no-pair chart state as activating once trading is indexed, not as broken", () => {
       const html = render();
       expect(html).toContain("Chart activates once trading is indexed");
-      expect(html).toContain("doesn't index Robinhood Chain Testnet");
+      expect(html).toContain("doesn't index Robinhood Chain");
       expect(html).toContain("Check Dexscreener ↗");
     });
   });

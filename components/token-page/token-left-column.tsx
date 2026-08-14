@@ -37,7 +37,7 @@ const chain = defineChain({
   name: ROBINHOOD_TESTNET.chainName,
   nativeCurrency: ROBINHOOD_TESTNET.nativeCurrency,
   rpcUrls: { default: { http: [...ROBINHOOD_TESTNET.rpcUrls] } },
-  blockExplorers: { default: { name: "Robinhood Testnet Explorer", url: ROBINHOOD_TESTNET.blockExplorerUrls[0] } },
+  blockExplorers: { default: { name: "Robinhood Chain Explorer", url: ROBINHOOD_TESTNET.blockExplorerUrls[0] } },
   testnet: true,
 });
 
@@ -534,9 +534,11 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
             <p className={styles.terminalFallbackCopy}>
               {curveView.kind === "loading"
                 ? "Checking whether a bonding curve is live for this token…"
-                : "No bonding curve is active for this token yet. Trade it on a terminal instead."}
+                : tradeLinks.length > 0
+                  ? "No bonding curve is active for this token yet. Trade it on a terminal instead."
+                  : "No bonding curve is active for this token yet."}
             </p>
-            {tradeLinks.length > 0 ? (
+            {tradeLinks.length > 0 && (
               <div className={styles.terminalFallbackLinks}>
                 {tradeLinks.map((link) => (
                   <a key={link.id} href={link.url} target="_blank" rel="noreferrer" className={styles.terminalFallbackLink}>
@@ -544,8 +546,6 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
                   </a>
                 ))}
               </div>
-            ) : (
-              <p className={styles.terminalFallbackCopy}>No trade terminals are available for this chain yet.</p>
             )}
           </div>
         </div>

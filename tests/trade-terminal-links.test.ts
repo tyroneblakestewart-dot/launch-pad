@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { getTradeTerminalLinks } from "@/lib/trade-terminal-links";
 
 const ENV_VARS = [
@@ -10,6 +11,7 @@ const ENV_VARS = [
 
 const ORIGINAL_ENV = Object.fromEntries(ENV_VARS.map((key) => [key, process.env[key]]));
 const ADDRESS = "0x3bf7447cd055f1475a8b09090c7b062abc9d3798";
+const MAINNET_CHAIN_ID = 999999;
 
 afterEach(() => {
   for (const key of ENV_VARS) {
@@ -19,10 +21,10 @@ afterEach(() => {
 });
 
 describe("getTradeTerminalLinks", () => {
-  it("returns GMGN, Axiom, Maestro and Ave.ai links for a Robinhood Chain address", () => {
+  it("returns GMGN, Axiom, Maestro and Ave.ai links for a Robinhood Chain address on a mainnet chain id", () => {
     for (const key of ENV_VARS) delete process.env[key];
 
-    const links = getTradeTerminalLinks("robinhood", ADDRESS);
+    const links = getTradeTerminalLinks("robinhood", ADDRESS, MAINNET_CHAIN_ID);
 
     expect(links.map((link) => link.id)).toEqual(["gmgn", "axiom", "maestro", "ave"]);
     expect(links.every((link) => link.url.includes(ADDRESS))).toBe(true);
@@ -34,7 +36,7 @@ describe("getTradeTerminalLinks", () => {
     process.env.NEXT_PUBLIC_MAESTRO_REF_CODE = "hoodlums-maestro";
     process.env.NEXT_PUBLIC_AVE_REF_CODE = "hoodlums-ave";
 
-    const links = getTradeTerminalLinks("robinhood", ADDRESS);
+    const links = getTradeTerminalLinks("robinhood", ADDRESS, MAINNET_CHAIN_ID);
     const byId = Object.fromEntries(links.map((link) => [link.id, link.url]));
 
     expect(byId.gmgn).toBe(`https://gmgn.ai/robinhood/token/hoodlums-gmgn_${ADDRESS}`);
@@ -46,7 +48,7 @@ describe("getTradeTerminalLinks", () => {
   it("degrades to a plain, un-refcoded link when no code is configured", () => {
     for (const key of ENV_VARS) delete process.env[key];
 
-    const links = getTradeTerminalLinks("robinhood", ADDRESS);
+    const links = getTradeTerminalLinks("robinhood", ADDRESS, MAINNET_CHAIN_ID);
     const gmgn = links.find((link) => link.id === "gmgn");
 
     expect(gmgn?.url).toBe(`https://gmgn.ai/robinhood/token/${ADDRESS}`);
@@ -54,6 +56,18 @@ describe("getTradeTerminalLinks", () => {
   });
 
   it("returns no links for a chain with no confirmed-supporting terminal", () => {
-    expect(getTradeTerminalLinks("solana", ADDRESS)).toEqual([]);
+    expect(getTradeTerminalLinks("solana", ADDRESS, MAINNET_CHAIN_ID)).toEqual([]);
+  });
+
+  it("returns no links for Robinhood Chain while operating on the testnet chain id (issue #308)", () => {
+    const links = getTradeTerminalLinks("robinhood", ADDRESS, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL);
+
+    expect(links).toEqual([]);
+  });
+
+  it("populates links again once a non-testnet Robinhood Chain id is passed", () => {
+    const links = getTradeTerminalLinks("robinhood", ADDRESS, MAINNET_CHAIN_ID);
+
+    expect(links.length).toBe(4);
   });
 });

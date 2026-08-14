@@ -258,7 +258,7 @@ export function ProviderLauncher({
         await refreshBalanceFor(verification, accounts[0], false);
       }
       setStatus(
-        "Wallet connected to Robinhood Chain Testnet. Launch and purchase approvals remain inside your wallet.",
+        "Wallet connected to Robinhood Chain. Launch and purchase approvals remain inside your wallet.",
       );
     } catch (error) {
       setStatus(readError(error));
@@ -279,7 +279,7 @@ export function ProviderLauncher({
   async function copyLaunchPack() {
     const launchPack = [
       `Provider: ${provider.name}`,
-      "Network: Robinhood Chain Testnet (46630)",
+      "Network: Robinhood Chain (46630)",
       `Name: ${name}`,
       `Ticker: ${ticker.toUpperCase()}`,
       `Description: ${description}`,
@@ -339,7 +339,7 @@ export function ProviderLauncher({
       const address = contractAddress as Address;
       const bytecode = await client.getBytecode({ address });
       if (!bytecode || bytecode === "0x") {
-        throw new Error("No deployed contract was found at that address on Robinhood Chain Testnet.");
+        throw new Error("No deployed contract was found at that address on Robinhood Chain.");
       }
 
       const [tokenName, symbol, decimals, rawSupply] = await Promise.all([
@@ -425,7 +425,7 @@ export function ProviderLauncher({
       `Token contract: ${verification.contractAddress}`,
       `Creator buy: ${developerBuy} ETH`,
       `Buyer wallet: ${walletAddress}`,
-      "Network: Robinhood Chain Testnet (46630)",
+      "Network: Robinhood Chain (46630)",
     ].join("\n");
 
     try {
@@ -706,7 +706,7 @@ export function ProviderLauncher({
           </div>
 
           <div className={styles.desktopLaunchMeta}>
-            <div><span>Network</span><b>Robinhood Chain Testnet</b></div>
+            <div><span>Network</span><b>Robinhood Chain</b></div>
             <div><span>Provider</span><b>{provider.name}</b></div>
             <div><span>Launch fee</span><b>Confirmed on provider</b></div>
           </div>
@@ -740,7 +740,7 @@ export function ProviderLauncher({
               <div><dt>Trading fee</dt><dd>Provider terms</dd></div>
               <div><dt>Graduation target</dt><dd>Provider-managed</dd></div>
               <div><dt>Liquidity</dt><dd>Provider-managed</dd></div>
-              <div><dt>Network</dt><dd>Robinhood testnet</dd></div>
+              <div><dt>Network</dt><dd>Robinhood Chain</dd></div>
             </dl>
           </div>
 

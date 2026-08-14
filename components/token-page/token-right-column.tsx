@@ -22,11 +22,9 @@ const TERMINAL_NOTES: Record<string, string> = {
 export function TokenRightColumn({ tradeLinks }: { tradeLinks: TradeTerminalLink[] }) {
   return (
     <>
-      <div className={styles.panel}>
-        <span className={styles.sectionLabel}>Trade on</span>
-        {tradeLinks.length === 0 ? (
-          <p className={styles.mutedNote}>No trade terminals are available for this chain yet.</p>
-        ) : (
+      {tradeLinks.length > 0 && (
+        <div className={styles.panel}>
+          <span className={styles.sectionLabel}>Trade on</span>
           <div className={styles.terminalGrid}>
             {tradeLinks.map((link) => (
               <a key={link.id} href={link.url} target="_blank" rel="noreferrer" className={styles.terminalCard}>
@@ -39,14 +37,14 @@ export function TokenRightColumn({ tradeLinks }: { tradeLinks: TradeTerminalLink
               </a>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className={styles.panel}>
         <span className={styles.sectionLabel}>About</span>
         <p className={styles.storyText}>No description has been published for this token yet.</p>
         <div className={styles.storyTags}>
-          <span className={styles.storyTag}>Bonding curve testnet launch</span>
+          <span className={styles.storyTag}>Bonding curve launch</span>
         </div>
       </div>
     </>

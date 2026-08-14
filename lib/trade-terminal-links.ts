@@ -1,3 +1,4 @@
+import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "./chains";
 import type { SupportedChain } from "./types";
 
 export type TradeTerminalId = "gmgn" | "axiom" | "maestro" | "ave";
@@ -73,8 +74,17 @@ const REF_CODE_ENV_VARS: Record<TradeTerminalId, string> = {
  * Trade-terminal links available for a given chain/address, in a fixed
  * display order. Empty for a chain with no confirmed-supporting terminal
  * (e.g. `solana` today) rather than guessing at unconfirmed support.
+ *
+ * Also network-aware (issue #308): every token page currently switches the
+ * connected wallet to Robinhood Chain Testnet (46630), where none of these
+ * terminals index or trade anything, so the links stay empty whenever
+ * `chainId` is that testnet id. The referral-coded builders above are left
+ * untouched so the links populate automatically once callers pass a real
+ * Robinhood Chain mainnet id.
  */
-export function getTradeTerminalLinks(chain: SupportedChain, address: string): TradeTerminalLink[] {
+export function getTradeTerminalLinks(chain: SupportedChain, address: string, chainId: number): TradeTerminalLink[] {
+  if (chain === "robinhood" && chainId === ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL) return [];
+
   return TERMINALS.filter((terminal) => terminal.chains.includes(chain)).map((terminal) => ({
     id: terminal.id,
     label: terminal.label,

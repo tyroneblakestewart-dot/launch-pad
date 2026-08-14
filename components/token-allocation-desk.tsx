@@ -162,7 +162,7 @@ export function TokenAllocationDesk({
   const [nativeLiquidityAmount, setNativeLiquidityAmount] = useState("0.1");
   const [acknowledged, setAcknowledged] = useState(false);
   const [status, setStatus] = useState(
-    "Load a deployed Robinhood Testnet token, confirm the allocation totals, then distribute one wallet-approved transfer at a time.",
+    "Load a deployed Robinhood Chain token, confirm the allocation totals, then distribute one wallet-approved transfer at a time.",
   );
   const [busyAction, setBusyAction] = useState("");
 
@@ -276,7 +276,7 @@ export function TokenAllocationDesk({
       }
 
       setWalletAddress(accounts[0]);
-      setStatus("Wallet connected to Robinhood Chain Testnet. Every distribution still needs a separate wallet confirmation.");
+      setStatus("Wallet connected to Robinhood Chain. Every distribution still needs a separate wallet confirmation.");
       if (isAddress(contractAddress)) await loadToken(accounts[0]);
     } catch (error) {
       setStatus(readError(error));
@@ -296,7 +296,7 @@ export function TokenAllocationDesk({
       const address = contractAddress as Address;
       const bytecode = await publicClient.getBytecode({ address });
       if (!bytecode || bytecode === "0x") {
-        throw new Error("No deployed contract was found at this address on Robinhood Chain Testnet.");
+        throw new Error("No deployed contract was found at this address on Robinhood Chain.");
       }
 
       const [nameResult, symbolResult, decimalsResult, supplyResult] = await Promise.all([
@@ -322,7 +322,7 @@ export function TokenAllocationDesk({
       setTotalSupplyRaw(supplyResult.toString());
       setWalletBalanceRaw(balanceResult.toString());
       loadSavedPlan(address);
-      setStatus(`${nameResult} loaded from Robinhood Chain Testnet. Review the calculated amounts before saving or sending.`);
+      setStatus(`${nameResult} loaded from Robinhood Chain. Review the calculated amounts before saving or sending.`);
     } catch (error) {
       setStatus(readError(error));
     } finally {
@@ -509,7 +509,7 @@ export function TokenAllocationDesk({
       <div className={styles.notice}>{status}</div>
 
       <section className={styles.networkBar}>
-        <div><span>Network</span><b>Robinhood Chain Testnet</b></div>
+        <div><span>Network</span><b>Robinhood Chain</b></div>
         <div><span>Chain ID</span><b>46630</b></div>
         <div><span>Mode</span><b>Manual wallet approval</b></div>
         <div><span>Liquidity</span><b>Safe-mode locked</b></div>
@@ -654,7 +654,7 @@ export function TokenAllocationDesk({
 
           <div className={styles.warning}>
             <b>Public-launch warning</b>
-            <span>This treasury-wallet distribution is suitable for personal testnet use. Team tokens should use an audited vesting contract before public mainnet use.</span>
+            <span>This treasury-wallet distribution is suitable for personal test use. Team tokens should use an audited vesting contract before public mainnet use.</span>
           </div>
         </aside>
       </section>
@@ -688,7 +688,7 @@ export function TokenAllocationDesk({
             <div><span>Native side</span><b>{nativeLiquidityAmount || "0"} test ETH</b></div>
           </div>
           <button disabled>CREATE LIQUIDITY — ROUTER NOT CONFIGURED</button>
-          <p>No router call is invented here. This button will unlock only after a documented Robinhood Testnet DEX/router address and ABI are verified.</p>
+          <p>No router call is invented here. This button will unlock only after a documented Robinhood Chain DEX/router address and ABI are verified.</p>
         </div>
 
         <div className={styles.recordPanel}>

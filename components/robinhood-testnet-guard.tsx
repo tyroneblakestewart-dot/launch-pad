@@ -70,7 +70,7 @@ export function RobinhoodTestnetGuard() {
       setChainId(nextChainId);
       setMessage(
         nextChainId === TARGET_CHAIN_ID
-          ? "Correct testnet detected. Mainnet remains blocked."
+          ? "Correct network detected. Mainnet remains blocked."
           : `Wrong network detected: chain ${decimalChainId(nextChainId)}.`,
       );
       return nextChainId;
@@ -88,7 +88,7 @@ export function RobinhoodTestnetGuard() {
       setChainId(nextChainId);
       setMessage(
         nextChainId === TARGET_CHAIN_ID
-          ? "Correct testnet detected. Mainnet remains blocked."
+          ? "Correct network detected. Mainnet remains blocked."
           : `Wrong network detected: chain ${decimalChainId(nextChainId)}.`,
       );
     }
@@ -127,7 +127,7 @@ export function RobinhoodTestnetGuard() {
       const liveChainId = await refreshChain();
       if (liveChainId !== TARGET_CHAIN_ID) {
         setMessage(
-          `Prepare launch blocked. Switch MetaMask to Robinhood Chain Testnet (${ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL}).`,
+          `Prepare launch blocked. Switch MetaMask to Robinhood Chain (${ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL}).`,
         );
         return;
       }
@@ -202,14 +202,14 @@ export function RobinhoodTestnetGuard() {
         <span className={styles.dot} />
         <div>
           <small>SAFE-MODE NETWORK</small>
-          <b>Robinhood Chain Testnet</b>
+          <b>Robinhood Chain</b>
         </div>
       </div>
       <code>CHAIN ID {ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL} · {TARGET_CHAIN_ID}</code>
       <p>{message}</p>
       {!correctNetwork && (
         <button type="button" onClick={switchToTestnet} disabled={isSwitching}>
-          {isSwitching ? "SWITCHING…" : "SWITCH TO TESTNET"}
+          {isSwitching ? "SWITCHING…" : "SWITCH NETWORK"}
         </button>
       )}
     </aside>
