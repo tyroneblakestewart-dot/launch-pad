@@ -11,6 +11,17 @@ import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
 import { launchPathLabel } from "@/lib/launch-paths";
 import { PROJECT_SAVE_RESULT_EVENT } from "@/lib/project-save-result";
 import { findSlugCollision, slugify, validateSlug } from "@/lib/slug";
+import {
+  deleteProjectFromStorage,
+  loadProjectFromStorage,
+  saveProjectToStorage,
+} from "@/lib/token-project-persistence";
+import {
+  migrateLegacySavedProjects,
+  serialiseSavedTokenProjects,
+  TOKEN_STUDIO_PROJECTS_STORAGE_KEY,
+  type SavedProjectIndexEntry,
+} from "@/lib/token-project-storage";
 import type { LaunchPath, SupportedChain, TokenProject, WalletState } from "@/lib/types";
 import { TokenPathChooser } from "./token-path-chooser";
 
@@ -49,8 +60,6 @@ declare global {
     phantom?: { solana?: SolanaProvider };
   }
 }
-
-const STORAGE_KEY = "private-meme-token-studio-projects-v1";
 
 const DEFAULT_PROJECT: TokenProject = {
   id: "",
@@ -144,7 +153,7 @@ const IDENTITY_KEYS = new Set<keyof TokenProject>([
 
 export function TokenStudio() {
   const [project, setProject] = useState<TokenProject>(DEFAULT_PROJECT);
-  const [projects, setProjects] = useState<TokenProject[]>([]);
+  const [projects, setProjects] = useState<SavedProjectIndexEntry[]>([]);
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [notice, setNotice] = useState(
     "Safe mode is on — no launch transaction can be sent from this build.",
@@ -155,14 +164,39 @@ export function TokenStudio() {
   const [showPathChooser, setShowPathChooser] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as TokenProject[];
-      if (Array.isArray(parsed)) setProjects(parsed);
-    } catch {
-      setNotice("Saved projects could not be read. A new local workspace was opened.");
+    let cancelled = false;
+
+    async function loadIndex() {
+      const raw = localStorage.getItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY);
+      const { index, migratedCount, droppedCount } = await migrateLegacySavedProjects(raw);
+      if (cancelled) return;
+
+      if (migratedCount > 0 || droppedCount > 0) {
+        try {
+          localStorage.setItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY, serialiseSavedTokenProjects(index));
+        } catch {
+          // Nothing more useful to do if even the small index can't be
+          // written back; the in-memory list below is still correct.
+        }
+      }
+
+      setProjects(index);
+      if (droppedCount > 0) {
+        setNotice(
+          `${droppedCount} saved launch${droppedCount === 1 ? "" : "es"} could not be recovered and ${droppedCount === 1 ? "was" : "were"} removed.`,
+        );
+      }
     }
+
+    loadIndex().catch(() => {
+      if (!cancelled) {
+        setNotice("Saved projects could not be read. A new local workspace was opened.");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -235,12 +269,12 @@ export function TokenStudio() {
     }));
   }
 
-  function persist(nextProjects: TokenProject[]) {
-    setProjects(nextProjects);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextProjects));
-  }
-
-  function saveProject(nextStatus: TokenProject["status"] = project.status): boolean {
+  // Every save is awaited and error-handled end to end (heavy IndexedDB
+  // write, then the small localStorage index write). A failure at either
+  // step is surfaced to the user and never updates `projects` or `project`
+  // state, so a save that didn't actually persist can never leave a "Saved
+  // launches" row that reopens to nothing (issue #307).
+  async function saveProject(nextStatus: TokenProject["status"] = project.status): Promise<boolean> {
     const slug = displaySlug;
     const validation = validateSlug(slug);
     if (!validation.valid) {
@@ -272,12 +306,18 @@ export function TokenStudio() {
       ticker: project.ticker.trim().toUpperCase(),
       websiteSlug: slug,
     };
-    const nextProjects = [
-      saved,
-      ...projects.filter((item) => item.id !== saved.id),
-    ];
+
+    const outcome = await saveProjectToStorage(saved, projects);
+    if (!outcome.success) {
+      setNotice(outcome.error);
+      window.dispatchEvent(
+        new CustomEvent(PROJECT_SAVE_RESULT_EVENT, { detail: { success: false } }),
+      );
+      return false;
+    }
+
     setProject(saved);
-    persist(nextProjects);
+    setProjects(outcome.index);
     setNotice(`${saved.name || "Project"} saved privately in this browser.`);
     window.dispatchEvent(
       new CustomEvent(PROJECT_SAVE_RESULT_EVENT, { detail: { success: true } }),
@@ -302,14 +342,24 @@ export function TokenStudio() {
     setShowPathChooser(true);
   }
 
-  function deleteProject(id: string) {
-    const nextProjects = projects.filter((item) => item.id !== id);
-    persist(nextProjects);
+  async function deleteProject(id: string) {
+    const outcome = await deleteProjectFromStorage(id, projects);
+    if (!outcome.success) {
+      setNotice(outcome.error);
+      return;
+    }
+    setProjects(outcome.index);
     if (project.id === id) setProject(makeProject());
     setNotice("Project removed from local storage.");
   }
 
-  function loadProject(saved: TokenProject) {
+  async function loadProject(entry: SavedProjectIndexEntry) {
+    const outcome = await loadProjectFromStorage(entry);
+    if (!outcome.success) {
+      setNotice(outcome.error);
+      return;
+    }
+    const saved = outcome.project;
     setProject(saved);
     setWallet(null);
     setShowProjects(false);
@@ -378,13 +428,13 @@ export function TokenStudio() {
     }
   }
 
-  function prepareLaunch() {
+  async function prepareLaunch() {
     const essentials = readiness.slice(0, 5);
     if (!essentials.every((item) => item.complete)) {
       setNotice("Complete the required launch checks before preparing the transaction.");
       return;
     }
-    if (!saveProject("prepared")) return;
+    if (!(await saveProject("prepared"))) return;
     setShowLaunchSummary(true);
   }
 
