@@ -85,6 +85,8 @@ type RequestGeneratedWebsiteOptions = {
 type RenderedPreview = {
   container: HTMLElement;
   backdrop: HTMLElement;
+  viewport: HTMLElement;
+  scaleWrapper: HTMLElement;
   frame: HTMLIFrameElement;
   closeButton: HTMLButtonElement;
   fullScreenButton: HTMLButtonElement;
@@ -105,10 +107,28 @@ function findStudioButtonByLabel(label: string): HTMLButtonElement | undefined {
 }
 
 const MOBILE_PREVIEW_QUERY = "(max-width: 767px)";
-export const MOBILE_PREVIEW_HEIGHT = "70svh";
 
-export function getGeneratedPreviewFrameHeight(reportedHeight: number, mobile: boolean): string {
-  if (mobile) return MOBILE_PREVIEW_HEIGHT;
+// The windowed overlay (desktop centred window, and the phone layout that
+// fills the screen below the pinned tab bar) never shows the site 1:1 —
+// it lays the iframe out at a wider "design" canvas, then scales the whole
+// thing down with a CSS transform so the visitor sees more of the page
+// composition (hero plus the next section or two) instead of one tall
+// colour block. Full screen is unaffected: it always renders 1:1 at the
+// device's real viewport width (issue #320).
+export const DESKTOP_WINDOWED_DESIGN_WIDTH = 1280;
+const MOBILE_WINDOWED_DESIGN_SCALE = 0.82;
+
+export function getWindowedDesignWidth(viewportWidth: number, mobile: boolean): number {
+  if (!mobile) return DESKTOP_WINDOWED_DESIGN_WIDTH;
+  return Math.max(320, Math.round(viewportWidth / MOBILE_WINDOWED_DESIGN_SCALE));
+}
+
+export function getWindowedScale(availableWidth: number, designWidth: number): number {
+  if (designWidth <= 0 || availableWidth <= 0) return 1;
+  return Math.min(1, availableWidth / designWidth);
+}
+
+export function getGeneratedPreviewFrameHeight(reportedHeight: number): string {
   return `${Math.min(16_000, Math.max(700, Math.ceil(reportedHeight)))}px`;
 }
 
@@ -383,8 +403,35 @@ function previewHtmlFor(rawHtml: string, contractAddress: string): string {
     : rawHtml;
 }
 
-function applyGeneratedPreviewHeight(frame: HTMLIFrameElement, reportedHeight: number) {
-  frame.style.height = getGeneratedPreviewFrameHeight(reportedHeight, isMobilePreviewViewport());
+// Lays the iframe out at the windowed design width and scales it down to
+// fit the visible viewport box (issue #320, part 3). Full screen clears
+// every inline style set here so the base 1:1 CSS rules take back over —
+// the same iframe node is reused, never remounted, when toggling between
+// the two states.
+function applyPreviewLayout(preview: RenderedPreview, reportedHeight: number) {
+  const { container, viewport, scaleWrapper, frame } = preview;
+  const fullScreen = container.classList.contains("full-generated-page-fullscreen");
+
+  if (fullScreen) {
+    scaleWrapper.style.width = "";
+    scaleWrapper.style.height = "";
+    frame.style.width = "";
+    frame.style.height = "";
+    frame.style.transform = "";
+    return;
+  }
+
+  const mobile = isMobilePreviewViewport();
+  const availableWidth = Math.max(1, viewport.clientWidth);
+  const designWidth = getWindowedDesignWidth(availableWidth, mobile);
+  const scale = getWindowedScale(availableWidth, designWidth);
+  const contentHeightPx = Number.parseInt(getGeneratedPreviewFrameHeight(reportedHeight), 10);
+
+  frame.style.width = `${designWidth}px`;
+  frame.style.height = `${contentHeightPx}px`;
+  frame.style.transform = `scale(${scale})`;
+  scaleWrapper.style.width = `${Math.round(designWidth * scale)}px`;
+  scaleWrapper.style.height = `${Math.round(contentHeightPx * scale)}px`;
 }
 
 function renderGeneratedWebsite(
@@ -392,6 +439,7 @@ function renderGeneratedWebsite(
   artworkDataUrl: string,
   publishSite: PublishableSitePayload,
   onClosePreview: () => void,
+  onFullScreenToggled: () => void,
 ): RenderedPreview {
   const site = previewElement();
   const prepared = prepareGeneratedPageForPreview(html, artworkDataUrl);
@@ -437,6 +485,13 @@ function renderGeneratedWebsite(
   const viewport = document.createElement("div");
   viewport.className = "full-generated-page-viewport";
 
+  // The scale wrapper is what the classic scaled-iframe technique clips to
+  // and sizes to the *scaled* box (issue #320 part 3) — the iframe itself
+  // keeps laying out at its full design width/height and is visually
+  // shrunk with a transform, never remounted.
+  const scaleWrapper = document.createElement("div");
+  scaleWrapper.className = "full-generated-page-scale";
+
   const frame = document.createElement("iframe");
   frame.className = "full-generated-page-frame";
   frame.title = "Generated token landing page";
@@ -444,7 +499,6 @@ function renderGeneratedWebsite(
   frame.setAttribute("referrerpolicy", "no-referrer");
   frame.setAttribute("loading", "eager");
   frame.setAttribute("scrolling", "yes");
-  applyGeneratedPreviewHeight(frame, 1800);
   frame.srcdoc = prepared;
 
   const listen = (button: HTMLButtonElement, listener: () => void) => {
@@ -456,6 +510,7 @@ function renderGeneratedWebsite(
     const fullScreen = container.classList.toggle("full-generated-page-fullscreen");
     fullScreenButton.textContent = fullScreen ? "Exit full screen" : "Full screen";
     fullScreenButton.setAttribute("aria-pressed", String(fullScreen));
+    onFullScreenToggled();
   };
   const onClose = () => onClosePreview();
 
@@ -542,7 +597,8 @@ function renderGeneratedWebsite(
   fullScreenButton.addEventListener("click", onToggleFullScreen);
   closeButton.addEventListener("click", onClose);
   controls.append(publishStatus, publishButton, fullScreenButton, saveButton, closeButton);
-  viewport.appendChild(frame);
+  scaleWrapper.appendChild(frame);
+  viewport.appendChild(scaleWrapper);
   container.append(controls, viewport);
 
   site.classList.add("full-generated-page");
@@ -551,6 +607,8 @@ function renderGeneratedWebsite(
   return {
     container,
     backdrop,
+    viewport,
+    scaleWrapper,
     frame,
     closeButton,
     fullScreenButton,
@@ -579,7 +637,7 @@ export function FullWebsiteGenerator() {
 
     function applyActiveFrameHeight() {
       if (!activePreview) return;
-      applyGeneratedPreviewHeight(activePreview.frame, lastReportedHeight);
+      applyPreviewLayout(activePreview, lastReportedHeight);
     }
 
     function onMessage(event: MessageEvent) {
@@ -638,7 +696,7 @@ export function FullWebsiteGenerator() {
           activeController?.abort();
           activeController = null;
           restoreStudioControls();
-        });
+        }, applyActiveFrameHeight);
         applyActiveFrameHeight();
         window.dispatchEvent(
           new CustomEvent("launchpad:site-generated", {
@@ -685,7 +743,7 @@ export function FullWebsiteGenerator() {
         activeController?.abort();
         activeController = null;
         restoreStudioControls();
-      });
+      }, applyActiveFrameHeight);
       applyActiveFrameHeight();
     }
 
@@ -794,6 +852,12 @@ export function FullWebsiteGenerator() {
         -webkit-overflow-scrolling: touch;
         background: #fff;
       }
+      .full-generated-page-scale {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
       .full-generated-page-frame {
         display: block;
         width: 100%;
@@ -802,6 +866,7 @@ export function FullWebsiteGenerator() {
         background: #fff;
         overflow: auto;
         touch-action: pan-x pan-y;
+        transform-origin: top left;
       }
       .full-generated-page-container.full-generated-page-fullscreen {
         inset: 0;
@@ -816,10 +881,14 @@ export function FullWebsiteGenerator() {
         min-height: 0;
         height: 100%;
       }
+      .full-generated-page-fullscreen .full-generated-page-scale {
+        overflow: visible;
+      }
       .full-generated-page-fullscreen .full-generated-page-frame {
         height: 100% !important;
         min-height: 0;
         max-height: none;
+        transform: none !important;
       }
       .site-preview.full-page-generating,
       .site-preview.full-page-failed {
@@ -879,26 +948,38 @@ export function FullWebsiteGenerator() {
           min-height: 0;
           overflow: visible;
         }
+        /* Issue #320 part 1: on phones the windowed overlay is not a
+           floating centred box — the tab bar pins to the very top of the
+           screen (safe-area aware) and the site fills every remaining
+           pixel below it, edge to edge, down to the safe-area bottom. */
         .full-generated-page-container:not(.full-generated-page-fullscreen) {
-          width: calc(100vw - 20px);
-          height: calc(70svh + 56px);
-          max-height: calc(70svh + 56px);
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          width: 100vw;
+          height: 100svh;
+          max-width: none;
+          max-height: none;
+          border-radius: 0;
+          transform: none;
         }
         .full-generated-page-controls {
           flex-wrap: wrap;
           justify-content: stretch;
           padding: 8px;
+          padding-top: calc(8px + env(safe-area-inset-top));
         }
         .full-generated-page-publish-status { flex: 1 0 100%; }
         .full-generated-page-controls button { flex: 1 1 120px; min-height: 40px; }
-        .full-generated-page-container:not(.full-generated-page-fullscreen) .full-generated-page-viewport {
-          height: 70svh;
-          max-height: 70svh;
+        /* Issue #320 part 2: the shell never allows sideways movement in
+           either windowed or full-screen state — vertical scrolling only. */
+        .full-generated-page-viewport {
+          overflow-x: hidden;
+          touch-action: pan-y;
         }
-        .full-generated-page-container:not(.full-generated-page-fullscreen) .full-generated-page-frame {
-          height: 70svh !important;
-          min-height: 0;
-          max-height: 70svh;
+        .full-generated-page-frame {
+          touch-action: pan-y;
         }
         .site-preview.full-page-generating,
         .site-preview.full-page-failed,
