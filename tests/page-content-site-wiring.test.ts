@@ -345,7 +345,7 @@ describe("public token site ([slug]) chrome content wiring", () => {
     // Honest empty-state copy (issue #286): Dexscreener doesn't index
     // Robinhood Chain Testnet, so this should never read as broken.
     expect(dexscreener.props.emptyHeading).toBe("Chart activates once trading is indexed");
-    expect(dexscreener.props.emptyCopy).toContain("doesn't index Robinhood Chain Testnet");
+    expect(dexscreener.props.emptyCopy).toContain("doesn't index Robinhood Chain");
   });
 
   it("hides the Dexscreener chrome entirely when published invisible, even with a contract address", async () => {

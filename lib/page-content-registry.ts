@@ -189,7 +189,7 @@ export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
         type: "text",
         label: "No-pair-yet copy",
         defaultValue:
-          "Dexscreener doesn't index Robinhood Chain Testnet, so no pair will show here while trading stays on testnet. The chart activates automatically once this token trades on a network Dexscreener indexes.",
+          "Dexscreener doesn't index Robinhood Chain yet, so no pair will show here. The chart activates automatically once this token trades on a network Dexscreener indexes.",
       },
       {
         id: "dexscreener_check_label",

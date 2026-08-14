@@ -132,7 +132,7 @@ function readError(error: unknown): string {
   if (typeof error === "object" && error && "message" in error) {
     return String((error as { message: unknown }).message);
   }
-  return "The testnet deployment failed.";
+  return "The deployment failed.";
 }
 
 export function RobinhoodTestnetDeploymentController() {
@@ -224,7 +224,7 @@ export function RobinhoodTestnetDeploymentController() {
         await provider.request({ method: "eth_chainId" }),
       );
       if (currentChainId !== TARGET_CHAIN_ID) {
-        setStatus("Switching the confirmed wallet to Robinhood Chain Testnet…");
+        setStatus("Switching your wallet to Robinhood Chain…");
         await switchToTestnet(provider);
       }
 
@@ -243,7 +243,7 @@ export function RobinhoodTestnetDeploymentController() {
       const account = accounts[0] as Address | undefined;
       if (!account) throw new Error("The selected wallet returned no account.");
 
-      setStatus("Review and approve the testnet contract deployment in MetaMask…");
+      setStatus("Review and approve the contract deployment in MetaMask…");
       const transport = custom(provider);
       const walletClient = createWalletClient({
         chain: robinhoodTestnet,
@@ -288,7 +288,7 @@ export function RobinhoodTestnetDeploymentController() {
           ? { ...current, contractAddress, status: "launched" }
           : current,
       );
-      setStatus("Testnet token deployed successfully. Mainnet is still blocked.");
+      setStatus("Token deployed successfully. Mainnet is still blocked.");
     } catch (error) {
       setStatus(readError(error));
     } finally {
@@ -306,14 +306,14 @@ export function RobinhoodTestnetDeploymentController() {
     <section className={styles.panel} aria-live="polite">
       <header>
         <div>
-          <small>TESTNET DEPLOYMENT</small>
+          <small>TOKEN DEPLOYMENT</small>
           <h3>Deploy ERC-20 token</h3>
         </div>
         <span>READY</span>
       </header>
 
       <dl>
-        <div><dt>Network</dt><dd>Robinhood Chain Testnet</dd></div>
+        <div><dt>Network</dt><dd>Robinhood Chain</dd></div>
         <div><dt>Chain ID</dt><dd>{ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL} · {TARGET_CHAIN_ID}</dd></div>
         <div><dt>Wallet route</dt><dd>{walletName}</dd></div>
         <div><dt>Token</dt><dd>{project.name} · ${project.ticker}</dd></div>
@@ -362,7 +362,7 @@ export function RobinhoodTestnetDeploymentController() {
           onClick={deploy}
           disabled={!confirmed || busy}
         >
-          {busy ? "DEPLOYING…" : "DEPLOY TESTNET TOKEN"}
+          {busy ? "DEPLOYING…" : "DEPLOY TOKEN"}
         </button>
       )}
 

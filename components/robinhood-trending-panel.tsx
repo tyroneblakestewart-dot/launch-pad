@@ -99,7 +99,7 @@ export function RobinhoodTrendingPanel() {
       <div className={styles.feed}>
         {activeTab === "robinhood" ? (
           <div className={styles.comingSoon}>
-            <span className={styles.badge}>Testnet</span>
+            <span className={styles.badge}>Coming soon</span>
             <p className={styles.empty}>Robinhood Chain trending is coming soon.</p>
           </div>
         ) : unavailable ? (

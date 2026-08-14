@@ -49,7 +49,7 @@ describe("/testnet route factory routing", () => {
     // Keeps the existing LaunchResult / result UI / explorer link.
     expect(launcher).toContain("type LaunchResult");
     expect(launcher).toContain("explorer.testnet.chain.robinhood.com/address/");
-    expect(launcher).toContain("Open in testnet explorer");
+    expect(launcher).toContain("Open in explorer");
   });
 
   it("does not route the studio's separate deployment controller through this change", async () => {
