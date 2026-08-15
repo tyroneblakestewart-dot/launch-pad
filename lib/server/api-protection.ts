@@ -23,6 +23,16 @@ export const CHAT_POST_LIMIT = 30;
 export const CHAT_REPORT_LIMIT = 20;
 export const CHAT_RATE_WINDOW_MS = 60 * 60 * 1000;
 
+// AI Social Studio (issue #332) — every route spends AI tokens, so each gets
+// its own named per-IP limit on top of the shared Pro/Pro Bundle entitlement
+// check. Voice profile and mascot DNA are heavier one-off "teach" calls;
+// draft and scene-image generation are meant to be used repeatedly.
+export const SOCIAL_VOICE_PROFILE_LIMIT = 10;
+export const SOCIAL_DRAFT_LIMIT = 30;
+export const SOCIAL_MASCOT_DNA_LIMIT = 10;
+export const SOCIAL_MASCOT_IMAGE_LIMIT = 20;
+export const SOCIAL_STUDIO_WINDOW_MS = 60 * 60 * 1000;
+
 type RateRecord = { count: number; resetAt: number };
 type RateStore = Map<string, RateRecord>;
 
@@ -330,4 +340,26 @@ export function resetChatRateLimitsForTests() {
     "token-chat-post",
     "token-chat-report",
   ].forEach((name) => namedRateStore(name).clear());
+}
+
+export function consumeSocialVoiceProfileRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("social-voice-profile"), ip, SOCIAL_VOICE_PROFILE_LIMIT, SOCIAL_STUDIO_WINDOW_MS, now);
+}
+
+export function consumeSocialDraftRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("social-draft"), ip, SOCIAL_DRAFT_LIMIT, SOCIAL_STUDIO_WINDOW_MS, now);
+}
+
+export function consumeSocialMascotDnaRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("social-mascot-dna"), ip, SOCIAL_MASCOT_DNA_LIMIT, SOCIAL_STUDIO_WINDOW_MS, now);
+}
+
+export function consumeSocialMascotImageRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("social-mascot-image"), ip, SOCIAL_MASCOT_IMAGE_LIMIT, SOCIAL_STUDIO_WINDOW_MS, now);
+}
+
+export function resetSocialStudioRateLimitsForTests() {
+  ["social-voice-profile", "social-draft", "social-mascot-dna", "social-mascot-image"].forEach((name) =>
+    namedRateStore(name).clear(),
+  );
 }

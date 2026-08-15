@@ -44,6 +44,13 @@ export const ADMIN_SERVICE_DEFINITIONS = [
       "Dormant-by-design, approve-first congratulatory X posting bot for graduating pump.fun tokens.",
     affectedRoutes: "/api/admin/outreach, /api/admin/outreach/actions, /api/cron/outreach",
   },
+  {
+    key: "social-studio-ai",
+    label: "AI Social Studio",
+    description:
+      "Pro/Pro Bundle-gated voice-profile, draft and mascot scene-image generation for the /social Setup and Calendar tabs.",
+    affectedRoutes: "/api/social/voice-profile, /api/social/draft, /api/social/mascot/visual-dna, /api/social/mascot/image",
+  },
 ] as const;
 
 export type AdminServiceKey = (typeof ADMIN_SERVICE_DEFINITIONS)[number]["key"];
@@ -90,6 +97,7 @@ export const SYSTEM_HEALTH_CHECK_IDS = [
   "hoodchat",
   "token-chat",
   "outreach",
+  "social-studio-ai",
 ] as const;
 
 export type SystemHealthCheckId = (typeof SYSTEM_HEALTH_CHECK_IDS)[number];

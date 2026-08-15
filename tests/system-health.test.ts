@@ -5,6 +5,7 @@ import {
   checkDeploymentHealth,
   checkHoodchatHealth,
   checkOutreachHealth,
+  checkSocialStudioAiHealth,
   checkSubscribersHealth,
   checkTokenChatHealth,
   checkWebsiteGenerationHealth,
@@ -40,6 +41,36 @@ describe("checkWebsiteGenerationHealth", () => {
       status: "green",
       message: expect.stringContaining("vercel-ai-gateway"),
     });
+  });
+});
+
+describe("checkSocialStudioAiHealth (issue #332)", () => {
+  it("is amber when no AI generation provider is configured", () => {
+    const result = checkSocialStudioAiHealth({});
+    expect(result).toMatchObject({ id: "social-studio-ai", status: "amber" });
+  });
+
+  it("is amber when a provider is configured but the shared secret is missing", () => {
+    const result = checkSocialStudioAiHealth({ OPENAI_API_KEY: "test-key" });
+    expect(result).toMatchObject({ id: "social-studio-ai", status: "amber" });
+  });
+
+  it("is green with a direct OpenAI key and the shared secret configured, and notes mascot images are available", () => {
+    const result = checkSocialStudioAiHealth({
+      OPENAI_API_KEY: "test-key",
+      GENERATE_SITE_STYLE_SHARED_SECRET: "test-secret",
+    });
+    expect(result).toMatchObject({ id: "social-studio-ai", status: "green" });
+    expect(result.message).toContain("Mascot image generation is available");
+  });
+
+  it("is green but notes mascot images are unavailable through the Vercel AI Gateway fallback", () => {
+    const result = checkSocialStudioAiHealth({
+      AI_GATEWAY_API_KEY: "gateway-key",
+      GENERATE_SITE_STYLE_SHARED_SECRET: "test-secret",
+    });
+    expect(result).toMatchObject({ id: "social-studio-ai", status: "green" });
+    expect(result.message).toContain("unavailable through this gateway fallback");
   });
 });
 
@@ -205,7 +236,7 @@ describe("checkOutreachHealth", () => {
 });
 
 describe("getSystemHealth", () => {
-  it("returns all eight checks, one per required area", async () => {
+  it("returns all nine checks, one per required area", async () => {
     const checks = await getSystemHealth({
       env: { NODE_ENV: "development" },
       database: { databaseUrl: "" },
@@ -222,6 +253,7 @@ describe("getSystemHealth", () => {
         "deployment",
         "hoodchat",
         "outreach",
+        "social-studio-ai",
         "subscribers",
         "token-chat",
         "website-generation",

@@ -6,10 +6,12 @@ the AI Social Studio's "Drop your mascot" feature (see `lib/plans-section.ts`
 `lib/launch-paths.ts`). It is implemented by
 `lib/server/mascot-prompt-builder.ts`.
 
-It does **not** cover calling an image-generation API. There is no image
-pipeline wired up yet. The builder is a pure prompt layer that accepts
-`(mascotVisualDNA, sceneInput, project)` and returns a finished prompt plus
-scene and colour-world metadata.
+It does not cover the vision analysis that derives `MascotVisualDNA` from an
+uploaded reference image, or the image-generation API call — see "Wiring
+(issue #332)" below for those. The builder itself remains a pure prompt
+layer that accepts `(mascotVisualDNA, sceneInput, project)` and returns a
+finished prompt plus scene and colour-world metadata; it makes no network
+call itself.
 
 ## What v2 changes
 
@@ -361,3 +363,34 @@ palette family.
   `strippedTerms` fields and adds `colourWorld` metadata containing:
   `coreColours`, `environmentalColours`, `contrastColours`, `accentColours`,
   `paletteKey`, and `source`.
+
+## Wiring (issue #332)
+
+The AI Social Studio's "Your mascot" section (`components/social-hub.tsx`)
+now calls two Pro/Pro Bundle-gated server routes around this builder:
+
+1. `POST /api/social/mascot/visual-dna` — a one-time step when a mascot
+   reference image is uploaded. `lib/server/mascot-visual-dna-pipeline.ts`
+   sends the image to the AI provider's vision endpoint (the same
+   `resolveAIResponsesRuntime`/`/v1/responses` pattern as the artwork
+   identity analysis in `lib/site-style-openai-pipeline.ts`) and parses the
+   result into a `MascotVisualDNA`. The client persists it, and the raw
+   reference image, in the per-project IndexedDB store
+   (`lib/social-studio-db.ts`) — never in localStorage or long-lived React
+   state (CLAUDE.md rule 7).
+2. `POST /api/social/mascot/image` — called each time the user picks an
+   action/place chip or free-text scene. It calls `buildMascotImagePrompt`
+   with the locked `MascotVisualDNA` and the chosen scene, then
+   `lib/server/mascot-image-request.ts` sends that prompt to OpenAI's
+   `/v1/images/generations` endpoint directly. This only works when the
+   resolved runtime holds a **direct** `OPENAI_API_KEY` — the Vercel AI
+   Gateway fallback used elsewhere in this app targets the chat-style
+   `/v1/responses` shape, and its image-generation surface is unverified, so
+   the route fails closed with a clear 503 rather than guessing at an
+   unconfirmed endpoint shape. Voice profile and draft text generation are
+   unaffected by this limitation.
+
+The generated image is attachable to the existing Telegram publish flow and
+downloadable for manual attachment to an X post; it is not, on its own,
+posted anywhere without an explicit user tap, consistent with the
+platform's approve-first posture.

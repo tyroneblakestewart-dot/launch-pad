@@ -1,0 +1,144 @@
+import { NextResponse } from "next/server";
+import {
+  SOCIAL_MASCOT_DNA_LIMIT,
+  consumeSocialMascotDnaRateLimit,
+  getClientIp,
+  isGenerateSiteStyleRequestAuthorised,
+} from "@/lib/server/api-protection";
+import { getVercelOidcToken, resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
+import type { OpenAIResponse } from "@/lib/server/generate-site-style";
+import {
+  buildMascotVisualDnaRequestBody,
+  isValidMascotImageDataUrl,
+  parseMascotVisualDnaResponse,
+} from "@/lib/server/mascot-visual-dna-pipeline";
+import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
+import { authoriseSocialStudioRequest } from "@/lib/server/social-studio-entitlement";
+
+export const runtime = "nodejs";
+export const maxDuration = 30;
+
+type VisualDnaRequestBody = {
+  walletAddress?: unknown;
+  project?: { name?: unknown; ticker?: unknown };
+  imageDataUrl?: unknown;
+};
+
+function noStoreHeaders(extra: Record<string, string> = {}) {
+  return { "Cache-Control": "no-store", ...extra };
+}
+
+export async function POST(request: Request) {
+  const sharedSecret = process.env.GENERATE_SITE_STYLE_SHARED_SECRET || "";
+  const allowedOrigin = process.env.GENERATE_SITE_STYLE_ALLOWED_ORIGIN || "https://hoodlums.dev";
+  const protectionEnabled = Boolean(sharedSecret);
+
+  if (!protectionEnabled && process.env.NODE_ENV !== "test") {
+    return NextResponse.json(
+      { error: "AI Social Studio access protection is not configured." },
+      { status: 503, headers: noStoreHeaders() },
+    );
+  }
+
+  let rateHeaders: Record<string, string> = {};
+  if (protectionEnabled) {
+    if (!isGenerateSiteStyleRequestAuthorised(request, sharedSecret, allowedOrigin)) {
+      return NextResponse.json({ error: "Unauthorised mascot-analysis request." }, { status: 401, headers: noStoreHeaders() });
+    }
+    const rate = consumeSocialMascotDnaRateLimit(getClientIp(request));
+    rateHeaders = {
+      "RateLimit-Limit": String(SOCIAL_MASCOT_DNA_LIMIT),
+      "RateLimit-Remaining": String(rate.remaining),
+      "RateLimit-Reset": String(Math.ceil(rate.resetAt / 1000)),
+    };
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "Mascot-analysis rate limit exceeded. Try again later." },
+        { status: 429, headers: noStoreHeaders({ ...rateHeaders, "Retry-After": String(rate.retryAfterSeconds) }) },
+      );
+    }
+  }
+
+  const isolationResponse = await getServiceIsolationResponse("social-studio-ai");
+  if (isolationResponse) return isolationResponse;
+
+  let body: VisualDnaRequestBody;
+  try {
+    body = (await request.json()) as VisualDnaRequestBody;
+  } catch {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400, headers: noStoreHeaders(rateHeaders) });
+  }
+
+  const authorisation = await authoriseSocialStudioRequest(body.walletAddress);
+  if (authorisation.status === "invalid-wallet") {
+    return NextResponse.json({ error: authorisation.message }, { status: 401, headers: noStoreHeaders(rateHeaders) });
+  }
+  if (authorisation.status === "unavailable") {
+    return NextResponse.json({ error: authorisation.message }, { status: 503, headers: noStoreHeaders(rateHeaders) });
+  }
+  if (authorisation.status === "upsell") {
+    return NextResponse.json(
+      { error: authorisation.message, code: "social-studio-plan-required", upsell: true },
+      { status: 403, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  const name = typeof body.project?.name === "string" ? body.project.name.trim() : "";
+  const ticker = typeof body.project?.ticker === "string" ? body.project.ticker.trim() : "";
+  if (!name || !ticker) {
+    return NextResponse.json({ error: "A project name and ticker are required." }, { status: 400, headers: noStoreHeaders(rateHeaders) });
+  }
+  if (!isValidMascotImageDataUrl(body.imageDataUrl)) {
+    return NextResponse.json({ error: "Upload a valid mascot reference image." }, { status: 400, headers: noStoreHeaders(rateHeaders) });
+  }
+
+  const ai = resolveAIResponsesRuntime(process.env, getVercelOidcToken(request));
+  if (!ai) {
+    return NextResponse.json(
+      { error: "AI mascot analysis is not configured on this deployment." },
+      { status: 503, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(ai.responsesUrl, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${ai.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify(buildMascotVisualDnaRequestBody({ name, ticker }, body.imageDataUrl, ai.model)),
+      signal: AbortSignal.timeout(25_000),
+    });
+  } catch (error) {
+    console.error("Mascot visual-DNA request failed before receiving a response", error instanceof Error ? error.message : error);
+    return NextResponse.json(
+      { error: "The mascot-analysis request could not reach the AI provider. Try again." },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    console.error("Mascot visual-DNA request failed", response.status, message.slice(0, 500));
+    return NextResponse.json(
+      { error: "The mascot-analysis request failed. Try again." },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  let payload: OpenAIResponse;
+  try {
+    payload = (await response.json()) as OpenAIResponse;
+  } catch {
+    return NextResponse.json({ error: "The AI returned an invalid response." }, { status: 502, headers: noStoreHeaders(rateHeaders) });
+  }
+
+  const mascotVisualDNA = parseMascotVisualDnaResponse(payload);
+  if (!mascotVisualDNA) {
+    return NextResponse.json(
+      { error: "The AI could not extract a mascot identity from that image. Try a clearer image." },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  return NextResponse.json({ mascotVisualDNA }, { headers: noStoreHeaders(rateHeaders) });
+}

@@ -56,20 +56,39 @@ describe("Hoodlums AI Social Studio", () => {
     expect(route).toContain("publishTelegramPost");
   });
 
-  it("marks unimplemented AI, scheduling, queue and rules features as coming soon", async () => {
+  it("activates the AI Social Studio tabs (issue #332): voice, drafting, mascot images, calendar AI and the queue", async () => {
     const social = await source("components", "social-hub.tsx");
 
     expect(social).toContain("Teach the AI your voice");
+    expect(social).toContain('fetch("/api/social/voice-profile"');
+    expect(social).toContain("buildVoiceProfile");
+    expect(social).not.toContain('<textarea disabled placeholder="Paste a post here');
+
+    expect(social).toContain('fetch("/api/social/draft"');
+    expect(social).toContain("generateDraftFromSetup");
+    expect(social).toContain("generateDraftForDay");
+
     expect(social).toContain("Your mascot");
+    expect(social).toContain('fetch("/api/social/mascot/visual-dna"');
+    expect(social).toContain('fetch("/api/social/mascot/image"');
+    expect(social).toContain("toggleMascotAction");
+    expect(social).toContain("toggleMascotPlace");
+    expect(social).not.toContain("{MASCOT_ACTIONS.map((label) => <button type=\"button\" disabled key={label}>{label}</button>)}");
+
     expect(social).toContain("MONTH_NAMES[calendarView.month]");
+    expect(social).toContain('onClick={generateDraftForDay} disabled={calendarAiBusy}');
+
     expect(social).toContain("What&apos;s going out");
+    expect(social).toContain("postQueueItemToX");
+    expect(social).toContain("sendQueueItemToTelegram");
+    expect(social).toContain("removeQueueItem");
+    expect(social).not.toContain("No queue is being simulated.");
+
+    // Rules tab and the still out-of-scope calendar/bot controls stay coming soon.
     expect(social).toContain("Words to avoid");
     expect(social).toContain("Coming soon");
-    expect(social).toContain("No queue is being simulated.");
-    expect(social).toContain("No fabricated history.");
-    // Scheduling navigation is live, but the actual add-item flow stays coming soon.
-    expect(social).toContain('disabled className={styles.aiMakeButton}');
     expect(social).toContain('disabled className={styles.ownPostButton}');
+    expect(social).toContain("Add to your channel");
   });
 
   it("supports real month navigation, today highlighting and year-boundary rollover in the calendar", async () => {

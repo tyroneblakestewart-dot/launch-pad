@@ -13,6 +13,11 @@ import { resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
 import {
   GENERATE_SITE_STYLE_LIMIT,
   GENERATE_SITE_STYLE_WINDOW_MS,
+  SOCIAL_DRAFT_LIMIT,
+  SOCIAL_MASCOT_DNA_LIMIT,
+  SOCIAL_MASCOT_IMAGE_LIMIT,
+  SOCIAL_STUDIO_WINDOW_MS,
+  SOCIAL_VOICE_PROFILE_LIMIT,
 } from "@/lib/server/api-protection";
 import { getAdminOperationsStore } from "@/lib/server/admin-operations-store";
 import { getPostgresPool } from "@/lib/server/postgres";
@@ -237,6 +242,86 @@ export async function buildWebsiteGenerationPipeline(
       providerReachable,
       lastGenerationOutcomeStage(),
       responseValidationStage(),
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// AI Social Studio (issue #332)
+// ---------------------------------------------------------------------------
+
+export type SocialStudioAiPipelineDeps = {
+  env?: Record<string, string | undefined>;
+  requestOidcToken?: string;
+  getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
+};
+
+function socialStudioEntitlementStage(env: Record<string, string | undefined>): AdminPipelineStage {
+  const databaseUrl = (env.DATABASE_URL || "").trim();
+  return stage(
+    "entitlement-configured",
+    "Entitlement check (subscriptions table)",
+    databaseUrl ? "green" : "red",
+    databaseUrl
+      ? "DATABASE_URL is configured; every route re-checks the wallet's Pro/Pro Bundle subscription before spending AI tokens."
+      : "DATABASE_URL is not configured; every route fails closed with a 503 rather than skip the entitlement check.",
+  );
+}
+
+function socialStudioRateLimiterStage(env: Record<string, string | undefined>): AdminPipelineStage {
+  const secret = (env.GENERATE_SITE_STYLE_SHARED_SECRET || "").trim();
+  if (!secret) {
+    return stage(
+      "rate-limiter",
+      "Rate limiter",
+      "amber",
+      "Rate limiting only applies once shared-secret protection is enabled.",
+    );
+  }
+  const windowMinutes = Math.round(SOCIAL_STUDIO_WINDOW_MS / 60_000);
+  return stage(
+    "rate-limiter",
+    "Rate limiter",
+    "green",
+    `Configured per IP per ${windowMinutes} minutes: voice-profile ${SOCIAL_VOICE_PROFILE_LIMIT}, draft ${SOCIAL_DRAFT_LIMIT}, mascot analysis ${SOCIAL_MASCOT_DNA_LIMIT}, mascot image ${SOCIAL_MASCOT_IMAGE_LIMIT}.`,
+  );
+}
+
+function socialStudioImageProviderStage(env: Record<string, string | undefined>, requestOidcToken: string): AdminPipelineStage {
+  const runtime = resolveAIResponsesRuntime(env, requestOidcToken);
+  if (!runtime) {
+    return stage("mascot-image-provider", "Mascot image provider", "amber", "No AI generation provider is configured.");
+  }
+  if (runtime.source === "openai") {
+    const imageModel = (env.OPENAI_IMAGE_MODEL || "").trim() || "gpt-image-1";
+    return stage("mascot-image-provider", "Mascot image provider", "green", `Direct OpenAI key configured; images call ${imageModel}.`);
+  }
+  return stage(
+    "mascot-image-provider",
+    "Mascot image provider",
+    "amber",
+    "Only the Vercel AI Gateway fallback is configured; mascot image generation needs a direct OPENAI_API_KEY and returns 503 until then. Voice profile and draft text generation are unaffected.",
+  );
+}
+
+export async function buildSocialStudioAiPipeline(deps: SocialStudioAiPipelineDeps = {}): Promise<AdminServicePipeline> {
+  const env = deps.env ?? process.env;
+  const requestOidcToken = deps.requestOidcToken ?? "";
+  const getServiceControl =
+    deps.getServiceControl ?? ((key: AdminServiceKey) => getAdminOperationsStore().getServiceControl(key));
+
+  const isolationStage = await chatIsolationStage("social-studio-ai", getServiceControl);
+
+  return {
+    id: "social-studio-ai",
+    label: "AI Social Studio",
+    stages: [
+      providerConfiguredStage(env, requestOidcToken),
+      isolationStage,
+      originCheckStage(env),
+      socialStudioRateLimiterStage(env),
+      socialStudioEntitlementStage(env),
+      socialStudioImageProviderStage(env, requestOidcToken),
     ],
   };
 }
@@ -960,6 +1045,7 @@ export type SystemHealthPipelineDeps = {
   hoodchat?: ChatPipelineDeps;
   tokenChat?: ChatPipelineDeps;
   outreach?: OutreachPipelineDeps;
+  socialStudioAi?: SocialStudioAiPipelineDeps;
 };
 
 /** Builds a single service's pipeline on demand — used by the drill-down endpoint. */
@@ -988,5 +1074,11 @@ export async function buildServicePipeline(
       return buildTokenChatPipeline(deps.tokenChat);
     case "outreach":
       return buildOutreachPipeline({ env: deps.env, ...deps.outreach });
+    case "social-studio-ai":
+      return buildSocialStudioAiPipeline({
+        env: deps.env,
+        requestOidcToken: deps.requestOidcToken,
+        ...deps.socialStudioAi,
+      });
   }
 }

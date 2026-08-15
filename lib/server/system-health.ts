@@ -16,7 +16,8 @@ export type SystemHealthCheck = {
     | "subscribers"
     | "hoodchat"
     | "token-chat"
-    | "outreach";
+    | "outreach"
+    | "social-studio-ai";
   label: string;
   status: SystemHealthStatus;
   message: string;
@@ -319,6 +320,48 @@ export async function checkOutreachHealth(
   }
 }
 
+/**
+ * Reports whether an AI generation provider is configured and whether the
+ * shared-secret protection guarding every AI Social Studio route
+ * (voice-profile, draft, mascot visual-DNA, mascot image) is set up — mirrors
+ * `checkWebsiteGenerationHealth` in shape. Entitlement (Pro/Pro Bundle) is
+ * decided per-request from the `subscriptions` table already covered by the
+ * `database` check, so it is not re-probed here.
+ */
+export function checkSocialStudioAiHealth(
+  env: Record<string, string | undefined> = process.env,
+  requestOidcToken = "",
+): SystemHealthCheck {
+  const id = "social-studio-ai" as const;
+  const label = "AI Social Studio";
+  try {
+    const runtime = resolveAIResponsesRuntime(env, requestOidcToken);
+    if (!runtime) {
+      return { id, label, status: "amber", message: "No AI generation provider is configured." };
+    }
+    const secretConfigured = Boolean((env.GENERATE_SITE_STYLE_SHARED_SECRET || "").trim());
+    if (!secretConfigured) {
+      return {
+        id,
+        label,
+        status: "amber",
+        message: `Ready via ${runtime.source} (${runtime.model}), but GENERATE_SITE_STYLE_SHARED_SECRET is not set — every route rejects requests outside test mode.`,
+      };
+    }
+    const imageGenerationReady = runtime.source === "openai";
+    return {
+      id,
+      label,
+      status: "green",
+      message: imageGenerationReady
+        ? `Ready via ${runtime.source} (${runtime.model}). Mascot image generation is available.`
+        : `Ready via ${runtime.source} (${runtime.model}). Voice profile and draft text generation are available; mascot image generation needs a direct OPENAI_API_KEY and is unavailable through this gateway fallback.`,
+    };
+  } catch {
+    return { id, label, status: "red", message: "AI Social Studio health check failed unexpectedly." };
+  }
+}
+
 export type SystemHealthDeps = {
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
@@ -336,15 +379,17 @@ export type SystemHealthDeps = {
  * the others or the response as a whole.
  */
 export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<SystemHealthCheck[]> {
-  const [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat, outreach] = await Promise.all([
-    checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
-    checkDatabaseHealth(deps.database),
-    checkContractsHealth(deps.contracts),
-    checkDeploymentHealth(deps.env),
-    checkSubscribersHealth(deps.subscribers),
-    checkHoodchatHealth(deps.hoodchat),
-    checkTokenChatHealth(deps.tokenChat),
-    checkOutreachHealth({ env: deps.env, ...deps.outreach }),
-  ]);
-  return [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat, outreach];
+  const [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat, outreach, socialStudioAi] =
+    await Promise.all([
+      checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
+      checkDatabaseHealth(deps.database),
+      checkContractsHealth(deps.contracts),
+      checkDeploymentHealth(deps.env),
+      checkSubscribersHealth(deps.subscribers),
+      checkHoodchatHealth(deps.hoodchat),
+      checkTokenChatHealth(deps.tokenChat),
+      checkOutreachHealth({ env: deps.env, ...deps.outreach }),
+      checkSocialStudioAiHealth(deps.env, deps.requestOidcToken),
+    ]);
+  return [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat, outreach, socialStudioAi];
 }

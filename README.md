@@ -308,7 +308,7 @@ Loading a saved project (or clicking "Reopen generated site" in the preview tool
 | `/bonding-curve` | Review the full-supply curve and automatic pool-graduation lifecycle, plus live read-only graduation status for a configured curve | Foundation page; live trading not active; nav tab hidden unless `NEXT_PUBLIC_SHOW_TESTNET_TOOLS=true` |
 | `/testnet` | Robinhood Chain Testnet and Solana devnet token creation | Test-only |
 | `/monad` | Monad Testnet ERC-20 deployment | Test-only |
-| `/social` | X handoff and Telegram publishing workspace | Available |
+| `/social` | AI Social Studio: X handoff and Telegram publishing, plus Pro/Pro Bundle-gated voice-profile learning, AI draft generation, mascot scene-image generation, calendar AI drafting and a manual approve-first Queue (issue #332) | Available; AI tools require an active Pro/Pro Bundle subscription and, for mascot images, a direct `OPENAI_API_KEY` |
 | `/hoodchat` | Live, wallet-signed community chat feed with category filters and per-message reporting | Available after `DATABASE_URL` and migration setup |
 | `/account` | Account-provider interface preview | Coming later |
 | `/admin` | Private owner-only control panel; System Health and Pages (content CMS) sections | Requires `ADMIN_WALLET_ADDRESS` and/or `ADMIN_PASSWORD`; unauthenticated visitors see only a login screen |
@@ -326,6 +326,10 @@ Loading a saved project (or clicking "Reopen generated site" in the preview tool
 | `/api/token-chat/challenge` | Create a short-lived single-use wallet message challenge for a per-token chat post | Available after `DATABASE_URL` and migration setup |
 | `/api/token-chat/messages` | List a token's chat feed (GET) or verify a signature and post a message (POST) | GET always available; POST requires `DATABASE_URL` and migration setup |
 | `/api/token-chat/report` | Report a token chat message; auto-hides after 3 reports | Available after `DATABASE_URL` and migration setup |
+| `/api/social/voice-profile` | Build a reusable voice profile (tone, vocabulary, cadence, emoji habits) from pasted example posts | Pro/Pro Bundle-gated; shared-secret + Origin + per-IP rate limiting |
+| `/api/social/draft` | Generate an X (≤280 char) and Telegram draft in the taught voice, optionally themed by calendar day | Pro/Pro Bundle-gated; shared-secret + Origin + per-IP rate limiting |
+| `/api/social/mascot/visual-dna` | Extract a locked mascot visual identity from an uploaded reference image | Pro/Pro Bundle-gated; shared-secret + Origin + per-IP rate limiting |
+| `/api/social/mascot/image` | Generate a mascot scene image from the locked visual identity and a chosen action/place | Pro/Pro Bundle-gated; requires a direct `OPENAI_API_KEY` (unavailable through the Vercel AI Gateway fallback) |
 | `/[slug]` | Public generated token site, metadata, artwork and Dexscreener section | Reads durable published records; unknown slugs 404 |
 | `/token/[chain]/[address]` | Full three-column trade/chart/holder page for any token by contract address, launched through Hoodlums or not; centre column includes a live Hoodchat tab | No wallet signature/DB write for the page itself; unsupported chains and invalid addresses 404 |
 
