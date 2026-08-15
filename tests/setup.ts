@@ -14,6 +14,7 @@ beforeEach(() => {
     status: "allowed",
     walletAddress: TEST_PAID_WALLET,
     tier: "bond_pro_site",
+    accessSource: "paid",
     permanent: true,
   }));
 });

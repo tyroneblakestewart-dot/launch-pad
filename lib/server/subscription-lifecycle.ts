@@ -9,6 +9,7 @@ import {
   type SubscriptionStatus,
 } from "@/lib/subscription-lifecycle";
 import { getPostgresPool } from "@/lib/server/postgres";
+import { isTestAccessWallet } from "@/lib/server/test-access";
 import { sendText } from "@/lib/server/telegram";
 
 type SubscriptionAccessRow = {
@@ -47,6 +48,7 @@ export async function getSubscriptionAccess(
     databaseUrl?: string;
     query?: SubscriptionQuery;
     now?: Date;
+    testAccessLookup?: typeof isTestAccessWallet;
   } = {},
 ): Promise<SubscriptionAccess> {
   const normalised = walletAddress.trim().toLowerCase();
@@ -55,6 +57,7 @@ export async function getSubscriptionAccess(
     plan: null,
     status: "expired",
     active: false,
+    accessSource: "none",
     paidFrom: null,
     paidUntil: null,
     daysRemaining: 0,
@@ -66,6 +69,29 @@ export async function getSubscriptionAccess(
   const query = options.query ?? (databaseUrl
     ? ((text: string, params?: unknown[]) => getPostgresPool(databaseUrl).query(text, params)) as SubscriptionQuery
     : null);
+
+  try {
+    const testAccess = await (options.testAccessLookup ?? isTestAccessWallet)(
+      normalised,
+      { databaseUrl },
+    );
+    if (testAccess) {
+      return {
+        walletAddress: normalised,
+        plan: null,
+        status: "active",
+        active: true,
+        accessSource: "test-allowlist",
+        paidFrom: null,
+        paidUntil: null,
+        daysRemaining: 0,
+        telegramLinked: false,
+      };
+    }
+  } catch {
+    // Test access fails closed. Continue to the real subscription lookup.
+  }
+
   if (!query) return empty;
 
   try {
@@ -88,6 +114,7 @@ export async function getSubscriptionAccess(
       plan,
       status,
       active: status !== "expired",
+      accessSource: "paid",
       paidFrom: asIso(row.paid_from),
       paidUntil: asIso(paidUntil),
       daysRemaining: subscriptionDaysRemaining(paidUntil, now),

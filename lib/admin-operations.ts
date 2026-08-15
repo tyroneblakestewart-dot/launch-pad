@@ -44,6 +44,14 @@ export const ADMIN_SERVICE_DEFINITIONS = [
       "Dormant-by-design, approve-first congratulatory X posting bot for graduating pump.fun tokens.",
     affectedRoutes: "/api/admin/outreach, /api/admin/outreach/actions, /api/cron/outreach",
   },
+  {
+    key: "test-access",
+    label: "Wallet test-access allowlist",
+    description:
+      "One-tap kill switch for the admin wallet test-access bypass. Turning this off blocks every allowlisted wallet on the next entitlement check; add/revoke still work but have no effect until it is switched back on. A separate server-only TEST_ACCESS_HARD_DISABLED env var can force this off regardless of this switch.",
+    affectedRoutes:
+      "lib/server/test-access.ts (isTestAccessWallet), consumed by getBespokeSiteAccess and getSubscriptionAccess",
+  },
 ] as const;
 
 export type AdminServiceKey = (typeof ADMIN_SERVICE_DEFINITIONS)[number]["key"];
@@ -68,6 +76,8 @@ export type AdminActivityKind =
   | "payment-received"
   | "subscription-reminder-sent"
   | "site-contract-address-attached"
+  | "test-access-added"
+  | "test-access-revoked"
   | "outreach-posted"
   | "outreach-dismissed";
 

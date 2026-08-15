@@ -13,6 +13,7 @@ import { AdminPagesSection } from "@/components/admin-pages-section";
 import { AdminSiteDomainsSection } from "@/components/admin-site-domains-section";
 import { AdminSubscribersSection } from "@/components/admin-subscribers-section";
 import { AdminSystemHealth } from "@/components/admin-system-health";
+import { AdminTestAccessSection } from "@/components/admin-test-access-section";
 import type {
   AdminOperationsSnapshot,
   AdminServiceKey,
@@ -26,6 +27,7 @@ type SectionId =
   | "issues"
   | "pages"
   | "subscribers"
+  | "test-access"
   | "accounts"
   | "outreach"
   | "system-health";
@@ -37,6 +39,7 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "issues", label: "Issues" },
   { id: "pages", label: "Pages" },
   { id: "subscribers", label: "Subscribers" },
+  { id: "test-access", label: "Test access" },
   { id: "accounts", label: "Accounts" },
   { id: "outreach", label: "Outreach" },
   { id: "system-health", label: "System Health" },
@@ -162,6 +165,7 @@ export function AdminDashboard() {
     activeSection === "system-health" ||
     activeSection === "pages" ||
     activeSection === "subscribers" ||
+    activeSection === "test-access" ||
     activeSection === "accounts" ||
     activeSection === "outreach";
 
@@ -247,6 +251,7 @@ export function AdminDashboard() {
           </>
         ) : null}
         {activeSection === "subscribers" ? <AdminSubscribersSection /> : null}
+        {activeSection === "test-access" ? <AdminTestAccessSection /> : null}
         {activeSection === "accounts" ? <AdminAccountsSection /> : null}
         {activeSection === "outreach" ? <AdminOutreachSection /> : null}
         {activeSection === "system-health" ? <AdminSystemHealth /> : null}

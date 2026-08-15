@@ -33,6 +33,7 @@ describe("bespoke-site wallet challenge origin binding", () => {
       walletAddress: ACCOUNT.address.toLowerCase(),
       allowed: true,
       tier: "bond_pro_site" as const,
+      accessSource: "paid" as const,
       permanent: true,
       paidUntil: null,
       message: "Permanent access is active.",

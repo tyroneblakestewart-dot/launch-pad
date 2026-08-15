@@ -34,11 +34,13 @@ export function ManagerGateway({ headerEyebrow, headerTitle, headerIntro }: Mana
     );
   }
 
-  const hasActiveSubscription = state === "ready" && access !== null && access.active;
+  const hasAccess = state === "ready" && access !== null && access.active;
 
-  if (!hasActiveSubscription) {
+  if (!hasAccess) {
     return <ManagerPlans headerEyebrow={headerEyebrow} headerTitle={headerTitle} headerIntro={headerIntro} />;
   }
+
+  const isTestAccess = access.accessSource === "test-allowlist";
 
   return (
     <main className={styles.shell}>
@@ -50,9 +52,21 @@ export function ManagerGateway({ headerEyebrow, headerTitle, headerIntro }: Mana
 
       <div className={styles.inner}>
         <section className={styles.panel}>
-          <span className={styles.panelEyebrow}>PRO · AI SOCIAL STUDIO</span>
-          <h2>{access.plan ? subscriptionPlanLabel(access.plan) : "Pro"}</h2>
-          <p>Active until {formatDate(access.paidUntil)}</p>
+          <span className={styles.panelEyebrow}>
+            {isTestAccess ? "TEST ACCESS · ADMIN ALLOWLIST" : "PRO · AI SOCIAL STUDIO"}
+          </span>
+          <h2>
+            {isTestAccess
+              ? "Test access"
+              : access.plan
+                ? subscriptionPlanLabel(access.plan)
+                : "Pro"}
+          </h2>
+          {isTestAccess ? (
+            <p>Allowlisted for testing · no payment or revenue recorded</p>
+          ) : (
+            <p>Active until {formatDate(access.paidUntil)}</p>
+          )}
           <Link href="/social" className={styles.cta}>
             Open AI Social Studio
           </Link>

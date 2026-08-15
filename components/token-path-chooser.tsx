@@ -14,6 +14,7 @@ import {
   type PlanPaymentVerification,
 } from "@/lib/plan-payments";
 import type { LaunchPath } from "@/lib/types";
+import { useSubscriptionStatus } from "@/lib/use-subscription-status";
 import {
   OPEN_WORKSPACE_REQUEST_EVENT,
   type OpenWorkspaceRequestDetail,
@@ -34,6 +35,8 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
   const [wasOpen, setWasOpen] = useState(open);
   const [dismissed, setDismissed] = useState(false);
   const builderUnlockGuard = useRef(createPlanBuilderUnlockGuard());
+  const testUnlockGuard = useRef("");
+  const subscription = useSubscriptionStatus();
 
   function beginCheckout(plan: PaidLaunchPath): void {
     setCheckoutPlan(plan);
@@ -65,6 +68,31 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
   useEffect(() => {
     builderUnlockGuard.current.reset();
   }, [checkoutPlan]);
+
+  useEffect(() => {
+    if (!checkoutPlan) testUnlockGuard.current = "";
+  }, [checkoutPlan]);
+
+  useEffect(() => {
+    const access = subscription.access;
+    if (
+      !open ||
+      !checkoutPlan ||
+      subscription.state !== "ready" ||
+      !access?.active ||
+      access.accessSource !== "test-allowlist"
+    ) {
+      return;
+    }
+
+    const key = `${access.walletAddress.toLowerCase()}:${checkoutPlan}`;
+    if (testUnlockGuard.current === key) return;
+    testUnlockGuard.current = key;
+
+    const testPlan = checkoutPlan;
+    setCheckoutPlan(null);
+    onConfirm(testPlan);
+  }, [checkoutPlan, onConfirm, open, subscription.access, subscription.state]);
 
   useEffect(() => {
     if (!open || !presetToConfirm) return;
@@ -154,6 +182,14 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
     );
   }
 
+  const checkingTestAccess =
+    Boolean(checkoutPlan) && subscription.state === "checking";
+  const confirmedTestAccess =
+    Boolean(checkoutPlan) &&
+    subscription.state === "ready" &&
+    subscription.access?.active === true &&
+    subscription.access.accessSource === "test-allowlist";
+
   return (
     <div className={styles.backdrop} role="dialog" aria-modal="true" aria-labelledby="token-path-chooser-title">
       <section className={styles.panel}>
@@ -176,23 +212,39 @@ export function TokenPathChooser({ open, selected, onConfirm }: TokenPathChooser
               maskImage: `url(${HOODLUMS_WORDMARK_IMAGE})`,
             }}
           />
-          <p className={styles.eyebrow}>{checkoutPlan ? "SECURE CHECKOUT" : "CHOOSE YOUR PATH"}</p>
+          <p className={styles.eyebrow}>
+            {confirmedTestAccess
+              ? "TEST ACCESS"
+              : checkoutPlan
+                ? "SECURE CHECKOUT"
+                : "CHOOSE YOUR PATH"}
+          </p>
           <h2 id="token-path-chooser-title">
             {checkoutPlan ? `Unlock ${launchPathLabel(checkoutPlan)}` : "How do you want to launch?"}
           </h2>
           <p className={styles.subheading}>
-            {checkoutPlan
-              ? "No paid feature unlocks until the confirmed Robinhood Chain transaction is verified and recorded by the server."
-              : "Pick a path for this token. You can change it any time before launch."}
+            {confirmedTestAccess
+              ? "The server confirmed admin TEST access. No payment or revenue record was created."
+              : checkoutPlan
+                ? "No paid feature unlocks until the confirmed Robinhood Chain transaction is verified and recorded by the server, unless the connected wallet has server-confirmed TEST access."
+                : "Pick a path for this token. You can change it any time before launch."}
           </p>
         </div>
 
         {checkoutPlan ? (
-          <PlanCheckout
-            plan={checkoutPlan}
-            onBuilderUnlocked={unlockPaidBuilder}
-            onClose={closeCheckout}
-          />
+          checkingTestAccess || confirmedTestAccess ? (
+            <p className={styles.subheading} role="status">
+              {confirmedTestAccess
+                ? "TEST access confirmed. Opening the builder…"
+                : "Checking the connected wallet for admin TEST access…"}
+            </p>
+          ) : (
+            <PlanCheckout
+              plan={checkoutPlan}
+              onBuilderUnlocked={unlockPaidBuilder}
+              onClose={closeCheckout}
+            />
+          )
         ) : (
           <>
             <div className={styles.columns}>
