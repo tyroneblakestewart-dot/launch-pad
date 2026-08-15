@@ -7,6 +7,7 @@ import {
 } from "@/lib/admin-operations";
 import { subscriptionStatusAt } from "@/lib/subscription-lifecycle";
 import { getPostgresPool } from "@/lib/server/postgres";
+import { isTestAccessWallet } from "@/lib/server/test-access";
 
 export type SubscribersPaymentQueryRow = {
   payment_tx_hash: string;
@@ -55,18 +56,22 @@ export type ListSubscribersDeps = {
 };
 
 export const BESPOKE_SITE_ACCESS_TIERS = [
+  "test_access",
   "bond_pro_site",
   "pro",
   "pro_bundle",
 ] as const;
 export type BespokeSiteAccessTier =
   (typeof BESPOKE_SITE_ACCESS_TIERS)[number];
+export type BespokeSiteAccessSource = "none" | "paid" | "test-allowlist";
 
 export type BespokeSiteAccess = {
   status: "ready" | "unavailable";
   walletAddress: string;
   allowed: boolean;
   tier: BespokeSiteAccessTier | null;
+  /** Real server responses always include this; optional keeps older typed test fixtures compatible. */
+  accessSource?: BespokeSiteAccessSource;
   permanent: boolean;
   paidUntil: string | null;
   message: string;
@@ -89,6 +94,7 @@ export type GetBespokeSiteAccessDeps = {
   databaseUrl?: string;
   query?: BespokeSiteAccessQuery;
   now?: Date;
+  testAccessLookup?: typeof isTestAccessWallet;
 };
 
 const SUBSCRIBERS_QUERY = `
@@ -266,6 +272,7 @@ function unavailableAccess(walletAddress: string, message: string): BespokeSiteA
     walletAddress,
     allowed: false,
     tier: null,
+    accessSource: "none",
     permanent: false,
     paidUntil: null,
     message,
@@ -275,8 +282,9 @@ function unavailableAccess(walletAddress: string, message: string): BespokeSiteA
 /**
  * The server-only source of truth for bespoke site access. A verified
  * Bond + Pro Site one-off payment never expires; active Pro and Pro Bundle
- * subscriptions are also accepted. Browser flags and saved projects are
- * never inputs to this decision.
+ * subscriptions are also accepted. An active admin test allowlist row may
+ * grant the same feature access without creating a payment record. Browser
+ * flags and saved projects are never inputs to this decision.
  */
 export async function getBespokeSiteAccess(
   walletAddress: string,
@@ -291,6 +299,7 @@ export async function getBespokeSiteAccess(
       walletAddress: walletAddress.trim().toLowerCase(),
       allowed: false,
       tier: null,
+      accessSource: "none",
       permanent: false,
       paidUntil: null,
       message: "A valid EVM wallet is required.",
@@ -302,6 +311,28 @@ export async function getBespokeSiteAccess(
     ? ((text: string, params?: unknown[]) =>
         getPostgresPool(databaseUrl).query(text, params)) as BespokeSiteAccessQuery
     : null);
+
+  try {
+    const testAccess = await (deps.testAccessLookup ?? isTestAccessWallet)(
+      normalised,
+      { databaseUrl },
+    );
+    if (testAccess) {
+      return {
+        status: "ready",
+        walletAddress: normalised,
+        allowed: true,
+        tier: "test_access",
+        accessSource: "test-allowlist",
+        permanent: true,
+        paidUntil: null,
+        message: "Admin test access is active. No payment was recorded.",
+      };
+    }
+  } catch {
+    // The allowlist fails closed. Paid entitlement is still checked below.
+  }
+
   if (!query) {
     return unavailableAccess(normalised, "DATABASE_URL is not configured.");
   }
@@ -330,6 +361,7 @@ export async function getBespokeSiteAccess(
           walletAddress: normalised,
           allowed: true,
           tier: currentTier,
+          accessSource: "paid",
           permanent,
           paidUntil,
           message: "An active higher-tier subscription includes bespoke site access.",
@@ -343,6 +375,7 @@ export async function getBespokeSiteAccess(
         walletAddress: normalised,
         allowed: true,
         tier: "bond_pro_site",
+        accessSource: "paid",
         permanent: true,
         paidUntil: null,
         message: "Permanent Bond + Pro Site access is active.",
@@ -354,6 +387,7 @@ export async function getBespokeSiteAccess(
       walletAddress: normalised,
       allowed: false,
       tier: null,
+      accessSource: "none",
       permanent: false,
       paidUntil,
       message: "No eligible bespoke-site entitlement was found.",

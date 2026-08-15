@@ -33,6 +33,8 @@ export type BespokeSiteGenerationAuthorisation =
       status: "allowed";
       walletAddress: string;
       tier: BespokeSiteAccessTier;
+      /** Real server authorisations include this; optional keeps older injected test fixtures compatible. */
+      accessSource?: "paid" | "test-allowlist";
       permanent: boolean;
     }
   | { status: "upsell"; walletAddress: string; message: string }
@@ -107,6 +109,12 @@ function accessUnavailable(message: string): BespokeSiteGenerationAuthorisation 
     status: "unavailable",
     message,
   };
+}
+
+function allowedSource(
+  source: "none" | "paid" | "test-allowlist" | undefined,
+): "paid" | "test-allowlist" {
+  return source === "test-allowlist" ? "test-allowlist" : "paid";
 }
 
 export async function issueBespokeSiteGenerationChallenge(
@@ -191,6 +199,7 @@ export async function issueBespokeSiteGenerationChallenge(
         ...challengeInput,
         message: buildBespokeSiteChallengeMessage(challengeInput),
         tier: access.tier,
+        accessSource: allowedSource(access.accessSource),
       },
     };
   } catch (error) {
@@ -312,6 +321,7 @@ export async function authoriseBespokeSiteGeneration(
     status: "allowed",
     walletAddress: challenge.walletAddress,
     tier: access.tier,
+    accessSource: allowedSource(access.accessSource),
     permanent: access.permanent,
   };
 }

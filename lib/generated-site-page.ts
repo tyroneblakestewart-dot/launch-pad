@@ -466,16 +466,48 @@ function escapeForHtmlAttribute(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
+const GENERATED_PAGE_INTERACTIVE_TAP_SELECTOR = [
+  "a",
+  "area[href]",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "label",
+  "summary",
+  "iframe",
+  "audio[controls]",
+  "video[controls]",
+  "[onclick]",
+  "[contenteditable]:not([contenteditable='false'])",
+  "[role='button']",
+  "[role='link']",
+  "[role='menuitem']",
+  "[role='option']",
+  "[role='switch']",
+  "[role='checkbox']",
+  "[role='radio']",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
+// Shared by the studio iframe and the durably served /[slug] iframe. The
+// existing desktop overflow clamp remains unchanged. The new declarations
+// are strictly inside the <=640px media query, where generated layout
+// containers are forced into one vertical track and their direct children
+// lose fixed flex/grid placement that could otherwise sit beyond 390px.
+// Every declaration that must beat generated CSS is !important because this
+// safety style is injected near the start of <head>, before the page's own
+// authored styles.
+const GENERATED_SITE_SAFETY_RESET = `<style>html,body{max-width:100%;overflow-x:hidden}img,video,table,pre{max-width:100%}@media (max-width:640px){html,body{width:100%!important;max-width:100vw!important;overflow-x:hidden!important;overflow-y:auto!important}*,*::before,*::after{box-sizing:border-box!important;min-width:0!important}body :where(main,header,footer,nav,section,article,aside,div,ul,ol,dl,form){width:100%!important;max-width:100%!important;overflow-x:hidden!important;grid-template-columns:minmax(0,1fr)!important;grid-auto-flow:row!important;flex-direction:column!important;flex-wrap:nowrap!important;align-items:stretch!important}body :where(main,header,footer,nav,section,article,aside,div,ul,ol,dl,form)>:not(script):not(style):not(link):not(meta){width:100%!important;min-width:0!important;max-width:100%!important;flex:0 1 auto!important;grid-area:auto!important}body :where(article,li,figure,[class*="card"],[class*="stat"],[class*="tile"],[class*="panel"]){width:100%!important;max-width:100%!important}img,picture,video,canvas{display:block;max-width:100%!important;height:auto!important}svg,iframe{max-width:100%!important}table{width:100%!important;max-width:100%!important;table-layout:fixed!important}th,td,pre,code{overflow-wrap:anywhere!important;word-break:break-word!important}pre,code{max-width:100%!important;white-space:pre-wrap!important}}</style>`;
+
 export type PrepareGeneratedPageForPreviewOptions = {
   // Issue #327 problem 3: the studio's mobile full-screen preview needs to
-  // know about a tap landing anywhere on the generated page — including on
-  // its own content, inside the sandboxed iframe — to reveal its
-  // tap-to-hide controls overlay. A normal click on the page's own content
-  // never bubbles out to the parent document (a sandboxed iframe is a
-  // separate browsing context), so the page has to report it itself.
+  // know about a background tap landing on the generated page — including
+  // inside its sandboxed iframe — to reveal its tap-to-hide controls
+  // overlay. A normal pointer/touch event never crosses the iframe boundary,
+  // so the page reports a movement-filtered, non-interactive tap itself.
   // Defaults to off: app/[slug]/page.tsx also calls this function for the
-  // durably published site, which has no controls overlay to reveal and
-  // must keep emitting byte-identical output.
+  // durably published site, which has no controls overlay to reveal.
   reportTaps?: boolean;
 };
 
@@ -504,12 +536,12 @@ export function prepareGeneratedPageForPreview(
     "base-uri 'none'",
     "frame-src https://dexscreener.com",
   ].join("; ");
-  // Issue #323 part 1: a code-enforced safety net so no generated markup —
-  // however it slipped past the mechanical responsive-baseline validator —
-  // can force horizontal scrolling in the sandboxed iframe. This is
-  // deliberately in addition to, not instead of, that validator.
-  const overflowClamp =
-    "<style>html,body{max-width:100%;overflow-x:hidden}img,video,table,pre{max-width:100%}</style>";
+  // Issue #323 part 1 plus the mobile follow-up: a code-enforced safety net
+  // so generated markup cannot force horizontal scrolling. At <=640px the
+  // same shared layer also collapses structural grid/flex rows into one
+  // full-width vertical track. Because /[slug] prepares stored HTML on every
+  // request, this repairs existing published sites as well as new previews.
+  const overflowClamp = GENERATED_SITE_SAFETY_RESET;
   // Issue #323 part 2.4: the previous bridge posted a height on every single
   // DOM mutation, which under a busy generated page (animations, a
   // MutationObserver-driven counter, etc.) could fire dozens of times a
@@ -517,10 +549,15 @@ export function prepareGeneratedPageForPreview(
   // keeps the parent's height reports meaningful instead of a flood the
   // consumer then has to filter through.
   const bridge = `<script>(function(){var send=function(){var h=Math.max(document.body?document.body.scrollHeight:0,document.documentElement?document.documentElement.scrollHeight:0);parent.postMessage({type:'hoodlums-generated-page-height',height:h},'*')};var scheduled=null;var scheduleSend=function(){if(scheduled)return;scheduled=requestAnimationFrame(function(){scheduled=null;send()})};addEventListener('load',send);addEventListener('resize',scheduleSend);new MutationObserver(scheduleSend).observe(document.documentElement,{subtree:true,childList:true,attributes:true});setTimeout(send,60);setTimeout(send,500);setTimeout(send,1500)})();<\/script>`;
-  // Only posts a message — never calls preventDefault/stopPropagation — so
-  // it can't swallow or interfere with the page's own link/button taps.
+  // iPhone Safari is more reliable with pointer/touch events than a bubbled
+  // click on a blank div. A <=10px gesture counts as a tap; scrolling and
+  // taps that start or finish inside an interactive element are ignored.
+  // The reporter itself uses a synthetic click so the long-standing bridge
+  // contract and its regression coverage stay stable. Nothing calls
+  // preventDefault or stops propagation, so generated links/buttons and
+  // their own delegated handlers continue normally.
   const tapBridge = options.reportTaps
-    ? `<script>(function(){addEventListener('click',function(){parent.postMessage({type:'hoodlums-generated-page-tap'},'*')})})();<\/script>`
+    ? `<script>(function(){var interactive=${JSON.stringify(GENERATED_PAGE_INTERACTIVE_TAP_SELECTOR)};var reporter=document.createDocumentFragment();reporter.addEventListener('click',function(){parent.postMessage({type:'hoodlums-generated-page-tap'},'*')});var tracking=false,moved=false,startX=0,startY=0,startedInteractive=false;var isInteractive=function(target){return target instanceof Element&&Boolean(target.closest(interactive))};var cancel=function(){tracking=false;moved=false;startedInteractive=false};var begin=function(x,y,target){tracking=true;moved=false;startX=x;startY=y;startedInteractive=isInteractive(target)};var move=function(x,y){if(!tracking)return;if(Math.abs(x-startX)>10||Math.abs(y-startY)>10)moved=true};var finish=function(target){if(!tracking)return;var report=!moved&&!startedInteractive&&!isInteractive(target);cancel();if(report)reporter.dispatchEvent(new Event('click'))};if('PointerEvent'in window){addEventListener('pointerdown',function(event){if(event.isPrimary===false||(event.pointerType==='mouse'&&event.button!==0))return;begin(event.clientX,event.clientY,event.target)},{passive:true});addEventListener('pointermove',function(event){if(event.isPrimary===false)return;move(event.clientX,event.clientY)},{passive:true});addEventListener('pointerup',function(event){if(event.isPrimary===false)return;finish(event.target)},{passive:true});addEventListener('pointercancel',cancel,{passive:true})}else{addEventListener('touchstart',function(event){var touch=event.touches[0];if(!touch)return;begin(touch.clientX,touch.clientY,event.target)},{passive:true});addEventListener('touchmove',function(event){var touch=event.touches[0];if(touch)move(touch.clientX,touch.clientY)},{passive:true});addEventListener('touchend',function(event){finish(event.target)},{passive:true});addEventListener('touchcancel',cancel,{passive:true})}})();<\/script>`
     : "";
 
   let output = html.replaceAll(ARTWORK_PLACEHOLDER, artwork);

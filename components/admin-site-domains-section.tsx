@@ -12,7 +12,7 @@ type SiteDomainItem = {
   pathUrl: string;
   subdomainUrl: string | null;
   canonicalUrl: string;
-  entitlementTier: "bond_pro_site" | "pro" | "pro_bundle" | null;
+  entitlementTier: "test_access" | "bond_pro_site" | "pro" | "pro_bundle" | null;
   subdomainStatus: "active" | "eligible" | "path-only" | "draft" | "unavailable";
 };
 
@@ -40,6 +40,11 @@ async function readError(response: Response): Promise<string> {
 
 function shortWallet(value: string): string {
   return value.length > 14 ? `${value.slice(0, 7)}…${value.slice(-5)}` : value;
+}
+
+function entitlementLabel(tier: SiteDomainItem["entitlementTier"]): string {
+  if (tier === "test_access") return "TEST · admin allowlist";
+  return tier || "free/path-only";
 }
 
 export function AdminSiteDomainsSection() {
@@ -142,9 +147,9 @@ export function AdminSiteDomainsSection() {
                 )}
               </span>
 
-              <span className={styles.label}>Owner / tier</span>
+              <span className={styles.label}>Owner / access</span>
               <span className={styles.value}>
-                {shortWallet(site.ownerWalletAddress)} · {site.entitlementTier || "free/path-only"}
+                {shortWallet(site.ownerWalletAddress)} · {entitlementLabel(site.entitlementTier)}
               </span>
             </div>
           </li>
