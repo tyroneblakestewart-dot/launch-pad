@@ -52,6 +52,14 @@ export const ADMIN_SERVICE_DEFINITIONS = [
     affectedRoutes: "/api/social/voice-profile, /api/social/draft, /api/social/mascot/visual-dna, /api/social/mascot/image",
   },
   {
+    key: "social-posting",
+    label: "Social Studio posting",
+    description:
+      "Review-and-release X/Telegram connections and the approve-first scheduled-post queue (Mode 1). Ships dormant until the owner configures the X app and/or Telegram bot.",
+    affectedRoutes:
+      "/api/social/challenge, /api/social/x/connect/start, /api/social/x/connect/callback, /api/social/x/disconnect, /api/social/telegram/connect, /api/social/telegram/disconnect, /api/social/connections, /api/social/posts, /api/social/posts/cancel, /api/cron/social-posting",
+  },
+  {
     key: "test-access",
     label: "Wallet test-access allowlist",
     description:
@@ -86,7 +94,11 @@ export type AdminActivityKind =
   | "test-access-added"
   | "test-access-revoked"
   | "outreach-posted"
-  | "outreach-dismissed";
+  | "outreach-dismissed"
+  | "social-x-connected"
+  | "social-x-disconnected"
+  | "social-telegram-connected"
+  | "social-telegram-disconnected";
 
 export type AdminActivityItem = {
   id: string;
@@ -108,6 +120,7 @@ export const SYSTEM_HEALTH_CHECK_IDS = [
   "token-chat",
   "outreach",
   "social-studio-ai",
+  "social-posting",
 ] as const;
 
 export type SystemHealthCheckId = (typeof SYSTEM_HEALTH_CHECK_IDS)[number];

@@ -269,3 +269,62 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   provider stages) and service-isolation switch, following the
   `website-generation` pattern; it has no Postgres table of its own, so no
   Pages CMS or Activity log changes were needed.
+- `017_social_studio_ai_service_control.sql` (merged separately via #336)
+  widened `admin_service_controls_known_service` /
+  `admin_activity_log_known_service` for `social-studio-ai`, which #334 had
+  added to `ADMIN_SERVICE_DEFINITIONS` without a matching migration.
+- Social Studio connections + Mode 1 review-and-release posting (issue
+  #335) backend is implemented for review — real per-wallet X and Telegram
+  connections plus a durable, browser-independent approve-first scheduled-
+  post queue. Approval IS the create: nothing is written to
+  `social_scheduled_posts` before a wallet has explicitly approved it
+  (migration `018_social_studio_connections.sql`, renumbered above #336's
+  `017_social_studio_ai_service_control.sql` to keep migration numbers
+  unique and ordered — it also widens
+  `admin_service_controls_known_service` / `admin_activity_log_known_service`
+  a second time to add `social-posting` and seeds its default not-isolated
+  row, since `ADMIN_SERVICE_DEFINITIONS` gained that key in this same PR),
+  so "unapproved posts never send" holds by construction. X uses a real
+  3-legged OAuth 1.0a connect flow (`lib/server/social-x-client.ts`,
+  `X_SOCIAL_CONSUMER_KEY`/`SECRET`, a deliberately distinct app from the
+  dormant outreach bot's `X_OUTREACH_*`); the actual `POST /2/tweets`
+  signing/call is shared with the outreach bot via
+  `lib/server/x-tweets-client.ts` + `lib/server/x-oauth1-signing.ts`.
+  Telegram gets a real connect flow (`lib/server/social-telegram-connect.ts`)
+  that verifies the platform bot is actually an admin via
+  `getChat`/`getChatMember` before ever storing a channel binding, instead
+  of trusting a bare chat-ID field. Every wallet-signed action (connect,
+  disconnect, approve-a-post, cancel-a-post) reuses
+  `lib/server/chat-auth.ts`'s challenge/signature primitives from Hoodchat
+  (issue #237) through a single generic challenge route
+  (`POST /api/social/challenge`) rather than duplicating that flow per
+  action. Stored credentials (X tokens, Telegram channel bindings) are
+  AES-256-GCM encrypted at rest (`lib/server/social-credentials-crypto.ts`,
+  `SOCIAL_CREDENTIALS_ENCRYPTION_KEY`) — decrypt failure or a missing key
+  fails closed, never throws into a crash. The shared posting engine
+  (`lib/server/social-posting-cron.ts`, run from
+  `/api/cron/social-posting`) retries each destination independently with
+  exponential backoff up to five attempts before marking it permanently
+  failed; a confirmed broken connection (revoked X token, bot removed as a
+  channel admin, unreadable credentials) immediately flips that connection
+  to `reconnect_needed` and pauses its still-pending destinations with a
+  long backoff so they resume automatically once the user reconnects,
+  rather than being lost — ordinary transient errors only reach
+  `reconnect_needed` after repeated failures. `/admin` gained a
+  `social-posting` System Health pipeline and service-isolation switch
+  (destinations/encryption-key/table-exists/queue-counts stages, following
+  the `outreach` pattern) and four new Activity log kinds for connect/
+  disconnect events; there is no dedicated `/admin` management section
+  since the queue itself lives in `/social`, not `/admin`. Ships dormant
+  per destination: `X_SOCIAL_CONSUMER_KEY`/`SECRET` and
+  `TELEGRAM_BOT_TOKEN` are both owner-set env vars, named in `.env.example`.
+  **Deliberately out of scope for this PR** (per the issue's own "Scope
+  split if needed" note): Mode 2 full autopilot (unattended generate+post)
+  is not built — every send still requires a prior explicit per-post
+  approval recorded in `social_scheduled_posts.approved_by_wallet`, so
+  #332's "no unattended auto-posting" note is not superseded yet. The
+  `/social` Queue tab UI (connection cards, per-post approve/schedule/
+  destination-toggle controls calling these new routes) is also not wired
+  up yet — the backend is ready for it, but touching `social-hub.tsx`
+  needs a dedicated pass with real mobile Safari verification per rule 7,
+  which this PR could not do.

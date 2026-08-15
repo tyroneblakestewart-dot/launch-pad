@@ -17,7 +17,8 @@ export type SystemHealthCheck = {
     | "hoodchat"
     | "token-chat"
     | "outreach"
-    | "social-studio-ai";
+    | "social-studio-ai"
+    | "social-posting";
   label: string;
   status: SystemHealthStatus;
   message: string;
@@ -362,6 +363,48 @@ export function checkSocialStudioAiHealth(
   }
 }
 
+export type SocialPostingPing = () => Promise<unknown>;
+
+/**
+ * Reports whether the `social_scheduled_posts` table backing Social
+ * Studio's review-and-release queue (issue #335) is reachable, and whether
+ * at least one destination (X consumer app or Telegram bot) is configured —
+ * never the credential values themselves, just "configured"/"not configured".
+ */
+export async function checkSocialPostingHealth(
+  deps: { databaseUrl?: string; ping?: SocialPostingPing; env?: Record<string, string | undefined> } = {},
+): Promise<SystemHealthCheck> {
+  const id = "social-posting" as const;
+  const label = "Social Studio posting";
+  const env = deps.env ?? process.env;
+  const xConfigured = Boolean((env.X_SOCIAL_CONSUMER_KEY || "").trim() && (env.X_SOCIAL_CONSUMER_SECRET || "").trim());
+  const telegramConfigured = Boolean((env.TELEGRAM_BOT_TOKEN || "").trim());
+  const destinationNote = xConfigured && telegramConfigured
+    ? "X and Telegram are both configured."
+    : xConfigured
+      ? "Only X is configured; Telegram is dormant (TELEGRAM_BOT_TOKEN unset)."
+      : telegramConfigured
+        ? "Only Telegram is configured; X is dormant (X_SOCIAL_CONSUMER_KEY/SECRET unset)."
+        : "Dormant: neither X nor Telegram is configured.";
+
+  const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl && !deps.ping) {
+    return { id, label, status: "amber", message: `DATABASE_URL is not configured. ${destinationNote}` };
+  }
+  const ping = deps.ping ?? (() => getPostgresPool(databaseUrl).query(`SELECT 1 FROM social_scheduled_posts LIMIT 1`));
+  try {
+    await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, "Social posting health check timed out.");
+    return { id, label, status: xConfigured || telegramConfigured ? "green" : "amber", message: `The social_scheduled_posts table is reachable. ${destinationNote}` };
+  } catch {
+    return {
+      id,
+      label,
+      status: "red",
+      message: `The social_scheduled_posts table is not reachable. Apply migration 018_social_studio_connections.sql. ${destinationNote}`,
+    };
+  }
+}
+
 export type SystemHealthDeps = {
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
@@ -371,6 +414,7 @@ export type SystemHealthDeps = {
   hoodchat?: Parameters<typeof checkHoodchatHealth>[0];
   tokenChat?: Parameters<typeof checkTokenChatHealth>[0];
   outreach?: Parameters<typeof checkOutreachHealth>[0];
+  socialPosting?: Parameters<typeof checkSocialPostingHealth>[0];
 };
 
 /**
@@ -379,7 +423,7 @@ export type SystemHealthDeps = {
  * the others or the response as a whole.
  */
 export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<SystemHealthCheck[]> {
-  const [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat, outreach, socialStudioAi] =
+  const [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat, outreach, socialStudioAi, socialPosting] =
     await Promise.all([
       checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
       checkDatabaseHealth(deps.database),
@@ -390,6 +434,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
       checkTokenChatHealth(deps.tokenChat),
       checkOutreachHealth({ env: deps.env, ...deps.outreach }),
       checkSocialStudioAiHealth(deps.env, deps.requestOidcToken),
+      checkSocialPostingHealth({ env: deps.env, ...deps.socialPosting }),
     ]);
-  return [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat, outreach, socialStudioAi];
+  return [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat, outreach, socialStudioAi, socialPosting];
 }
