@@ -208,3 +208,27 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   from the same `--surface`/`--text` theme variables as the rest of the
   template instead of a color-mix that always resolved to a near-white
   paper card regardless of palette.
+- Mobile preview shell fixes, scoped to the studio's preview only — never
+  desktop rendering or the generated-site output (issue #327). Problem 1:
+  the windowed (non-fullscreen) preview on phones sized the iframe's own
+  height from the generated page's *reported* content height, which is
+  unstable whenever the page sizes a block in viewport-relative units (the
+  free-site template's centred hero and body both do) — feeding that report
+  back into the very iframe height those units resolve against inflated the
+  iframe far past one screen, pushing hero content below the visible slice.
+  `layout()` (`components/full-website-generator.tsx`) now derives the
+  mobile design height from the space actually available instead
+  (`getMobileGeneratedPreviewDesignHeight`); desktop's reportedHeight-driven
+  sizing is untouched. Problem 2: mobile full screen now reaches every
+  screen edge via a `100dvh`-preferred fallback chain (`100vh` →
+  `-webkit-fill-available` → `100svh` → `100dvh`) instead of a bare
+  `100svh`, and the control bar no longer reserves a permanent layout row.
+  Problem 3: mobile full-screen controls default to hidden and slide in as
+  a tap-to-reveal overlay (video-player pattern) — visible for 2s on entry,
+  4s after a tap, indefinitely while focus is inside for keyboard/VoiceOver
+  users. A tap landing inside the sandboxed iframe never bubbles to the
+  parent DOM, so `prepareGeneratedPageForPreview`
+  (`lib/generated-site-page.ts`) gained an opt-in `reportTaps` option that
+  injects a click-forwarding bridge script; the published `/[slug]` route
+  does not pass it, so that route's output is unchanged. Desktop full
+  screen keeps its permanently visible control bar throughout.

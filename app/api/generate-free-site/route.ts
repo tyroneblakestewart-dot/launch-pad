@@ -92,6 +92,14 @@ export const maxDuration = 60;
 
 const ARTWORK_TIMEOUT_MS = 18_000;
 const DESIGN_TIMEOUT_MS = 35_000;
+const ROUTE_BUDGET_MS = maxDuration * 1_000;
+// Leaves room for the parse/render/validation work that still has to happen
+// after the design call returns, so a retry can never itself blow past
+// maxDuration.
+const DESIGN_RETRY_SAFETY_MARGIN_MS = 5_000;
+// Below this, a retry has too little runway to be worth a second round trip
+// to the provider; fail fast instead.
+const DESIGN_RETRY_MIN_TIMEOUT_MS = 3_000;
 
 type ProviderResult =
   | { ok: true; payload: OpenAIResponse }
@@ -152,7 +160,25 @@ function describeProviderFailure(failure: {
   return failure.kind;
 }
 
+// A 4xx means the request itself was rejected (bad payload, auth, quota) and
+// retrying with the same body will not help. Network errors, 5xx and
+// non-JSON payloads are all treated as transient provider trouble worth one
+// retry. This is deliberately blind to *parsed* design failures
+// (parseFreeSiteDesignResponse rejecting a schema-valid HTTP 200) — that is
+// a successful provider response, and retrying it with identical input
+// would just reproduce the same rejection.
+function isTransientProviderFailure(failure: {
+  kind: "network" | "http" | "invalid";
+  status?: number;
+}): boolean {
+  if (failure.kind === "http") {
+    return typeof failure.status === "number" && failure.status >= 500;
+  }
+  return true;
+}
+
 export async function POST(request: Request) {
+  const requestStartedAt = Date.now();
   const sharedSecret = process.env.GENERATE_SITE_STYLE_SHARED_SECRET || "";
   const allowedOrigin =
     process.env.GENERATE_SITE_STYLE_ALLOWED_ORIGIN || "https://hoodlums.dev";
@@ -253,11 +279,20 @@ export async function POST(request: Request) {
   const artworkIdentity = artworkResult.identity;
   const sections = buildFreeSiteSections(body);
 
-  const designResult = await requestProvider(
-    ai,
-    buildFreeSiteDesignRequestBody(input, ai.model, artworkIdentity, sections),
-    DESIGN_TIMEOUT_MS,
-  );
+  const designBody = buildFreeSiteDesignRequestBody(input, ai.model, artworkIdentity, sections);
+  let designResult = await requestProvider(ai, designBody, DESIGN_TIMEOUT_MS);
+  if (!designResult.ok && isTransientProviderFailure(designResult)) {
+    const remainingBudgetMs =
+      ROUTE_BUDGET_MS - (Date.now() - requestStartedAt) - DESIGN_RETRY_SAFETY_MARGIN_MS;
+    const retryTimeoutMs = Math.min(DESIGN_TIMEOUT_MS, remainingBudgetMs);
+    if (retryTimeoutMs >= DESIGN_RETRY_MIN_TIMEOUT_MS) {
+      console.warn(
+        "AI free-site design request failed transiently; retrying once",
+        describeProviderFailure(designResult),
+      );
+      designResult = await requestProvider(ai, designBody, retryTimeoutMs);
+    }
+  }
   if (!designResult.ok) {
     return NextResponse.json(
       {

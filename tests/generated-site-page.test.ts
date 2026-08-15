@@ -183,6 +183,58 @@ describe("generated full website document", () => {
     expect(prepared).toContain("new MutationObserver(scheduleSend)");
   });
 
+  // Issue #327 problem 3: the studio's mobile full-screen preview needs a
+  // tap reported from inside the sandboxed iframe to reveal its
+  // tap-to-hide controls overlay. This must be strictly opt-in — the
+  // durably published /[slug] page (app/[slug]/page.tsx) calls this same
+  // function with no options and has no controls overlay to reveal, so its
+  // output must stay byte-identical to before this feature existed.
+  describe("mobile full-screen tap reporting (issue #327 problem 3)", () => {
+    it("omits the tap bridge by default, matching the published site's untouched output", () => {
+      const prepared = prepareGeneratedPageForPreview(
+        validHtml(),
+        "data:image/webp;base64,aGVsbG8=",
+      );
+      expect(prepared).not.toContain("hoodlums-generated-page-tap");
+    });
+
+    it("adds a click-forwarding bridge only when reportTaps is explicitly requested", () => {
+      const prepared = prepareGeneratedPageForPreview(
+        validHtml(),
+        "data:image/webp;base64,aGVsbG8=",
+        { reportTaps: true },
+      );
+      expect(prepared).toContain(
+        "addEventListener('click',function(){parent.postMessage({type:'hoodlums-generated-page-tap'},'*')})",
+      );
+      // The height-report bridge must still be present alongside it.
+      expect(prepared).toContain("hoodlums-generated-page-height");
+    });
+
+    it("never calls preventDefault or stopPropagation, so it can't swallow the page's own taps", () => {
+      const prepared = prepareGeneratedPageForPreview(
+        validHtml(),
+        "data:image/webp;base64,aGVsbG8=",
+        { reportTaps: true },
+      );
+      const tapBridgeStart = prepared.indexOf("hoodlums-generated-page-tap");
+      const tapBridgeScript = prepared.slice(Math.max(0, tapBridgeStart - 200), tapBridgeStart + 50);
+      expect(tapBridgeScript).not.toContain("preventDefault");
+      expect(tapBridgeScript).not.toContain("stopPropagation");
+    });
+
+    it("the published site route never opts in to tap reporting", () => {
+      const pageSource = readFileSync(
+        path.join(process.cwd(), "app", "[slug]", "page.tsx"),
+        "utf8",
+      );
+      const callStart = pageSource.indexOf("prepareGeneratedPageForPreview(");
+      expect(callStart).toBeGreaterThan(-1);
+      const callEnd = pageSource.indexOf(")", callStart);
+      expect(pageSource.slice(callStart, callEnd)).not.toContain("reportTaps");
+    });
+  });
+
   // Layer 2 of the desktop/mobile responsiveness contract (issue #303): a
   // generated page that has made no attempt at responsive CSS, or that
   // hardcodes a desktop-only wide container outside any breakpoint, should
