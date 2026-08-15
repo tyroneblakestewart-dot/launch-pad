@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getAddress } from "viem";
 import type { AdminPipelineStage } from "@/lib/admin-operations";
+import { getAdminOperationsStore } from "@/lib/server/admin-operations-store";
 import { getPostgresPool } from "@/lib/server/postgres";
 import {
   HEALTH_CHECK_TIMEOUT_MS,
@@ -175,9 +176,62 @@ function testStoreForCurrentProcess(): TestAccessStore | null {
   return process.env.NODE_ENV === "test" ? testStore : null;
 }
 
+export type TestAccessKillSwitchState = {
+  /** Server-only env hard-off. Overrides the admin switch and the database entirely. */
+  hardDisabled: boolean;
+  /** The persisted admin_service_controls row: true unless an administrator paused it. */
+  adminEnabled: boolean;
+  /** Whether the admin switch state could actually be read. */
+  available: boolean;
+  reason: string;
+  updatedAt: string | null;
+  /** The effective decision: hard-off first, then the admin switch, fails closed on any error. */
+  enabled: boolean;
+};
+
+/**
+ * Defence-in-depth server-only hard-off. Set exactly to "true" to force
+ * every test-access grant off regardless of the admin switch or allowlist
+ * rows. Not togglable from /admin — changing it requires Vercel access.
+ */
+export function isTestAccessHardDisabled(): boolean {
+  return (process.env.TEST_ACCESS_HARD_DISABLED || "").trim() === "true";
+}
+
+/**
+ * Reads both kill-switch layers in evaluation order (env hard-off, then the
+ * admin service-isolation switch). Any error reading the admin switch fails
+ * closed: test access is treated as disabled, never enabled.
+ */
+export async function getTestAccessKillSwitchState(): Promise<TestAccessKillSwitchState> {
+  const hardDisabled = isTestAccessHardDisabled();
+  try {
+    const control = await getAdminOperationsStore().getServiceControl("test-access");
+    const adminEnabled = !control.isolated;
+    return {
+      hardDisabled,
+      adminEnabled,
+      available: true,
+      reason: control.reason,
+      updatedAt: control.updatedAt,
+      enabled: !hardDisabled && adminEnabled,
+    };
+  } catch {
+    return {
+      hardDisabled,
+      adminEnabled: false,
+      available: false,
+      reason: "",
+      updatedAt: null,
+      enabled: false,
+    };
+  }
+}
+
 /**
  * Server-only entitlement check. Invalid addresses, missing migration state,
- * and database failures all fail closed and never grant access.
+ * a disabled kill switch, and database failures all fail closed and never
+ * grant access.
  */
 export async function isTestAccessWallet(
   address: unknown,
@@ -185,6 +239,9 @@ export async function isTestAccessWallet(
 ): Promise<boolean> {
   const walletAddress = normaliseTestAccessWalletAddress(address);
   if (!walletAddress) return false;
+
+  const killSwitch = await getTestAccessKillSwitchState();
+  if (!killSwitch.enabled) return false;
 
   const adapter = testStoreForCurrentProcess();
   if (adapter) {
@@ -355,6 +412,58 @@ export function createMemoryTestAccessStore(
       }
       return { ...found };
     },
+  };
+}
+
+/**
+ * Reports the two kill-switch layers as one of three distinct states:
+ * enabled, admin-disabled, or hard-disabled via environment. Any error
+ * reading the admin switch is reported as its own failed-closed state
+ * rather than silently claiming the switch is enabled.
+ */
+export async function buildTestAccessKillSwitchStage(): Promise<AdminPipelineStage> {
+  const id = "test-access-kill-switch";
+  const label = "Test-access kill switch";
+  const state = await getTestAccessKillSwitchState();
+
+  if (state.hardDisabled) {
+    return {
+      id,
+      label,
+      status: "amber",
+      message:
+        "Hard-disabled via TEST_ACCESS_HARD_DISABLED=true. This overrides the admin switch and every allowlist row. Change it in Vercel environment variables, not /admin.",
+      observedAt: null,
+    };
+  }
+
+  if (!state.available) {
+    return {
+      id,
+      label,
+      status: "red",
+      message:
+        "The admin switch state could not be read; test access fails closed and is treated as disabled.",
+      observedAt: null,
+    };
+  }
+
+  if (!state.adminEnabled) {
+    return {
+      id,
+      label,
+      status: "amber",
+      message: `Disabled by an administrator: ${state.reason || "no reason given"}. Allowlist grants are paused; add/revoke still work.`,
+      observedAt: state.updatedAt,
+    };
+  }
+
+  return {
+    id,
+    label,
+    status: "green",
+    message: "Enabled. Allowlisted wallets receive test access on the next entitlement check.",
+    observedAt: state.updatedAt,
   };
 }
 

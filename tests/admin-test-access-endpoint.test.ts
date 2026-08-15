@@ -12,6 +12,7 @@ vi.mock("@/lib/server/admin-operations-store", async (importOriginal) => {
   };
 });
 
+import { PATCH as setServiceIsolation } from "@/app/api/admin/operations/route";
 import {
   GET as getTestAccess,
   PATCH as revokeTestAccess,
@@ -21,6 +22,11 @@ import {
   ADMIN_SESSION_COOKIE,
   hashAdminSessionToken,
 } from "@/lib/server/admin-auth";
+import {
+  createMemoryAdminOperationsStore,
+  resetAdminOperationsStoreForTests,
+  setAdminOperationsStoreForTests,
+} from "@/lib/server/admin-operations-store";
 import {
   createAdminSession,
   createMemoryAdminSessionStore,
@@ -58,10 +64,19 @@ function request(
   });
 }
 
+function operationsRequest(body: unknown, origin = ORIGIN): Request {
+  return new Request(`${ORIGIN}/api/admin/operations`, {
+    method: "PATCH",
+    headers: { Cookie: cookie, Origin: origin, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 beforeEach(async () => {
   activityRecorder.mockClear();
   setAdminSessionStoreForTests(createMemoryAdminSessionStore());
   setTestAccessStoreForTests(createMemoryTestAccessStore());
+  setAdminOperationsStoreForTests(createMemoryAdminOperationsStore());
   await createAdminSession(hashAdminSessionToken(SESSION_TOKEN));
   cookie = `${ADMIN_SESSION_COOKIE}=${SESSION_TOKEN}`;
 });
@@ -69,6 +84,8 @@ beforeEach(async () => {
 afterEach(() => {
   resetAdminStoresForTests();
   resetTestAccessStoreForTests();
+  resetAdminOperationsStoreForTests();
+  delete process.env.TEST_ACCESS_HARD_DISABLED;
 });
 
 describe("/api/admin/test-access authentication", () => {
@@ -202,5 +219,77 @@ describe("admin test-access lifecycle", () => {
     expect(afterRevoke.status).toBe(409);
     const payload = (await afterRevoke.json()) as { error: string };
     expect(payload.error).toContain("audit trail");
+  });
+});
+
+describe("admin test-access kill switch", () => {
+  it("reports the switch as enabled by default in the GET response", async () => {
+    const response = await getTestAccess(request("GET"));
+    const payload = (await response.json()) as {
+      killSwitch: { hardDisabled: boolean; adminEnabled: boolean; available: boolean; enabled: boolean };
+    };
+    expect(payload.killSwitch).toMatchObject({
+      hardDisabled: false,
+      adminEnabled: true,
+      available: true,
+      enabled: true,
+    });
+  });
+
+  it("blocks a wallet immediately when the admin switch is turned off, and add/revoke keep working", async () => {
+    const added = await addTestAccess(
+      request("POST", { walletAddress: WALLET_LOWER, label: "Switch test" }),
+    );
+    expect(added.status).toBe(201);
+    await expect(isTestAccessWallet(WALLET_LOWER)).resolves.toBe(true);
+
+    const isolate = await setServiceIsolation(
+      operationsRequest({
+        serviceKey: "test-access",
+        isolated: true,
+        reason: "Pausing test access for review.",
+      }),
+    );
+    expect(isolate.status).toBe(200);
+    await expect(isTestAccessWallet(WALLET_LOWER)).resolves.toBe(false);
+
+    const getResponse = await getTestAccess(request("GET"));
+    const getPayload = (await getResponse.json()) as {
+      activeCount: number;
+      killSwitch: { adminEnabled: boolean; enabled: boolean };
+    };
+    expect(getPayload.killSwitch).toMatchObject({ adminEnabled: false, enabled: false });
+    // Add/revoke stay usable while the switch is off, so the list can be cleaned up.
+    expect(getPayload.activeCount).toBe(1);
+
+    const secondWallet = "0x2222222222222222222222222222222222222222";
+    const addedWhileOff = await addTestAccess(
+      request("POST", { walletAddress: secondWallet, label: "Added while off" }),
+    );
+    expect(addedWhileOff.status).toBe(201);
+    await expect(isTestAccessWallet(secondWallet)).resolves.toBe(false);
+
+    const restore = await setServiceIsolation(
+      operationsRequest({ serviceKey: "test-access", isolated: false, reason: "Resuming." }),
+    );
+    expect(restore.status).toBe(200);
+    await expect(isTestAccessWallet(WALLET_LOWER)).resolves.toBe(true);
+    await expect(isTestAccessWallet(secondWallet)).resolves.toBe(true);
+  });
+
+  it("hard-disables via TEST_ACCESS_HARD_DISABLED regardless of the admin switch", async () => {
+    const added = await addTestAccess(
+      request("POST", { walletAddress: WALLET_LOWER, label: "Hard-off test" }),
+    );
+    expect(added.status).toBe(201);
+
+    process.env.TEST_ACCESS_HARD_DISABLED = "true";
+    await expect(isTestAccessWallet(WALLET_LOWER)).resolves.toBe(false);
+
+    const getResponse = await getTestAccess(request("GET"));
+    const getPayload = (await getResponse.json()) as {
+      killSwitch: { hardDisabled: boolean; enabled: boolean };
+    };
+    expect(getPayload.killSwitch).toMatchObject({ hardDisabled: true, enabled: false });
   });
 });

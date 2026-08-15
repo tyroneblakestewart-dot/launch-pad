@@ -13,10 +13,20 @@ type TestAccessWallet = {
   active: boolean;
 };
 
+type TestAccessKillSwitchState = {
+  hardDisabled: boolean;
+  adminEnabled: boolean;
+  available: boolean;
+  reason: string;
+  updatedAt: string | null;
+  enabled: boolean;
+};
+
 type TestAccessResponse = {
   wallets: TestAccessWallet[];
   activeCount: number;
   revokedCount: number;
+  killSwitch: TestAccessKillSwitchState;
 };
 
 async function responseError(response: Response, fallback: string): Promise<string> {
@@ -45,6 +55,7 @@ export function AdminTestAccessSection() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -126,7 +137,9 @@ export function AdminTestAccessSection() {
       setWalletAddress("");
       setLabel("");
       setMessage(
-        `TEST access is active for ${wallet}. No payment or revenue record was created.`,
+        data?.killSwitch && !data.killSwitch.enabled
+          ? `${wallet} was added, but TEST access is currently disabled — it will have no effect until you re-enable the switch below.`
+          : `TEST access is active for ${wallet}. No payment or revenue record was created.`,
       );
       await load();
     } catch (submitError) {
@@ -177,6 +190,61 @@ export function AdminTestAccessSection() {
       );
     } finally {
       setRevokingId(null);
+    }
+  }
+
+  async function setKillSwitch(enabled: boolean) {
+    let reason = "";
+    if (!enabled) {
+      const input = window.prompt(
+        "Why are you disabling TEST access? This note is kept in the Admin Activity log. Existing wallets and add/revoke stay usable; only entitlement grants stop.",
+        "Pausing test access for review.",
+      );
+      if (input === null) return;
+      reason = input.trim();
+      if (reason.length < 5) {
+        setError("Explain why in at least 5 characters.");
+        return;
+      }
+    }
+
+    setSwitching(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/admin/operations", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serviceKey: "test-access",
+          isolated: !enabled,
+          reason: reason || "Re-enabled from the Test access section.",
+        }),
+      });
+      if (response.status === 401) {
+        window.location.replace("/admin");
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(
+          await responseError(response, "The test-access switch could not be changed."),
+        );
+      }
+      setMessage(
+        enabled
+          ? "TEST access is enabled. Allowlisted wallets pass entitlement checks again."
+          : "TEST access is disabled. Allowlisted wallets are blocked until you re-enable it. The list below is unchanged and can still be edited.",
+      );
+      await load();
+    } catch (switchError) {
+      setError(
+        switchError instanceof Error
+          ? switchError.message
+          : "The test-access switch could not be changed.",
+      );
+    } finally {
+      setSwitching(false);
     }
   }
 
@@ -238,6 +306,57 @@ export function AdminTestAccessSection() {
           {loading ? "Loading…" : "Refresh"}
         </button>
       </header>
+
+      {data?.killSwitch ? (
+        <div
+          className={styles.killSwitchBanner}
+          data-state={
+            data.killSwitch.hardDisabled
+              ? "hard-disabled"
+              : !data.killSwitch.available
+                ? "unknown"
+                : data.killSwitch.enabled
+                  ? "enabled"
+                  : "disabled"
+          }
+          role="status"
+        >
+          <div>
+            <p className={styles.killSwitchStatus}>
+              {data.killSwitch.hardDisabled
+                ? "HARD-DISABLED · ENVIRONMENT"
+                : !data.killSwitch.available
+                  ? "SWITCH STATE UNKNOWN"
+                  : data.killSwitch.enabled
+                    ? "ENABLED"
+                    : "DISABLED"}
+            </p>
+            <p className={styles.killSwitchDetail}>
+              {data.killSwitch.hardDisabled
+                ? "TEST_ACCESS_HARD_DISABLED=true is set on the server. No wallet can gain test access regardless of the switch below or any allowlist row. Change this in Vercel environment variables, not here."
+                : !data.killSwitch.available
+                  ? "The admin switch state could not be read, so test access fails closed and is treated as disabled until this is confirmed working again."
+                  : data.killSwitch.enabled
+                    ? "Allowlisted wallets pass entitlement checks. Turning this off blocks every wallet immediately; add/revoke below keep working."
+                    : `Disabled${data.killSwitch.reason ? `: ${data.killSwitch.reason}` : "."} Allowlisted wallets are blocked. Add/revoke below still work but have no effect until this is re-enabled.`}
+            </p>
+          </div>
+          {!data.killSwitch.hardDisabled && data.killSwitch.available ? (
+            <button
+              type="button"
+              className={data.killSwitch.enabled ? styles.disableSwitchButton : styles.enableSwitchButton}
+              disabled={switching}
+              onClick={() => void setKillSwitch(!data.killSwitch.enabled)}
+            >
+              {switching
+                ? "Updating…"
+                : data.killSwitch.enabled
+                  ? "Disable test access"
+                  : "Enable test access"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
       {message ? <p className={styles.success} role="status">{message}</p> : null}

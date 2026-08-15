@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { GET as getSubscriptionStatus } from "@/app/api/subscriptions/status/route";
 import {
+  createMemoryAdminOperationsStore,
+  resetAdminOperationsStoreForTests,
+  setAdminOperationsStoreForTests,
+} from "@/lib/server/admin-operations-store";
+import {
   addTestAccessWallet,
   createMemoryTestAccessStore,
   resetTestAccessStoreForTests,
@@ -12,6 +17,7 @@ const WALLET = "0x1111111111111111111111111111111111111111";
 afterEach(() => {
   delete process.env.DATABASE_URL;
   resetTestAccessStoreForTests();
+  resetAdminOperationsStoreForTests();
 });
 
 describe("GET /api/subscriptions/status", () => {
@@ -30,6 +36,7 @@ describe("GET /api/subscriptions/status", () => {
 
   it("returns explicit TEST access from the server for an active allowlisted wallet", async () => {
     setTestAccessStoreForTests(createMemoryTestAccessStore());
+    setAdminOperationsStoreForTests(createMemoryAdminOperationsStore());
     await addTestAccessWallet({
       walletAddress: WALLET,
       label: "Status endpoint test wallet",

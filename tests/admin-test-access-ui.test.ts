@@ -39,6 +39,21 @@ describe("Admin Test access section", () => {
     expect(component).not.toContain("seed phrase");
   });
 
+  it("shows a DISABLED banner with a one-tap toggle wired to the shared service-isolation endpoint", async () => {
+    const component = await source(
+      "components",
+      "admin-test-access-section.tsx",
+    );
+    expect(component).toContain('"DISABLED"');
+    expect(component).toContain('"HARD-DISABLED · ENVIRONMENT"');
+    expect(component).toContain('serviceKey: "test-access"');
+    expect(component).toContain('fetch("/api/admin/operations"');
+    expect(component).toContain("Disable test access");
+    expect(component).toContain("Enable test access");
+    // Hard-disabled is environment-only: no toggle is rendered for it.
+    expect(component).toContain("!data.killSwitch.hardDisabled && data.killSwitch.available");
+  });
+
   it("labels allowlisted Manager and published-site access as TEST rather than paid", async () => {
     const manager = await source("components", "manager-gateway.tsx");
     const domains = await source(
@@ -76,7 +91,7 @@ describe("Admin Test access section", () => {
     expect(testGate).not.toContain("payment_tx_hash");
   });
 
-  it("adds the allowlist to the existing Subscribers System Health pipeline", async () => {
+  it("adds the allowlist and its kill switch to the existing Subscribers System Health pipeline", async () => {
     const route = await source(
       "app",
       "api",
@@ -86,7 +101,20 @@ describe("Admin Test access section", () => {
       "route.ts",
     );
     expect(route).toContain("buildTestAccessHealthStage");
-    expect(route).toContain("subdomainRouting, testAccess");
+    expect(route).toContain("buildTestAccessKillSwitchStage");
+    expect(route).toContain("subdomainRouting, testAccessKillSwitch, testAccess");
+    expect(route).toContain("testAccessKillSwitch,");
     expect(route).toContain("testAccess,");
+  });
+
+  it("reports the kill switch as three distinct System Health states", async () => {
+    const testAccessSource = await source("lib", "server", "test-access.ts");
+    expect(testAccessSource).toContain("buildTestAccessKillSwitchStage");
+    expect(testAccessSource).toContain("test-access-kill-switch");
+    expect(testAccessSource).toContain("Hard-disabled via TEST_ACCESS_HARD_DISABLED=true");
+    expect(testAccessSource).toContain("Disabled by an administrator");
+    expect(testAccessSource).toContain(
+      "Enabled. Allowlisted wallets receive test access on the next entitlement check.",
+    );
   });
 });

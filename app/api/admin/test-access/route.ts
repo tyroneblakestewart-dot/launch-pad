@@ -14,6 +14,7 @@ import {
   TestAccessWalletAlreadyExistsError,
   TestAccessWalletNotFoundError,
   addTestAccessWallet,
+  getTestAccessKillSwitchState,
   listTestAccessWallets,
   revokeTestAccessWallet,
 } from "@/lib/server/test-access";
@@ -60,12 +61,16 @@ export async function GET(request: Request) {
       );
     }
 
-    const wallets = await listTestAccessWallets();
+    const [wallets, killSwitch] = await Promise.all([
+      listTestAccessWallets(),
+      getTestAccessKillSwitchState(),
+    ]);
     return NextResponse.json(
       {
         wallets,
         activeCount: wallets.filter((wallet) => wallet.active).length,
         revokedCount: wallets.filter((wallet) => !wallet.active).length,
+        killSwitch,
       },
       { status: 200, headers: NO_STORE_HEADERS },
     );

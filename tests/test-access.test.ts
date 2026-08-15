@@ -9,6 +9,12 @@ import {
   resetBespokeSiteAuthoriserForTests,
   resetBespokeSiteChallengeIssuerForTests,
 } from "@/lib/server/bespoke-site-entitlement";
+import {
+  createMemoryAdminOperationsStore,
+  resetAdminOperationsStoreForTests,
+  setAdminOperationsStoreForTests,
+  type MemoryAdminOperationsState,
+} from "@/lib/server/admin-operations-store";
 import { getBespokeSiteAccess } from "@/lib/server/subscribers";
 import {
   getSubscriptionAccess,
@@ -18,7 +24,9 @@ import {
   TestAccessWalletAlreadyExistsError,
   addTestAccessWallet,
   buildTestAccessHealthStage,
+  buildTestAccessKillSwitchStage,
   createMemoryTestAccessStore,
+  getTestAccessKillSwitchState,
   isTestAccessWallet,
   listTestAccessWallets,
   resetTestAccessStoreForTests,
@@ -59,12 +67,19 @@ beforeEach(() => {
   // These tests exercise the real allowlist and one-use challenge boundary.
   resetBespokeSiteAuthoriserForTests();
   resetBespokeSiteChallengeIssuerForTests();
+  // Defaults the test-access kill switch to enabled (not isolated), matching
+  // production once migration 016 seeds the row. Kill-switch tests below
+  // override this per scenario.
+  setAdminOperationsStoreForTests(createMemoryAdminOperationsStore());
+  delete process.env.TEST_ACCESS_HARD_DISABLED;
 });
 
 afterEach(() => {
   resetTestAccessStoreForTests();
+  resetAdminOperationsStoreForTests();
   resetBespokeSiteAuthoriserForTests();
   resetBespokeSiteChallengeIssuerForTests();
+  delete process.env.TEST_ACCESS_HARD_DISABLED;
 });
 
 describe("migration 015 test-access audit store", () => {
@@ -332,5 +347,200 @@ describe("admin health and honest money separation", () => {
     expect(moneySource).not.toContain("test_access_wallets");
     expect(allowlistSource).not.toContain("plan_payment_events");
     expect(allowlistSource).not.toContain("persistVerifiedPlanPayment");
+  });
+});
+
+describe("test-access kill switch", () => {
+  async function seedActiveWallet() {
+    const store = createMemoryTestAccessStore();
+    setTestAccessStoreForTests(store);
+    await addTestAccessWallet(
+      { walletAddress: WALLET, label: "Kill switch wallet" },
+      { now: NOW },
+    );
+  }
+
+  it("the admin switch off blocks a previously-active allowlisted wallet on both entitlement paths", async () => {
+    await seedActiveWallet();
+    await expect(isTestAccessWallet(WALLET)).resolves.toBe(true);
+
+    const operationsStore = createMemoryAdminOperationsStore();
+    setAdminOperationsStoreForTests(operationsStore);
+    await operationsStore.setServiceIsolation({
+      key: "test-access",
+      isolated: true,
+      reason: "Pausing for review.",
+      now: NOW,
+    });
+
+    await expect(isTestAccessWallet(WALLET)).resolves.toBe(false);
+    await expect(
+      getBespokeSiteAccess(WALLET, {
+        now: NOW,
+        query: async () => ({ rows: [bespokeRow()] }),
+      }),
+    ).resolves.toMatchObject({ allowed: false, tier: null, accessSource: "none" });
+    await expect(
+      getSubscriptionAccess(WALLET, {
+        query: (async () => {
+          throw new Error("A paid subscription lookup should not be needed.");
+        }) as SubscriptionQuery,
+        now: NOW,
+      }),
+    ).resolves.toMatchObject({ active: false, accessSource: "none" });
+  });
+
+  it("switch on restores a wallet that was blocked while the switch was off", async () => {
+    await seedActiveWallet();
+    const operationsStore = createMemoryAdminOperationsStore();
+    setAdminOperationsStoreForTests(operationsStore);
+    await operationsStore.setServiceIsolation({
+      key: "test-access",
+      isolated: true,
+      reason: "Pausing for review.",
+      now: NOW,
+    });
+    await expect(isTestAccessWallet(WALLET)).resolves.toBe(false);
+
+    await operationsStore.setServiceIsolation({
+      key: "test-access",
+      isolated: false,
+      reason: "Resuming after review.",
+      now: NOW,
+    });
+    await expect(isTestAccessWallet(WALLET)).resolves.toBe(true);
+  });
+
+  it("the env hard-off overrides an admin switch left ON", async () => {
+    await seedActiveWallet();
+    setAdminOperationsStoreForTests(createMemoryAdminOperationsStore());
+    await expect(isTestAccessWallet(WALLET)).resolves.toBe(true);
+
+    process.env.TEST_ACCESS_HARD_DISABLED = "true";
+    await expect(isTestAccessWallet(WALLET)).resolves.toBe(false);
+
+    const state = await getTestAccessKillSwitchState();
+    expect(state).toMatchObject({ hardDisabled: true, adminEnabled: true, enabled: false });
+  });
+
+  it("fails closed when the admin switch state cannot be read", async () => {
+    await seedActiveWallet();
+    resetAdminOperationsStoreForTests();
+    delete process.env.DATABASE_URL;
+
+    await expect(isTestAccessWallet(WALLET)).resolves.toBe(false);
+    const state = await getTestAccessKillSwitchState();
+    expect(state).toMatchObject({ available: false, enabled: false });
+  });
+
+  it("leaves paid access unaffected across all four switch combinations", async () => {
+    const query = (async (sql: string) => {
+      if (sql.includes("FROM subscriptions")) {
+        return {
+          rows: [{
+            wallet_address: PAID_WALLET,
+            tier: "pro",
+            paid_from: "2026-08-01T00:00:00.000Z",
+            paid_until: "2026-09-02T00:00:00.000Z",
+            expires_at: null,
+            telegram_chat_id: null,
+          }],
+        };
+      }
+      return { rows: [{ active: false }] };
+    }) as SubscriptionQuery;
+
+    const combinations: Array<{ hardDisabled: boolean; isolated: boolean }> = [
+      { hardDisabled: false, isolated: false },
+      { hardDisabled: false, isolated: true },
+      { hardDisabled: true, isolated: false },
+      { hardDisabled: true, isolated: true },
+    ];
+
+    for (const combination of combinations) {
+      if (combination.hardDisabled) {
+        process.env.TEST_ACCESS_HARD_DISABLED = "true";
+      } else {
+        delete process.env.TEST_ACCESS_HARD_DISABLED;
+      }
+      const operationsStore = createMemoryAdminOperationsStore();
+      setAdminOperationsStoreForTests(operationsStore);
+      await operationsStore.setServiceIsolation({
+        key: "test-access",
+        isolated: combination.isolated,
+        reason: "Scenario setup.",
+        now: NOW,
+      });
+
+      await expect(
+        getSubscriptionAccess(PAID_WALLET, { query, now: NOW }),
+      ).resolves.toMatchObject({
+        plan: "pro",
+        active: true,
+        accessSource: "paid",
+        paidUntil: "2026-09-02T00:00:00.000Z",
+      });
+    }
+  });
+
+  it("records a switch flip in the Admin Activity log", async () => {
+    const operationsStore = createMemoryAdminOperationsStore();
+    setAdminOperationsStoreForTests(operationsStore);
+
+    await operationsStore.setServiceIsolation({
+      key: "test-access",
+      isolated: true,
+      reason: "Pausing for review.",
+      now: NOW,
+    });
+
+    const activity = await operationsStore.listActivity(10);
+    expect(activity[0]).toMatchObject({
+      kind: "service-isolated",
+      serviceKey: "test-access",
+      message: expect.stringContaining("Pausing for review."),
+    });
+  });
+
+  it("reports three distinct System Health states: enabled, admin-disabled, hard-disabled", async () => {
+    const operationsStore = createMemoryAdminOperationsStore();
+    setAdminOperationsStoreForTests(operationsStore);
+
+    await expect(buildTestAccessKillSwitchStage()).resolves.toMatchObject({
+      id: "test-access-kill-switch",
+      status: "green",
+    });
+
+    await operationsStore.setServiceIsolation({
+      key: "test-access",
+      isolated: true,
+      reason: "Pausing for review.",
+      now: NOW,
+    });
+    const disabledStage = await buildTestAccessKillSwitchStage();
+    expect(disabledStage.status).toBe("amber");
+    expect(disabledStage.message).toContain("Pausing for review.");
+
+    process.env.TEST_ACCESS_HARD_DISABLED = "true";
+    const hardDisabledStage = await buildTestAccessKillSwitchStage();
+    expect(hardDisabledStage.status).toBe("amber");
+    expect(hardDisabledStage.message).toContain("TEST_ACCESS_HARD_DISABLED");
+
+    delete process.env.TEST_ACCESS_HARD_DISABLED;
+    resetAdminOperationsStoreForTests();
+    delete process.env.DATABASE_URL;
+    const unavailableStage = await buildTestAccessKillSwitchStage();
+    expect(unavailableStage.status).toBe("red");
+  });
+
+  it("keeps a synthetic memory state consistent with the store used by other admin isolation tests", async () => {
+    const state: MemoryAdminOperationsState = {
+      controls: new Map(),
+      activity: [],
+    };
+    const operationsStore = createMemoryAdminOperationsStore(state);
+    setAdminOperationsStoreForTests(operationsStore);
+    const control = await operationsStore.getServiceControl("test-access");
+    expect(control.isolated).toBe(false);
   });
 });
