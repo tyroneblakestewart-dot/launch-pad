@@ -9,6 +9,14 @@
 -- issue's own "Scope split if needed: PR A / PR B" note. Nothing in this
 -- migration or the code that reads it ever posts without a prior explicit
 -- per-post approval recorded in social_scheduled_posts.approved_by_wallet.
+--
+-- Renumbered from 017 to 018 (originally added on top of main before #336's
+-- 017_social_studio_ai_service_control.sql merged) to keep migration numbers
+-- unique and ordered. This migration also re-widens
+-- admin_service_controls_known_service / admin_activity_log_known_service —
+-- ADMIN_SERVICE_DEFINITIONS gained 'social-posting' in this same PR, so the
+-- constraints need to allow it too, following exactly what #336 did for
+-- 'social-studio-ai'.
 BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -96,5 +104,54 @@ CREATE UNIQUE INDEX IF NOT EXISTS social_post_destinations_post_platform_idx
   ON social_post_destinations (scheduled_post_id, platform);
 CREATE INDEX IF NOT EXISTS social_post_destinations_due_idx
   ON social_post_destinations (status, next_attempt_at);
+
+-- Widen the admin service-key CHECK constraints (originally created by
+-- 016_test_access_kill_switch.sql, last widened by
+-- 017_social_studio_ai_service_control.sql for 'social-studio-ai') to also
+-- allow 'social-posting', which ADMIN_SERVICE_DEFINITIONS gains in this PR
+-- for the System Health pipeline and service-isolation switch above. Without
+-- this, the admin isolation toggle for 'social-posting' fails at the
+-- Postgres constraint and recordAdminActivityBestEffort silently drops its
+-- activity log entries because 'social-posting' was never an allowed
+-- service_key.
+ALTER TABLE admin_service_controls
+  DROP CONSTRAINT IF EXISTS admin_service_controls_known_service;
+ALTER TABLE admin_service_controls
+  ADD CONSTRAINT admin_service_controls_known_service CHECK (
+    service_key IN (
+      'website-generation',
+      'public-publishing',
+      'market-feed',
+      'telegram-publishing',
+      'hoodchat',
+      'token-chat',
+      'outreach',
+      'test-access',
+      'social-studio-ai',
+      'social-posting'
+    )
+  );
+
+ALTER TABLE admin_activity_log
+  DROP CONSTRAINT IF EXISTS admin_activity_log_known_service;
+ALTER TABLE admin_activity_log
+  ADD CONSTRAINT admin_activity_log_known_service CHECK (
+    service_key IS NULL OR service_key IN (
+      'website-generation',
+      'public-publishing',
+      'market-feed',
+      'telegram-publishing',
+      'hoodchat',
+      'token-chat',
+      'outreach',
+      'test-access',
+      'social-studio-ai',
+      'social-posting'
+    )
+  );
+
+INSERT INTO admin_service_controls (service_key)
+VALUES ('social-posting')
+ON CONFLICT (service_key) DO NOTHING;
 
 COMMIT;

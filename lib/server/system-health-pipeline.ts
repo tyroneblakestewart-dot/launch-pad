@@ -889,7 +889,7 @@ export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps
           "table-exists",
           "social_scheduled_posts table exists",
           "red",
-          "Migration 017_social_studio_connections.sql has not been applied yet.",
+          "Migration 018_social_studio_connections.sql has not been applied yet.",
         );
   } catch {
     tableExistsStage = stage(

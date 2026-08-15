@@ -5,7 +5,7 @@ import { isSocialPlatform, type SocialPlatform } from "@/lib/server/social-conne
 // Studio Mode 1 (issue #335, "review & release"). A row only ever exists
 // here once a wallet has explicitly approved it — approval IS the create,
 // so "unapproved posts never send" holds by construction (see
-// db/migrations/017_social_studio_connections.sql). Per-destination
+// db/migrations/018_social_studio_connections.sql). Per-destination
 // delivery state lives in social_post_destinations so X and Telegram
 // retry/fail independently.
 

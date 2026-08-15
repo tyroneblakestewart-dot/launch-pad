@@ -400,7 +400,7 @@ export async function checkSocialPostingHealth(
       id,
       label,
       status: "red",
-      message: `The social_scheduled_posts table is not reachable. Apply migration 017_social_studio_connections.sql. ${destinationNote}`,
+      message: `The social_scheduled_posts table is not reachable. Apply migration 018_social_studio_connections.sql. ${destinationNote}`,
     };
   }
 }

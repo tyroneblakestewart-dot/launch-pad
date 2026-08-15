@@ -269,22 +269,32 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   provider stages) and service-isolation switch, following the
   `website-generation` pattern; it has no Postgres table of its own, so no
   Pages CMS or Activity log changes were needed.
+- `017_social_studio_ai_service_control.sql` (merged separately via #336)
+  widened `admin_service_controls_known_service` /
+  `admin_activity_log_known_service` for `social-studio-ai`, which #334 had
+  added to `ADMIN_SERVICE_DEFINITIONS` without a matching migration.
 - Social Studio connections + Mode 1 review-and-release posting (issue
   #335) backend is implemented for review — real per-wallet X and Telegram
   connections plus a durable, browser-independent approve-first scheduled-
   post queue. Approval IS the create: nothing is written to
   `social_scheduled_posts` before a wallet has explicitly approved it
-  (migration `017_social_studio_connections.sql`), so "unapproved posts
-  never send" holds by construction. X uses a real 3-legged OAuth 1.0a
-  connect flow (`lib/server/social-x-client.ts`, `X_SOCIAL_CONSUMER_KEY`/
-  `SECRET`, a deliberately distinct app from the dormant outreach bot's
-  `X_OUTREACH_*`); the actual `POST /2/tweets` signing/call is shared with
-  the outreach bot via `lib/server/x-tweets-client.ts` +
-  `lib/server/x-oauth1-signing.ts`. Telegram gets a real connect flow
-  (`lib/server/social-telegram-connect.ts`) that verifies the platform bot
-  is actually an admin via `getChat`/`getChatMember` before ever storing a
-  channel binding, instead of trusting a bare chat-ID field. Every wallet-
-  signed action (connect, disconnect, approve-a-post, cancel-a-post) reuses
+  (migration `018_social_studio_connections.sql`, renumbered above #336's
+  `017_social_studio_ai_service_control.sql` to keep migration numbers
+  unique and ordered — it also widens
+  `admin_service_controls_known_service` / `admin_activity_log_known_service`
+  a second time to add `social-posting` and seeds its default not-isolated
+  row, since `ADMIN_SERVICE_DEFINITIONS` gained that key in this same PR),
+  so "unapproved posts never send" holds by construction. X uses a real
+  3-legged OAuth 1.0a connect flow (`lib/server/social-x-client.ts`,
+  `X_SOCIAL_CONSUMER_KEY`/`SECRET`, a deliberately distinct app from the
+  dormant outreach bot's `X_OUTREACH_*`); the actual `POST /2/tweets`
+  signing/call is shared with the outreach bot via
+  `lib/server/x-tweets-client.ts` + `lib/server/x-oauth1-signing.ts`.
+  Telegram gets a real connect flow (`lib/server/social-telegram-connect.ts`)
+  that verifies the platform bot is actually an admin via
+  `getChat`/`getChatMember` before ever storing a channel binding, instead
+  of trusting a bare chat-ID field. Every wallet-signed action (connect,
+  disconnect, approve-a-post, cancel-a-post) reuses
   `lib/server/chat-auth.ts`'s challenge/signature primitives from Hoodchat
   (issue #237) through a single generic challenge route
   (`POST /api/social/challenge`) rather than duplicating that flow per
