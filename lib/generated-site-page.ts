@@ -466,7 +466,24 @@ function escapeForHtmlAttribute(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
-export function prepareGeneratedPageForPreview(html: string, artworkDataUrl: string): string {
+export type PrepareGeneratedPageForPreviewOptions = {
+  // Issue #327 problem 3: the studio's mobile full-screen preview needs to
+  // know about a tap landing anywhere on the generated page — including on
+  // its own content, inside the sandboxed iframe — to reveal its
+  // tap-to-hide controls overlay. A normal click on the page's own content
+  // never bubbles out to the parent document (a sandboxed iframe is a
+  // separate browsing context), so the page has to report it itself.
+  // Defaults to off: app/[slug]/page.tsx also calls this function for the
+  // durably published site, which has no controls overlay to reveal and
+  // must keep emitting byte-identical output.
+  reportTaps?: boolean;
+};
+
+export function prepareGeneratedPageForPreview(
+  html: string,
+  artworkDataUrl: string,
+  options: PrepareGeneratedPageForPreviewOptions = {},
+): string {
   if (!isCompleteGeneratedPageHtml(html)) {
     throw new Error("The generated website document is incomplete.");
   }
@@ -500,12 +517,17 @@ export function prepareGeneratedPageForPreview(html: string, artworkDataUrl: str
   // keeps the parent's height reports meaningful instead of a flood the
   // consumer then has to filter through.
   const bridge = `<script>(function(){var send=function(){var h=Math.max(document.body?document.body.scrollHeight:0,document.documentElement?document.documentElement.scrollHeight:0);parent.postMessage({type:'hoodlums-generated-page-height',height:h},'*')};var scheduled=null;var scheduleSend=function(){if(scheduled)return;scheduled=requestAnimationFrame(function(){scheduled=null;send()})};addEventListener('load',send);addEventListener('resize',scheduleSend);new MutationObserver(scheduleSend).observe(document.documentElement,{subtree:true,childList:true,attributes:true});setTimeout(send,60);setTimeout(send,500);setTimeout(send,1500)})();<\/script>`;
+  // Only posts a message — never calls preventDefault/stopPropagation — so
+  // it can't swallow or interfere with the page's own link/button taps.
+  const tapBridge = options.reportTaps
+    ? `<script>(function(){addEventListener('click',function(){parent.postMessage({type:'hoodlums-generated-page-tap'},'*')})})();<\/script>`
+    : "";
 
   let output = html.replaceAll(ARTWORK_PLACEHOLDER, artwork);
   output = output.replace(
     /<head([^>]*)>/i,
     `<head$1><meta http-equiv="Content-Security-Policy" content="${csp}">${overflowClamp}`,
   );
-  output = output.replace(/<\/body>/i, `${bridge}</body>`);
+  output = output.replace(/<\/body>/i, `${bridge}${tapBridge}</body>`);
   return output;
 }

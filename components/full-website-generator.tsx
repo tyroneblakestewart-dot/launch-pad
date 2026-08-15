@@ -90,6 +90,12 @@ type RenderedPreview = {
   fullScreenButton: HTMLButtonElement;
   onClose: () => void;
   onToggleFullScreen: () => void;
+  // Toggles the mobile full-screen controls overlay; called both from the
+  // shell's own tap listener and from a "hoodlums-generated-page-tap"
+  // message forwarded by the sandboxed iframe (see onMessage below) — a tap
+  // landing on the generated page's own content never reaches the parent
+  // DOM as a normal bubbling click, so the iframe has to report it itself.
+  onFrameTap: () => void;
   controlCleanups: Array<() => void>;
   // Windowed mode renders the iframe at a larger design width, scaled down
   // (see computeGeneratedPreviewScale), so applyHeight/applyLayout must be
@@ -137,10 +143,44 @@ export function getGeneratedPreviewDesignHeight(reportedHeight: number): number 
   return Math.min(16_000, Math.max(700, Math.ceil(reportedHeight)));
 }
 
+// Issue #327 problem 1 (mobile only — desktop keeps the reportedHeight-driven
+// height above unchanged): the windowed preview used to size the iframe's own
+// height from the generated page's *reported* scrollHeight. That reported
+// height is itself measured inside the iframe, and the free-site template
+// (and plenty of bespoke hero sections) size blocks with viewport-relative
+// units — a fractional small-viewport-height minimum on the centred hero, a
+// full one on body — which resolve against that very same iframe height.
+// Feeding scrollHeight back into the iframe's own height therefore chases itself
+// upward: a taller iframe makes the svh-sized hero taller, which makes
+// scrollHeight taller, which grows the iframe again. The result is a hero
+// block many times taller than one screen, with its (vertically centred)
+// heading and CTA scrolled far below the one-screenful slice the scaled
+// preview shows before any scrolling — only the hero's background is
+// visible. Full screen never hit this because its height is forced by
+// `!important` CSS, bypassing frame.style.height entirely regardless of
+// what JS computes.
+//
+// The fix: on mobile, size the iframe's own height from the space actually
+// available (so svh/vh resolve against a believable device viewport, same
+// as a real phone), and let the iframe's existing internal `overflow: auto`
+// (see .full-generated-page-frame) reveal anything taller by scrolling —
+// exactly like full screen already does. This also keeps the design
+// width/height pair proportional (both scaled by the same MOBILE_PREVIEW_SCALE
+// factor), so the composition shown is a faithful miniature of a real phone
+// screen instead of a width-scaled-but-height-mismatched crop.
+export function getMobileGeneratedPreviewDesignHeight(availableHeight: number, scale: number): number {
+  return Math.max(1, Math.round(Math.max(1, availableHeight) / scale));
+}
+
 // A reported height within this many pixels of the current one is treated
 // as noise, not a real layout change (issue #323 part 2.4).
 export const HEIGHT_REPORT_IGNORE_THRESHOLD_PX = 24;
 
+// Issue #327 problem 3 (mobile full screen only): controls start visible so
+// the tap gesture is discoverable, then auto-hide; a subsequent tap-driven
+// reveal gets the shorter "no interaction" window before hiding again.
+export const FULLSCREEN_CONTROLS_ENTRY_VISIBLE_MS = 2000;
+export const FULLSCREEN_CONTROLS_AUTO_HIDE_MS = 4000;
 
 function publishableSiteFromGeneration(detail: GenerateDetail, html: string): PublishableSitePayload {
   return {
@@ -419,7 +459,7 @@ function renderGeneratedWebsite(
   onClosePreview: () => void,
 ): RenderedPreview {
   const site = previewElement();
-  const prepared = prepareGeneratedPageForPreview(html, artworkDataUrl);
+  const prepared = prepareGeneratedPageForPreview(html, artworkDataUrl, { reportTaps: true });
   clearPreviewStatus(site);
 
   const container = document.createElement("section");
@@ -486,7 +526,12 @@ function renderGeneratedWebsite(
     const availableWidth = viewport.clientWidth || container.clientWidth || 1;
     const mobile = isMobilePreviewViewport();
     const { designWidth, scale: factor } = computeGeneratedPreviewScale(availableWidth, mobile);
-    const designHeight = getGeneratedPreviewDesignHeight(reportedHeight);
+    // Mobile derives its design height from the space actually available
+    // (issue #327 problem 1); desktop keeps the old reportedHeight-driven
+    // value untouched.
+    const designHeight = mobile
+      ? getMobileGeneratedPreviewDesignHeight(viewport.clientHeight || container.clientHeight || 1, factor)
+      : getGeneratedPreviewDesignHeight(reportedHeight);
     frame.style.width = `${Math.round(designWidth)}px`;
     frame.style.height = `${designHeight}px`;
     frame.style.transform = `scale(${factor})`;
@@ -529,10 +574,88 @@ function renderGeneratedWebsite(
     controlCleanups.push(() => button.removeEventListener("click", listener));
   };
 
+  // Issue #327 problem 3: mobile full screen hides the control bar by
+  // default (video-player pattern) so the site gets the whole screen, with
+  // a tap toggling it back in. Desktop full screen is untouched — its
+  // controls stay permanently visible via the base (non-mobile-scoped) CSS,
+  // and isFullScreenMobile() below gates every part of this state machine
+  // on the mobile breakpoint so nothing here fires there.
+  let controlsAutoHideTimer: number | null = null;
+  const clearControlsAutoHideTimer = () => {
+    if (controlsAutoHideTimer === null) return;
+    window.clearTimeout(controlsAutoHideTimer);
+    controlsAutoHideTimer = null;
+  };
+  const isFullScreenMobile = () =>
+    container.classList.contains("full-generated-page-fullscreen") && isMobilePreviewViewport();
+  // autoHideMs of null means "stay visible until something explicitly hides
+  // it" — used while keyboard/VoiceOver focus is inside the controls, so an
+  // in-progress tab through the buttons never disappears mid-interaction.
+  const showFullScreenControls = (autoHideMs: number | null) => {
+    container.classList.add("full-generated-page-controls-visible");
+    clearControlsAutoHideTimer();
+    if (autoHideMs === null) return;
+    controlsAutoHideTimer = window.setTimeout(() => {
+      controlsAutoHideTimer = null;
+      if (controls.contains(document.activeElement)) return;
+      container.classList.remove("full-generated-page-controls-visible");
+    }, autoHideMs);
+  };
+  const hideFullScreenControls = () => {
+    clearControlsAutoHideTimer();
+    container.classList.remove("full-generated-page-controls-visible");
+  };
+  const toggleFullScreenControls = () => {
+    if (!isFullScreenMobile()) return;
+    if (container.classList.contains("full-generated-page-controls-visible")) {
+      hideFullScreenControls();
+    } else {
+      showFullScreenControls(FULLSCREEN_CONTROLS_AUTO_HIDE_MS);
+    }
+  };
+  controlCleanups.push(clearControlsAutoHideTimer);
+
+  // A tap on the shell (backdrop/viewport gutter, or forwarded from inside
+  // the sandboxed iframe — see the "hoodlums-generated-page-tap" message
+  // handled in FullWebsiteGenerator's onMessage) toggles the overlay, but a
+  // tap on the controls themselves must only run that control's own action,
+  // never also toggle — otherwise tapping "Exit full screen" would fight
+  // with the overlay disappearing out from under the tap.
+  const onContainerTapToggle = (event: Event) => {
+    if (!isFullScreenMobile()) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest(".full-generated-page-controls")) return;
+    toggleFullScreenControls();
+  };
+  container.addEventListener("click", onContainerTapToggle);
+  controlCleanups.push(() => container.removeEventListener("click", onContainerTapToggle));
+
+  const onControlsFocusIn = () => {
+    if (!isFullScreenMobile()) return;
+    showFullScreenControls(null);
+  };
+  const onControlsFocusOut = (event: FocusEvent) => {
+    if (!isFullScreenMobile()) return;
+    const next = event.relatedTarget;
+    if (next instanceof Node && controls.contains(next)) return;
+    showFullScreenControls(FULLSCREEN_CONTROLS_AUTO_HIDE_MS);
+  };
+  controls.addEventListener("focusin", onControlsFocusIn);
+  controls.addEventListener("focusout", onControlsFocusOut);
+  controlCleanups.push(() => {
+    controls.removeEventListener("focusin", onControlsFocusIn);
+    controls.removeEventListener("focusout", onControlsFocusOut);
+  });
+
   const onToggleFullScreen = () => {
     const fullScreen = container.classList.toggle("full-generated-page-fullscreen");
     fullScreenButton.textContent = fullScreen ? "Exit full screen" : "Full screen";
     fullScreenButton.setAttribute("aria-pressed", String(fullScreen));
+    if (fullScreen && isMobilePreviewViewport()) {
+      showFullScreenControls(FULLSCREEN_CONTROLS_ENTRY_VISIBLE_MS);
+    } else {
+      hideFullScreenControls();
+    }
     // Re-measure: windowed and full screen expose different available
     // widths (and, on desktop, different scale factors), so the layout
     // must be recomputed on every toggle even though the same iframe node
@@ -649,6 +772,7 @@ function renderGeneratedWebsite(
     fullScreenButton,
     onClose,
     onToggleFullScreen,
+    onFrameTap: toggleFullScreenControls,
     controlCleanups,
     applyHeight,
     applyLayout: layout,
@@ -678,6 +802,10 @@ export function FullWebsiteGenerator() {
     function onMessage(event: MessageEvent) {
       if (!activePreview || event.source !== activePreview.frame.contentWindow) return;
       const data = event.data as { type?: unknown; height?: unknown };
+      if (data?.type === "hoodlums-generated-page-tap") {
+        activePreview.onFrameTap();
+        return;
+      }
       if (data?.type !== "hoodlums-generated-page-height") return;
       const height = typeof data.height === "number" ? data.height : Number(data.height);
       if (!Number.isFinite(height)) return;
@@ -1015,6 +1143,46 @@ export function FullWebsiteGenerator() {
         .site-preview.full-page-generating,
         .site-preview.full-page-failed,
         .full-generated-page-status { min-height: 700px; }
+        /* Issue #327 problem 2: full screen must reach every edge of the
+           phone screen, including under a dynamic toolbar and the home
+           indicator. 100svh still left a dead band at the bottom; 100dvh
+           tracks the toolbar precisely, with svh/-webkit-fill-available as
+           fallbacks for engines that predate it. Declared oldest-to-newest
+           so an unsupported value is simply ignored, leaving the most
+           modern supported one in effect. Desktop full screen is untouched
+           — this whole block only applies at this breakpoint. */
+        .full-generated-page-container.full-generated-page-fullscreen {
+          height: 100vh;
+          height: -webkit-fill-available;
+          height: 100svh;
+          height: 100dvh;
+          /* Controls become an absolutely-positioned overlay (below), so
+             the single remaining in-flow grid item (the viewport) should
+             claim the whole container instead of sharing it with a
+             reserved "auto" control-bar row. */
+          grid-template-rows: minmax(0, 1fr);
+        }
+        /* Issue #327 problem 3: controls default to hidden in full screen
+           so the site gets the entire screen, and slide in as an overlay —
+           not a layout row — on tap/focus. This only adds a new stacking
+           layer via position: absolute + z-index inside the existing
+           .full-generated-page-container (already position: fixed), so it
+           composes with the #316 body:has(.full-generated-page-container)
+           chrome-hiding rule (app/globals.css) without creating any new
+           conflict with the iframe's own stacking context. */
+        .full-generated-page-fullscreen .full-generated-page-controls {
+          position: absolute;
+          inset: 0 0 auto 0;
+          transform: translateY(-100%);
+          opacity: 0;
+          pointer-events: none;
+          transition: transform .22s ease, opacity .22s ease;
+        }
+        .full-generated-page-fullscreen.full-generated-page-controls-visible .full-generated-page-controls {
+          transform: translateY(0);
+          opacity: 1;
+          pointer-events: auto;
+        }
       }
     `}</style>
   );
