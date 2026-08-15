@@ -5,6 +5,7 @@ import {
   checkDeploymentHealth,
   checkHoodchatHealth,
   checkOutreachHealth,
+  checkSocialPostingHealth,
   checkSocialStudioAiHealth,
   checkSubscribersHealth,
   checkTokenChatHealth,
@@ -235,8 +236,45 @@ describe("checkOutreachHealth", () => {
   });
 });
 
+describe("checkSocialPostingHealth", () => {
+  it("is green when the table ping succeeds and at least one destination is configured", async () => {
+    const result = await checkSocialPostingHealth({
+      ping: async () => ({ rows: [] }),
+      env: { X_SOCIAL_CONSUMER_KEY: "k", X_SOCIAL_CONSUMER_SECRET: "s" },
+    });
+    expect(result).toMatchObject({ id: "social-posting", status: "green" });
+    expect(result.message).toContain("Only X is configured");
+  });
+
+  it("is amber (not red) when the table is reachable but neither destination is configured — dormant, not broken", async () => {
+    const result = await checkSocialPostingHealth({ ping: async () => ({ rows: [] }), env: {} });
+    expect(result).toMatchObject({ id: "social-posting", status: "amber" });
+    expect(result.message).toContain("Dormant");
+  });
+
+  it("is red when the ping rejects (e.g. the migration has not been applied)", async () => {
+    const result = await checkSocialPostingHealth({
+      ping: async () => Promise.reject(new Error(`relation "social_scheduled_posts" does not exist`)),
+    });
+    expect(result).toMatchObject({ id: "social-posting", status: "red" });
+  });
+
+  it("is amber when DATABASE_URL is not configured", async () => {
+    const result = await checkSocialPostingHealth({ databaseUrl: "", env: {} });
+    expect(result).toMatchObject({ id: "social-posting", status: "amber" });
+  });
+
+  it("never leaks credential values into the message", async () => {
+    const result = await checkSocialPostingHealth({
+      ping: async () => ({ rows: [] }),
+      env: { X_SOCIAL_CONSUMER_KEY: "super-secret-value", X_SOCIAL_CONSUMER_SECRET: "s" },
+    });
+    expect(result.message).not.toContain("super-secret-value");
+  });
+});
+
 describe("getSystemHealth", () => {
-  it("returns all nine checks, one per required area", async () => {
+  it("returns all ten checks, one per required area", async () => {
     const checks = await getSystemHealth({
       env: { NODE_ENV: "development" },
       database: { databaseUrl: "" },
@@ -245,6 +283,7 @@ describe("getSystemHealth", () => {
       hoodchat: { databaseUrl: "" },
       tokenChat: { databaseUrl: "" },
       outreach: { databaseUrl: "" },
+      socialPosting: { databaseUrl: "" },
     });
     expect(checks.map((check) => check.id).sort()).toEqual(
       [
@@ -253,6 +292,7 @@ describe("getSystemHealth", () => {
         "deployment",
         "hoodchat",
         "outreach",
+        "social-posting",
         "social-studio-ai",
         "subscribers",
         "token-chat",

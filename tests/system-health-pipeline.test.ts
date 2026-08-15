@@ -6,6 +6,7 @@ import {
   buildDeploymentPipeline,
   buildOutreachPipeline,
   buildServicePipeline,
+  buildSocialPostingPipeline,
   buildSocialStudioAiPipeline,
   buildSubscribersPipeline,
   buildWebsiteGenerationPipeline,
@@ -527,6 +528,102 @@ describe("buildOutreachPipeline", () => {
       getServiceControl: async () => activeControl({ key: "outreach", isolated: true, reason: "maintenance" }),
     });
     expect(stageById(pipeline, "endpoint-reachable")).toMatchObject({ status: "amber" });
+  });
+});
+
+describe("buildSocialPostingPipeline (issue #335)", () => {
+  function fakePool(overrides: {
+    query?: (text: string, params?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>;
+  } = {}) {
+    return {
+      totalCount: 1,
+      idleCount: 1,
+      waitingCount: 0,
+      query:
+        overrides.query ??
+        (async (text: string) => {
+          if (text.includes("information_schema.tables")) return { rows: [{ table_name: "social_scheduled_posts" }] };
+          if (text.includes("GROUP BY status")) {
+            return { rows: [{ status: "scheduled", count: 2 }, { status: "sent", count: 1 }] };
+          }
+          return { rows: [] };
+        }),
+    };
+  }
+
+  it("reports the destinations and encryption-key stages from env, independent of the database", async () => {
+    const off = await buildSocialPostingPipeline({
+      databaseUrl: "",
+      env: {},
+      getServiceControl: async () => activeControl({ key: "social-posting" }),
+    });
+    expect(stageById(off, "destinations")).toMatchObject({ status: "amber" });
+    expect(stageById(off, "encryption-key")).toMatchObject({ status: "red" });
+
+    const on = await buildSocialPostingPipeline({
+      databaseUrl: "",
+      env: {
+        X_SOCIAL_CONSUMER_KEY: "a",
+        X_SOCIAL_CONSUMER_SECRET: "b",
+        TELEGRAM_BOT_TOKEN: "c",
+        SOCIAL_CREDENTIALS_ENCRYPTION_KEY: "d",
+      },
+      getServiceControl: async () => activeControl({ key: "social-posting" }),
+    });
+    expect(stageById(on, "destinations")).toMatchObject({ status: "green" });
+    expect(stageById(on, "encryption-key")).toMatchObject({ status: "green" });
+  });
+
+  it("never leaks credential values into the destinations stage message", async () => {
+    const pipeline = await buildSocialPostingPipeline({
+      databaseUrl: "",
+      env: { X_SOCIAL_CONSUMER_KEY: "super-secret-value" },
+      getServiceControl: async () => activeControl({ key: "social-posting" }),
+    });
+    expect(stageById(pipeline, "destinations").message).not.toContain("super-secret-value");
+  });
+
+  it("is green end to end and reports per-status counts when the table exists", async () => {
+    const pipeline = await buildSocialPostingPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      getPool: () => fakePool(),
+      getServiceControl: async () => activeControl({ key: "social-posting" }),
+    });
+    expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "green" });
+    const counts = stageById(pipeline, "queue-counts");
+    expect(counts.status).toBe("green");
+    expect(counts.message).toContain("2 scheduled");
+    expect(counts.message).toContain("1 sent");
+  });
+
+  it("is red on table-exists and does not probe queue counts when the migration has not been applied", async () => {
+    const pipeline = await buildSocialPostingPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      getPool: () => fakePool({ query: async () => ({ rows: [] }) }),
+      getServiceControl: async () => activeControl({ key: "social-posting" }),
+    });
+    expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "queue-counts")).toMatchObject({ status: "amber" });
+  });
+
+  it("surfaces isolation state from the shared chat-style isolation stage", async () => {
+    const pipeline = await buildSocialPostingPipeline({
+      databaseUrl: "",
+      env: {},
+      getServiceControl: async () => activeControl({ key: "social-posting", isolated: true, reason: "maintenance" }),
+    });
+    expect(stageById(pipeline, "endpoint-reachable")).toMatchObject({ status: "amber" });
+  });
+
+  it("is reachable through the buildServicePipeline dispatcher", async () => {
+    const pipeline = await buildServicePipeline("social-posting", {
+      env: {},
+      socialPosting: { databaseUrl: "", getServiceControl: async () => activeControl({ key: "social-posting" }) },
+    });
+    expect(pipeline.id).toBe("social-posting");
+    expect(stageById(pipeline, "destinations")).toMatchObject({ status: "amber" });
   });
 });
 

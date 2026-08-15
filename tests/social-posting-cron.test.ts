@@ -1,0 +1,355 @@
+import { describe, expect, it } from "vitest";
+import {
+  CONNECTION_RECONNECT_FAILURE_THRESHOLD,
+  MAX_DESTINATION_ATTEMPTS,
+  computeRetryBackoffSeconds,
+  runSocialPostingCron,
+} from "@/lib/server/social-posting-cron";
+import { createMemorySocialConnectionsStore } from "./social-connections-test-helpers";
+import { createMemorySocialScheduledPostsStore } from "./social-scheduled-posts-test-helpers";
+
+const ENV = { X_SOCIAL_CONSUMER_KEY: "ck", X_SOCIAL_CONSUMER_SECRET: "cs", TELEGRAM_BOT_TOKEN: "12345:token-aaaaaaaaaaaaaaaaaaaa" };
+const NOW = new Date("2026-01-01T00:00:00Z");
+
+async function seedConnectedX(connectionsStore: ReturnType<typeof createMemorySocialConnectionsStore>, wallet = "0xabc") {
+  await connectionsStore.upsert({
+    walletAddress: wallet,
+    platform: "x",
+    displayName: "@hoodlumsdev",
+    externalId: "1",
+    credentials: JSON.stringify({ accessToken: "at", accessSecret: "as" }),
+  });
+}
+
+async function seedConnectedTelegram(connectionsStore: ReturnType<typeof createMemorySocialConnectionsStore>, wallet = "0xabc") {
+  await connectionsStore.upsert({
+    walletAddress: wallet,
+    platform: "telegram",
+    displayName: "Hoodlums Announcements",
+    externalId: "@hoodlums",
+    credentials: JSON.stringify({ chatId: "@hoodlums" }),
+  });
+}
+
+describe("computeRetryBackoffSeconds", () => {
+  it("doubles from a 60s base for each successive attempt", () => {
+    expect(computeRetryBackoffSeconds(0)).toBe(60);
+    expect(computeRetryBackoffSeconds(1)).toBe(120);
+    expect(computeRetryBackoffSeconds(2)).toBe(240);
+  });
+});
+
+describe("runSocialPostingCron: no-op / fail-safe cases", () => {
+  it("is a true no-op when nothing is due", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    const result = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore });
+    expect(result).toMatchObject({ processed: 0, sent: 0, retried: 0, failed: 0, error: null });
+  });
+
+  it("never throws even if the store rejects — returns an error result", async () => {
+    const brokenStore = createMemorySocialScheduledPostsStore();
+    brokenStore.listDueDestinations = async () => {
+      throw new Error("db exploded");
+    };
+    const result = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore: brokenStore, connectionsStore: createMemorySocialConnectionsStore() });
+    expect(result.error).toContain("db exploded");
+  });
+});
+
+describe("runSocialPostingCron: X destination", () => {
+  it("marks a destination sent and resets the connection's failure count on success", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await connectionsStore.recordFailure("0xabc", "x", "earlier blip", 100);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      postTweetForUser: async () => ({ status: "posted", xPostId: "999" }),
+    });
+
+    expect(result).toMatchObject({ processed: 1, sent: 1, retried: 0, failed: 0 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.status).toBe("sent");
+    expect(post.destinations[0]).toMatchObject({ status: "sent", externalPostId: "999" });
+    expect((await connectionsStore.get("0xabc", "x"))?.failureCount).toBe(0);
+  });
+
+  it("retries with exponential backoff on a transient API error, without exhausting attempts", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      postTweetForUser: async () => ({ status: "api_error", httpStatus: 500, message: "server error" }),
+    });
+
+    expect(result).toMatchObject({ retried: 1, sent: 0, failed: 0 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.status).toBe("scheduled");
+    expect(post.destinations[0].status).toBe("pending");
+    expect(post.destinations[0].attemptCount).toBe(1);
+    expect(new Date(post.destinations[0].nextAttemptAt).getTime()).toBe(NOW.getTime() + 60_000);
+  });
+
+  it("marks the destination permanently failed once MAX_DESTINATION_ATTEMPTS is reached", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    let lastResult;
+    let now = NOW;
+    for (let attempt = 0; attempt < MAX_DESTINATION_ATTEMPTS; attempt++) {
+      lastResult = await runSocialPostingCron({
+        env: ENV,
+        now,
+        scheduledPostsStore,
+        connectionsStore,
+        postTweetForUser: async () => ({ status: "api_error", httpStatus: 500, message: "server error" }),
+      });
+      // Isolates per-destination attempt exhaustion from the connection-level
+      // reconnect_needed threshold (covered separately below) by simulating
+      // other posts on the same connection succeeding in between — CONNECTION_RECONNECT_FAILURE_THRESHOLD
+      // is deliberately lower than MAX_DESTINATION_ATTEMPTS, so without this a
+      // single repeatedly-failing post would pause the whole connection first.
+      await connectionsStore.resetFailures("0xabc", "x");
+      now = new Date(now.getTime() + computeRetryBackoffSeconds(attempt) * 1000 + 1000);
+    }
+
+    expect(lastResult).toMatchObject({ failed: 1 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.status).toBe("failed");
+    expect(post.destinations[0].status).toBe("failed");
+  });
+
+  it("flips the connection to reconnect_needed on a 401/403 (revoked token) and pauses the post instead of failing it", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      postTweetForUser: async () => ({ status: "api_error", httpStatus: 401, message: "unauthorized" }),
+    });
+
+    expect(result).toMatchObject({ retried: 1, failed: 0 });
+    const connection = await connectionsStore.get("0xabc", "x");
+    expect(connection?.status).toBe("reconnect_needed");
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.status).toBe("scheduled");
+    expect(post.destinations[0].status).toBe("pending");
+    // Paused destinations get a long backoff (not the fast exponential retry), so they don't hot-loop while unreachable.
+    expect(new Date(post.destinations[0].nextAttemptAt).getTime()).toBe(NOW.getTime() + 60 * 60 * 1000);
+  });
+
+  it("pauses (does not send) when the connection is already reconnect_needed", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await connectionsStore.markReconnectNeeded("0xabc", "x", "revoked earlier");
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    let called = false;
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      postTweetForUser: async () => {
+        called = true;
+        return { status: "posted", xPostId: "should-not-happen" };
+      },
+    });
+
+    expect(called).toBe(false);
+    expect(result).toMatchObject({ retried: 1, sent: 0 });
+  });
+
+  it("pauses with no connection on file at all (never throws)", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const result = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore });
+    expect(result).toMatchObject({ retried: 1, sent: 0, failed: 0 });
+  });
+
+  it("fails closed (pauses, never reaches the network) when X_SOCIAL_* is unset — uses the real postTweetForUser, not a stub", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    // No postTweetForUser override: the real implementation's own env check must be what fails closed here.
+    const result = await runSocialPostingCron({
+      env: { TELEGRAM_BOT_TOKEN: ENV.TELEGRAM_BOT_TOKEN },
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+    });
+    expect(result).toMatchObject({ retried: 1, sent: 0 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.destinations[0].status).toBe("pending");
+  });
+
+  it("reaches reconnect_needed after CONNECTION_RECONNECT_FAILURE_THRESHOLD ordinary failures, before MAX_DESTINATION_ATTEMPTS is hit", async () => {
+    expect(CONNECTION_RECONNECT_FAILURE_THRESHOLD).toBeLessThan(MAX_DESTINATION_ATTEMPTS);
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    // Advance `now` past each retry's backoff so the same destination becomes due again on the next run.
+    let now = NOW;
+    for (let i = 0; i < CONNECTION_RECONNECT_FAILURE_THRESHOLD; i++) {
+      await runSocialPostingCron({
+        env: ENV,
+        now,
+        scheduledPostsStore,
+        connectionsStore,
+        postTweetForUser: async () => ({ status: "network_error", message: "flaky" }),
+      });
+      now = new Date(now.getTime() + computeRetryBackoffSeconds(i) * 1000 + 1000);
+    }
+
+    expect((await connectionsStore.get("0xabc", "x"))?.status).toBe("reconnect_needed");
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.destinations[0].status).toBe("pending");
+  });
+});
+
+describe("runSocialPostingCron: Telegram destination", () => {
+  it("marks a destination sent using the connected channel", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedTelegram(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["telegram"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      publishTelegramPost: async () => [42],
+    });
+
+    expect(result).toMatchObject({ sent: 1 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.destinations[0]).toMatchObject({ status: "sent", externalPostId: "42" });
+  });
+
+  it("flips the connection to reconnect_needed when the bot was removed from the channel", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedTelegram(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["telegram"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      publishTelegramPost: async () => {
+        throw new Error("Forbidden: bot was kicked from the channel chat");
+      },
+    });
+
+    expect((await connectionsStore.get("0xabc", "telegram"))?.status).toBe("reconnect_needed");
+  });
+
+  it("retries on an ordinary Telegram error instead of pausing immediately", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedTelegram(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["telegram"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      publishTelegramPost: async () => {
+        throw new Error("Telegram API timed out");
+      },
+    });
+
+    expect(result).toMatchObject({ retried: 1 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(new Date(post.destinations[0].nextAttemptAt).getTime()).toBe(NOW.getTime() + 60_000);
+  });
+
+  it("fails closed (never calls the Telegram client) when TELEGRAM_BOT_TOKEN is unset", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedTelegram(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["telegram"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    let called = false;
+    const result = await runSocialPostingCron({
+      env: { X_SOCIAL_CONSUMER_KEY: ENV.X_SOCIAL_CONSUMER_KEY, X_SOCIAL_CONSUMER_SECRET: ENV.X_SOCIAL_CONSUMER_SECRET },
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      publishTelegramPost: async () => {
+        called = true;
+        return [1];
+      },
+    });
+    expect(called).toBe(false);
+    expect(result).toMatchObject({ retried: 1 });
+  });
+});
+
+describe("runSocialPostingCron: multi-destination independence", () => {
+  it("sends X and lets Telegram fail independently, rolling the post up to partially_sent", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await seedConnectedTelegram(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x", "telegram"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    let attempt = 0;
+    let now = NOW;
+    for (let i = 0; i < MAX_DESTINATION_ATTEMPTS; i++) {
+      attempt += 1;
+      await runSocialPostingCron({
+        env: ENV,
+        now,
+        scheduledPostsStore,
+        connectionsStore,
+        postTweetForUser: async () => ({ status: "posted", xPostId: `x-${attempt}` }),
+        publishTelegramPost: async () => {
+          throw new Error("Telegram down");
+        },
+      });
+      // See the comment in the MAX_DESTINATION_ATTEMPTS test above — isolates
+      // this destination's own attempt exhaustion from the connection-level
+      // reconnect_needed threshold, which is lower and would otherwise pause
+      // Telegram indefinitely instead of letting it reach "failed".
+      await connectionsStore.resetFailures("0xabc", "telegram");
+      now = new Date(now.getTime() + computeRetryBackoffSeconds(i) * 1000 + 1000);
+    }
+
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.status).toBe("partially_sent");
+    const x = post.destinations.find((d) => d.platform === "x");
+    const telegram = post.destinations.find((d) => d.platform === "telegram");
+    expect(x?.status).toBe("sent");
+    expect(telegram?.status).toBe("failed");
+  });
+});

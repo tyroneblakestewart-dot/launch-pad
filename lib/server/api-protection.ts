@@ -363,3 +363,38 @@ export function resetSocialStudioRateLimitsForTests() {
     namedRateStore(name).clear(),
   );
 }
+
+// Social Studio connections + review-and-release posting (issue #335).
+// "Action" covers every wallet-signed state change (challenge issuance,
+// X/Telegram connect and disconnect, approving/canceling a scheduled post);
+// "read" covers the plain GET listing endpoints the studio polls.
+export const SOCIAL_STUDIO_ACTION_LIMIT = 20;
+export const SOCIAL_STUDIO_READ_LIMIT = 60;
+
+export function consumeSocialStudioActionRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("social-studio-action"), ip, SOCIAL_STUDIO_ACTION_LIMIT, SOCIAL_STUDIO_WINDOW_MS, now);
+}
+
+export function consumeSocialStudioReadRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("social-studio-read"), ip, SOCIAL_STUDIO_READ_LIMIT, SOCIAL_STUDIO_WINDOW_MS, now);
+}
+
+export function resetSocialStudioActionRateLimitsForTests() {
+  ["social-studio-action", "social-studio-read"].forEach((name) => namedRateStore(name).clear());
+}
+
+/**
+ * Same-origin check for Social Studio connect/posting endpoints, mirroring
+ * isAdminRequestOriginAllowed's fallback chain (falls back to the shared
+ * publish/generate-site origin config, then the request's own origin, so a
+ * dedicated SOCIAL_STUDIO_ALLOWED_ORIGIN is only needed if those diverge).
+ */
+export function isSocialStudioRequestOriginAllowed(request: Request): boolean {
+  const origin = request.headers.get("origin") || "";
+  const configured =
+    process.env.SOCIAL_STUDIO_ALLOWED_ORIGIN?.trim() ||
+    process.env.PUBLISH_ALLOWED_ORIGIN?.trim() ||
+    process.env.GENERATE_SITE_STYLE_ALLOWED_ORIGIN?.trim() ||
+    new URL(request.url).origin;
+  return Boolean(origin && origin === configured);
+}

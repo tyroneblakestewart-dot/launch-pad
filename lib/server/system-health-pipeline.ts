@@ -799,6 +799,152 @@ export async function buildOutreachPipeline(deps: OutreachPipelineDeps = {}): Pr
 }
 
 // ---------------------------------------------------------------------------
+// Social Studio posting (Mode 1 review-and-release, issue #335)
+// ---------------------------------------------------------------------------
+
+export type SocialPostingPipelineDeps = {
+  databaseUrl?: string;
+  getPool?: (databaseUrl: string) => PoolLike;
+  getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
+  env?: Record<string, string | undefined>;
+};
+
+/** Reports credential presence by name only — values are never read into the message. */
+function socialPostingDestinationsStage(env: Record<string, string | undefined>): AdminPipelineStage {
+  const has = (name: string) => Boolean((env[name] || "").trim());
+  const xConfigured = has("X_SOCIAL_CONSUMER_KEY") && has("X_SOCIAL_CONSUMER_SECRET");
+  const telegramConfigured = has("TELEGRAM_BOT_TOKEN");
+  if (xConfigured && telegramConfigured) {
+    return stage("destinations", "X_SOCIAL_* / TELEGRAM_BOT_TOKEN", "green", "Both X and Telegram connections are configured.");
+  }
+  if (!xConfigured && !telegramConfigured) {
+    return stage(
+      "destinations",
+      "X_SOCIAL_* / TELEGRAM_BOT_TOKEN",
+      "amber",
+      "Dormant: neither X_SOCIAL_CONSUMER_KEY/SECRET nor TELEGRAM_BOT_TOKEN is set. Connect actions 503 for both destinations.",
+    );
+  }
+  return stage(
+    "destinations",
+    "X_SOCIAL_* / TELEGRAM_BOT_TOKEN",
+    "amber",
+    xConfigured ? "X is configured; Telegram is dormant (TELEGRAM_BOT_TOKEN unset)." : "Telegram is configured; X is dormant (X_SOCIAL_CONSUMER_KEY/SECRET unset).",
+  );
+}
+
+function socialPostingEncryptionStage(env: Record<string, string | undefined>): AdminPipelineStage {
+  const configured = Boolean((env.SOCIAL_CREDENTIALS_ENCRYPTION_KEY || "").trim());
+  return stage(
+    "encryption-key",
+    "SOCIAL_CREDENTIALS_ENCRYPTION_KEY",
+    configured ? "green" : "red",
+    configured
+      ? "At-rest encryption key is configured; stored connection credentials are encrypted."
+      : "Not set — every connect attempt fails closed (credentials cannot be encrypted for storage).",
+  );
+}
+
+export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps = {}): Promise<AdminServicePipeline> {
+  const env = deps.env ?? process.env;
+  const getServiceControl =
+    deps.getServiceControl ?? ((key: AdminServiceKey) => getAdminOperationsStore().getServiceControl(key));
+  const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
+
+  const isolationStage = await chatIsolationStage("social-posting", getServiceControl);
+  const destinationsStage = socialPostingDestinationsStage(env);
+  const encryptionStage = socialPostingEncryptionStage(env);
+
+  if (!databaseUrl) {
+    const message = "DATABASE_URL is not configured.";
+    return {
+      id: "social-posting",
+      label: "Social Studio posting",
+      stages: [
+        isolationStage,
+        destinationsStage,
+        encryptionStage,
+        stage("table-exists", "social_scheduled_posts table exists", "amber", message),
+        stage("queue-counts", "Post counts (scheduled/sent/partially_sent/failed/canceled)", "amber", message),
+      ],
+    };
+  }
+
+  const pool = (deps.getPool ?? ((url: string) => getPostgresPool(url) as unknown as PoolLike))(databaseUrl);
+
+  let tableExists = false;
+  let tableExistsStage: AdminPipelineStage;
+  try {
+    const result = await withTimeout(
+      pool.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'social_scheduled_posts'`,
+      ),
+      HEALTH_CHECK_TIMEOUT_MS,
+      "timed out",
+    );
+    tableExists = result.rows.length > 0;
+    tableExistsStage = tableExists
+      ? stage("table-exists", "social_scheduled_posts table exists", "green", "The social_scheduled_posts table is present.")
+      : stage(
+          "table-exists",
+          "social_scheduled_posts table exists",
+          "red",
+          "Migration 017_social_studio_connections.sql has not been applied yet.",
+        );
+  } catch {
+    tableExistsStage = stage(
+      "table-exists",
+      "social_scheduled_posts table exists",
+      "red",
+      "Could not check whether the social_scheduled_posts table exists.",
+    );
+  }
+
+  let queueCountsStage: AdminPipelineStage;
+  if (!tableExists) {
+    queueCountsStage = stage(
+      "queue-counts",
+      "Post counts (scheduled/sent/partially_sent/failed/canceled)",
+      "amber",
+      "Not probed; the social_scheduled_posts table does not exist yet.",
+    );
+  } else {
+    try {
+      const result = await withTimeout(
+        pool.query<{ status: string; count: number | string }>(
+          `SELECT status, COUNT(*)::int AS count FROM social_scheduled_posts GROUP BY status`,
+        ),
+        HEALTH_CHECK_TIMEOUT_MS,
+        "timed out",
+      );
+      const counts: Record<string, number> = { scheduled: 0, sent: 0, partially_sent: 0, failed: 0, canceled: 0 };
+      for (const row of result.rows) {
+        if (row.status in counts) counts[row.status] = Number(row.count);
+      }
+      queueCountsStage = stage(
+        "queue-counts",
+        "Post counts (scheduled/sent/partially_sent/failed/canceled)",
+        "green",
+        `${counts.scheduled} scheduled, ${counts.sent} sent, ${counts.partially_sent} partially sent, ${counts.failed} failed, ${counts.canceled} canceled.`,
+      );
+    } catch {
+      queueCountsStage = stage(
+        "queue-counts",
+        "Post counts (scheduled/sent/partially_sent/failed/canceled)",
+        "red",
+        "Could not count scheduled post rows.",
+      );
+    }
+  }
+
+  return {
+    id: "social-posting",
+    label: "Social Studio posting",
+    stages: [isolationStage, destinationsStage, encryptionStage, tableExistsStage, queueCountsStage],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // On-chain contracts
 // ---------------------------------------------------------------------------
 
@@ -1046,6 +1192,7 @@ export type SystemHealthPipelineDeps = {
   tokenChat?: ChatPipelineDeps;
   outreach?: OutreachPipelineDeps;
   socialStudioAi?: SocialStudioAiPipelineDeps;
+  socialPosting?: SocialPostingPipelineDeps;
 };
 
 /** Builds a single service's pipeline on demand — used by the drill-down endpoint. */
@@ -1080,5 +1227,7 @@ export async function buildServicePipeline(
         requestOidcToken: deps.requestOidcToken,
         ...deps.socialStudioAi,
       });
+    case "social-posting":
+      return buildSocialPostingPipeline({ env: deps.env, ...deps.socialPosting });
   }
 }
