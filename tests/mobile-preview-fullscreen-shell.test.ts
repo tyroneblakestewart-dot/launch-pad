@@ -105,6 +105,22 @@ describe("mobile full screen reaches every edge of the screen (issue #327 proble
   });
 });
 
+// Issue #338 fix 3: the windowed (non-full-screen) mobile container is also
+// full-bleed edge-to-edge (issue #320 part 1), but it kept a bare
+// `height: 100svh` and never got the dvh-preferred fallback chain #327
+// problem 2 gave the sibling full-screen rule — so the "dead band at the
+// bottom" bug #327/#329 fixed for full screen was still live in the default
+// (windowed) view a creator sees before ever tapping "Full screen".
+describe("windowed mobile preview reaches every edge of the screen, same as full screen (issue #338 fix 3)", () => {
+  it("uses the same dvh-preferred fallback chain as full screen instead of a bare 100svh", async () => {
+    const mobile = mobileMediaBlock(await generatorSource());
+    const rule = ruleBody(mobile, ".full-generated-page-container:not(.full-generated-page-fullscreen) {");
+
+    const heightDeclarations = [...rule.matchAll(/(?<![\w-])height:\s*([^;]+);/g)].map((m) => m[1].trim());
+    expect(heightDeclarations).toEqual(["100vh", "-webkit-fill-available", "100svh", "100dvh"]);
+  });
+});
+
 // Issue #327 problem 3: controls default to hidden in mobile full screen and
 // slide in as an overlay on tap/focus, instead of permanently reserving a
 // layout row.

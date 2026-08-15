@@ -10,7 +10,7 @@ import {
   substituteFreeSitePlatformFacts,
   type FreeSiteChartFact,
 } from "@/lib/free-site-platform-facts";
-import { isCompleteGeneratedPageHtml, prepareGeneratedPageForPreview } from "@/lib/generated-site-page";
+import { isStructurallyCompleteGeneratedPageHtml, prepareGeneratedPageForPreview } from "@/lib/generated-site-page";
 import { isContentVisible } from "@/lib/page-content-registry";
 import { lookupDexscreenerPair } from "@/lib/server/dexscreener";
 import { resolvePageContent } from "@/lib/server/page-content";
@@ -116,7 +116,10 @@ export default async function PublicGeneratedSitePage({ params, searchParams }: 
   if (!site) notFound();
   if (!canAccessPublishedSite(site, await previewToken(searchParams))) notFound();
 
-  const hasGeneratedHtml = isCompleteGeneratedPageHtml(site.generatedSiteHtml);
+  // Structural/safety only (issue #338 fix 4b): a stricter responsive-
+  // baseline rule shipping later must never retroactively pull an
+  // already-published, already-accepted site down to the generic fallback.
+  const hasGeneratedHtml = isStructurallyCompleteGeneratedPageHtml(site.generatedSiteHtml);
   const hasArtwork = Boolean(decodeArtworkDataUrl(site.heroImage));
   const isFreeSiteTemplate = hasGeneratedHtml && isFreeSiteTemplateHtml(site.generatedSiteHtml as string);
 

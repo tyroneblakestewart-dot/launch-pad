@@ -328,3 +328,52 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   up yet — the backend is ready for it, but touching `social-hub.tsx`
   needs a dedicated pass with real mobile Safari verification per rule 7,
   which this PR could not do.
+- PR #333 fallout corrected (issue #338), scoped to `lib/generated-site-page.ts`
+  and `components/full-website-generator.tsx`. Fix 1: the full-screen tap
+  bridge's interactive-element selector is narrowed back to genuinely
+  clickable things (`a[href]`, `button`, `input`, `select`, `textarea`,
+  `summary`, `audio[controls]`, `video[controls]`, `[role='button']`,
+  `[role='link']`) — PR #333 had widened it to `[tabindex]`, `[onclick]`,
+  bare `label` and a long role list, so a generated page wrapping whole
+  sections in a tabindexed or onclick-bearing container ate the reveal
+  gesture almost everywhere; the narrowed selector was chosen over the
+  fallback "any non-scrolling tap toggles" contract the issue offered as
+  plan B. Fix 2: the blanket ≤640px `!important` force-stack reset (which
+  bent every desktop-first page into fake mobile columns, masking whether
+  generation was genuinely mobile-first, and flattened legitimate
+  side-by-side mobile design on every page including correctly designed
+  published sites) is replaced by the original #324 minimal seatbelt
+  (`overflow-x` clamp, box-sizing/min-width:0, overflow-wrap) with no
+  flex/grid-direction opinion of its own. Fix 3: the returned bottom black
+  band was the windowed (non-full-screen) mobile preview container, which
+  had never received #327 problem 2's dvh-preferred fallback chain — only
+  the full-screen rule had it — so the dead-band bug was still live in the
+  default view before a creator ever tapped "Full screen"; both rules now
+  share the same `100vh → -webkit-fill-available → 100svh → 100dvh` chain,
+  with a regression test locking in both. Fix 4: `hasResponsiveBaseline`'s
+  desktop-squish detector (issue #323/#325/#326) is tightened from
+  "reject 3+ unstacked tracks, or 2 with a wide fixed track, unless a
+  max-width breakpoint later stacks it" to a strict rule with no escape
+  hatch — any 2+-track grid or unstacked flex row outside a `min-width`
+  media query is rejected outright, since relying on a phone-only override
+  to fix a desktop-first base is itself the clamped-not-designed pattern.
+  This is the shared acceptance gate for both the bespoke AI pipeline and
+  the free-site template (`app/api/generate-free-site/route.ts`), so the
+  free-site template's tokenomics `.stat-grid` (the one variant that was
+  still an always-active two-up grid) was fixed to stack at base and
+  expand only from `min-width:480px`/`768px`
+  (`docs/free-site-template-source.html`); every other template variant
+  was already mobile-first and needed no change. Because this stricter
+  acceptance gate would otherwise retroactively break already-published
+  pre-#326 sites and crash the studio's reopen flow for old drafts,
+  *rendering* already-stored content (the studio preview via
+  `prepareGeneratedPageForPreview` and the served `/[slug]` route) now
+  uses a new, deliberately looser export,
+  `isStructurallyCompleteGeneratedPageHtml` (structural/safety checks
+  only, no responsive-baseline check), while *accepting* new or
+  newly-(re)published content still goes through the strict
+  `isCompleteGeneratedPageHtml`. The studio surfaces this gap directly:
+  reopening a saved draft or published site whose stored HTML fails the
+  strict gate for layout reasons alone (`isGeneratedPageRejectedForLayoutOnly`)
+  now renders a visible "Regenerate for mobile" prompt in the preview
+  controls bar instead of silently relying on the seatbelt clamp.

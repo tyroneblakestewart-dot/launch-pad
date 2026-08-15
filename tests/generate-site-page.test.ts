@@ -27,7 +27,7 @@ const INSPIRATION =
 
 function html(extra = "") {
   const copy = "Original campaign content shaped by the uploaded journey artwork. ".repeat(105);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Journey token</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:#f6fbfd;color:#15232d}header,section{padding:48px 6vw}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}@media(max-width:700px){.cards{grid-template-columns:1fr}}</style></head><body><header><nav>Discover About Roadmap Community</nav><form role="search"><input type="search" aria-label="Discover routes"></form></header><section id="hero"><h1>The city is the adventure</h1><img src="${ARTWORK_PLACEHOLDER}" alt="Journey artwork"><button>Start exploring</button></section><section id="about"><h2>About the journey</h2><p>${copy}</p></section><section id="tokenomics"><h2>Token details</h2><div class="cards category-grid"><article>Supply</article><article>Community</article><article>Launch</article></div></section><section id="roadmap"><h2>Next stops</h2><div class="cards campaign-grid"><article>Map it</article><article>Ride it</article><article>Share it</article></div></section><section id="how-to-buy"><h2>How to join</h2><ol><li>Connect</li><li>Choose</li><li>Swap</li><li>Ride</li></ol></section><section id="community"><h2>Travel together</h2><button>Join community</button></section>${extra}<script>document.querySelector('img').onclick=function(){document.body.classList.toggle('celebrate')}</script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Journey token</title><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:#f6fbfd;color:#15232d}header,section{padding:48px 6vw}.cards{display:grid;grid-template-columns:1fr;gap:18px}@media(min-width:700px){.cards{grid-template-columns:repeat(3,1fr)}}</style></head><body><header><nav>Discover About Roadmap Community</nav><form role="search"><input type="search" aria-label="Discover routes"></form></header><section id="hero"><h1>The city is the adventure</h1><img src="${ARTWORK_PLACEHOLDER}" alt="Journey artwork"><button>Start exploring</button></section><section id="about"><h2>About the journey</h2><p>${copy}</p></section><section id="tokenomics"><h2>Token details</h2><div class="cards category-grid"><article>Supply</article><article>Community</article><article>Launch</article></div></section><section id="roadmap"><h2>Next stops</h2><div class="cards campaign-grid"><article>Map it</article><article>Ride it</article><article>Share it</article></div></section><section id="how-to-buy"><h2>How to join</h2><ol><li>Connect</li><li>Choose</li><li>Swap</li><li>Ride</li></ol></section><section id="community"><h2>Travel together</h2><button>Join community</button></section>${extra}<script>document.querySelector('img').onclick=function(){document.body.classList.toggle('celebrate')}</script></body></html>`;
 }
 
 function request(body: unknown) {
@@ -370,7 +370,10 @@ describe("POST /api/generate-site-page", () => {
   // baseline gets exactly one automatic retry with corrective feedback,
   // instead of failing the whole request over a fixable layout mistake.
   function squishedHtml() {
-    return html().replace("@media(max-width:700px){.cards{grid-template-columns:1fr}}", "");
+    return html().replace(
+      ".cards{display:grid;grid-template-columns:1fr;gap:18px}@media(min-width:700px){.cards{grid-template-columns:repeat(3,1fr)}}",
+      ".cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}",
+    );
   }
 
   describe("one automatic retry on a layout-only rejection", () => {

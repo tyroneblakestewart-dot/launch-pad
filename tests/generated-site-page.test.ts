@@ -21,7 +21,7 @@ function validHtml(extra = "") {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Original token page</title>
 <style>
-:root{--ink:#101820;--paper:#f7f9fb;--accent:#69b8d0}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 7vw}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}img{max-width:100%}@media(max-width:700px){.grid{grid-template-columns:1fr}section{padding:44px 20px}}
+:root{--ink:#101820;--paper:#f7f9fb;--accent:#69b8d0}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:44px 20px}.grid{display:grid;grid-template-columns:1fr;gap:20px}img{max-width:100%}@media(min-width:700px){.grid{grid-template-columns:repeat(3,1fr)}section{padding:72px 7vw}}
 </style>
 </head>
 <body>
@@ -266,7 +266,7 @@ describe("generated full website document", () => {
     });
 
     it("does not confuse a min-width/max-width media query threshold with a fixed-width container", () => {
-      // validHtml()'s only breakpoint is @media(max-width:700px) — the
+      // validHtml()'s only breakpoint is @media(min-width:700px) — the
       // "700px" here is a query threshold, not a container width, and must
       // not be flagged as an overflow risk.
       expect(isCompleteGeneratedPageHtml(validHtml())).toBe(true);
@@ -274,15 +274,18 @@ describe("generated full website document", () => {
 
     it("does not flag a wide fixed width that only applies inside a desktop min-width breakpoint", () => {
       const desktopOnlyWidth = validHtml().replace(
-        "@media(max-width:700px){.grid{grid-template-columns:1fr}section{padding:44px 20px}}",
-        "@media(max-width:700px){.grid{grid-template-columns:1fr}section{padding:44px 20px}}@media(min-width:1280px){.wrapper{width:1900px}}",
+        "@media(min-width:700px){.grid{grid-template-columns:repeat(3,1fr)}section{padding:72px 7vw}}",
+        "@media(min-width:700px){.grid{grid-template-columns:repeat(3,1fr)}section{padding:72px 7vw}}@media(min-width:1280px){.wrapper{width:1900px}}",
       );
       expect(isCompleteGeneratedPageHtml(desktopOnlyWidth)).toBe(true);
     });
 
-    // Desktop-squish detection (issue #323 part 1): an always-active
-    // multi-column grid with no breakpoint that ever stacks it is the exact
-    // "desktop layout squished onto the phone" bug the owner reported.
+    // Desktop-squish detection (issue #323 part 1, tightened by issue #338
+    // fix 4a): an always-active multi-column grid is now rejected outright,
+    // whether or not something later stacks it — relying on a breakpoint to
+    // fix a desktop-first base is itself the "clamped, not designed for
+    // mobile" pattern the owner flagged. Multi-column layout may only appear
+    // inside a `min-width` media query.
     describe("desktop-squish (unstacked multi-column grid)", () => {
       it("rejects an always-active 3-column grid with no media query at all", () => {
         const squished = withStyle(
@@ -293,24 +296,33 @@ describe("generated full website document", () => {
         expect(isGeneratedPageRejectedForLayoutOnly(squished)).toBe(true);
       });
 
-      it("rejects an always-active 3-column grid even when a media query exists but never touches grid-template-columns", () => {
-        const squished = validHtml().replace(
-          "@media(max-width:700px){.grid{grid-template-columns:1fr}section{padding:44px 20px}}",
-          "@media(max-width:700px){section{padding:44px 20px}}",
-        );
-        expect(isCompleteGeneratedPageHtml(squished)).toBe(false);
-      });
-
-      it("accepts validHtml() unchanged, whose @media(max-width:700px) block does stack the grid", () => {
+      it("accepts validHtml() unchanged, whose 3-column grid only appears inside @media(min-width:700px)", () => {
         expect(isCompleteGeneratedPageHtml(validHtml())).toBe(true);
       });
 
-      it("does not flag an always-active two-column grid — a common, legitimate mobile-safe pattern", () => {
+      it("rejects the same layout if the multi-column declaration moves from the min-width breakpoint to the always-active base", () => {
+        const desktopFirst = validHtml().replace(
+          ".grid{display:grid;grid-template-columns:1fr;gap:20px}img{max-width:100%}@media(min-width:700px){.grid{grid-template-columns:repeat(3,1fr)}section{padding:72px 7vw}}",
+          ".grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}img{max-width:100%}@media(min-width:700px){section{padding:72px 7vw}}",
+        );
+        expect(isCompleteGeneratedPageHtml(desktopFirst)).toBe(false);
+      });
+
+      it("rejects an always-active two-column grid too — the #325/#326 two-up exception no longer survives issue #338", () => {
         const twoUp = withStyle(
           "",
           ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}img{max-width:100%}",
         );
-        expect(isCompleteGeneratedPageHtml(twoUp)).toBe(true);
+        expect(isCompleteGeneratedPageHtml(twoUp)).toBe(false);
+        expect(isGeneratedPageRejectedForLayoutOnly(twoUp)).toBe(true);
+      });
+
+      it("accepts the same two-column grid once it only appears inside a min-width breakpoint", () => {
+        const twoUpResponsive = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:1fr;gap:20px}img{max-width:100%}@media(min-width:480px){.grid{grid-template-columns:repeat(2,1fr)}}",
+        );
+        expect(isCompleteGeneratedPageHtml(twoUpResponsive)).toBe(true);
       });
 
       it("does not flag repeat(auto-fit, ...) or repeat(auto-fill, ...) — those are inherently responsive", () => {
@@ -335,28 +347,41 @@ describe("generated full website document", () => {
         expect(isGeneratedPageRejectedForLayoutOnly(squished)).toBe(true);
       });
 
-      it("accepts an explicit three-track list when a max-width breakpoint stacks it", () => {
-        const stacked = withStyle(
+      // Issue #338 fix 4a: previously a max-width breakpoint that stacked
+      // the grid was sufficient. That "wide by default, narrowed for
+      // phones" shape is desktop-first CSS held together by a clamp, exactly
+      // what the owner flagged — so it is rejected outright now.
+      it("rejects an explicit three-track list even when a max-width breakpoint later stacks it", () => {
+        const stillDesktopFirst = withStyle(
           "",
           ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:240px auto 1fr;gap:20px}img{max-width:100%}@media(max-width:700px){.grid{grid-template-columns:1fr}}",
         );
-        expect(isCompleteGeneratedPageHtml(stacked)).toBe(true);
+        expect(isCompleteGeneratedPageHtml(stillDesktopFirst)).toBe(false);
       });
 
-      it("does not flag an explicit two-track list with no fixed-width track", () => {
+      it("accepts an explicit three-track list once it only appears inside a min-width breakpoint", () => {
+        const mobileFirst = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:1fr;gap:20px}img{max-width:100%}@media(min-width:900px){.grid{grid-template-columns:240px auto 1fr}}",
+        );
+        expect(isCompleteGeneratedPageHtml(mobileFirst)).toBe(true);
+      });
+
+      it("rejects an explicit two-track list too, even with no fixed-width track", () => {
         const twoUp = withStyle(
           "",
           ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}img{max-width:100%}",
         );
-        expect(isCompleteGeneratedPageHtml(twoUp)).toBe(true);
+        expect(isCompleteGeneratedPageHtml(twoUp)).toBe(false);
       });
     });
 
-    // Issue #325 pattern 3: a two-track grid can still fail to fit a 390px
-    // viewport if one track is a wide fixed pixel value, even though the
-    // track count alone (2) is otherwise treated as a safe, common pattern.
-    describe("desktop-squish (two-track grid with a wide fixed-pixel track)", () => {
-      it("rejects an always-active two-track grid with a >=200px fixed track", () => {
+    // Issue #325 pattern 3 introduced a >=200px fixed-track threshold for
+    // two-track grids; issue #338 fix 4a removes that threshold entirely —
+    // every always-active 2+-track grid is rejected now, so the pixel width
+    // of any individual track no longer matters.
+    describe("desktop-squish (two-track grid, pixel width no longer matters)", () => {
+      it("rejects an always-active two-track grid with a wide fixed track", () => {
         const squished = withStyle(
           "",
           ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:320px 1fr;gap:20px}img{max-width:100%}",
@@ -365,20 +390,20 @@ describe("generated full website document", () => {
         expect(isGeneratedPageRejectedForLayoutOnly(squished)).toBe(true);
       });
 
-      it("does not flag a two-track grid whose fixed track is below the 200px threshold", () => {
-        const safe = withStyle(
+      it("rejects an always-active two-track grid even with a fixed track well below the old 200px threshold", () => {
+        const squished = withStyle(
           "",
           ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:150px 1fr;gap:20px}img{max-width:100%}",
         );
-        expect(isCompleteGeneratedPageHtml(safe)).toBe(true);
+        expect(isCompleteGeneratedPageHtml(squished)).toBe(false);
       });
 
-      it("accepts a wide fixed two-track grid when a max-width breakpoint stacks it", () => {
-        const stacked = withStyle(
+      it("accepts a wide fixed two-track grid once it only appears inside a min-width breakpoint", () => {
+        const mobileFirst = withStyle(
           "",
-          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:320px 1fr;gap:20px}img{max-width:100%}@media(max-width:700px){.grid{grid-template-columns:1fr}}",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.grid{display:grid;grid-template-columns:1fr;gap:20px}img{max-width:100%}@media(min-width:700px){.grid{grid-template-columns:320px 1fr}}",
         );
-        expect(isCompleteGeneratedPageHtml(stacked)).toBe(true);
+        expect(isCompleteGeneratedPageHtml(mobileFirst)).toBe(true);
       });
     });
 
@@ -401,12 +426,23 @@ describe("generated full website document", () => {
         expect(isGeneratedPageRejectedForLayoutOnly(squished)).toBe(true);
       });
 
-      it("accepts the same flex row once a max-width breakpoint switches it to a column", () => {
-        const stacked = withStyle(
+      // Issue #338 fix 4a: previously a max-width breakpoint that stacked
+      // the row to a column was sufficient. That's still a desktop-first
+      // base held together by a phone-only override, so it is rejected now.
+      it("rejects the same flex row even when a max-width breakpoint later stacks it", () => {
+        const stillDesktopFirst = withStyle(
           "",
           ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.card{display:flex;flex-wrap:nowrap;align-items:center;gap:24px;padding:32px}.card .icon{width:84px;height:84px;flex-shrink:0}img{max-width:100%}@media(max-width:600px){.card{flex-direction:column}}",
         );
-        expect(isCompleteGeneratedPageHtml(stacked)).toBe(true);
+        expect(isCompleteGeneratedPageHtml(stillDesktopFirst)).toBe(false);
+      });
+
+      it("accepts an unstacked flex row once it only appears inside a min-width breakpoint instead of the base", () => {
+        const mobileFirst = withStyle(
+          "",
+          ":root{--ink:#101820;--paper:#f7f9fb}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:var(--paper);color:var(--ink)}header{padding:24px}section{padding:72px 40px}h1{font-size:clamp(28px,6vw,64px)}.card{display:flex;flex-direction:column;padding:32px}.card .icon{width:84px;height:84px}img{max-width:100%}@media(min-width:600px){.card{flex-direction:row;flex-wrap:nowrap}}",
+        );
+        expect(isCompleteGeneratedPageHtml(mobileFirst)).toBe(true);
       });
 
       it("accepts the same flex row when it declares flex-wrap: wrap instead of stacking to a column", () => {
@@ -434,11 +470,15 @@ describe("generated full website document", () => {
       });
     });
 
-    // Issue #325: prove the new detector patterns above cause no regression
-    // against the free-site template's own shipped CSS — every palette,
-    // hero, tokenomics and about-card variant is authored in one shared
-    // stylesheet, so running that whole stylesheet through the detector
-    // once covers every variant combination.
+    // Issue #325, tightened by issue #338 fix 4c: prove the detector above
+    // (now the strict "no base multi-column, ever" rule) causes no false
+    // positive against the free-site template's own shipped CSS — every
+    // palette, hero, tokenomics and about-card variant is authored in one
+    // shared stylesheet, so running that whole stylesheet through the
+    // detector once covers every variant combination. The template's
+    // tokenomics stat-grid was fixed (single column at base, two-up only
+    // from a min-width:480px breakpoint) to keep this passing under the
+    // stricter rule — see docs/free-site-template-source.html.
     it("does not flag any shipped free-site template variant as an unstacked layout", () => {
       const source = readFileSync(
         path.join(process.cwd(), "docs", "free-site-template-source.html"),

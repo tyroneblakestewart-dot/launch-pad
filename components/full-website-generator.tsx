@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { createWalletClient, custom } from "viem";
 import type { FreeSiteSections } from "@/lib/free-site-sections";
 import { isFreeSiteTemplateHtml, substituteFreeSitePlatformFacts } from "@/lib/free-site-platform-facts";
-import { prepareGeneratedPageForPreview } from "@/lib/generated-site-page";
+import { isGeneratedPageRejectedForLayoutOnly, prepareGeneratedPageForPreview } from "@/lib/generated-site-page";
 import {
   parseGenerateSitePageStreamLine,
   splitNdjsonLines,
@@ -459,6 +459,13 @@ function renderGeneratedWebsite(
   onClosePreview: () => void,
 ): RenderedPreview {
   const site = previewElement();
+  // Issue #338 fix 4b: prepareGeneratedPageForPreview only checks structural
+  // safety now (fix 4b's own change), not the strict mobile-first responsive
+  // baseline (fix 4a) — so a saved draft or published site from before issue
+  // #326 still renders here instead of throwing. isGeneratedPageRejectedForLayoutOnly
+  // tells us that's exactly what happened, so the studio can say so instead
+  // of silently leaving it to the overflow-clamp seatbelt (fix 2).
+  const needsMobileRegeneration = isGeneratedPageRejectedForLayoutOnly(html);
   const prepared = prepareGeneratedPageForPreview(html, artworkDataUrl, { reportTaps: true });
   clearPreviewStatus(site);
 
@@ -469,6 +476,14 @@ function renderGeneratedWebsite(
   const controls = document.createElement("div");
   controls.className = "full-generated-page-controls";
   const controlCleanups: Array<() => void> = [];
+
+  const mobileRegenerateWarning = needsMobileRegeneration ? document.createElement("div") : null;
+  if (mobileRegenerateWarning) {
+    mobileRegenerateWarning.className = "full-generated-page-mobile-warning";
+    mobileRegenerateWarning.setAttribute("role", "status");
+    mobileRegenerateWarning.textContent =
+      "This site was generated before Hoodlums checked for genuine mobile-first layout. It still renders safely, but regenerate it for a real columned mobile design instead of a clamped desktop one.";
+  }
 
   const publishStatus = document.createElement("span");
   publishStatus.className = "full-generated-page-publish-status";
@@ -746,6 +761,7 @@ function renderGeneratedWebsite(
   listen(saveButton, onSavePreview);
   fullScreenButton.addEventListener("click", onToggleFullScreen);
   closeButton.addEventListener("click", onClose);
+  if (mobileRegenerateWarning) controls.append(mobileRegenerateWarning);
   controls.append(publishStatus, publishButton, fullScreenButton, saveButton, closeButton);
   scale.appendChild(frame);
   viewport.appendChild(scale);
@@ -972,6 +988,21 @@ export function FullWebsiteGenerator() {
         backdrop-filter: blur(14px);
         -webkit-backdrop-filter: blur(14px);
       }
+      /* Issue #338 fix 4b: sits on its own full-width row above the control
+         buttons (flex: 1 0 100% inside the existing wrapping flex row, order
+         -1 so it always leads regardless of DOM position) rather than
+         needing a new grid row of its own. */
+      .full-generated-page-mobile-warning {
+        order: -1;
+        flex: 1 0 100%;
+        padding: 8px 10px;
+        border: 1px solid rgba(245, 201, 62, .4);
+        border-radius: 8px;
+        background: rgba(245, 201, 62, .14);
+        color: #f5c93e;
+        font: 600 11px/1.4 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: .01em;
+      }
       .full-generated-page-controls button {
         min-height: 40px;
         padding: 0 16px;
@@ -1123,11 +1154,20 @@ export function FullWebsiteGenerator() {
            entire remaining screen, edge to edge — the same full-bleed
            footprint full screen already used, so the only difference
            between the two states on a phone is the part-3 content scale,
-           never the container's own size or position. */
+           never the container's own size or position. Issue #338 fix 3: this
+           rule kept a bare height: 100svh, never the dvh-preferred
+           fallback chain #327 problem 2 added to the sibling full screen
+           rule below — so windowed mode (the default view, before anyone
+           taps "Full screen") kept the exact dead band at the bottom that
+           #327/#329 already fixed for full screen, which read as the bug
+           "returning". Same chain, same reasoning, applied here too. */
         .full-generated-page-container:not(.full-generated-page-fullscreen) {
           inset: 0;
           width: 100vw;
+          height: 100vh;
+          height: -webkit-fill-available;
           height: 100svh;
+          height: 100dvh;
           max-width: none;
           max-height: none;
           border-radius: 0;
