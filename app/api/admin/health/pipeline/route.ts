@@ -12,6 +12,7 @@ import { getVercelOidcToken } from "@/lib/server/ai-responses-runtime";
 import { buildSubdomainRoutingHealthStage } from "@/lib/server/public-site-subdomain";
 import { buildSubscriptionLifecyclePipeline } from "@/lib/server/subscription-lifecycle-pipeline";
 import { buildServicePipeline } from "@/lib/server/system-health-pipeline";
+import { buildTestAccessHealthStage } from "@/lib/server/test-access";
 
 export const runtime = "nodejs";
 
@@ -45,13 +46,21 @@ export async function GET(request: Request) {
 
     let pipeline;
     if (service === "subscribers") {
-      const [subscriptions, subdomainRouting] = await Promise.all([
+      const [subscriptions, subdomainRouting, testAccess] = await Promise.all([
         buildSubscriptionLifecyclePipeline(),
         buildSubdomainRoutingHealthStage(),
+        buildTestAccessHealthStage(),
       ]);
-      pipeline = {
+      const subscribersWithSubdomain = {
         ...subscriptions,
         stages: [...subscriptions.stages, subdomainRouting],
+      };
+      pipeline = {
+        ...subscribersWithSubdomain,
+        stages: [
+          ...subscribersWithSubdomain.stages,
+          testAccess,
+        ],
       };
     } else {
       pipeline = await buildServicePipeline(service, {

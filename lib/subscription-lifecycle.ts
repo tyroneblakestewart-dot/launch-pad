@@ -9,6 +9,8 @@ export type SubscriptionBillingPeriod = (typeof SUBSCRIPTION_BILLING_PERIODS)[nu
 export const SUBSCRIPTION_STATUSES = ["active", "expiring", "expired"] as const;
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 
+export type SubscriptionAccessSource = "none" | "paid" | "test-allowlist";
+
 export type SubscriptionReminderKind = "five_days" | "two_days" | "expiry";
 
 export type SubscriptionAccess = {
@@ -16,6 +18,7 @@ export type SubscriptionAccess = {
   plan: SubscriptionPlan | null;
   status: SubscriptionStatus;
   active: boolean;
+  accessSource: SubscriptionAccessSource;
   paidFrom: string | null;
   paidUntil: string | null;
   daysRemaining: number;

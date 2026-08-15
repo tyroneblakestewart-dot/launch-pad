@@ -23,7 +23,8 @@ export type BespokeSiteChallengeMessageInput = {
 
 export type BespokeSiteChallengeResponse = BespokeSiteChallengeMessageInput & {
   message: string;
-  tier: "bond_pro_site" | "pro" | "pro_bundle";
+  tier: "test_access" | "bond_pro_site" | "pro" | "pro_bundle";
+  accessSource: "paid" | "test-allowlist";
 };
 
 export type BespokeSiteAccessProof = {

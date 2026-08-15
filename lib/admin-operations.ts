@@ -68,6 +68,8 @@ export type AdminActivityKind =
   | "payment-received"
   | "subscription-reminder-sent"
   | "site-contract-address-attached"
+  | "test-access-added"
+  | "test-access-revoked"
   | "outreach-posted"
   | "outreach-dismissed";
 
