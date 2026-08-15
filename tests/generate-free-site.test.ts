@@ -501,10 +501,15 @@ describe("POST /api/generate-free-site design failures", () => {
     );
   });
 
-  it("reports a timed-out design call as timeout", async () => {
+  it("reports a timed-out design call as timeout after the automatic retry also times out", async () => {
+    // A timeout is a transient network failure (issue #330), so it is
+    // retried once before the route gives up.
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockRejectedValueOnce(
+        new DOMException("The operation was aborted due to timeout", "TimeoutError"),
+      )
       .mockRejectedValueOnce(
         new DOMException("The operation was aborted due to timeout", "TimeoutError"),
       );
@@ -514,9 +519,166 @@ describe("POST /api/generate-free-site design failures", () => {
     const body = await responseJson<{ error: string }>(response);
 
     expect(response.status).toBe(502);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(body.error).toBe(
       "The AI free-site design service could not complete the request (timeout).",
     );
+  });
+});
+
+describe("POST /api/generate-free-site design retry (issue #330)", () => {
+  it("retries once and succeeds when the first design call fails transiently (http 5xx)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(new Response("", { status: 500 }))
+      .mockResolvedValueOnce(outputText(DESIGN));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ html: string }>(response);
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(body.html).toContain(ARTWORK_PLACEHOLDER);
+    expect(console.warn).toHaveBeenCalledWith(
+      "AI free-site design request failed transiently; retrying once",
+      "http 500",
+    );
+  });
+
+  it("retries once and succeeds when the first design call fails on a network error", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockRejectedValueOnce(new Error("getaddrinfo ENOTFOUND"))
+      .mockResolvedValueOnce(outputText(DESIGN));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries once and succeeds when the first design response is not valid JSON", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(
+        new Response("not json", { status: 200, headers: { "Content-Type": "application/json" } }),
+      )
+      .mockResolvedValueOnce(outputText(DESIGN));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns 502 when both design attempts fail transiently", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(new Response("", { status: 503 }))
+      .mockResolvedValueOnce(new Response("", { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ error: string }>(response);
+
+    expect(response.status).toBe(502);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(body.error).toBe(
+      "The AI free-site design service could not complete the request (http 500).",
+    );
+  });
+
+  it("does not retry a 4xx design failure", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(new Response("", { status: 429 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ error: string }>(response);
+
+    expect(response.status).toBe(502);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(body.error).toBe(
+      "The AI free-site design service could not complete the request (http 429).",
+    );
+  });
+
+  it("does not retry when the design call succeeds but parseFreeSiteDesignResponse rejects it", async () => {
+    const invalid = { ...DESIGN, theme: { ...DESIGN.theme, fontPairing: "neon" } };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(outputText(invalid));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+
+    expect(response.status).toBe(502);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("caps the design retry timeout to the remaining route budget and skips retrying below the safety margin", async () => {
+    vi.useFakeTimers();
+    try {
+      const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+      const fetchMock = vi
+        .fn()
+        .mockImplementationOnce(async () => outputText(ARTWORK))
+        .mockImplementationOnce(async () => {
+          // Simulate 50s already spent out of the 60s maxDuration budget by
+          // the time the first design attempt fails.
+          vi.advanceTimersByTime(50_000);
+          return new Response("", { status: 500 });
+        })
+        .mockImplementationOnce(async () => outputText(DESIGN));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(request(input()));
+      expect(response.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+
+      const timeoutsMs = timeoutSpy.mock.calls.map(([ms]) => ms);
+      // [0] artwork, [1] design first attempt (full 35s), [2] design retry
+      // capped to what's left of the 60s budget (60 - 50 - 5s margin = 5s).
+      expect(timeoutsMs[1]).toBe(35_000);
+      expect(timeoutsMs[2]).toBe(5_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips the design retry entirely when too little budget remains", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockImplementationOnce(async () => outputText(ARTWORK))
+        .mockImplementationOnce(async () => {
+          // Only 2s of budget would remain after the 5s safety margin —
+          // below the minimum worthwhile retry timeout, so no retry fires.
+          vi.advanceTimersByTime(53_000);
+          return new Response("", { status: 500 });
+        });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(request(input()));
+      const body = await responseJson<{ error: string }>(response);
+
+      expect(response.status).toBe(502);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(body.error).toBe(
+        "The AI free-site design service could not complete the request (http 500).",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
