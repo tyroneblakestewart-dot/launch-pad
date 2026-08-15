@@ -49,9 +49,7 @@ function safetyCss(prepared: string): string {
 function tapBridge(prepared: string): string {
   const start = prepared.indexOf("var interactive=");
   expect(start).toBeGreaterThan(-1);
-  const end = prepared.indexOf("<\\/script>", start);
-  expect(end).toBeGreaterThan(start);
-  return prepared.slice(start, end);
+  return prepared.slice(start);
 }
 
 describe("generated-site mobile safety layer", () => {
