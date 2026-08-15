@@ -832,6 +832,41 @@
   font-size: 12px;
 }
 .chips .dashedChip { border-style: dashed; background: transparent; }
+.chips .chipSelected { border-color: #c6f53e; color: #071008; background: linear-gradient(180deg, #c6f53e, #a7dd4a); }
+.chips .chipInput {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px dashed rgba(198, 245, 62, 0.4);
+  border-radius: 999px;
+  color: #f4f7f1;
+  background: rgba(198, 245, 62, 0.05);
+  font-size: 12px;
+  width: 140px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.queueList { display: flex; flex-direction: column; gap: 14px; }
+.queueItem {
+  display: flex;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.006));
+}
+.queueThumb { width: 84px; height: 84px; flex: none; border-radius: 12px; object-fit: cover; }
+.queueItemBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 
 .mascotDrop {
   min-height: 250px;
@@ -846,7 +881,7 @@
   background: linear-gradient(180deg, rgba(198, 245, 62, 0.05), rgba(0, 0, 0, 0.14));
   text-align: center;
 }
-.mascotInitial { width: 104px; height: 104px; display: grid; place-items: center; border-radius: 20px; color: #071008; background: linear-gradient(150deg, #c6f53e, #6f9a1d); box-shadow: 0 18px 40px -18px rgba(198, 245, 62, 0.6); font-size: 34px; font-weight: 900; }
+.mascotInitial { width: 104px; height: 104px; display: grid; place-items: center; border-radius: 20px; color: #071008; background: linear-gradient(150deg, #c6f53e, #6f9a1d); box-shadow: 0 18px 40px -18px rgba(198, 245, 62, 0.6); font-size: 34px; font-weight: 900; object-fit: cover; }
 .mascotDrop b { font-size: 13px; }
 .mascotDrop p { margin: 0; color: #8d918c; font-size: 11px; }
 .mascotDrop button { padding: 0 16px; }

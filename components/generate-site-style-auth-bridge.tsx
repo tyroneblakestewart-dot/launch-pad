@@ -15,6 +15,10 @@ const PROTECTED_GENERATION_ROUTES = [
   "/api/generate-site-page/challenge",
   "/api/generate-site-page",
   "/api/generate-free-site",
+  "/api/social/voice-profile",
+  "/api/social/draft",
+  "/api/social/mascot/visual-dna",
+  "/api/social/mascot/image",
 ] as const;
 const BESPOKE_CHALLENGE_ROUTE = "/api/generate-site-page/challenge";
 const BESPOKE_GENERATION_ROUTE = "/api/generate-site-page";

@@ -1,18 +1,52 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
+import {
+  ACCOUNT_WALLET_STORAGE_KEY,
+  parseStoredAccountWallet,
+} from "@/lib/account-wallet-state";
+import { getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
+import type {
+  MascotVisualDNA,
+  QueueItem,
+  SocialStudioProjectRecord,
+  VoiceProfile,
+} from "@/lib/social-studio-types";
+import { EMPTY_SOCIAL_STUDIO_RECORD } from "@/lib/social-studio-types";
 import type { TokenProject } from "@/lib/types";
 import styles from "./social-hub.module.css";
 
 const PROJECT_STORAGE_KEY = "private-meme-token-studio-projects-v1";
 const DRAFT_STORAGE_KEY = "private-meme-token-studio-social-drafts-v1";
 const TELEGRAM_CHAT_STORAGE_KEY = "private-meme-token-studio-telegram-chats-v1";
+const MAX_MASCOT_IMAGE_BYTES = 3_000_000;
 
 type TemplateId = "launch" | "countdown" | "contract" | "community" | "custom";
 type StudioTab = "setup" | "calendar" | "queue" | "rules";
 type DraftMap = Record<string, string>;
 type ChatMap = Record<string, string>;
+
+function newQueueItemId(): string {
+  return `queue-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function storedWalletAddress(): string {
+  try {
+    return parseStoredAccountWallet(localStorage.getItem(ACCOUNT_WALLET_STORAGE_KEY))?.account ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error ?? new Error("The file could not be read."));
+    reader.readAsDataURL(file);
+  });
+}
 
 const TEMPLATES: Array<{ id: TemplateId; label: string; description: string }> = [
   { id: "launch", label: "Launch announcement", description: "Introduce the token and its story." },
@@ -233,11 +267,32 @@ export function SocialHub() {
   });
   const [timezoneId, setTimezoneId] = useState(TIMEZONES[0].id);
 
+  const [walletAddress, setWalletAddress] = useState("");
+  const [voiceExamplesText, setVoiceExamplesText] = useState("");
+  const [voiceProfile, setVoiceProfile] = useState<VoiceProfile | null>(null);
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [mascotVisualDNA, setMascotVisualDNA] = useState<MascotVisualDNA | null>(null);
+  const [mascotReferenceImage, setMascotReferenceImage] = useState<string | null>(null);
+  const [mascotBusy, setMascotBusy] = useState(false);
+  const [selectedMascotAction, setSelectedMascotAction] = useState("");
+  const [selectedMascotPlace, setSelectedMascotPlace] = useState("");
+  const [customActionEntry, setCustomActionEntry] = useState<string | null>(null);
+  const [customPlaceEntry, setCustomPlaceEntry] = useState<string | null>(null);
+  const [generatedMascotImage, setGeneratedMascotImage] = useState<string | null>(null);
+  const [mascotImageBusy, setMascotImageBusy] = useState(false);
+  const [telegramMessage, setTelegramMessage] = useState("");
+  const [attachedArtwork, setAttachedArtwork] = useState<string | null>(null);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [calendarAiBusy, setCalendarAiBusy] = useState(false);
+  const mascotFileInputRef = useRef<HTMLInputElement | null>(null);
+
   useEffect(() => {
     const loadedProjects = safeProjects(localStorage.getItem(PROJECT_STORAGE_KEY));
     const drafts = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
     const chats = safeMap(localStorage.getItem(TELEGRAM_CHAT_STORAGE_KEY));
     setProjects(loadedProjects);
+    setWalletAddress(storedWalletAddress());
 
     if (loadedProjects[0]) {
       const first = loadedProjects[0];
@@ -247,6 +302,50 @@ export function SocialHub() {
     }
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRecord() {
+      if (!selectedProjectId) {
+        setVoiceProfile(null);
+        setVoiceExamplesText("");
+        setMascotVisualDNA(null);
+        setMascotReferenceImage(null);
+        setQueue([]);
+        return;
+      }
+      const record = await getSocialStudioRecord(selectedProjectId).catch(() => EMPTY_SOCIAL_STUDIO_RECORD);
+      if (cancelled) return;
+      setVoiceProfile(record.voiceProfile);
+      setVoiceExamplesText(record.voiceExamples.join("\n"));
+      setMascotVisualDNA(record.mascotVisualDNA);
+      setMascotReferenceImage(record.mascotReferenceImage);
+      setQueue(record.queue);
+    }
+    void loadRecord();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProjectId]);
+
+  function currentSocialStudioRecord(overrides: Partial<SocialStudioProjectRecord> = {}): SocialStudioProjectRecord {
+    return {
+      voiceProfile,
+      voiceExamples: voiceExamplesText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+      mascotVisualDNA,
+      mascotReferenceImage,
+      queue,
+      ...overrides,
+    };
+  }
+
+  function persistSocialStudio(overrides: Partial<SocialStudioProjectRecord> = {}) {
+    if (!selectedProjectId) return;
+    void putSocialStudioRecord(selectedProjectId, currentSocialStudioRecord(overrides));
+  }
+
   const selectedProject = useMemo(
     () => projects.find((item) => item.id === selectedProjectId) || null,
     [projects, selectedProjectId],
@@ -254,7 +353,12 @@ export function SocialHub() {
 
   const xCharacterCount = message.length;
   const xReady = xCharacterCount > 0 && xCharacterCount <= 280;
-  const telegramReady = Boolean(selectedProject && telegramChatId.trim() && message.trim());
+  const telegramReady = Boolean(selectedProject && telegramChatId.trim() && (telegramMessage || message).trim());
+  const voiceExampleCount = useMemo(
+    () => voiceExamplesText.split("\n").map((line) => line.trim()).filter(Boolean).length,
+    [voiceExamplesText],
+  );
+  const voiceProgressPercent = Math.min(100, Math.round((voiceExampleCount / 20) * 100));
   const projectInitial = (selectedProject?.name || "H").slice(0, 1).toUpperCase();
   const projectTicker = selectedProject?.ticker?.trim().toUpperCase() || "PROJECT";
   const xHandle = selectedProject?.xHandle ? cleanHandle(selectedProject.xHandle) : "";
@@ -279,6 +383,13 @@ export function SocialHub() {
     setTelegramChatId(chats[id] || "");
     setTemplateId("launch");
     setMessage(drafts[id] || buildTemplate(project, "launch"));
+    setTelegramMessage("");
+    setAttachedArtwork(null);
+    setGeneratedMascotImage(null);
+    setSelectedMascotAction("");
+    setSelectedMascotPlace("");
+    setCustomActionEntry(null);
+    setCustomPlaceEntry(null);
     setProjectMenuOpen(false);
     setStatus(`${project.name || "Project"} loaded into Hoodlums Social.`);
   }
@@ -360,8 +471,8 @@ export function SocialHub() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chatId: telegramChatId.trim(),
-          text: message.trim(),
-          artwork: includeArtwork ? selectedProject.heroImage : "",
+          text: (telegramMessage || message).trim(),
+          artwork: includeArtwork ? attachedArtwork || selectedProject.heroImage : "",
         }),
       });
       const payload = (await response.json()) as { ok?: boolean; error?: string };
@@ -385,6 +496,321 @@ export function SocialHub() {
   async function publishBoth() {
     if (!openXComposer()) return;
     await postTelegram();
+  }
+
+  function draftProjectPayload() {
+    if (!selectedProject) return null;
+    return {
+      name: selectedProject.name,
+      ticker: selectedProject.ticker,
+      description: selectedProject.description,
+      chain: selectedProject.chain,
+      contractAddress: selectedProject.contractAddress,
+    };
+  }
+
+  async function buildVoiceProfile() {
+    const project = draftProjectPayload();
+    if (!project) {
+      setStatus("Choose a project before teaching the AI your voice.");
+      return;
+    }
+    const examples = voiceExamplesText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (examples.length < 2) {
+      setStatus("Paste at least two example posts, one per line, to teach the AI your voice.");
+      return;
+    }
+
+    setVoiceBusy(true);
+    setStatus("Reading your examples and learning the voice…");
+    try {
+      const response = await fetch("/api/social/voice-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress, project, examples }),
+      });
+      const payload = (await response.json()) as { voiceProfile?: VoiceProfile; error?: string };
+      if (!response.ok || !payload.voiceProfile) {
+        throw new Error(payload.error || "The voice profile could not be built.");
+      }
+      setVoiceProfile(payload.voiceProfile);
+      persistSocialStudio({ voiceProfile: payload.voiceProfile, voiceExamples: examples });
+      setStatus("Voice profile updated. Preview it on the right.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "The voice profile could not be built.");
+    } finally {
+      setVoiceBusy(false);
+    }
+  }
+
+  function noteScreenshotsUnavailable() {
+    setStatus("Screenshot-to-text isn't available yet — paste your post text above instead.");
+  }
+
+  async function generateDraft(options: { dayLabel?: string; theme?: string } = {}): Promise<boolean> {
+    const project = draftProjectPayload();
+    if (!project) {
+      setStatus("Choose a project before generating a draft.");
+      return false;
+    }
+
+    try {
+      const response = await fetch("/api/social/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          walletAddress,
+          project,
+          voiceProfile,
+          dayLabel: options.dayLabel ?? null,
+          theme: options.theme ?? null,
+        }),
+      });
+      const payload = (await response.json()) as {
+        draft?: { xText: string; telegramText: string };
+        error?: string;
+      };
+      if (!response.ok || !payload.draft) {
+        throw new Error(payload.error || "The draft could not be generated.");
+      }
+
+      if (options.dayLabel) {
+        const item: QueueItem = {
+          id: newQueueItemId(),
+          xText: payload.draft.xText,
+          telegramText: payload.draft.telegramText,
+          artwork: null,
+          source: "calendar-ai",
+          dayLabel: options.dayLabel,
+          createdAt: new Date().toISOString(),
+        };
+        setQueue((current) => {
+          const next = [item, ...current];
+          persistSocialStudio({ queue: next });
+          return next;
+        });
+        setStatus(`AI draft for ${options.dayLabel} added to the Queue.`);
+      } else {
+        setMessage(payload.draft.xText);
+        setTelegramMessage(payload.draft.telegramText);
+        setComposeOpen(true);
+        setStatus("AI draft ready. Review it below before posting.");
+      }
+      return true;
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "The draft could not be generated.");
+      return false;
+    }
+  }
+
+  async function generateDraftFromSetup() {
+    setDraftBusy(true);
+    await generateDraft();
+    setDraftBusy(false);
+  }
+
+  async function generateDraftForDay() {
+    setCalendarAiBusy(true);
+    await generateDraft({ dayLabel: selectedDayLabel });
+    setCalendarAiBusy(false);
+  }
+
+  function toggleMascotAction(label: string) {
+    setCustomActionEntry(null);
+    setSelectedMascotAction((current) => (current === label ? "" : label));
+  }
+
+  function toggleMascotPlace(label: string) {
+    setCustomPlaceEntry(null);
+    setSelectedMascotPlace((current) => (current === label ? "" : label));
+  }
+
+  function composeSceneInput(): string {
+    const action = (customActionEntry ?? selectedMascotAction).trim();
+    const place = (customPlaceEntry ?? selectedMascotPlace).trim();
+    if (action && place) return `${action} at ${place}`;
+    return action || place;
+  }
+
+  async function handleMascotFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const project = draftProjectPayload();
+    if (!project) {
+      setStatus("Choose a project before uploading mascot artwork.");
+      return;
+    }
+    if (file.size > MAX_MASCOT_IMAGE_BYTES) {
+      setStatus("That image is too large. Upload a mascot reference image under 3MB.");
+      return;
+    }
+
+    setMascotBusy(true);
+    setStatus("Reading the mascot's visual identity…");
+    try {
+      const imageDataUrl = await readFileAsDataUrl(file);
+      const response = await fetch("/api/social/mascot/visual-dna", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress, project, imageDataUrl }),
+      });
+      const payload = (await response.json()) as { mascotVisualDNA?: MascotVisualDNA; error?: string };
+      if (!response.ok || !payload.mascotVisualDNA) {
+        throw new Error(payload.error || "The mascot artwork could not be analysed.");
+      }
+      setMascotVisualDNA(payload.mascotVisualDNA);
+      setMascotReferenceImage(imageDataUrl);
+      persistSocialStudio({ mascotVisualDNA: payload.mascotVisualDNA, mascotReferenceImage: imageDataUrl });
+      setStatus("Mascot identity locked in. Choose a scene to generate artwork.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "The mascot artwork could not be analysed.");
+    } finally {
+      setMascotBusy(false);
+    }
+  }
+
+  async function generateMascotScene() {
+    const project = draftProjectPayload();
+    const sceneInput = composeSceneInput();
+    if (!project) {
+      setStatus("Choose a project before generating a mascot scene.");
+      return;
+    }
+    if (!mascotVisualDNA) {
+      setStatus("Upload mascot artwork first so its visual identity can be locked in.");
+      return;
+    }
+    if (!sceneInput) {
+      setStatus("Choose or describe a scene for the mascot.");
+      return;
+    }
+
+    setMascotImageBusy(true);
+    setStatus("Generating mascot scene artwork…");
+    try {
+      const response = await fetch("/api/social/mascot/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress, project, mascotVisualDNA, sceneInput }),
+      });
+      const payload = (await response.json()) as { imageDataUrl?: string; error?: string };
+      if (!response.ok || !payload.imageDataUrl) {
+        throw new Error(payload.error || "The mascot scene image could not be generated.");
+      }
+      setGeneratedMascotImage(payload.imageDataUrl);
+      setStatus("Mascot artwork ready — attach it to Telegram, download it, or add it to the Queue.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "The mascot scene image could not be generated.");
+    } finally {
+      setMascotImageBusy(false);
+    }
+  }
+
+  function attachGeneratedArtwork() {
+    if (!generatedMascotImage) return;
+    setAttachedArtwork(generatedMascotImage);
+    setIncludeArtwork(true);
+    setStatus("Mascot artwork attached — it will be included the next time you post to Telegram.");
+  }
+
+  function downloadGeneratedArtwork() {
+    if (!generatedMascotImage || !selectedProject) {
+      setStatus("Generate mascot artwork before downloading it.");
+      return;
+    }
+    const anchor = document.createElement("a");
+    anchor.href = generatedMascotImage;
+    anchor.download = `${selectedProject.websiteSlug || selectedProject.ticker || "token"}-mascot-scene.png`;
+    anchor.click();
+    setStatus("Mascot artwork downloaded. Attach it manually inside the X composer.");
+  }
+
+  function addGeneratedArtworkToQueue() {
+    if (!generatedMascotImage) return;
+    const item: QueueItem = {
+      id: newQueueItemId(),
+      xText: message,
+      telegramText: telegramMessage || message,
+      artwork: generatedMascotImage,
+      source: "setup-ai",
+      dayLabel: null,
+      createdAt: new Date().toISOString(),
+    };
+    setQueue((current) => {
+      const next = [item, ...current];
+      persistSocialStudio({ queue: next });
+      return next;
+    });
+    setStatus("Added to the Queue with its artwork.");
+  }
+
+  function updateQueueItem(id: string, patch: Partial<QueueItem>) {
+    setQueue((current) => {
+      const next = current.map((item) => (item.id === id ? { ...item, ...patch } : item));
+      persistSocialStudio({ queue: next });
+      return next;
+    });
+  }
+
+  function removeQueueItem(id: string) {
+    setQueue((current) => {
+      const next = current.filter((item) => item.id !== id);
+      persistSocialStudio({ queue: next });
+      return next;
+    });
+    setStatus("Removed from the Queue.");
+  }
+
+  function postQueueItemToX(item: QueueItem) {
+    if (!item.xText.trim()) {
+      setStatus("Write the X text before posting.");
+      return;
+    }
+    if (item.xText.length > 280) {
+      setStatus(`X posts must be 280 characters or fewer. Remove ${item.xText.length - 280} characters.`);
+      return;
+    }
+    const url = `https://x.com/intent/post?text=${encodeURIComponent(item.xText)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+    setStatus("X composer opened with the queued post filled in.");
+  }
+
+  async function sendQueueItemToTelegram(item: QueueItem) {
+    if (!selectedProject) {
+      setStatus("Choose a project before publishing.");
+      return;
+    }
+    if (!telegramChatId.trim() || !item.telegramText.trim()) {
+      setStatus("Enter the Telegram channel and add post text first.");
+      return;
+    }
+
+    setBusy(true);
+    setStatus("Sending the queued post through the Hoodlums Telegram bot…");
+    try {
+      const response = await fetch("/api/social/telegram", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chatId: telegramChatId.trim(),
+          text: item.telegramText.trim(),
+          artwork: item.artwork || "",
+        }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Telegram rejected the post.");
+      }
+      setStatus("Queued post published through the Hoodlums Telegram bot.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Telegram publishing failed.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function goToMonth(delta: number) {
@@ -498,7 +924,7 @@ export function SocialHub() {
               </div>
               <div className={styles.panelMeta}>
                 <span className={styles.metaPill}><b>X + TELEGRAM</b> live tools</span>
-                <span className={styles.metaPillMuted}><b>AI TOOLS</b> coming soon</span>
+                <span className={styles.metaPill}><b>AI TOOLS</b> live</span>
               </div>
             </div>
 
@@ -569,19 +995,34 @@ export function SocialHub() {
                           <h2>Teach the AI your voice</h2>
                           <p>Drop in posts you like the sound of. The more you add, the better it sounds — 20 is ideal.</p>
                         </div>
-                        <ComingSoon compact />
                       </div>
                       <div className={styles.insetPanel}>
-                        <textarea disabled placeholder="Paste a post here, one per line — or drag a screenshot in" rows={5} />
+                        <textarea
+                          value={voiceExamplesText}
+                          onChange={(event) => setVoiceExamplesText(event.target.value)}
+                          onBlur={() => persistSocialStudio()}
+                          placeholder="Paste a post here, one per line"
+                          rows={5}
+                        />
                         <div className={styles.disabledActions}>
-                          <button type="button" disabled>Upload screenshots</button>
-                          <span>0 / 20 examples</span>
+                          <button type="button" onClick={noteScreenshotsUnavailable}>Upload screenshots</button>
+                          <span>{voiceExampleCount} / 20 examples</span>
                         </div>
                       </div>
+                      <p className={styles.exampleLabel}>Screenshot-to-text isn&apos;t available yet — paste post text above instead.</p>
                       <div className={styles.progressRow}>
-                        <div><span>EXAMPLES ADDED</span><b>0 / 20</b></div>
-                        <div className={styles.progressTrack}><span /></div>
+                        <div><span>EXAMPLES ADDED</span><b>{voiceExampleCount} / 20</b></div>
+                        <div className={styles.progressTrack}><span style={{ width: `${voiceProgressPercent}%` }} /></div>
                       </div>
+                      <button
+                        type="button"
+                        className={styles.aiMakeButton}
+                        onClick={buildVoiceProfile}
+                        disabled={voiceBusy || voiceExampleCount < 2}
+                      >
+                        <b>{voiceBusy ? "Learning your voice…" : "Learn my voice"}</b>
+                        <span>Builds a reusable voice profile for AI drafts and mascot posts.</span>
+                      </button>
                       <p className={styles.limeNote}>Your examples teach style only — the AI will only ever talk about your project.</p>
                     </div>
 
@@ -591,13 +1032,23 @@ export function SocialHub() {
                           <h2>Voice preview</h2>
                           <p>Here&apos;s how it would sound writing about your project.</p>
                         </div>
-                        <ComingSoon compact />
                       </div>
-                      <div className={styles.previewEmpty}>
-                        <span>AI VOICE PREVIEW</span>
-                        <b>Add examples to unlock voice samples.</b>
-                        <p>No generated text is shown until the voice-learning backend exists.</p>
-                      </div>
+                      {voiceProfile ? (
+                        <div className={styles.insetPanel}>
+                          <p className={styles.exampleLabel}>
+                            Tone: {voiceProfile.tone} · Vocabulary: {voiceProfile.vocabulary} · Cadence: {voiceProfile.cadence} · Emoji: {voiceProfile.emojiHabits}
+                          </p>
+                          {voiceProfile.sampleLines.map((line, index) => (
+                            <p className={styles.limeNote} key={index}>{line}</p>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className={styles.previewEmpty}>
+                          <span>AI VOICE PREVIEW</span>
+                          <b>Add examples to unlock voice samples.</b>
+                          <p>Paste at least two example posts, then select &quot;Learn my voice&quot;.</p>
+                        </div>
+                      )}
                     </div>
                   </section>
 
@@ -662,11 +1113,23 @@ export function SocialHub() {
                               placeholder="Write the announcement…"
                               rows={9}
                             />
+                            <label className={styles.connectionField}>
+                              <span>Telegram version (optional — defaults to the same text)</span>
+                              <textarea
+                                value={telegramMessage}
+                                onChange={(event) => setTelegramMessage(event.target.value)}
+                                placeholder="Leave blank to send the same text to Telegram"
+                                rows={3}
+                              />
+                            </label>
                             <div className={styles.composerActions}>
                               <button type="button" onClick={saveDraft}>Save draft</button>
                               <button type="button" onClick={copyPost}>Copy post</button>
                               <button type="button" onClick={downloadArtwork} disabled={!selectedProject?.heroImage}>
                                 Download artwork
+                              </button>
+                              <button type="button" onClick={generateDraftFromSetup} disabled={draftBusy}>
+                                {draftBusy ? "Drafting…" : "Draft with AI"}
                               </button>
                             </div>
                           </div>
@@ -735,32 +1198,108 @@ export function SocialHub() {
                         <h2>Your mascot</h2>
                         <p>Upload your character once. Every image we make features them — and only them.</p>
                       </div>
-                      <ComingSoon compact />
                     </div>
                     <div className={styles.mascotGrid}>
                       <div className={styles.mascotOptions}>
                         <div>
                           <span className={styles.eyebrow}>WHAT SHOULD YOUR MASCOT BE DOING?</span>
                           <div className={styles.chips}>
-                            {MASCOT_ACTIONS.map((label) => <button type="button" disabled key={label}>{label}</button>)}
-                            <button type="button" disabled className={styles.dashedChip}>add your own…</button>
+                            {MASCOT_ACTIONS.map((label) => (
+                              <button
+                                type="button"
+                                key={label}
+                                className={selectedMascotAction === label ? styles.chipSelected : undefined}
+                                onClick={() => toggleMascotAction(label)}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                            {customActionEntry === null ? (
+                              <button type="button" className={styles.dashedChip} onClick={() => setCustomActionEntry("")}>
+                                add your own…
+                              </button>
+                            ) : (
+                              <input
+                                autoFocus
+                                value={customActionEntry}
+                                onChange={(event) => setCustomActionEntry(event.target.value)}
+                                onBlur={() => { if (!customActionEntry.trim()) setCustomActionEntry(null); }}
+                                placeholder="e.g. skateboarding"
+                                className={styles.chipInput}
+                              />
+                            )}
                           </div>
                         </div>
                         <div>
                           <span className={styles.eyebrow}>WHERE SHOULD YOUR MASCOT SHOW UP?</span>
                           <div className={styles.chips}>
-                            {MASCOT_PLACES.map((label) => <button type="button" disabled key={label}>{label}</button>)}
-                            <button type="button" disabled className={styles.dashedChip}>add your own…</button>
+                            {MASCOT_PLACES.map((label) => (
+                              <button
+                                type="button"
+                                key={label}
+                                className={selectedMascotPlace === label ? styles.chipSelected : undefined}
+                                onClick={() => toggleMascotPlace(label)}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                            {customPlaceEntry === null ? (
+                              <button type="button" className={styles.dashedChip} onClick={() => setCustomPlaceEntry("")}>
+                                add your own…
+                              </button>
+                            ) : (
+                              <input
+                                autoFocus
+                                value={customPlaceEntry}
+                                onChange={(event) => setCustomPlaceEntry(event.target.value)}
+                                onBlur={() => { if (!customPlaceEntry.trim()) setCustomPlaceEntry(null); }}
+                                placeholder="e.g. rooftop"
+                                className={styles.chipInput}
+                              />
+                            )}
                           </div>
                         </div>
                         <p>Your mascot is always the only character in generated images.</p>
+                        <button
+                          type="button"
+                          className={styles.aiMakeButton}
+                          onClick={generateMascotScene}
+                          disabled={mascotImageBusy || !mascotVisualDNA || !composeSceneInput()}
+                        >
+                          <b>{mascotImageBusy ? "Generating…" : "Generate mascot image"}</b>
+                          <span>Uses the locked mascot identity and the scene chosen above.</span>
+                        </button>
+                        {generatedMascotImage ? (
+                          <div className={styles.insetPanel}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img className={styles.summaryImage} src={generatedMascotImage} alt="Generated mascot scene" />
+                            <div className={styles.composerActions}>
+                              <button type="button" onClick={attachGeneratedArtwork}>Attach to Telegram</button>
+                              <button type="button" onClick={downloadGeneratedArtwork}>Download image</button>
+                              <button type="button" onClick={addGeneratedArtworkToQueue}>Add to Queue</button>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                       <div className={styles.mascotDrop}>
-                        <span className={styles.mascotInitial}>{projectInitial}</span>
-                        <b>Upload mascot artwork</b>
-                        <p>PNG, JPG or WEBP</p>
-                        <button type="button" disabled>Choose image</button>
-                        <ComingSoon compact />
+                        {mascotReferenceImage ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img className={styles.mascotInitial} src={mascotReferenceImage} alt="Mascot reference" />
+                        ) : (
+                          <span className={styles.mascotInitial}>{projectInitial}</span>
+                        )}
+                        <b>{mascotVisualDNA ? "Mascot identity locked in" : "Upload mascot artwork"}</b>
+                        <p>PNG, JPG or WEBP, under 3MB</p>
+                        <input
+                          ref={mascotFileInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className={styles.srOnly}
+                          onChange={handleMascotFileChange}
+                        />
+                        <button type="button" onClick={() => mascotFileInputRef.current?.click()} disabled={mascotBusy}>
+                          {mascotBusy ? "Analysing…" : mascotVisualDNA ? "Replace image" : "Choose image"}
+                        </button>
                       </div>
                     </div>
                   </section>
@@ -870,9 +1409,9 @@ export function SocialHub() {
                           <span className={styles.eyebrow}>ADD TO</span>
                           <h3>{selectedDayLabel}</h3>
                         </div>
-                        <button type="button" disabled className={styles.aiMakeButton}>
-                          <b>AI makes it</b>
-                          <span>Describe your idea and we&apos;ll create the post and artwork.</span>
+                        <button type="button" className={styles.aiMakeButton} onClick={generateDraftForDay} disabled={calendarAiBusy}>
+                          <b>{calendarAiBusy ? "Making it…" : "AI makes it"}</b>
+                          <span>Generates a voice-aware draft for this day and adds it to the Queue.</span>
                         </button>
                         <button type="button" disabled className={styles.ownPostButton}>
                           <b>I&apos;ll post my own</b>
@@ -893,7 +1432,10 @@ export function SocialHub() {
                           <span>and</span>
                           <select disabled><option>07:00</option></select>
                         </div>
-                        <ComingSoon />
+                        <p className={styles.exampleLabel}>
+                          Automatic scheduling, quiet hours and &quot;I&apos;ll post my own&quot; are not built yet — every AI draft still needs a manual approve tap in the Queue.
+                        </p>
+                        <ComingSoon compact />
                       </aside>
                     </div>
                   </section>
@@ -906,18 +1448,60 @@ export function SocialHub() {
                     <div className={styles.sectionHeading}>
                       <div>
                         <h2>What&apos;s going out</h2>
-                        <p>Scheduling, approval queues and post history will appear here when that backend is connected.</p>
+                        <p>Drafts from Setup and Calendar land here. Nothing posts until you tap approve — real cron scheduling is not built yet.</p>
                       </div>
                       <div className={styles.segmentedDisabled}>
                         <span className={styles.segmentActive}>Approve first</span>
                         <span>Auto-publish</span>
                       </div>
                     </div>
-                    <div className={styles.queueEmpty}>
-                      <ComingSoon />
-                      <b>No queue is being simulated.</b>
-                      <p>Your working X and Telegram publish buttons remain in Setup. This tab is intentionally display-only until real scheduling exists.</p>
-                    </div>
+                    {queue.length === 0 ? (
+                      <div className={styles.queueEmpty}>
+                        <b>The queue is empty.</b>
+                        <p>Use &quot;Draft with AI&quot; in Setup, &quot;AI makes it&quot; in Calendar, or &quot;Add to Queue&quot; after generating mascot artwork.</p>
+                      </div>
+                    ) : (
+                      <div className={styles.queueList}>
+                        {queue.map((item) => (
+                          <article className={styles.queueItem} key={item.id}>
+                            {item.artwork ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img className={styles.queueThumb} src={item.artwork} alt="Queued post artwork" />
+                            ) : null}
+                            <div className={styles.queueItemBody}>
+                              <span className={styles.exampleLabel}>
+                                {item.source === "calendar-ai" ? `Calendar AI · ${item.dayLabel}` : item.source === "setup-ai" ? "Setup AI" : "Manual"}
+                              </span>
+                              <label className={styles.connectionField}>
+                                <span>X ({item.xText.length}/280)</span>
+                                <textarea
+                                  value={item.xText}
+                                  onChange={(event) => updateQueueItem(item.id, { xText: event.target.value })}
+                                  rows={3}
+                                />
+                              </label>
+                              <label className={styles.connectionField}>
+                                <span>Telegram</span>
+                                <textarea
+                                  value={item.telegramText}
+                                  onChange={(event) => updateQueueItem(item.id, { telegramText: event.target.value })}
+                                  rows={3}
+                                />
+                              </label>
+                              <div className={styles.composerActions}>
+                                <button type="button" onClick={() => postQueueItemToX(item)}>
+                                  <XIcon /> Post to X
+                                </button>
+                                <button type="button" onClick={() => sendQueueItemToTelegram(item)} disabled={busy}>
+                                  <TelegramIcon /> Send to Telegram
+                                </button>
+                                <button type="button" onClick={() => removeQueueItem(item.id)}>Remove</button>
+                              </div>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    )}
                   </section>
 
                   <section className={styles.performanceCard}>

@@ -6,6 +6,7 @@ import {
   buildDeploymentPipeline,
   buildOutreachPipeline,
   buildServicePipeline,
+  buildSocialStudioAiPipeline,
   buildSubscribersPipeline,
   buildWebsiteGenerationPipeline,
 } from "@/lib/server/system-health-pipeline";
@@ -526,5 +527,60 @@ describe("buildOutreachPipeline", () => {
       getServiceControl: async () => activeControl({ key: "outreach", isolated: true, reason: "maintenance" }),
     });
     expect(stageById(pipeline, "endpoint-reachable")).toMatchObject({ status: "amber" });
+  });
+});
+
+describe("buildSocialStudioAiPipeline (issue #332)", () => {
+  const env = {
+    OPENAI_API_KEY: "test-key",
+    GENERATE_SITE_STYLE_SHARED_SECRET: "test-secret",
+    NEXT_PUBLIC_GENERATE_SITE_STYLE_SHARED_SECRET: "test-secret",
+    DATABASE_URL: "postgres://test",
+  };
+
+  it("is green with a direct OpenAI key, a configured secret and a configured database", async () => {
+    const pipeline = await buildSocialStudioAiPipeline({
+      env,
+      getServiceControl: async () => activeControl({ key: "social-studio-ai" }),
+    });
+    expect(stageById(pipeline, "provider-configured")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "origin-check")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "rate-limiter")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "entitlement-configured")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "mascot-image-provider")).toMatchObject({ status: "green" });
+  });
+
+  it("reports the mascot image provider as amber (not red) on the Vercel AI Gateway fallback", async () => {
+    const pipeline = await buildSocialStudioAiPipeline({
+      env: { ...env, OPENAI_API_KEY: "", AI_GATEWAY_API_KEY: "gateway-key" },
+      getServiceControl: async () => activeControl({ key: "social-studio-ai" }),
+    });
+    expect(stageById(pipeline, "provider-configured")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "mascot-image-provider")).toMatchObject({ status: "amber" });
+  });
+
+  it("reports entitlement as red without DATABASE_URL — every route fails closed", async () => {
+    const pipeline = await buildSocialStudioAiPipeline({
+      env: { ...env, DATABASE_URL: "" },
+      getServiceControl: async () => activeControl({ key: "social-studio-ai" }),
+    });
+    expect(stageById(pipeline, "entitlement-configured")).toMatchObject({ status: "red" });
+  });
+
+  it("surfaces isolation state", async () => {
+    const pipeline = await buildSocialStudioAiPipeline({
+      env,
+      getServiceControl: async () => activeControl({ key: "social-studio-ai", isolated: true, reason: "maintenance" }),
+    });
+    expect(stageById(pipeline, "endpoint-reachable")).toMatchObject({ status: "amber" });
+  });
+
+  it("is reachable through the buildServicePipeline dispatcher", async () => {
+    const pipeline = await buildServicePipeline("social-studio-ai", {
+      env,
+      socialStudioAi: { getServiceControl: async () => activeControl({ key: "social-studio-ai" }) },
+    });
+    expect(pipeline.id).toBe("social-studio-ai");
+    expect(stageById(pipeline, "provider-configured")).toMatchObject({ status: "green" });
   });
 });

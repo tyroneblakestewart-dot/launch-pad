@@ -232,3 +232,40 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   injects a click-forwarding bridge script; the published `/[slug]` route
   does not pass it, so that route's output is unchanged. Desktop full
   screen keeps its permanently visible control bar throughout.
+- AI Social Studio Setup, Calendar and Queue tabs are activated (issue
+  #332): teach-your-voice (paste-posts textarea → `POST
+  /api/social/voice-profile` → a real Voice preview), AI draft generation
+  (`POST /api/social/draft`, shared by the Setup "Draft with AI" button and
+  the Calendar per-day "AI makes it" button, hard-capped at 280 characters
+  for X via the existing `xCharacterCount` logic), mascot scene images
+  (`POST /api/social/mascot/visual-dna` to lock a visual identity from an
+  uploaded reference photo, then `POST /api/social/mascot/image` per chosen
+  action/place chip — attachable to the Telegram publish and downloadable
+  for X), and a real manual Queue (drafts from Setup/Calendar accumulate,
+  each editable, each posted only by an explicit tap — no unattended
+  auto-posting). All four new routes share the existing shared-secret +
+  Origin + per-IP protection stack (`lib/server/api-protection.ts`,
+  extended `PROTECTED_GENERATION_ROUTES`) and a new
+  `lib/server/social-studio-entitlement.ts` check against the same
+  canonical `getSubscriptionAccess` (Pro/Pro Bundle) decision the `/social`
+  page's `SubscriptionAccessGate` already uses — issue #328's wallet
+  test-access allowlist was not present in the codebase at implementation
+  time, so gating hooks into that single canonical function directly and
+  will inherit any allowlist #328 adds without further changes. Voice
+  profile, mascot visual DNA and the manual queue persist per project in a
+  new `lib/social-studio-db.ts` IndexedDB store (heavy blobs — mascot
+  images, queue artwork — stay out of localStorage and out of long-lived
+  React state, following the #307 pattern in `lib/token-project-db.ts`).
+  Screenshot-to-text for teaching the AI's voice is deliberately deferred
+  with a visible note rather than built now. Mascot image generation only
+  works with a direct `OPENAI_API_KEY` (not the Vercel AI Gateway
+  fallback) and fails closed with a clear 503 otherwise; voice profile and
+  draft generation work on either provider. The Settings & Rules tab, the
+  "Pick a Hoodlums bot" row, the Queue tab's performance/history cards, and
+  the Calendar tab's "I'll post my own" button and quiet-hours controls
+  remain their existing "coming soon" placeholders — out of this issue's
+  itemised scope. `/admin` gained a `social-studio-ai` System Health
+  pipeline (provider/isolation/origin/rate-limit/entitlement/mascot-image-
+  provider stages) and service-isolation switch, following the
+  `website-generation` pattern; it has no Postgres table of its own, so no
+  Pages CMS or Activity log changes were needed.
