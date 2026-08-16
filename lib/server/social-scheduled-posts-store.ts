@@ -9,8 +9,8 @@ import { isSocialPlatform, type SocialPlatform } from "@/lib/server/social-conne
 // delivery state lives in social_post_destinations so X and Telegram
 // retry/fail independently.
 
-export type SocialPostStatus = "scheduled" | "sent" | "partially_sent" | "failed" | "canceled";
-export type SocialDestinationStatus = "pending" | "sent" | "failed";
+export type SocialPostStatus = "scheduled" | "sent" | "partially_sent" | "needs_composer" | "failed" | "canceled";
+export type SocialDestinationStatus = "pending" | "sent" | "failed" | "needs_composer";
 
 export type SocialPostDestination = {
   id: string;
@@ -72,6 +72,8 @@ export interface SocialScheduledPostsStore {
   markDestinationSent(destinationId: string, externalPostId: string, now: Date): Promise<void>;
   markDestinationRetry(destinationId: string, errorMessage: string, nextAttemptAt: Date): Promise<void>;
   markDestinationFailedFinal(destinationId: string, errorMessage: string): Promise<void>;
+  /** Routes a link-bearing X destination to the free composer instead of the paid API — see social-link-detection.ts. Terminal: never retried as an API send again. */
+  markDestinationNeedsComposer(destinationId: string, reason: string): Promise<void>;
   recomputePostStatus(scheduledPostId: string): Promise<void>;
 }
 
@@ -101,6 +103,7 @@ const unconfiguredStore: SocialScheduledPostsStore = {
   async markDestinationSent() {},
   async markDestinationRetry() {},
   async markDestinationFailedFinal() {},
+  async markDestinationNeedsComposer() {},
   async recomputePostStatus() {},
 };
 
@@ -162,12 +165,36 @@ function asDateOrNull(value: Date | string | null): string | null {
   return value ? asDate(value).toISOString() : null;
 }
 
+/**
+ * Rolls a post's per-destination statuses up into one post-level status.
+ * Returns null when the post isn't done yet (a destination is still
+ * 'pending') — the caller should leave the post's status untouched.
+ *
+ * A destination that only 'needs_composer' (no failures, nothing still
+ * pending) rolls up to 'needs_composer' rather than 'partially_sent' — the
+ * post isn't broken, the user just needs to tap through the free X composer.
+ * Any failure alongside other outcomes still rolls up to 'partially_sent',
+ * the existing "not fully done, not fully failed" catch-all.
+ */
+export function computeRolledUpPostStatus(destinationStatuses: string[]): SocialPostStatus | null {
+  if (destinationStatuses.length === 0 || destinationStatuses.some((status) => status === "pending")) return null;
+
+  const allSent = destinationStatuses.every((status) => status === "sent");
+  if (allSent) return "sent";
+  const allFailed = destinationStatuses.every((status) => status === "failed");
+  if (allFailed) return "failed";
+  const noneFailed = !destinationStatuses.some((status) => status === "failed");
+  const anyNeedsComposer = destinationStatuses.some((status) => status === "needs_composer");
+  if (noneFailed && anyNeedsComposer) return "needs_composer";
+  return "partially_sent";
+}
+
 function isPostStatus(value: string): value is SocialPostStatus {
-  return ["scheduled", "sent", "partially_sent", "failed", "canceled"].includes(value);
+  return ["scheduled", "sent", "partially_sent", "needs_composer", "failed", "canceled"].includes(value);
 }
 
 function isDestinationStatus(value: string): value is SocialDestinationStatus {
-  return value === "pending" || value === "sent" || value === "failed";
+  return value === "pending" || value === "sent" || value === "failed" || value === "needs_composer";
 }
 
 function destinationFromRow(row: DestinationRow): SocialPostDestination | null {
@@ -370,17 +397,23 @@ export function createPostgresSocialScheduledPostsStore(databaseUrl: string): So
       );
     },
 
+    async markDestinationNeedsComposer(destinationId, reason) {
+      await pool.query(
+        `UPDATE social_post_destinations
+            SET status = 'needs_composer', error_message = $2, updated_at = NOW()
+          WHERE id = $1`,
+        [destinationId, reason.slice(0, 1000)],
+      );
+    },
+
     async recomputePostStatus(scheduledPostId) {
       const result = await pool.query<{ status: string }>(
         `SELECT status FROM social_post_destinations WHERE scheduled_post_id = $1`,
         [scheduledPostId],
       );
       const statuses = result.rows.map((row) => row.status);
-      if (statuses.length === 0 || statuses.some((status) => status === "pending")) return;
-
-      const allSent = statuses.every((status) => status === "sent");
-      const allFailed = statuses.every((status) => status === "failed");
-      const nextStatus: SocialPostStatus = allSent ? "sent" : allFailed ? "failed" : "partially_sent";
+      const nextStatus = computeRolledUpPostStatus(statuses);
+      if (!nextStatus) return;
 
       await pool.query(
         `UPDATE social_scheduled_posts

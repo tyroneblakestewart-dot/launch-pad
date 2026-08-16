@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type {
-  DueDestination,
-  SocialPostDestination,
-  SocialPostStatus,
-  SocialScheduledPost,
-  SocialScheduledPostsStore,
+import {
+  computeRolledUpPostStatus,
+  type DueDestination,
+  type SocialPostDestination,
+  type SocialScheduledPost,
+  type SocialScheduledPostsStore,
 } from "@/lib/server/social-scheduled-posts-store";
 
 // In-memory SocialScheduledPostsStore for tests — same rationale as
@@ -13,13 +13,6 @@ import type {
 
 export function createMemorySocialScheduledPostsStore(): SocialScheduledPostsStore {
   const posts = new Map<string, SocialScheduledPost>();
-
-  function recompute(status: SocialPostStatus, destinations: SocialPostDestination[]): SocialPostStatus {
-    if (destinations.some((d) => d.status === "pending")) return status;
-    const allSent = destinations.every((d) => d.status === "sent");
-    const allFailed = destinations.every((d) => d.status === "failed");
-    return allSent ? "sent" : allFailed ? "failed" : "partially_sent";
-  }
 
   return {
     async create(input) {
@@ -124,10 +117,21 @@ export function createMemorySocialScheduledPostsStore(): SocialScheduledPostsSto
       }
     },
 
+    async markDestinationNeedsComposer(destinationId, reason) {
+      for (const post of posts.values()) {
+        const index = post.destinations.findIndex((d) => d.id === destinationId);
+        if (index === -1) continue;
+        const destination = post.destinations[index];
+        post.destinations[index] = { ...destination, status: "needs_composer", errorMessage: reason };
+      }
+    },
+
     async recomputePostStatus(scheduledPostId) {
       const post = posts.get(scheduledPostId);
       if (!post || post.status === "canceled") return;
-      posts.set(scheduledPostId, { ...post, status: recompute(post.status, post.destinations) });
+      const nextStatus = computeRolledUpPostStatus(post.destinations.map((d) => d.status));
+      if (!nextStatus) return;
+      posts.set(scheduledPostId, { ...post, status: nextStatus });
     },
   };
 }

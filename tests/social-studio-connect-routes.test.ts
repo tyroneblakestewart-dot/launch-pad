@@ -194,8 +194,9 @@ describe("X connect / disconnect", () => {
     const auth = await signedAction("social:x-connect", { platform: "x" });
     const startResponse = await xConnectStart(postRequest("/api/social/x/connect/start", auth));
     expect(startResponse.status).toBe(200);
-    const { authorizeUrl } = (await startResponse.json()) as { authorizeUrl: string };
+    const { authorizeUrl, bioLinkHint } = (await startResponse.json()) as { authorizeUrl: string; bioLinkHint: string };
     expect(authorizeUrl).toContain("oauth_token=rt");
+    expect(bioLinkHint).toMatch(/bio/i);
 
     const callbackResponse = await xConnectCallback(getRequest("/api/social/x/connect/callback?oauth_token=rt&oauth_verifier=verifier123"));
     expect(callbackResponse.status).toBe(302);

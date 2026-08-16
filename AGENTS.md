@@ -328,3 +328,37 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   up yet — the backend is ready for it, but touching `social-hub.tsx`
   needs a dedicated pass with real mobile Safari verification per rule 7,
   which this PR could not do.
+- X posting cost control (issue #342): the shared posting engine
+  (`lib/server/social-posting-cron.ts`) never sends a link-bearing body
+  through the paid X API — `lib/server/social-link-detection.ts`'s
+  `bodyContainsLink` (scheme URLs, `www.`, bare "word.tld" domains from an
+  allowlist, known shorteners; decimals/version strings/cashtags are
+  deliberately not matched) gates every X destination before send. A match
+  routes that destination straight to a new terminal `needs_composer`
+  status instead of calling the API — free X intent-composer handoff, no
+  connection/credential state touched — with a plain-English reason stored
+  in the existing `error_message` column and surfaced by the already-shared
+  `GET /api/social/posts`. Every remaining (link-free) X send is metered:
+  `lib/server/social-x-cost-store.ts` records an estimated cost
+  (`social_x_send_costs`, migration `019_social_x_cost_control.sql`, which
+  also adds `needs_composer` to both the destination- and post-level status
+  enums) and the cron refuses to spend past an owner-configurable monthly
+  cap per wallet (`SOCIAL_X_API_SEND_COST_USD` / `SOCIAL_X_MONTHLY_COST_CAP_USD`,
+  both optional with sensible defaults) — over-cap sends pause (not fail)
+  until next month, Telegram unaffected. Draft-generation prompts
+  (`lib/server/social-draft-pipeline.ts`) now instruct the model to never
+  include a link, assuming it lives in the X bio/Telegram description
+  instead; `/api/social/x/connect/start` returns a `bioLinkHint` string for
+  the (not yet built) X-connect UI to show. `/admin`'s existing
+  `social-posting` System Health pipeline gained a `cost-cap` stage (spend
+  this month, configured rate/cap, wallets at/over cap) and its
+  `queue-counts` stage now reports `needs_composer` alongside the existing
+  statuses. Deliberately out of scope, consistent with #335's own Queue-tab
+  deferral (rule 7, needs live mobile Safari verification this pass
+  couldn't do): no UI renders the `needs_composer` "tap to post" list yet —
+  the backend/API is ready for it. Also out of scope: confirming whether X
+  media/image attachment is separately priced under the pay-per-use model
+  (no live web access in this session to check current X docs) — flagged
+  for the owner to verify directly; today's code never attaches mascot
+  images to an X API send regardless (Telegram-only or manual composer
+  download), so this doesn't change current behaviour either way.
