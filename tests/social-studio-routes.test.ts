@@ -209,6 +209,65 @@ describe("POST /api/social/draft", () => {
     const developerText = sentBody.input?.[0]?.content?.[0]?.text ?? "";
     expect(developerText).toContain("Push the community angle, big announcement coming Friday");
   });
+
+  it("regenerates exactly once with corrective feedback when the draft violates its angle, and returns the corrected draft (issue #362)", async () => {
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
+    // angleIndex 1 = culture-observation, which forbids ending in a question mark.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(textPayload({ xText: "Is DOOM really building momentum?", telegramText: "A fine telegram post." })),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(textPayload({ xText: "DOOM is quietly building real momentum.", telegramText: "A fine telegram post." })),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await postDraft(
+      request("/api/social/draft", { walletAddress: WALLET, project: PROJECT, angleIndex: 1 }),
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const payload = (await response.json()) as { draft?: { xText: string } };
+    expect(payload.draft?.xText).toBe("DOOM is quietly building real momentum.");
+
+    const [, retryInit] = fetchMock.mock.calls[1] as [string, { body?: string }];
+    const retryBody = JSON.parse(retryInit.body ?? "{}") as { input?: Array<{ content?: Array<{ text?: string }> }> };
+    const retryDeveloperText = retryBody.input?.[0]?.content?.[0]?.text ?? "";
+    expect(retryDeveloperText).toContain("IMPORTANT CORRECTION");
+    expect(retryDeveloperText).toContain("culture-observation");
+  });
+
+  it("does not retry when the first draft already complies with its angle", async () => {
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
+    // angleIndex 0 = community-question, which allows a question mark.
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(textPayload({ xText: "What's your favorite thing about DOOM?", telegramText: "A fine telegram post." })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await postDraft(
+      request("/api/social/draft", { walletAddress: WALLET, project: PROJECT, angleIndex: 0 }),
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails open — returns the original (non-compliant) draft — when the corrective retry itself fails", async () => {
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(textPayload({ xText: "Is DOOM really building momentum?", telegramText: "A fine telegram post." })),
+      )
+      .mockRejectedValueOnce(new Error("network down"));
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await postDraft(
+      request("/api/social/draft", { walletAddress: WALLET, project: PROJECT, angleIndex: 1 }),
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const payload = (await response.json()) as { draft?: { xText: string } };
+    expect(payload.draft?.xText).toBe("Is DOOM really building momentum?");
+  });
 });
 
 describe("POST /api/social/mascot/visual-dna", () => {

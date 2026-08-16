@@ -9,9 +9,14 @@ import { getVercelOidcToken, resolveAIResponsesRuntime } from "@/lib/server/ai-r
 import type { OpenAIResponse } from "@/lib/server/generate-site-style";
 import { normaliseLikedSampleLines } from "@/lib/server/social-reinforcement";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
-import { buildDraftRequestBody, parseDraftResponseDetailed, type DraftProject } from "@/lib/server/social-draft-pipeline";
+import {
+  buildDraftRequestBody,
+  checkDraftAngleCompliance,
+  parseDraftResponseDetailed,
+  type DraftProject,
+} from "@/lib/server/social-draft-pipeline";
 import { authoriseSocialStudioRequest } from "@/lib/server/social-studio-entitlement";
-import type { VoiceProfile } from "@/lib/social-studio-types";
+import type { SocialDraft, VoiceProfile } from "@/lib/social-studio-types";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -150,53 +155,90 @@ export async function POST(request: Request) {
     );
   }
 
-  let response: Response;
-  try {
-    response = await fetch(ai.responsesUrl, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${ai.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(
-        buildDraftRequestBody(
-          { project, voiceProfile, dayLabel, theme, likedSampleLines, directionBrief, voiceExamples, recentDrafts, angleIndex },
-          ai.model,
+  // `ai` is narrowed non-null above; capturing it in a const the closure
+  // reads (rather than re-reading `ai` from an outer `let`) keeps that
+  // narrowing valid for both the first attempt and the corrective retry.
+  const resolvedAi = ai;
+
+  type DraftAttemptResult = { ok: true; draft: SocialDraft } | { ok: false; status: number; error: string };
+
+  async function requestDraft(correctiveFeedback?: string | null): Promise<DraftAttemptResult> {
+    let response: Response;
+    try {
+      response = await fetch(resolvedAi.responsesUrl, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${resolvedAi.apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(
+          buildDraftRequestBody(
+            {
+              project,
+              voiceProfile,
+              dayLabel,
+              theme,
+              likedSampleLines,
+              directionBrief,
+              voiceExamples,
+              recentDrafts,
+              angleIndex,
+              correctiveFeedback,
+            },
+            resolvedAi.model,
+          ),
         ),
-      ),
-      signal: AbortSignal.timeout(25_000),
-    });
-  } catch (error) {
-    console.error("Draft request failed before receiving a response", error instanceof Error ? error.message : error);
-    return NextResponse.json(
-      { error: "The draft request could not reach the AI provider. Try again." },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
-  }
+        signal: AbortSignal.timeout(25_000),
+      });
+    } catch (error) {
+      console.error("Draft request failed before receiving a response", error instanceof Error ? error.message : error);
+      return { ok: false, status: 502, error: "The draft request could not reach the AI provider. Try again." };
+    }
 
-  if (!response.ok) {
-    const message = await response.text().catch(() => "");
-    console.error("Draft request failed", response.status, message.slice(0, 500));
-    return NextResponse.json({ error: "The draft request failed. Try again." }, { status: 502, headers: noStoreHeaders(rateHeaders) });
-  }
+    if (!response.ok) {
+      const message = await response.text().catch(() => "");
+      console.error("Draft request failed", response.status, message.slice(0, 500));
+      return { ok: false, status: 502, error: "The draft request failed. Try again." };
+    }
 
-  let payload: OpenAIResponse;
-  try {
-    payload = (await response.json()) as OpenAIResponse;
-  } catch {
-    return NextResponse.json({ error: "The AI returned an invalid response." }, { status: 502, headers: noStoreHeaders(rateHeaders) });
-  }
+    let payload: OpenAIResponse;
+    try {
+      payload = (await response.json()) as OpenAIResponse;
+    } catch {
+      return { ok: false, status: 502, error: "The AI returned an invalid response." };
+    }
 
-  const parsed = parseDraftResponseDetailed(payload);
-  if (!parsed.ok) {
-    console.error("Draft parse failed", parsed);
-    const incomplete = parsed.reason === "empty_output" || parsed.reason === "json_parse_error";
-    return NextResponse.json(
-      {
+    const parsed = parseDraftResponseDetailed(payload);
+    if (!parsed.ok) {
+      console.error("Draft parse failed", parsed);
+      const incomplete = parsed.reason === "empty_output" || parsed.reason === "json_parse_error";
+      return {
+        ok: false,
+        status: 502,
         error: incomplete
           ? "The AI response was incomplete. Try again."
           : "The AI response didn't match the expected format. Try again.",
-      },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
+      };
+    }
+
+    return { ok: true, draft: parsed.draft };
   }
 
-  return NextResponse.json({ draft: parsed.draft }, { headers: noStoreHeaders(rateHeaders) });
+  let result = await requestDraft();
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status, headers: noStoreHeaders(rateHeaders) });
+  }
+
+  // Mechanical post-parse guard (issue #362): the required post form is a
+  // prompt instruction, not a guarantee. On a violation, regenerate exactly
+  // once with corrective feedback naming it; if the retry itself fails for
+  // any reason, fail open and return the original draft rather than
+  // erroring, since a slightly off-form draft is better than none — the
+  // user reviews/edits every draft before posting anyway.
+  const compliance = checkDraftAngleCompliance(result.draft.xText, { theme, angleIndex });
+  if (compliance.violated) {
+    const retryResult = await requestDraft(compliance.feedback);
+    if (retryResult.ok) {
+      result = retryResult;
+    }
+  }
+
+  return NextResponse.json({ draft: result.draft }, { headers: noStoreHeaders(rateHeaders) });
 }

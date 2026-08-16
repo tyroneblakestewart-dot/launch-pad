@@ -4,6 +4,7 @@ import {
   DRAFT_ANGLES,
   X_DRAFT_CHARACTER_LIMIT,
   buildDraftRequestBody,
+  checkDraftAngleCompliance,
   parseDraftResponse,
   parseDraftResponseDetailed,
   type DraftProject,
@@ -120,6 +121,20 @@ describe("buildDraftRequestBody", () => {
     expect(developerText.indexOf("confident and playful")).toBeLessThan(developerText.indexOf("Push the community angle"));
   });
 
+  it("scopes the direction brief to subject matter only, explicitly subordinate to the required post form (issue #362 cause 1)", () => {
+    const body = buildDraftRequestBody(
+      { project: PROJECT, voiceProfile: null, directionBrief: "Push the community angle", angleIndex: 3 },
+      "gpt-5-mini",
+    );
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("this describes what to talk about, not what shape the post should take");
+    expect(developerText).toContain("the required post form given separately above takes precedence over this brief");
+
+    // The form requirement (angle 3 = one-liner) is stated ahead of the brief, not overridden by it.
+    expect(developerText.indexOf("REQUIRED POST FORM")).toBeLessThan(developerText.indexOf("current focus for this week"));
+    expect(developerText).toContain(DRAFT_ANGLES[3].constraint);
+  });
+
   it("always includes the anti-formula rules against repeating openings, length, signature phrases and hashtags (issue #360)", () => {
     const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini");
     const developerText = body.input[0]?.content[0]?.text ?? "";
@@ -167,14 +182,15 @@ describe("buildDraftRequestBody", () => {
     expect(matches.length).toBe(5);
   });
 
-  it("rotates the fallback angle deterministically across a batch when no theme is given (issue #360 cause 2)", () => {
+  it("rotates the fallback angle deterministically across a batch when no theme is given, as a hard developer-prompt requirement (issue #360 cause 2, #362 cause 2)", () => {
     const seenAngles = new Set<string>();
     for (let angleIndex = 0; angleIndex < DRAFT_ANGLES.length; angleIndex += 1) {
       const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, angleIndex }, "gpt-5-mini");
-      const userText = body.input[1]?.content[0]?.text ?? "";
-      const matchingAngle = DRAFT_ANGLES.find((angle) => userText.includes(angle));
+      const developerText = body.input[0]?.content[0]?.text ?? "";
+      const matchingAngle = DRAFT_ANGLES.find((angle) => developerText.includes(angle.instruction) && developerText.includes(angle.constraint));
       expect(matchingAngle).toBeDefined();
-      seenAngles.add(matchingAngle as string);
+      seenAngles.add(matchingAngle?.key as string);
+      expect(developerText).toContain("REQUIRED POST FORM (non-negotiable");
     }
     // Every angle in the set is reachable across a full rotation, not just one repeated die roll.
     expect(seenAngles.size).toBe(DRAFT_ANGLES.length);
@@ -182,17 +198,53 @@ describe("buildDraftRequestBody", () => {
     // Rotation wraps back to the same angle after a full cycle.
     const first = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, angleIndex: 0 }, "gpt-5-mini");
     const wrapped = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, angleIndex: DRAFT_ANGLES.length }, "gpt-5-mini");
-    expect(first.input[1]?.content[0]?.text).toEqual(wrapped.input[1]?.content[0]?.text);
+    expect(first.input[0]?.content[0]?.text).toEqual(wrapped.input[0]?.content[0]?.text);
   });
 
-  it("an explicit theme always overrides the rotating angle", () => {
+  it("gives every non-question angle a hard constraint forbidding a question mark, and only the community-question angle allows one (issue #362 cause 2)", () => {
+    DRAFT_ANGLES.forEach((angle) => {
+      if (angle.allowsQuestion) {
+        expect(angle.key).toBe("community-question");
+        expect(angle.constraint).toContain("question mark");
+      } else {
+        expect(angle.constraint.toLowerCase()).toContain("question");
+        expect(angle.constraint).toMatch(/not a question|do not end it with a question mark|no question mark/i);
+      }
+    });
+  });
+
+  it("gives the one-liner angle a hard length cap well under half the character limit (issue #362 cause 2)", () => {
+    const oneLiner = DRAFT_ANGLES.find((angle) => angle.key === "one-liner");
+    expect(oneLiner?.maxLength).toBeLessThan(X_DRAFT_CHARACTER_LIMIT / 2 + 1);
+    expect(oneLiner?.constraint).toContain("single short statement");
+  });
+
+  it("an explicit theme always overrides the rotating angle and emits no required-post-form line", () => {
     const body = buildDraftRequestBody(
       { project: PROJECT, voiceProfile: null, theme: "community AMA recap", angleIndex: 3 },
       "gpt-5-mini",
     );
     const userText = body.input[1]?.content[0]?.text ?? "";
+    const developerText = body.input[0]?.content[0]?.text ?? "";
     expect(userText).toContain("Theme for this post: community AMA recap.");
-    DRAFT_ANGLES.forEach((angle) => expect(userText).not.toContain(angle));
+    expect(developerText).not.toContain("REQUIRED POST FORM");
+    DRAFT_ANGLES.forEach((angle) => {
+      expect(developerText).not.toContain(angle.instruction);
+      expect(userText).not.toContain(angle.instruction);
+    });
+  });
+
+  it("threads corrective feedback from a failed compliance check into the developer prompt for the retry (issue #362)", () => {
+    const withoutFeedback = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, angleIndex: 3 }, "gpt-5-mini");
+    const withFeedback = buildDraftRequestBody(
+      { project: PROJECT, voiceProfile: null, angleIndex: 3, correctiveFeedback: "it ended in a question mark" },
+      "gpt-5-mini",
+    );
+    const withoutText = withoutFeedback.input[0]?.content[0]?.text ?? "";
+    const withText = withFeedback.input[0]?.content[0]?.text ?? "";
+    expect(withoutText).not.toContain("IMPORTANT CORRECTION");
+    expect(withText).toContain("IMPORTANT CORRECTION");
+    expect(withText).toContain("it ended in a question mark");
   });
 
   it("omits recent-draft avoid-context when none are supplied, degrading cleanly to today's behaviour (issue #360 cause 3)", () => {
@@ -203,20 +255,76 @@ describe("buildDraftRequestBody", () => {
     expect(developerText).not.toContain("Ready to review");
   });
 
-  it("passes the most recent Ready-to-review drafts as avoid-context, capped at 5 and truncated (issue #360 cause 3)", () => {
-    const recentDrafts = Array.from({ length: 8 }, (_, index) => `Recent draft number ${index + 1}`);
+  it("passes avoid-context as a structural form summary plus opening words only, capped at 5, never the full draft body (issue #362 cause 3)", () => {
+    const recentDrafts = [
+      "Doom crew, biggest test of the week: what's your real moment with DOOM so far and why does it matter to you?",
+      "Doom fans, quick poll: what moment made you believe DOOM could actually stick around for good?",
+      "Milestone reached: liquidity locked.",
+      "Doom is a vibe, not a hype cycle.",
+      "Doom fam, we're chewing through the noise and asking you straight: what's kept you here?",
+      "An eighth draft that should be dropped by the cap.",
+    ];
     const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, recentDrafts }, "gpt-5-mini");
     const developerText = body.input[0]?.content[0]?.text ?? "";
-    expect(developerText).toContain("clearly different in structure, opening and phrasing");
-    expect(developerText).toContain("Recent draft number 1");
-    expect(developerText).toContain("Recent draft number 5");
-    expect(developerText).not.toContain("Recent draft number 6");
 
-    const longDraft = "x".repeat(500);
-    const truncatedBody = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, recentDrafts: [longDraft] }, "gpt-5-mini");
-    const truncatedText = truncatedBody.input[0]?.content[0]?.text ?? "";
-    expect(truncatedText).not.toContain(longDraft);
-    expect(truncatedText).toContain(`${"x".repeat(200)}…`);
+    // Structural summary: forms, not full bodies.
+    expect(developerText).toContain("Recent posts already sitting in Ready to review used these forms, oldest first: question, question, statement, statement, question.");
+    expect(developerText).toContain("Avoid repeating those forms");
+
+    // Only opening words, never the full text of any recent draft.
+    expect(developerText).toContain("Doom crew, biggest test of the");
+    expect(developerText).not.toContain(recentDrafts[0]);
+    expect(developerText).not.toContain("why does it matter to you");
+
+    // Still capped at 5.
+    expect(developerText).not.toContain("eighth draft");
+  });
+
+  it("omits recent-draft avoid-context entirely when none are supplied", () => {
+    const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini");
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).not.toContain("Ready to review");
+    expect(developerText).not.toContain("Recent post openings");
+  });
+});
+
+describe("checkDraftAngleCompliance", () => {
+  it("reports no violation when the theme overrides the angle (no form requirement was ever emitted)", () => {
+    expect(checkDraftAngleCompliance("Does this end in a question?", { theme: "community AMA recap", angleIndex: 1 })).toEqual({
+      violated: false,
+    });
+  });
+
+  it("flags a non-question angle whose draft ends in a question mark, naming the violation", () => {
+    // angleIndex 1 = culture-observation, allowsQuestion: false
+    const result = checkDraftAngleCompliance("Is DOOM really building momentum?", { angleIndex: 1 });
+    expect(result.violated).toBe(true);
+    if (result.violated) {
+      expect(result.feedback).toContain("culture-observation");
+      expect(result.feedback).toContain("question mark");
+    }
+  });
+
+  it("does not flag the community-question angle for ending in a question mark", () => {
+    // angleIndex 0 = community-question, allowsQuestion: true
+    const result = checkDraftAngleCompliance("What's your favorite thing about DOOM?", { angleIndex: 0 });
+    expect(result).toEqual({ violated: false });
+  });
+
+  it("flags a one-liner draft that exceeds its length cap", () => {
+    // angleIndex 3 = one-liner
+    const overLong = "x".repeat(200);
+    const result = checkDraftAngleCompliance(overLong, { angleIndex: 3 });
+    expect(result.violated).toBe(true);
+    if (result.violated) {
+      expect(result.feedback).toContain("one-liner");
+      expect(result.feedback).toContain("character");
+    }
+  });
+
+  it("does not flag a compliant draft for its angle", () => {
+    // angleIndex 2 = milestone, statement, no length cap
+    expect(checkDraftAngleCompliance("Liquidity is now locked for 6 months.", { angleIndex: 2 })).toEqual({ violated: false });
   });
 });
 
