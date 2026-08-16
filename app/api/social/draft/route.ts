@@ -11,7 +11,8 @@ import { normaliseLikedSampleLines } from "@/lib/server/social-reinforcement";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import {
   buildDraftRequestBody,
-  checkDraftAngleCompliance,
+  checkDraftCompliance,
+  extractRepeatedPhrases,
   parseDraftResponseDetailed,
   type DraftProject,
 } from "@/lib/server/social-draft-pipeline";
@@ -221,24 +222,46 @@ export async function POST(request: Request) {
     return { ok: true, draft: parsed.draft };
   }
 
-  let result = await requestDraft();
+  const result = await requestDraft();
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status, headers: noStoreHeaders(rateHeaders) });
   }
 
-  // Mechanical post-parse guard (issue #362): the required post form is a
-  // prompt instruction, not a guarantee. On a violation, regenerate exactly
-  // once with corrective feedback naming it; if the retry itself fails for
-  // any reason, fail open and return the original draft rather than
-  // erroring, since a slightly off-form draft is better than none — the
-  // user reviews/edits every draft before posting anyway.
-  const compliance = checkDraftAngleCompliance(result.draft.xText, { theme, angleIndex });
-  if (compliance.violated) {
-    const retryResult = await requestDraft(compliance.feedback);
-    if (retryResult.ok) {
-      result = retryResult;
-    }
+  // Mechanical post-parse guard (issue #362, hardened in #364): the required
+  // post form, the allowed-facts ledger and the anti-repetition rules are
+  // all prompt instructions, not guarantees. On a violation, regenerate
+  // exactly once with corrective feedback naming it, then run every check
+  // again on the retry's draft too (issue #364/#363's fail-open bug: the
+  // retry was previously returned unchecked, so a second bad draft could
+  // slip through as if it had passed). If the retry still fails — whether
+  // it violates a check again or the request itself errors — a fabricated
+  // market claim is not something we can afford to fail open on, so this
+  // returns a safe error instead of the unsafe draft. A missing draft is
+  // recoverable; a false claim handed to the user ready to publish is not.
+  const bannedPhrases = extractRepeatedPhrases(recentDrafts);
+  const complianceInput = { theme, angleIndex, directionBrief, bannedPhrases };
+  const compliance = checkDraftCompliance(result.draft, complianceInput);
+  if (!compliance.violated) {
+    return NextResponse.json({ draft: result.draft }, { headers: noStoreHeaders(rateHeaders) });
   }
 
-  return NextResponse.json({ draft: result.draft }, { headers: noStoreHeaders(rateHeaders) });
+  const retryResult = await requestDraft(compliance.feedback);
+  if (!retryResult.ok) {
+    console.error("Corrective retry request failed after the first draft failed safety checks", retryResult.error);
+    return NextResponse.json(
+      { error: "The AI draft failed a safety check, and the automatic retry could not produce a safe replacement. Try again." },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  const retryCompliance = checkDraftCompliance(retryResult.draft, complianceInput);
+  if (retryCompliance.violated) {
+    console.error("Draft still failed safety checks after the corrective retry", retryCompliance.feedback);
+    return NextResponse.json(
+      { error: "The AI couldn't generate a draft that passed safety checks. Try again." },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  return NextResponse.json({ draft: retryResult.draft }, { headers: noStoreHeaders(rateHeaders) });
 }

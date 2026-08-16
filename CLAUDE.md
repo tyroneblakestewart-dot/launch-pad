@@ -488,3 +488,34 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   confirm. Per-content-type toggles (milestone announcements, market
   moments, community posts, mascot drops, replies to mentions) shown in the
   issue's mockup remain a follow-up, out of scope for this PR.
+- Draft-generation fact invention and phrase repetition are structurally
+  blocked, and the corrective-retry fail-open bug from #363 is fixed (issue
+  #364), both scoped to `lib/server/social-draft-pipeline.ts` and
+  `app/api/social/draft/route.ts`. `buildDraftRequestBody` now emits an
+  explicit allowed-facts ledger — project name, ticker, description, chain,
+  contract address and direction brief only, deliberately never token
+  supply since this route doesn't receive it — stating the description/brief
+  are source material rather than permission to infer adjacent facts, and
+  prohibiting invented holder counts, prices, market caps, liquidity/listing/
+  partnership events, dates and milestones. `resolveDraftAngle` now skips
+  the `milestone`, `holder-shoutout` and `behind-the-scenes` angles
+  (`FACT_DEPENDENT_ANGLE_KEYS`) entirely whenever no direction brief is
+  supplied, since the model has nothing real to ground them in; with a
+  brief, every angle (including those three) is reachable and every factual
+  detail must trace to the brief or another allowed fact. A new
+  deterministic `checkDraftFactualRisk` rejects number-plus-metric and
+  event-claim patterns (holder/wallet counts, dollar figures, percentage
+  moves, "liquidity pool is live", "listed on…", "partnered with…", "first"
+  claims) regardless of angle, and `extractRepeatedPhrases` flags
+  distinctive 2–6 word phrases recurring across 2+ of the recent drafts
+  already in Ready to review so `checkDraftRepetition` can reject their
+  reuse by name, alongside a static "isn't just X, it's Y" ban. In
+  `app/api/social/draft/route.ts`, the combined `checkDraftCompliance`
+  (angle, then factual-risk, then repetition) now runs on the first
+  response *and* again on the corrective retry's response — previously the
+  retry's draft was returned unchecked, so a second bad draft could slip
+  through as if it had passed. If the retry still fails a check, or the
+  retry request itself errors, the route now returns a safe error instead
+  of ever returning an unsafe or unchecked draft — a missing draft is
+  recoverable, a fabricated market claim handed to a user ready to publish
+  is not.
