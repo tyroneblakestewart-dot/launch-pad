@@ -39,7 +39,7 @@ function voiceInstruction(voiceProfile: VoiceProfile | null): string {
 const VOICE_EXAMPLES_PER_DRAFT = 5;
 const VOICE_EXAMPLE_TRUNCATE_LENGTH = 400;
 const MAX_RECENT_DRAFTS_CONTEXT = 5;
-const RECENT_DRAFT_TRUNCATE_LENGTH = 200;
+const RECENT_DRAFT_OPENING_WORD_COUNT = 6;
 
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
@@ -67,32 +67,119 @@ function voiceExamplesInstruction(examples: string[]): string {
   ].join("\n");
 }
 
+/** A single character length allowed for the "one-liner" angle — well under the full X limit. */
+export const ONE_LINER_MAX_LENGTH = Math.floor(X_DRAFT_CHARACTER_LIMIT / 2);
+
 /**
  * Angles a draft can be asked to take when no explicit theme was supplied,
  * rotated deterministically across a batch by angleIndex so five drafts in a
  * row get five different structural jobs instead of five rolls of the same
- * die (issue #360 cause 2).
+ * die (issue #360 cause 2). Each angle carries its own hard, unmistakable
+ * constraint — only `communityQuestion` may end in a question mark, every
+ * other angle explicitly forbids it (issue #362 cause 2).
  */
-export const DRAFT_ANGLES = [
-  "Ask the community a genuine, open-ended question about the project or their experience with it.",
-  "Make an observation about the culture or energy building around the project — don't just restate a tagline.",
-  "Share a concrete milestone or progress note, even a small one.",
-  "Write a short, punchy one-liner — well under the character limit, no elaboration needed.",
-  "Speak directly to holders: a shout-out, a thank-you, or a call to action just for them.",
-  "Share a behind-the-scenes note about how the project is being built or run.",
-] as const;
+export type DraftAngle = {
+  key: string;
+  instruction: string;
+  constraint: string;
+  allowsQuestion: boolean;
+  /** Only set for the one-liner angle's hard length cap. */
+  maxLength?: number;
+};
 
-function angleLine(angleIndex: number | undefined): string {
-  const index = (((angleIndex ?? 0) % DRAFT_ANGLES.length) + DRAFT_ANGLES.length) % DRAFT_ANGLES.length;
-  return `No specific theme was given — take this angle: ${DRAFT_ANGLES[index]}`;
+export const DRAFT_ANGLES: DraftAngle[] = [
+  {
+    key: "community-question",
+    instruction: "Ask the community a genuine, open-ended question about the project or their experience with it.",
+    constraint:
+      "This post must end with a genuine question mark — it is the only angle allowed to ask the reader to respond.",
+    allowsQuestion: true,
+  },
+  {
+    key: "culture-observation",
+    instruction: "Make an observation about the culture or energy building around the project — don't just restate a tagline.",
+    constraint:
+      "This post must be a statement, not a question — do not end it with a question mark or ask the reader to respond.",
+    allowsQuestion: false,
+  },
+  {
+    key: "milestone",
+    instruction: "Share a concrete milestone or progress note, even a small one.",
+    constraint:
+      "This post must report something concrete that happened — not a question, not a vibe statement. Do not end it with a question mark.",
+    allowsQuestion: false,
+  },
+  {
+    key: "one-liner",
+    instruction: "Write a short, punchy one-liner — well under the character limit, no elaboration needed.",
+    constraint: `This post must be a single short statement — no question mark, no call to respond, well under half the ${X_DRAFT_CHARACTER_LIMIT}-character limit (stay under ${ONE_LINER_MAX_LENGTH} characters).`,
+    allowsQuestion: false,
+    maxLength: ONE_LINER_MAX_LENGTH,
+  },
+  {
+    key: "holder-shoutout",
+    instruction: "Speak directly to holders: a shout-out, a thank-you, or a call to action just for them.",
+    constraint:
+      "This post must be a direct statement addressed to holders, not a question. Do not end it with a question mark.",
+    allowsQuestion: false,
+  },
+  {
+    key: "behind-the-scenes",
+    instruction: "Share a behind-the-scenes note about how the project is being built or run.",
+    constraint:
+      "This post must be a statement describing what's happening behind the scenes, not a question. Do not end it with a question mark.",
+    allowsQuestion: false,
+  },
+];
+
+function normaliseAngleIndex(angleIndex: number | undefined): number {
+  return (((angleIndex ?? 0) % DRAFT_ANGLES.length) + DRAFT_ANGLES.length) % DRAFT_ANGLES.length;
 }
 
-/** Avoid-context so a draft doesn't just reword what's already sitting unreviewed (issue #360 cause 3). */
+function resolveDraftAngle(angleIndex: number | undefined): DraftAngle {
+  return DRAFT_ANGLES[normaliseAngleIndex(angleIndex)];
+}
+
+/**
+ * The angle's form is a hard requirement placed near the top of the
+ * developer prompt, ahead of content-steering instructions like the
+ * direction brief, so it can't be flattened into a mild suggestion (issue
+ * #362 cause 2). An explicit theme overrides the angle entirely, so no
+ * angle requirement is emitted when one is supplied.
+ */
+function angleRequirementInstruction(angleIndex: number | undefined, hasTheme: boolean): string {
+  if (hasTheme) return "";
+  const angle = resolveDraftAngle(angleIndex);
+  return [
+    `REQUIRED POST FORM (non-negotiable — this governs the shape of the X post; it takes precedence over any subject-matter steering below): ${angle.instruction}`,
+    angle.constraint,
+  ].join("\n");
+}
+
+function classifyDraftForm(text: string): "question" | "statement" {
+  return text.trim().endsWith("?") ? "question" : "statement";
+}
+
+function draftOpeningWords(text: string): string {
+  return text.trim().split(/\s+/).filter(Boolean).slice(0, RECENT_DRAFT_OPENING_WORD_COUNT).join(" ");
+}
+
+/**
+ * Avoid-context as a compact structural summary rather than full draft
+ * bodies (issue #362 cause 3). Passing verbatim recent drafts and asking for
+ * "something different" reliably anchors an LLM toward the shown examples
+ * instead of deterring repetition; a form classification plus opening words
+ * gives the model enough to dodge repeated shapes and openings without
+ * priming it with full text to riff on.
+ */
 function recentDraftsInstruction(recentDrafts: string[]): string {
   if (recentDrafts.length === 0) return "";
+  const forms = recentDrafts.map(classifyDraftForm);
+  const openings = recentDrafts.map((draft) => `"${draftOpeningWords(draft)}…"`);
   return [
-    "These drafts are already sitting in Ready to review, generated moments ago. Write something clearly different in structure, opening and phrasing — not merely a reworded version of one of these:",
-    ...recentDrafts.map((draft, index) => `${index + 1}. ${draft}`),
+    "These posts are already sitting in Ready to review, generated moments ago. Do not repeat their form or their openings:",
+    `Recent post forms, oldest first: ${forms.join(", ")}.`,
+    `Recent post openings, oldest first (do not reuse any of these openings): ${openings.join("; ")}.`,
   ].join("\n");
 }
 
@@ -125,7 +212,7 @@ function directionBriefInstruction(directionBrief: string | null | undefined): s
   const trimmed = directionBrief?.trim();
   if (!trimmed) return "";
   return [
-    "The user's current focus for this week (secondary to the taught voice and liked-line reinforcement above — reflect this focus in the post's content, do not quote it verbatim):",
+    "The user's current focus for this week (secondary to the taught voice and liked-line reinforcement above — reflect this focus in the post's content, do not quote it verbatim). This describes what to talk about, not what shape the post should take; the required post form given separately above takes precedence over this brief:",
     trimmed,
   ].join("\n");
 }
@@ -141,6 +228,8 @@ export function buildDraftRequestBody(
     voiceExamples?: string[];
     recentDrafts?: string[];
     angleIndex?: number;
+    /** One-shot corrective note appended after a post-parse angle-compliance violation (issue #362). */
+    correctiveFeedback?: string | null;
   },
   model: string,
 ) {
@@ -150,12 +239,12 @@ export function buildDraftRequestBody(
     VOICE_EXAMPLES_PER_DRAFT,
     (input.angleIndex ?? 0) * VOICE_EXAMPLES_PER_DRAFT,
   );
-  const recentDrafts = (input.recentDrafts ?? [])
-    .slice(0, MAX_RECENT_DRAFTS_CONTEXT)
-    .map((draft) => truncate(draft, RECENT_DRAFT_TRUNCATE_LENGTH));
+  const recentDrafts = (input.recentDrafts ?? []).slice(0, MAX_RECENT_DRAFTS_CONTEXT);
   const chain = input.project.chain === "robinhood" ? "Robinhood Chain" : "Solana";
-  const themeLine = input.theme?.trim() ? `Theme for this post: ${input.theme.trim()}.` : angleLine(input.angleIndex);
+  const hasTheme = Boolean(input.theme?.trim());
+  const themeLine = hasTheme ? `Theme for this post: ${input.theme!.trim()}.` : "";
   const dayLine = input.dayLabel?.trim() ? `This post is scheduled for ${input.dayLabel.trim()}.` : "";
+  const correctiveFeedback = input.correctiveFeedback?.trim();
 
   return {
     model,
@@ -173,6 +262,10 @@ export function buildDraftRequestBody(
             text: [
               "You are the post-drafting assistant for the Hoodlums AI Social Studio.",
               "Draft one X (Twitter) post and one Telegram post about the user's own token project only.",
+              angleRequirementInstruction(input.angleIndex, hasTheme),
+              correctiveFeedback
+                ? `CORRECTIVE FEEDBACK FROM THE PREVIOUS ATTEMPT (fix this specifically, everything else here still applies): ${correctiveFeedback}`
+                : "",
               `The X post MUST be ${X_DRAFT_CHARACTER_LIMIT} characters or fewer, counting every character including spaces and emoji.`,
               "The Telegram post may be longer and more conversational.",
               "Never include a link or URL of any kind (no http/https, no www., no bare domain like example.com, no shortener) in either draft. Assume the project's link already lives in the X profile bio and Telegram channel description — write copy that stands on its own without one. A link-bearing X post costs far more to publish through the API, so this is a hard rule, not a style preference.",
@@ -287,4 +380,36 @@ export function parseDraftResponseDetailed(response: OpenAIResponse): DraftParse
 export function parseDraftResponse(response: OpenAIResponse): SocialDraft | null {
   const result = parseDraftResponseDetailed(response);
   return result.ok ? result.draft : null;
+}
+
+/** A parsed draft's X post disagreed with its requested angle's hard form constraint. */
+export type DraftAngleViolation = "ends_with_question" | "one_liner_too_long";
+
+/**
+ * Mechanical post-parse guard (issue #362): the prompt-level angle
+ * constraint is a strong instruction, not a guarantee, so this checks the
+ * parsed draft against the angle it was actually asked for. No angle
+ * constraint applies when an explicit theme overrode the angle.
+ */
+export function checkDraftAngleCompliance(
+  draft: SocialDraft,
+  angleIndex: number | undefined,
+  hasTheme: boolean,
+): DraftAngleViolation | null {
+  if (hasTheme) return null;
+  const angle = resolveDraftAngle(angleIndex);
+  const endsWithQuestion = draft.xText.trim().endsWith("?");
+  if (!angle.allowsQuestion && endsWithQuestion) return "ends_with_question";
+  if (angle.maxLength !== undefined && draft.xText.length > angle.maxLength) return "one_liner_too_long";
+  return null;
+}
+
+/** Corrective feedback text for exactly one angle-compliance retry, naming the violation precisely. */
+export function draftAngleViolationFeedback(violation: DraftAngleViolation): string {
+  switch (violation) {
+    case "ends_with_question":
+      return "The X post ended with a question mark, but the requested post form does not allow a question. Rewrite it as a statement that does not end with a question mark and does not ask the reader to respond.";
+    case "one_liner_too_long":
+      return `The X post was longer than the one-liner form allows. Rewrite it as a single short statement under ${ONE_LINER_MAX_LENGTH} characters.`;
+  }
 }

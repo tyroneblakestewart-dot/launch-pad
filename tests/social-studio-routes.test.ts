@@ -209,6 +209,52 @@ describe("POST /api/social/draft", () => {
     const developerText = sentBody.input?.[0]?.content?.[0]?.text ?? "";
     expect(developerText).toContain("Push the community angle, big announcement coming Friday");
   });
+
+  it("regenerates once with corrective feedback when the draft violates its angle's form, and returns the corrected draft (issue #362 mechanical guard)", async () => {
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(textPayload({ xText: "Is this a violation of the angle?", telegramText: "A fine telegram post." })))
+      .mockResolvedValueOnce(jsonResponse(textPayload({ xText: "This is now a compliant statement.", telegramText: "A fine telegram post." })));
+    vi.stubGlobal("fetch", fetchMock);
+    // angleIndex 1 is culture-observation, which forbids ending in a question mark.
+    const response = await postDraft(request("/api/social/draft", { walletAddress: WALLET, project: PROJECT, angleIndex: 1 }));
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const payload = (await response.json()) as { draft?: { xText: string } };
+    expect(payload.draft?.xText).toBe("This is now a compliant statement.");
+
+    const [, retryInit] = fetchMock.mock.calls[1] as [string, { body?: string }];
+    const retryBody = JSON.parse(retryInit.body ?? "{}") as { input?: Array<{ content?: Array<{ text?: string }> }> };
+    const retryDeveloperText = retryBody.input?.[0]?.content?.[0]?.text ?? "";
+    expect(retryDeveloperText).toContain("CORRECTIVE FEEDBACK FROM THE PREVIOUS ATTEMPT");
+    expect(retryDeveloperText).toContain("question mark");
+  });
+
+  it("does not retry when the parsed draft already complies with its angle", async () => {
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(textPayload({ xText: "This is already a compliant statement.", telegramText: "A fine telegram post." })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await postDraft(request("/api/social/draft", { walletAddress: WALLET, project: PROJECT, angleIndex: 1 }));
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails open and returns the original draft when the angle-compliance retry itself fails (issue #362 mechanical guard)", async () => {
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(textPayload({ xText: "Is this a violation of the angle?", telegramText: "A fine telegram post." })))
+      .mockRejectedValueOnce(new Error("network down"));
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await postDraft(request("/api/social/draft", { walletAddress: WALLET, project: PROJECT, angleIndex: 1 }));
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const payload = (await response.json()) as { draft?: { xText: string } };
+    expect(payload.draft?.xText).toBe("Is this a violation of the angle?");
+  });
 });
 
 describe("POST /api/social/mascot/visual-dna", () => {
