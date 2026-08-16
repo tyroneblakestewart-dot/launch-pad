@@ -8,7 +8,7 @@ import {
 import { getVercelOidcToken, resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
 import type { OpenAIResponse } from "@/lib/server/generate-site-style";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
-import { buildDraftRequestBody, parseDraftResponse, type DraftProject } from "@/lib/server/social-draft-pipeline";
+import { buildDraftRequestBody, parseDraftResponseDetailed, type DraftProject } from "@/lib/server/social-draft-pipeline";
 import { authoriseSocialStudioRequest } from "@/lib/server/social-studio-entitlement";
 import type { VoiceProfile } from "@/lib/social-studio-types";
 
@@ -155,10 +155,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "The AI returned an invalid response." }, { status: 502, headers: noStoreHeaders(rateHeaders) });
   }
 
-  const draft = parseDraftResponse(payload);
-  if (!draft) {
-    return NextResponse.json({ error: "The AI returned an invalid draft. Try again." }, { status: 502, headers: noStoreHeaders(rateHeaders) });
+  const parsed = parseDraftResponseDetailed(payload);
+  if (!parsed.ok) {
+    console.error("Draft parse failed", parsed);
+    const incomplete = parsed.reason === "empty_output" || parsed.reason === "json_parse_error";
+    return NextResponse.json(
+      {
+        error: incomplete
+          ? "The AI response was incomplete. Try again."
+          : "The AI response didn't match the expected format. Try again.",
+      },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
+    );
   }
 
-  return NextResponse.json({ draft }, { headers: noStoreHeaders(rateHeaders) });
+  return NextResponse.json({ draft: parsed.draft }, { headers: noStoreHeaders(rateHeaders) });
 }

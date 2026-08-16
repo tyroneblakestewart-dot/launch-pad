@@ -23,7 +23,10 @@ export function buildMascotVisualDnaRequestBody(
   return {
     model,
     store: false,
-    max_output_tokens: 650,
+    // This is a short extraction task. Minimal reasoning preserves the output
+    // budget for the strict four-field JSON object instead of hidden reasoning.
+    reasoning: { effort: "minimal" },
+    max_output_tokens: 1_200,
     input: [
       {
         role: "developer",

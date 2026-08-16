@@ -36,6 +36,16 @@ describe("buildMascotVisualDnaRequestBody", () => {
     expect(userContent.some((item) => item.type === "input_image" && item.image_url === "data:image/png;base64,AAAA")).toBe(true);
     expect(body.text.format.strict).toBe(true);
   });
+
+  it("sets minimal reasoning effort and a raised output budget so hidden reasoning cannot truncate the JSON (issue #346)", () => {
+    const body = buildMascotVisualDnaRequestBody(
+      { name: "Test Coin", ticker: "TEST" },
+      "data:image/png;base64,AAAA",
+      "gpt-5-mini",
+    );
+    expect(body.reasoning).toEqual({ effort: "minimal" });
+    expect(body.max_output_tokens).toBe(1_200);
+  });
 });
 
 describe("parseMascotVisualDnaResponse", () => {

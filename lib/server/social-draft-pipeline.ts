@@ -52,7 +52,10 @@ export function buildDraftRequestBody(
   return {
     model,
     store: false,
-    max_output_tokens: 700,
+    // This is a short extraction task. Minimal reasoning preserves the output
+    // budget for the strict two-field JSON object instead of hidden reasoning.
+    reasoning: { effort: "minimal" },
+    max_output_tokens: 1_200,
     input: [
       {
         role: "developer",
@@ -125,18 +128,48 @@ function enforceXLimit(text: string): string {
   return (lastSpace > 200 ? truncated.slice(0, lastSpace) : truncated).trimEnd();
 }
 
-export function parseDraftResponse(response: OpenAIResponse): SocialDraft | null {
+/** Reason a draft parse failed, precise enough to diagnose from server logs alone. */
+export type DraftParseFailure =
+  | { reason: "empty_output" }
+  | { reason: "json_parse_error"; detail: string }
+  | { reason: "invalid_field"; field: string; receivedLength: number };
+
+export type DraftParseResult = { ok: true; draft: SocialDraft } | ({ ok: false } & DraftParseFailure);
+
+export function parseDraftResponseDetailed(response: OpenAIResponse): DraftParseResult {
   const text = extractOutputText(response);
-  if (!text) return null;
+  if (!text) return { ok: false, reason: "empty_output" };
 
+  let value: Record<string, unknown>;
   try {
-    const value = JSON.parse(text) as Record<string, unknown>;
-    const xTextRaw = cleanText(value.xText, 5, 320);
-    const telegramText = cleanText(value.telegramText, 5, 800);
-    if (!xTextRaw || !telegramText) return null;
-
-    return { xText: enforceXLimit(xTextRaw), telegramText };
-  } catch {
-    return null;
+    value = JSON.parse(text) as Record<string, unknown>;
+  } catch (error) {
+    return { ok: false, reason: "json_parse_error", detail: error instanceof Error ? error.message : String(error) };
   }
+
+  const xTextRaw = cleanText(value.xText, 5, 320);
+  if (!xTextRaw) {
+    return {
+      ok: false,
+      reason: "invalid_field",
+      field: "xText",
+      receivedLength: typeof value.xText === "string" ? value.xText.length : -1,
+    };
+  }
+  const telegramText = cleanText(value.telegramText, 5, 800);
+  if (!telegramText) {
+    return {
+      ok: false,
+      reason: "invalid_field",
+      field: "telegramText",
+      receivedLength: typeof value.telegramText === "string" ? value.telegramText.length : -1,
+    };
+  }
+
+  return { ok: true, draft: { xText: enforceXLimit(xTextRaw), telegramText } };
+}
+
+export function parseDraftResponse(response: OpenAIResponse): SocialDraft | null {
+  const result = parseDraftResponseDetailed(response);
+  return result.ok ? result.draft : null;
 }

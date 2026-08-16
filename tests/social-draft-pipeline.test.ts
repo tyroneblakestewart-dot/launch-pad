@@ -4,6 +4,7 @@ import {
   X_DRAFT_CHARACTER_LIMIT,
   buildDraftRequestBody,
   parseDraftResponse,
+  parseDraftResponseDetailed,
   type DraftProject,
 } from "@/lib/server/social-draft-pipeline";
 import type { VoiceProfile } from "@/lib/social-studio-types";
@@ -64,6 +65,12 @@ describe("buildDraftRequestBody", () => {
     expect(userText).toContain("15 August 2026");
     expect(userText).toContain("milestone");
   });
+
+  it("sets minimal reasoning effort and a raised output budget so hidden reasoning cannot truncate the JSON (issue #346)", () => {
+    const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini");
+    expect(body.reasoning).toEqual({ effort: "minimal" });
+    expect(body.max_output_tokens).toBe(1_200);
+  });
 });
 
 describe("parseDraftResponse", () => {
@@ -90,5 +97,41 @@ describe("parseDraftResponse", () => {
   it("returns null for malformed JSON", () => {
     const response: OpenAIResponse = { output: [{ content: [{ type: "output_text", text: "not json" }] }] };
     expect(parseDraftResponse(response)).toBeNull();
+  });
+});
+
+describe("parseDraftResponseDetailed", () => {
+  it("reports empty_output for an empty response", () => {
+    expect(parseDraftResponseDetailed({ output: [] })).toEqual({ ok: false, reason: "empty_output" });
+  });
+
+  it("reports json_parse_error with a detail message for malformed JSON", () => {
+    const response: OpenAIResponse = { output: [{ content: [{ type: "output_text", text: "not json" }] }] };
+    const result = parseDraftResponseDetailed(response);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("json_parse_error");
+      expect(typeof result.detail).toBe("string");
+    }
+  });
+
+  it("reports invalid_field with the field name and received length when xText is rejected", () => {
+    const result = parseDraftResponseDetailed(responseWith({ xText: "hi", telegramText: "Telegram text is fine." }));
+    expect(result).toEqual({ ok: false, reason: "invalid_field", field: "xText", receivedLength: 2 });
+  });
+
+  it("reports invalid_field for telegramText when xText passes but telegramText is rejected", () => {
+    const result = parseDraftResponseDetailed(responseWith({ xText: "A fine X post.", telegramText: "no" }));
+    expect(result).toEqual({ ok: false, reason: "invalid_field", field: "telegramText", receivedLength: 2 });
+  });
+
+  it("returns ok:true with the draft on success", () => {
+    const result = parseDraftResponseDetailed(
+      responseWith({ xText: "A fine X post.", telegramText: "A fine Telegram post." }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.draft.xText).toBe("A fine X post.");
+    }
   });
 });

@@ -5,6 +5,7 @@ import {
   buildVoiceProfileRequestBody,
   normaliseVoiceExamples,
   parseVoiceProfileResponse,
+  parseVoiceProfileResponseDetailed,
 } from "@/lib/server/social-voice-profile-pipeline";
 
 function responseWith(payload: unknown): OpenAIResponse {
@@ -58,6 +59,18 @@ describe("buildVoiceProfileRequestBody", () => {
     expect(userText?.text).toContain("TEST");
     expect(userText?.text).toContain("example one");
   });
+
+  it("sets minimal reasoning effort and a raised output budget so hidden reasoning cannot truncate the JSON (issue #346)", () => {
+    const body = buildVoiceProfileRequestBody({ name: "Test Coin", ticker: "TEST" }, ["example one", "example two"], "gpt-5-mini");
+    expect(body.reasoning).toEqual({ effort: "minimal" });
+    expect(body.max_output_tokens).toBe(1_500);
+  });
+
+  it("states the exactly-three-sample-lines requirement explicitly in the prompt, since strict mode does not enforce minItems/maxItems", () => {
+    const body = buildVoiceProfileRequestBody({ name: "Test Coin", ticker: "TEST" }, ["example one", "example two"], "gpt-5-mini");
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("exactly three");
+  });
 });
 
 describe("parseVoiceProfileResponse", () => {
@@ -88,5 +101,53 @@ describe("parseVoiceProfileResponse", () => {
 
   it("returns null when the response has no output text", () => {
     expect(parseVoiceProfileResponse({ output: [] }, 5)).toBeNull();
+  });
+
+  it("accepts a short-but-valid emojiHabits value the model can legitimately return (issue #346)", () => {
+    const shortEmoji = { ...VALID_PROFILE, emojiHabits: "None" };
+    const result = parseVoiceProfileResponse(responseWith(shortEmoji), 5);
+    expect(result?.emojiHabits).toBe("None");
+  });
+
+  it("accepts short-but-valid tone/vocabulary/cadence values below the old 10-char floor", () => {
+    const short = { ...VALID_PROFILE, tone: "Warm", vocabulary: "Plain", cadence: "Short" };
+    const result = parseVoiceProfileResponse(responseWith(short), 5);
+    expect(result?.tone).toBe("Warm");
+  });
+});
+
+describe("parseVoiceProfileResponseDetailed", () => {
+  it("reports empty_output for an empty response", () => {
+    expect(parseVoiceProfileResponseDetailed({ output: [] }, 5)).toEqual({ ok: false, reason: "empty_output" });
+  });
+
+  it("reports json_parse_error with a detail message for truncated/malformed JSON", () => {
+    const response = { output: [{ content: [{ type: "output_text", text: '{"tone": "confident and playf' }] }] };
+    const result = parseVoiceProfileResponseDetailed(response, 5);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("json_parse_error");
+      expect(typeof result.detail).toBe("string");
+    }
+  });
+
+  it("reports invalid_field with the field name and received length when a field fails cleaning", () => {
+    const invalid = { ...VALID_PROFILE, tone: "" };
+    const result = parseVoiceProfileResponseDetailed(responseWith(invalid), 5);
+    expect(result).toEqual({ ok: false, reason: "invalid_field", field: "tone", receivedLength: 0 });
+  });
+
+  it("reports sample_lines_count with the received count when not exactly three", () => {
+    const invalid = { ...VALID_PROFILE, sampleLines: ["only one line"] };
+    const result = parseVoiceProfileResponseDetailed(responseWith(invalid), 5);
+    expect(result).toEqual({ ok: false, reason: "sample_lines_count", count: 1 });
+  });
+
+  it("returns ok:true with the profile on success", () => {
+    const result = parseVoiceProfileResponseDetailed(responseWith(VALID_PROFILE), 5);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.profile.tone).toBe(VALID_PROFILE.tone);
+    }
   });
 });
