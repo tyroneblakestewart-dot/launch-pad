@@ -167,7 +167,7 @@ export function createPostgresStreetTeamInterestStore(databaseUrl: string): Stre
       } catch {
         return {
           status: "unavailable",
-          message: "Street Team interest data could not be loaded. Apply migration 019_street_team_interest.sql and try again.",
+          message: "Street Team interest data could not be loaded. Apply migration 020_street_team_interest.sql and try again.",
           count: 0,
           recent: [],
         };

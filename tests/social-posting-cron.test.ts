@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   CONNECTION_RECONNECT_FAILURE_THRESHOLD,
+  LINK_POST_COMPOSER_REASON,
   MAX_DESTINATION_ATTEMPTS,
+  MONTHLY_COST_CAP_REASON,
   computeRetryBackoffSeconds,
   runSocialPostingCron,
 } from "@/lib/server/social-posting-cron";
 import { createMemorySocialConnectionsStore } from "./social-connections-test-helpers";
 import { createMemorySocialScheduledPostsStore } from "./social-scheduled-posts-test-helpers";
+import { createMemorySocialXCostStore } from "./social-x-cost-test-helpers";
 
 const ENV = { X_SOCIAL_CONSUMER_KEY: "ck", X_SOCIAL_CONSUMER_SECRET: "cs", TELEGRAM_BOT_TOKEN: "12345:token-aaaaaaaaaaaaaaaaaaaa" };
 const NOW = new Date("2026-01-01T00:00:00Z");
@@ -351,5 +354,181 @@ describe("runSocialPostingCron: multi-destination independence", () => {
     const telegram = post.destinations.find((d) => d.platform === "telegram");
     expect(x?.status).toBe("sent");
     expect(telegram?.status).toBe("failed");
+  });
+});
+
+describe("runSocialPostingCron: link posts never reach the X API (issue #342)", () => {
+  it("routes a link-bearing X post to the composer instead of calling the X API", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await scheduledPostsStore.create({
+      walletAddress: "0xabc",
+      body: "come check out hoodlums.dev",
+      artworkDataUrl: null,
+      destinations: ["x"],
+      scheduledAt: NOW,
+      approvedByWallet: "0xabc",
+    });
+
+    let called = false;
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      postTweetForUser: async () => {
+        called = true;
+        return { status: "posted", xPostId: "should-not-happen" };
+      },
+    });
+
+    expect(called).toBe(false);
+    expect(result).toMatchObject({ routedToComposer: 1, sent: 0, retried: 0, failed: 0 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.status).toBe("needs_composer");
+    expect(post.destinations[0]).toMatchObject({ status: "needs_composer", errorMessage: LINK_POST_COMPOSER_REASON });
+  });
+
+  it("does not touch the connection's failure state when routing to the composer", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "link: bit.ly/hoodlums", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore });
+
+    expect((await connectionsStore.get("0xabc", "x"))?.status).toBe("connected");
+    expect((await connectionsStore.get("0xabc", "x"))?.failureCount).toBe(0);
+  });
+
+  it("never routes a Telegram destination to the composer, even with a link — a mixed post sends Telegram and routes X independently", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await seedConnectedTelegram(connectionsStore);
+    await scheduledPostsStore.create({
+      walletAddress: "0xabc",
+      body: "come check out hoodlums.dev",
+      artworkDataUrl: null,
+      destinations: ["x", "telegram"],
+      scheduledAt: NOW,
+      approvedByWallet: "0xabc",
+    });
+
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      publishTelegramPost: async () => [7],
+    });
+
+    expect(result).toMatchObject({ sent: 1, routedToComposer: 1 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    const x = post.destinations.find((d) => d.platform === "x");
+    const telegram = post.destinations.find((d) => d.platform === "telegram");
+    expect(x?.status).toBe("needs_composer");
+    expect(telegram?.status).toBe("sent");
+    expect(post.status).toBe("needs_composer");
+  });
+
+  it("does not flag plain text with no link — sends normally through the X API", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm hoodlums, $HOOD up 12.5% today", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      postTweetForUser: async () => ({ status: "posted", xPostId: "1" }),
+    });
+
+    expect(result).toMatchObject({ sent: 1, routedToComposer: 0 });
+  });
+});
+
+describe("runSocialPostingCron: monthly X cost cap (issue #342)", () => {
+  it("records an estimated cost for each successful X send", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    const costStore = createMemorySocialXCostStore();
+    await seedConnectedX(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    await runSocialPostingCron({
+      env: { ...ENV, SOCIAL_X_API_SEND_COST_USD: "0.015" },
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      costStore,
+      postTweetForUser: async () => ({ status: "posted", xPostId: "1" }),
+    });
+
+    expect(await costStore.monthlyTotalUsd("0xabc", NOW)).toBeCloseTo(0.015, 5);
+  });
+
+  it("pauses X sends (does not call the API) once the wallet's monthly cap would be exceeded, while Telegram is unaffected", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    const costStore = createMemorySocialXCostStore();
+    await seedConnectedX(connectionsStore);
+    await seedConnectedTelegram(connectionsStore);
+    await costStore.recordSend("0xabc", "prior-destination", 0.02, NOW);
+    await scheduledPostsStore.create({
+      walletAddress: "0xabc",
+      body: "gm",
+      artworkDataUrl: null,
+      destinations: ["x", "telegram"],
+      scheduledAt: NOW,
+      approvedByWallet: "0xabc",
+    });
+
+    let xCalled = false;
+    const result = await runSocialPostingCron({
+      env: { ...ENV, SOCIAL_X_API_SEND_COST_USD: "0.015", SOCIAL_X_MONTHLY_COST_CAP_USD: "0.02" },
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      costStore,
+      postTweetForUser: async () => {
+        xCalled = true;
+        return { status: "posted", xPostId: "should-not-happen" };
+      },
+      publishTelegramPost: async () => [1],
+    });
+
+    expect(xCalled).toBe(false);
+    expect(result).toMatchObject({ sent: 1, retried: 1 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    const x = post.destinations.find((d) => d.platform === "x");
+    const telegram = post.destinations.find((d) => d.platform === "telegram");
+    expect(x?.status).toBe("pending");
+    expect(x?.errorMessage).toBe(MONTHLY_COST_CAP_REASON);
+    expect(telegram?.status).toBe("sent");
+  });
+
+  it("resumes X sends once the cap check is evaluated against a later month", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    const costStore = createMemorySocialXCostStore();
+    await seedConnectedX(connectionsStore);
+    await costStore.recordSend("0xabc", "prior-destination", 0.02, NOW);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const nextMonth = new Date("2026-02-01T00:00:00Z");
+    const result = await runSocialPostingCron({
+      env: { ...ENV, SOCIAL_X_API_SEND_COST_USD: "0.015", SOCIAL_X_MONTHLY_COST_CAP_USD: "0.02" },
+      now: nextMonth,
+      scheduledPostsStore,
+      connectionsStore,
+      costStore,
+      postTweetForUser: async () => ({ status: "posted", xPostId: "1" }),
+    });
+
+    expect(result).toMatchObject({ sent: 1 });
   });
 });

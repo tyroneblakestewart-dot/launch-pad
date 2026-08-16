@@ -21,6 +21,7 @@ import {
 } from "@/lib/server/api-protection";
 import { getAdminOperationsStore } from "@/lib/server/admin-operations-store";
 import { getPostgresPool } from "@/lib/server/postgres";
+import { getSocialXCostStore, readXApiSendCostUsd, readXMonthlyCostCapUsd, type SocialXCostStore } from "@/lib/server/social-x-cost-store";
 import { contractsClient, HEALTH_CHECK_TIMEOUT_MS, withTimeout } from "@/lib/server/system-health";
 
 type PoolLike = {
@@ -807,6 +808,8 @@ export type SocialPostingPipelineDeps = {
   getPool?: (databaseUrl: string) => PoolLike;
   getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
   env?: Record<string, string | undefined>;
+  now?: Date;
+  getCostStore?: () => Pick<SocialXCostStore, "monthlyTotalsAllWallets">;
 };
 
 /** Reports credential presence by name only — values are never read into the message. */
@@ -850,6 +853,7 @@ export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps
   const getServiceControl =
     deps.getServiceControl ?? ((key: AdminServiceKey) => getAdminOperationsStore().getServiceControl(key));
   const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
+  const getXCostStore = deps.getCostStore ?? (() => getSocialXCostStore());
 
   const isolationStage = await chatIsolationStage("social-posting", getServiceControl);
   const destinationsStage = socialPostingDestinationsStage(env);
@@ -900,11 +904,12 @@ export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps
     );
   }
 
+  const queueCountsLabel = "Post counts (scheduled/sent/partially_sent/needs_composer/failed/canceled)";
   let queueCountsStage: AdminPipelineStage;
   if (!tableExists) {
     queueCountsStage = stage(
       "queue-counts",
-      "Post counts (scheduled/sent/partially_sent/failed/canceled)",
+      queueCountsLabel,
       "amber",
       "Not probed; the social_scheduled_posts table does not exist yet.",
     );
@@ -917,30 +922,49 @@ export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps
         HEALTH_CHECK_TIMEOUT_MS,
         "timed out",
       );
-      const counts: Record<string, number> = { scheduled: 0, sent: 0, partially_sent: 0, failed: 0, canceled: 0 };
+      const counts: Record<string, number> = { scheduled: 0, sent: 0, partially_sent: 0, needs_composer: 0, failed: 0, canceled: 0 };
       for (const row of result.rows) {
         if (row.status in counts) counts[row.status] = Number(row.count);
       }
       queueCountsStage = stage(
         "queue-counts",
-        "Post counts (scheduled/sent/partially_sent/failed/canceled)",
+        queueCountsLabel,
         "green",
-        `${counts.scheduled} scheduled, ${counts.sent} sent, ${counts.partially_sent} partially sent, ${counts.failed} failed, ${counts.canceled} canceled.`,
+        `${counts.scheduled} scheduled, ${counts.sent} sent, ${counts.partially_sent} partially sent, ${counts.needs_composer} need the composer, ${counts.failed} failed, ${counts.canceled} canceled.`,
       );
     } catch {
-      queueCountsStage = stage(
-        "queue-counts",
-        "Post counts (scheduled/sent/partially_sent/failed/canceled)",
-        "red",
-        "Could not count scheduled post rows.",
+      queueCountsStage = stage("queue-counts", queueCountsLabel, "red", "Could not count scheduled post rows.");
+    }
+  }
+
+  const costCapLabel = "Monthly X posting cost cap (SOCIAL_X_API_SEND_COST_USD / SOCIAL_X_MONTHLY_COST_CAP_USD)";
+  let costCapStage: AdminPipelineStage;
+  if (!tableExists) {
+    costCapStage = stage("cost-cap", costCapLabel, "amber", "Not probed; the social_scheduled_posts table does not exist yet.");
+  } else {
+    try {
+      const costPerSend = readXApiSendCostUsd(env);
+      const monthlyCap = readXMonthlyCostCapUsd(env);
+      const totals = await withTimeout(getXCostStore().monthlyTotalsAllWallets(deps.now ?? new Date()), HEALTH_CHECK_TIMEOUT_MS, "timed out");
+      const totalSpentUsd = totals.reduce((sum, wallet) => sum + wallet.totalUsd, 0);
+      const totalSends = totals.reduce((sum, wallet) => sum + wallet.sendCount, 0);
+      const cappedWallets = totals.filter((wallet) => wallet.totalUsd + costPerSend > monthlyCap).length;
+      costCapStage = stage(
+        "cost-cap",
+        costCapLabel,
+        "green",
+        `$${costPerSend.toFixed(3)}/send, $${monthlyCap.toFixed(2)}/wallet/month cap. This month: $${totalSpentUsd.toFixed(2)} across ${totalSends} sends, ${totals.length} wallets` +
+          (cappedWallets > 0 ? `, ${cappedWallets} at/over cap (paused).` : "."),
       );
+    } catch {
+      costCapStage = stage("cost-cap", costCapLabel, "red", "Could not read this month's X posting costs.");
     }
   }
 
   return {
     id: "social-posting",
     label: "Social Studio posting",
-    stages: [isolationStage, destinationsStage, encryptionStage, tableExistsStage, queueCountsStage],
+    stages: [isolationStage, destinationsStage, encryptionStage, tableExistsStage, queueCountsStage, costCapStage],
   };
 }
 

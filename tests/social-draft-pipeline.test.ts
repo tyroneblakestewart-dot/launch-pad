@@ -41,6 +41,13 @@ describe("buildDraftRequestBody", () => {
     expect(userText).toContain("TEST");
   });
 
+  it("instructs the model to never include a link, assuming the bio carries it (issue #342 cost control)", () => {
+    const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini");
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("Never include a link or URL");
+    expect(developerText).toContain("profile bio");
+  });
+
   it("threads the voice profile into the developer instructions when supplied", () => {
     const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: VOICE }, "gpt-5-mini");
     const developerText = body.input[0]?.content[0]?.text ?? "";
