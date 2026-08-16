@@ -22,4 +22,4 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |
-            --allowedTools "Bash(npm install),Bash(npm ci),Bash(npm test),Bash(npm run lint),Bash(npm run build)"
+           --allowedTools "Bash(npm install),Bash(npm ci),Bash(npm test),Bash(npm run test:app),Bash(npm run test:contracts),Bash(npm run lint),Bash(npm run build),Bash(npx vitest run),Bash(npx tsc --noEmit)"
