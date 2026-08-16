@@ -65,6 +65,8 @@
 .metaPillMuted,
 .connectionState,
 .connectionStateLive,
+.connectionStateWarning,
+.connectionStateError,
 .privateBadge,
 .comingSoon,
 .comingSoonCompact {
@@ -489,6 +491,18 @@
   background: rgba(198, 245, 62, 0.08);
 }
 
+.connectionStateWarning {
+  border-color: rgba(255, 174, 54, 0.34);
+  color: #ffbd73;
+  background: rgba(255, 174, 54, 0.08);
+}
+
+.connectionStateError {
+  border-color: rgba(255, 107, 107, 0.34);
+  color: #ff8f8f;
+  background: rgba(255, 107, 107, 0.08);
+}
+
 .comingSoon,
 .comingSoonCompact {
   border: 1px solid rgba(198, 245, 62, 0.28);
@@ -756,6 +770,34 @@
 }
 .statusBar > span { color: #c6f53e; }
 .statusBar p { margin: 0; }
+
+.inlineStatus {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(198, 245, 62, 0.16);
+  border-radius: 10px;
+  background: rgba(198, 245, 62, 0.035);
+  color: #c3c9c4;
+  font: 600 10.5px/1.5 "IBM Plex Mono", monospace;
+}
+.inlineStatus > span { flex: none; color: #c6f53e; }
+.inlineStatus p { margin: 0; }
+
+.inlineStatusProgress {
+  border-color: rgba(255, 174, 54, 0.28);
+  background: rgba(255, 174, 54, 0.06);
+  color: #e6ded0;
+}
+.inlineStatusProgress > span { color: #ffbd73; }
+
+.inlineStatusError {
+  border-color: rgba(255, 107, 107, 0.35);
+  background: rgba(255, 107, 107, 0.08);
+  color: #ffd7d7;
+}
+.inlineStatusError > span { color: #ff6b6b; }
 
 .insetPanel,
 .bannedPanel {
@@ -1050,7 +1092,9 @@
   .metricGrid { grid-template-columns: 1fr; }
   .connectionCardTop { grid-template-columns: 44px minmax(0, 1fr); }
   .connectionState,
-  .connectionStateLive { grid-column: 2; width: fit-content; }
+  .connectionStateLive,
+  .connectionStateWarning,
+  .connectionStateError { grid-column: 2; width: fit-content; }
   .postActions { flex-direction: column; }
   .publishBar { align-items: flex-start; flex-direction: column; }
   .publishBar button { width: 100%; }
@@ -1107,7 +1151,8 @@
   .composerActions button:last-child { grid-column: 1 / -1; }
   .xButton,
   .telegramButton { width: 100%; }
-  .statusBar { font-size: 9.5px; }
+  .statusBar,
+  .inlineStatus { font-size: 9.5px; }
   .mascotDrop { min-height: 220px; }
   .dialList > div { align-items: flex-start; flex-direction: column; }
   .dialList > div > div { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }

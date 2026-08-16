@@ -44,6 +44,7 @@ export async function GET(request: Request) {
         platform: connection.platform,
         status: connection.status,
         displayName: connection.displayName,
+        externalId: connection.externalId,
         reconnectReason: connection.reconnectReason,
         updatedAt: connection.updatedAt,
       })),

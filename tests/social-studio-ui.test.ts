@@ -28,7 +28,6 @@ describe("Hoodlums AI Social Studio", () => {
 
     expect(social).toContain("PROJECT_STORAGE_KEY");
     expect(social).toContain("DRAFT_STORAGE_KEY");
-    expect(social).toContain("TELEGRAM_CHAT_STORAGE_KEY");
     expect(social).toContain("buildTemplate");
     expect(social).toContain("selectProject");
     expect(social).toContain("saveDraft");
@@ -121,5 +120,92 @@ describe("Hoodlums AI Social Studio", () => {
     expect(socialCss).toContain("position: sticky");
     expect(socialCss).toContain("top: 72px");
     expect(socialCss).toContain("z-index: 80");
+  });
+
+  it("surfaces each AI handler's own status inline next to its control instead of only the far-below statusBar (issue #340)", async () => {
+    const social = await source("components", "social-hub.tsx");
+
+    // A dedicated status per panel, distinct from the shared bottom statusBar.
+    expect(social).toContain("function InlineStatus({ status }: { status: PanelStatus })");
+    expect(social).toContain('role="status" aria-live="polite"');
+    expect(social).toContain("styles.inlineStatusError");
+    expect(social).toContain("styles.inlineStatusProgress");
+    expect(social).toContain("const [voiceStatus, setVoiceStatus] = useState<PanelStatus>(null);");
+    expect(social).toContain("const [mascotUploadStatus, setMascotUploadStatus] = useState<PanelStatus>(null);");
+    expect(social).toContain("const [mascotSceneStatus, setMascotSceneStatus] = useState<PanelStatus>(null);");
+    expect(social).toContain("const [setupDraftStatus, setSetupDraftStatus] = useState<PanelStatus>(null);");
+    expect(social).toContain("const [calendarDraftStatus, setCalendarDraftStatus] = useState<PanelStatus>(null);");
+
+    // Each AI handler reports to its own panel status, not the shared one.
+    expect(social).toContain('setVoiceStatus({ tone: "error", message: error instanceof Error ? error.message : "The voice profile could not be built." });');
+    expect(social).toContain(
+      'setMascotUploadStatus({ tone: "error", message: error instanceof Error ? error.message : "The mascot artwork could not be analysed." });',
+    );
+    expect(social).toContain(
+      'setMascotSceneStatus({ tone: "error", message: error instanceof Error ? error.message : "The mascot scene image could not be generated." });',
+    );
+    expect(social).toContain('report({ tone: "error", message: error instanceof Error ? error.message : "The draft could not be generated." });');
+    expect(social).toContain("await generateDraft({}, setSetupDraftStatus);");
+    expect(social).toContain("await generateDraft({ dayLabel: selectedDayLabel }, setCalendarDraftStatus);");
+
+    // Each status renders next to the control that triggered it, not only inside the statusBar.
+    expect(social).toContain("<InlineStatus status={voiceStatus} />");
+    expect(social).toContain("<InlineStatus status={mascotUploadStatus} />");
+    expect(social).toContain("<InlineStatus status={mascotSceneStatus} />");
+    expect(social).toContain("<InlineStatus status={setupDraftStatus} />");
+    expect(social).toContain("<InlineStatus status={calendarDraftStatus} />");
+
+    // Placement checks: each status must sit right after (not far below) its trigger.
+    const learnVoiceButtonIndex = social.indexOf("Learn my voice");
+    const voiceInlineStatusIndex = social.indexOf("<InlineStatus status={voiceStatus} />");
+    expect(voiceInlineStatusIndex).toBeGreaterThan(learnVoiceButtonIndex);
+    expect(voiceInlineStatusIndex - learnVoiceButtonIndex).toBeLessThan(600);
+
+    const generateMascotButtonIndex = social.indexOf("Generate mascot image");
+    const mascotSceneInlineStatusIndex = social.indexOf("<InlineStatus status={mascotSceneStatus} />");
+    expect(mascotSceneInlineStatusIndex).toBeGreaterThan(generateMascotButtonIndex);
+    expect(mascotSceneInlineStatusIndex - generateMascotButtonIndex).toBeLessThan(1200);
+  });
+
+  it("shows an honest, diagnosable Telegram configuration state and reconciles Setup with the real wallet-signed connect flow (issue #340)", async () => {
+    const social = await source("components", "social-hub.tsx");
+    const statusRoute = await source("app", "api", "social", "telegram", "status", "route.ts");
+
+    // The old bare, unverified chat-ID field and its misleading copy are gone.
+    expect(social).not.toContain("no BotFather token is entered in the Studio");
+    expect(social).not.toContain("Channel saved");
+
+    // Setup proactively checks whether the server bot is configured at all.
+    expect(social).toContain('fetch("/api/social/telegram/status"');
+    expect(social).toContain("const [telegramConfigured, setTelegramConfigured] = useState<boolean | null>(null);");
+    expect(social).toContain('"Not configured"');
+    expect(social).toContain("TELEGRAM_BOT_TOKEN");
+    expect(statusRoute).toContain("isTelegramConnectConfigured()");
+
+    // Setup reconciles with the real wallet-signed connect/disconnect flow (not a bare text field feeding /api/social/telegram directly).
+    expect(social).toContain("async function connectTelegramChannel()");
+    expect(social).toContain("async function disconnectTelegramChannel()");
+    expect(social).toContain('purpose: "social:telegram-connect"');
+    expect(social).toContain('purpose: "social:telegram-disconnect"');
+    expect(social).toContain('fetch("/api/social/telegram/connect"');
+    expect(social).toContain('fetch("/api/social/telegram/disconnect"');
+    expect(social).toContain("walletClient.signMessage({ account, message: challenge.message })");
+
+    // Sending now requires a verified connection, not a freely typed chat ID.
+    expect(social).toContain('telegramConnection.status !== "connected"');
+    expect(social).toContain("chatId: telegramConnection.externalId");
+  });
+
+  it("filters page furniture out of pasted voice examples before counting or teaching the AI (issue #340)", async () => {
+    const social = await source("components", "social-hub.tsx");
+
+    expect(social).toContain('import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";');
+    expect(social).toContain(
+      "const voiceExampleFilter = useMemo(() => filterUsableVoiceExamples(voiceExamplesText), [voiceExamplesText]);",
+    );
+    expect(social).toContain("const { usable: examples, pastedLineCount, rejectedCount } = voiceExampleFilter;");
+    expect(social).toContain("examples.length < MIN_USABLE_VOICE_EXAMPLES");
+    expect(social).toContain("usable / ${voiceExampleFilter.pastedLineCount} pasted");
+    expect(social).toContain("skipped as short, page furniture, or duplicates");
   });
 });

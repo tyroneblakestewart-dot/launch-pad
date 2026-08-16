@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
+import { createWalletClient, custom } from "viem";
 import {
   ACCOUNT_WALLET_STORAGE_KEY,
   parseStoredAccountWallet,
 } from "@/lib/account-wallet-state";
+import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
 import { getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
 import type {
   MascotVisualDNA,
@@ -15,17 +17,41 @@ import type {
 } from "@/lib/social-studio-types";
 import { EMPTY_SOCIAL_STUDIO_RECORD } from "@/lib/social-studio-types";
 import type { TokenProject } from "@/lib/types";
+import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./social-hub.module.css";
 
 const PROJECT_STORAGE_KEY = "private-meme-token-studio-projects-v1";
 const DRAFT_STORAGE_KEY = "private-meme-token-studio-social-drafts-v1";
-const TELEGRAM_CHAT_STORAGE_KEY = "private-meme-token-studio-telegram-chats-v1";
 const MAX_MASCOT_IMAGE_BYTES = 3_000_000;
 
 type TemplateId = "launch" | "countdown" | "contract" | "community" | "custom";
 type StudioTab = "setup" | "calendar" | "queue" | "rules";
 type DraftMap = Record<string, string>;
-type ChatMap = Record<string, string>;
+
+// Per-panel status shown inline next to the control that triggered it, instead of one status bar far below the fold.
+type PanelStatus = { tone: "progress" | "success" | "error"; message: string } | null;
+
+type TelegramConnectionState = {
+  status: "connected" | "reconnect_needed";
+  displayName: string;
+  externalId: string;
+  reconnectReason: string | null;
+};
+
+/** Shape returned by GET /api/social/connections for one platform row. */
+type SocialConnectionSummary = {
+  platform: "x" | "telegram";
+  status: "connected" | "reconnect_needed";
+  displayName: string;
+  externalId: string;
+  reconnectReason: string | null;
+};
+
+async function readJsonResponse<T>(response: Response, fallback: string): Promise<T> {
+  const payload = (await response.json().catch(() => ({}))) as { error?: string } & Partial<T>;
+  if (!response.ok) throw new Error(payload.error || fallback);
+  return payload as T;
+}
 
 function newQueueItemId(): string {
   return `queue-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
@@ -243,6 +269,18 @@ function ComingSoon({ compact = false }: { compact?: boolean }) {
   return <span className={compact ? styles.comingSoonCompact : styles.comingSoon}>Coming soon</span>;
 }
 
+/** Renders a panel's own progress/success/error message, inline and aria-live, right where the user is looking. */
+function InlineStatus({ status }: { status: PanelStatus }) {
+  if (!status) return null;
+  const modifier = status.tone === "error" ? styles.inlineStatusError : status.tone === "progress" ? styles.inlineStatusProgress : "";
+  return (
+    <div className={[styles.inlineStatus, modifier].filter(Boolean).join(" ")} role="status" aria-live="polite">
+      <span>{status.tone === "error" ? "!" : "●"}</span>
+      <p>{status.message}</p>
+    </div>
+  );
+}
+
 export function SocialHub() {
   const [projects, setProjects] = useState<TokenProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -251,7 +289,6 @@ export function SocialHub() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [templateId, setTemplateId] = useState<TemplateId>("launch");
   const [message, setMessage] = useState("");
-  const [telegramChatId, setTelegramChatId] = useState("");
   const [includeArtwork, setIncludeArtwork] = useState(true);
   const [status, setStatus] = useState(
     "Choose a saved project, review the post and approve each destination.",
@@ -287,20 +324,85 @@ export function SocialHub() {
   const [calendarAiBusy, setCalendarAiBusy] = useState(false);
   const mascotFileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Per-panel status (issue #340): errors/progress render next to the
+  // control that triggered them instead of only in the far-below statusBar.
+  const [voiceStatus, setVoiceStatus] = useState<PanelStatus>(null);
+  const [mascotUploadStatus, setMascotUploadStatus] = useState<PanelStatus>(null);
+  const [mascotSceneStatus, setMascotSceneStatus] = useState<PanelStatus>(null);
+  const [setupDraftStatus, setSetupDraftStatus] = useState<PanelStatus>(null);
+  const [calendarDraftStatus, setCalendarDraftStatus] = useState<PanelStatus>(null);
+  const [telegramStatus, setTelegramStatus] = useState<PanelStatus>(null);
+
+  // Real Telegram connect flow (issue #340): reconciles the Setup card with
+  // the wallet-signed connect/disconnect routes instead of a bare, unverified
+  // chat-ID text field. `telegramConfigured` is null while loading.
+  const [telegramConfigured, setTelegramConfigured] = useState<boolean | null>(null);
+  const [telegramConnection, setTelegramConnection] = useState<TelegramConnectionState | null>(null);
+  const [telegramConnectInput, setTelegramConnectInput] = useState("");
+  const [telegramConnectBusy, setTelegramConnectBusy] = useState(false);
+
   useEffect(() => {
     const loadedProjects = safeProjects(localStorage.getItem(PROJECT_STORAGE_KEY));
     const drafts = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
-    const chats = safeMap(localStorage.getItem(TELEGRAM_CHAT_STORAGE_KEY));
     setProjects(loadedProjects);
     setWalletAddress(storedWalletAddress());
 
     if (loadedProjects[0]) {
       const first = loadedProjects[0];
       setSelectedProjectId(first.id);
-      setTelegramChatId(chats[first.id] || "");
       setMessage(drafts[first.id] || buildTemplate(first, "launch"));
     }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTelegramConfigured() {
+      try {
+        const response = await fetch("/api/social/telegram/status", { cache: "no-store" });
+        const payload = await readJsonResponse<{ configured?: boolean }>(response, "Could not check Telegram configuration.");
+        if (!cancelled) setTelegramConfigured(Boolean(payload.configured));
+      } catch {
+        if (!cancelled) setTelegramConfigured(false);
+      }
+    }
+    void loadTelegramConfigured();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTelegramConnection() {
+      if (!walletAddress) {
+        setTelegramConnection(null);
+        return;
+      }
+      try {
+        const response = await fetch(`/api/social/connections?walletAddress=${encodeURIComponent(walletAddress)}`, { cache: "no-store" });
+        const payload = await readJsonResponse<{ connections?: SocialConnectionSummary[] }>(response, "Could not load your connections.");
+        if (cancelled) return;
+        const connections = Array.isArray(payload.connections) ? payload.connections : [];
+        const telegram = connections.find((connection) => connection.platform === "telegram");
+        setTelegramConnection(
+          telegram && (telegram.status === "connected" || telegram.status === "reconnect_needed")
+            ? {
+                status: telegram.status,
+                displayName: telegram.displayName,
+                externalId: telegram.externalId,
+                reconnectReason: telegram.reconnectReason,
+              }
+            : null,
+        );
+      } catch {
+        if (!cancelled) setTelegramConnection(null);
+      }
+    }
+    void loadTelegramConnection();
+    return () => {
+      cancelled = true;
+    };
+  }, [walletAddress]);
 
   useEffect(() => {
     let cancelled = false;
@@ -353,11 +455,11 @@ export function SocialHub() {
 
   const xCharacterCount = message.length;
   const xReady = xCharacterCount > 0 && xCharacterCount <= 280;
-  const telegramReady = Boolean(selectedProject && telegramChatId.trim() && (telegramMessage || message).trim());
-  const voiceExampleCount = useMemo(
-    () => voiceExamplesText.split("\n").map((line) => line.trim()).filter(Boolean).length,
-    [voiceExamplesText],
+  const telegramReady = Boolean(
+    selectedProject && telegramConnection?.status === "connected" && (telegramMessage || message).trim(),
   );
+  const voiceExampleFilter = useMemo(() => filterUsableVoiceExamples(voiceExamplesText), [voiceExamplesText]);
+  const voiceExampleCount = voiceExampleFilter.usable.length;
   const voiceProgressPercent = Math.min(100, Math.round((voiceExampleCount / 20) * 100));
   const projectInitial = (selectedProject?.name || "H").slice(0, 1).toUpperCase();
   const projectTicker = selectedProject?.ticker?.trim().toUpperCase() || "PROJECT";
@@ -378,9 +480,7 @@ export function SocialHub() {
     const project = projects.find((item) => item.id === id);
     if (!project) return;
     const drafts = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
-    const chats = safeMap(localStorage.getItem(TELEGRAM_CHAT_STORAGE_KEY));
     setSelectedProjectId(id);
-    setTelegramChatId(chats[id] || "");
     setTemplateId("launch");
     setMessage(drafts[id] || buildTemplate(project, "launch"));
     setTelegramMessage("");
@@ -391,6 +491,11 @@ export function SocialHub() {
     setCustomActionEntry(null);
     setCustomPlaceEntry(null);
     setProjectMenuOpen(false);
+    setVoiceStatus(null);
+    setMascotUploadStatus(null);
+    setMascotSceneStatus(null);
+    setSetupDraftStatus(null);
+    setCalendarDraftStatus(null);
     setStatus(`${project.name || "Project"} loaded into Hoodlums Social.`);
   }
 
@@ -453,13 +558,113 @@ export function SocialHub() {
     setStatus("Artwork downloaded. Attach it manually inside the X composer.");
   }
 
+  async function connectTelegramChannel() {
+    const chatId = telegramConnectInput.trim();
+    if (!chatId) {
+      setTelegramStatus({ tone: "error", message: "Enter the Telegram channel username or numeric chat ID first." });
+      return;
+    }
+    const provider = getInjectedEvmProvider();
+    if (!provider) {
+      setTelegramStatus({ tone: "error", message: "Connect an EVM wallet before linking Telegram." });
+      return;
+    }
+
+    setTelegramConnectBusy(true);
+    setTelegramStatus({ tone: "progress", message: "Checking that the Hoodlums bot is an admin in that channel…" });
+    try {
+      const walletClient = createWalletClient({ transport: custom(provider) });
+      const [account] = await walletClient.getAddresses();
+      if (!account) throw new Error("Connect an EVM wallet before linking Telegram.");
+      const walletChainId = await walletClient.getChainId();
+
+      const challengeResponse = await fetch("/api/social/challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress: account, walletChainId, purpose: "social:telegram-connect", payload: { chatId } }),
+      });
+      const challenge = await readJsonResponse<{ challengeId: string; nonce: string; message: string }>(
+        challengeResponse,
+        "Could not start the Telegram connection.",
+      );
+      const signature = await walletClient.signMessage({ account, message: challenge.message });
+
+      const connectResponse = await fetch("/api/social/telegram/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, challengeId: challenge.challengeId, nonce: challenge.nonce, signature }),
+      });
+      const payload = await readJsonResponse<{ connection: TelegramConnectionState }>(
+        connectResponse,
+        "Telegram could not verify that channel.",
+      );
+      setTelegramConnection(payload.connection);
+      setTelegramConnectInput("");
+      setTelegramStatus({
+        tone: "success",
+        message: `Connected. The Hoodlums bot can post in ${payload.connection.displayName}.`,
+      });
+    } catch (error) {
+      setTelegramStatus({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Telegram could not verify that channel.",
+      });
+    } finally {
+      setTelegramConnectBusy(false);
+    }
+  }
+
+  async function disconnectTelegramChannel() {
+    const provider = getInjectedEvmProvider();
+    if (!provider) {
+      setTelegramStatus({ tone: "error", message: "Connect an EVM wallet before disconnecting Telegram." });
+      return;
+    }
+
+    setTelegramConnectBusy(true);
+    setTelegramStatus({ tone: "progress", message: "Disconnecting Telegram…" });
+    try {
+      const walletClient = createWalletClient({ transport: custom(provider) });
+      const [account] = await walletClient.getAddresses();
+      if (!account) throw new Error("Connect an EVM wallet before disconnecting Telegram.");
+      const walletChainId = await walletClient.getChainId();
+
+      const challengeResponse = await fetch("/api/social/challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress: account, walletChainId, purpose: "social:telegram-disconnect", payload: { platform: "telegram" } }),
+      });
+      const challenge = await readJsonResponse<{ challengeId: string; nonce: string; message: string }>(
+        challengeResponse,
+        "Could not start disconnecting Telegram.",
+      );
+      const signature = await walletClient.signMessage({ account, message: challenge.message });
+
+      const disconnectResponse = await fetch("/api/social/telegram/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId: challenge.challengeId, nonce: challenge.nonce, signature }),
+      });
+      await readJsonResponse<{ ok?: boolean }>(disconnectResponse, "Telegram could not be disconnected.");
+      setTelegramConnection(null);
+      setTelegramStatus({ tone: "success", message: "Telegram disconnected." });
+    } catch (error) {
+      setTelegramStatus({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Telegram could not be disconnected.",
+      });
+    } finally {
+      setTelegramConnectBusy(false);
+    }
+  }
+
   async function postTelegram() {
     if (!selectedProject) {
       setStatus("Choose a project before publishing.");
       return false;
     }
-    if (!telegramReady) {
-      setStatus("Enter the Telegram channel username or chat ID and add post text first.");
+    if (!telegramReady || !telegramConnection || telegramConnection.status !== "connected") {
+      setStatus("Connect a verified Telegram channel in Setup and add post text first.");
       return false;
     }
 
@@ -470,7 +675,7 @@ export function SocialHub() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          chatId: telegramChatId.trim(),
+          chatId: telegramConnection.externalId,
           text: (telegramMessage || message).trim(),
           artwork: includeArtwork ? attachedArtwork || selectedProject.heroImage : "",
         }),
@@ -480,9 +685,6 @@ export function SocialHub() {
         throw new Error(payload.error || "Telegram rejected the post.");
       }
 
-      const chats: ChatMap = safeMap(localStorage.getItem(TELEGRAM_CHAT_STORAGE_KEY));
-      chats[selectedProject.id] = telegramChatId.trim();
-      localStorage.setItem(TELEGRAM_CHAT_STORAGE_KEY, JSON.stringify(chats));
       setStatus("Telegram post published through the Hoodlums bot.");
       return true;
     } catch (error) {
@@ -512,20 +714,23 @@ export function SocialHub() {
   async function buildVoiceProfile() {
     const project = draftProjectPayload();
     if (!project) {
-      setStatus("Choose a project before teaching the AI your voice.");
+      setVoiceStatus({ tone: "error", message: "Choose a project before teaching the AI your voice." });
       return;
     }
-    const examples = voiceExamplesText
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    if (examples.length < 2) {
-      setStatus("Paste at least two example posts, one per line, to teach the AI your voice.");
+    const { usable: examples, pastedLineCount, rejectedCount } = voiceExampleFilter;
+    if (examples.length < MIN_USABLE_VOICE_EXAMPLES) {
+      setVoiceStatus({
+        tone: "error",
+        message:
+          pastedLineCount > 0
+            ? `Only ${examples.length} usable example${examples.length === 1 ? "" : "s"} found after skipping ${rejectedCount} short/boilerplate/duplicate line${rejectedCount === 1 ? "" : "s"} out of ${pastedLineCount} pasted. Paste at least two real posts, one per line.`
+            : "Paste at least two example posts, one per line, to teach the AI your voice.",
+      });
       return;
     }
 
     setVoiceBusy(true);
-    setStatus("Reading your examples and learning the voice…");
+    setVoiceStatus({ tone: "progress", message: "Reading your examples and learning the voice…" });
     try {
       const response = await fetch("/api/social/voice-profile", {
         method: "POST",
@@ -537,26 +742,36 @@ export function SocialHub() {
         throw new Error(payload.error || "The voice profile could not be built.");
       }
       setVoiceProfile(payload.voiceProfile);
-      persistSocialStudio({ voiceProfile: payload.voiceProfile, voiceExamples: examples });
-      setStatus("Voice profile updated. Preview it on the right.");
+      persistSocialStudio({ voiceProfile: payload.voiceProfile });
+      setVoiceStatus({
+        tone: "success",
+        message:
+          rejectedCount > 0
+            ? `Voice profile updated using ${examples.length} of ${pastedLineCount} pasted lines (${rejectedCount} skipped as short, page furniture, or duplicates). Preview it on the right.`
+            : "Voice profile updated. Preview it on the right.",
+      });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "The voice profile could not be built.");
+      setVoiceStatus({ tone: "error", message: error instanceof Error ? error.message : "The voice profile could not be built." });
     } finally {
       setVoiceBusy(false);
     }
   }
 
   function noteScreenshotsUnavailable() {
-    setStatus("Screenshot-to-text isn't available yet — paste your post text above instead.");
+    setVoiceStatus({ tone: "error", message: "Screenshot-to-text isn't available yet — paste your post text above instead." });
   }
 
-  async function generateDraft(options: { dayLabel?: string; theme?: string } = {}): Promise<boolean> {
+  async function generateDraft(
+    options: { dayLabel?: string; theme?: string } = {},
+    report: (next: PanelStatus) => void = () => {},
+  ): Promise<boolean> {
     const project = draftProjectPayload();
     if (!project) {
-      setStatus("Choose a project before generating a draft.");
+      report({ tone: "error", message: "Choose a project before generating a draft." });
       return false;
     }
 
+    report({ tone: "progress", message: "Writing a draft with AI…" });
     try {
       const response = await fetch("/api/social/draft", {
         method: "POST",
@@ -592,29 +807,29 @@ export function SocialHub() {
           persistSocialStudio({ queue: next });
           return next;
         });
-        setStatus(`AI draft for ${options.dayLabel} added to the Queue.`);
+        report({ tone: "success", message: `AI draft for ${options.dayLabel} added to the Queue.` });
       } else {
         setMessage(payload.draft.xText);
         setTelegramMessage(payload.draft.telegramText);
         setComposeOpen(true);
-        setStatus("AI draft ready. Review it below before posting.");
+        report({ tone: "success", message: "AI draft ready. Review it below before posting." });
       }
       return true;
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "The draft could not be generated.");
+      report({ tone: "error", message: error instanceof Error ? error.message : "The draft could not be generated." });
       return false;
     }
   }
 
   async function generateDraftFromSetup() {
     setDraftBusy(true);
-    await generateDraft();
+    await generateDraft({}, setSetupDraftStatus);
     setDraftBusy(false);
   }
 
   async function generateDraftForDay() {
     setCalendarAiBusy(true);
-    await generateDraft({ dayLabel: selectedDayLabel });
+    await generateDraft({ dayLabel: selectedDayLabel }, setCalendarDraftStatus);
     setCalendarAiBusy(false);
   }
 
@@ -641,16 +856,16 @@ export function SocialHub() {
     if (!file) return;
     const project = draftProjectPayload();
     if (!project) {
-      setStatus("Choose a project before uploading mascot artwork.");
+      setMascotUploadStatus({ tone: "error", message: "Choose a project before uploading mascot artwork." });
       return;
     }
     if (file.size > MAX_MASCOT_IMAGE_BYTES) {
-      setStatus("That image is too large. Upload a mascot reference image under 3MB.");
+      setMascotUploadStatus({ tone: "error", message: "That image is too large. Upload a mascot reference image under 3MB." });
       return;
     }
 
     setMascotBusy(true);
-    setStatus("Reading the mascot's visual identity…");
+    setMascotUploadStatus({ tone: "progress", message: "Reading the mascot's visual identity…" });
     try {
       const imageDataUrl = await readFileAsDataUrl(file);
       const response = await fetch("/api/social/mascot/visual-dna", {
@@ -665,9 +880,9 @@ export function SocialHub() {
       setMascotVisualDNA(payload.mascotVisualDNA);
       setMascotReferenceImage(imageDataUrl);
       persistSocialStudio({ mascotVisualDNA: payload.mascotVisualDNA, mascotReferenceImage: imageDataUrl });
-      setStatus("Mascot identity locked in. Choose a scene to generate artwork.");
+      setMascotUploadStatus({ tone: "success", message: "Mascot identity locked in. Choose a scene to generate artwork." });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "The mascot artwork could not be analysed.");
+      setMascotUploadStatus({ tone: "error", message: error instanceof Error ? error.message : "The mascot artwork could not be analysed." });
     } finally {
       setMascotBusy(false);
     }
@@ -677,20 +892,20 @@ export function SocialHub() {
     const project = draftProjectPayload();
     const sceneInput = composeSceneInput();
     if (!project) {
-      setStatus("Choose a project before generating a mascot scene.");
+      setMascotSceneStatus({ tone: "error", message: "Choose a project before generating a mascot scene." });
       return;
     }
     if (!mascotVisualDNA) {
-      setStatus("Upload mascot artwork first so its visual identity can be locked in.");
+      setMascotSceneStatus({ tone: "error", message: "Upload mascot artwork first so its visual identity can be locked in." });
       return;
     }
     if (!sceneInput) {
-      setStatus("Choose or describe a scene for the mascot.");
+      setMascotSceneStatus({ tone: "error", message: "Choose or describe a scene for the mascot." });
       return;
     }
 
     setMascotImageBusy(true);
-    setStatus("Generating mascot scene artwork…");
+    setMascotSceneStatus({ tone: "progress", message: "Generating mascot scene artwork…" });
     try {
       const response = await fetch("/api/social/mascot/image", {
         method: "POST",
@@ -702,9 +917,9 @@ export function SocialHub() {
         throw new Error(payload.error || "The mascot scene image could not be generated.");
       }
       setGeneratedMascotImage(payload.imageDataUrl);
-      setStatus("Mascot artwork ready — attach it to Telegram, download it, or add it to the Queue.");
+      setMascotSceneStatus({ tone: "success", message: "Mascot artwork ready — attach it to Telegram, download it, or add it to the Queue." });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "The mascot scene image could not be generated.");
+      setMascotSceneStatus({ tone: "error", message: error instanceof Error ? error.message : "The mascot scene image could not be generated." });
     } finally {
       setMascotImageBusy(false);
     }
@@ -714,19 +929,19 @@ export function SocialHub() {
     if (!generatedMascotImage) return;
     setAttachedArtwork(generatedMascotImage);
     setIncludeArtwork(true);
-    setStatus("Mascot artwork attached — it will be included the next time you post to Telegram.");
+    setMascotSceneStatus({ tone: "success", message: "Mascot artwork attached — it will be included the next time you post to Telegram." });
   }
 
   function downloadGeneratedArtwork() {
     if (!generatedMascotImage || !selectedProject) {
-      setStatus("Generate mascot artwork before downloading it.");
+      setMascotSceneStatus({ tone: "error", message: "Generate mascot artwork before downloading it." });
       return;
     }
     const anchor = document.createElement("a");
     anchor.href = generatedMascotImage;
     anchor.download = `${selectedProject.websiteSlug || selectedProject.ticker || "token"}-mascot-scene.png`;
     anchor.click();
-    setStatus("Mascot artwork downloaded. Attach it manually inside the X composer.");
+    setMascotSceneStatus({ tone: "success", message: "Mascot artwork downloaded. Attach it manually inside the X composer." });
   }
 
   function addGeneratedArtworkToQueue() {
@@ -745,7 +960,7 @@ export function SocialHub() {
       persistSocialStudio({ queue: next });
       return next;
     });
-    setStatus("Added to the Queue with its artwork.");
+    setMascotSceneStatus({ tone: "success", message: "Added to the Queue with its artwork." });
   }
 
   function updateQueueItem(id: string, patch: Partial<QueueItem>) {
@@ -784,8 +999,8 @@ export function SocialHub() {
       setStatus("Choose a project before publishing.");
       return;
     }
-    if (!telegramChatId.trim() || !item.telegramText.trim()) {
-      setStatus("Enter the Telegram channel and add post text first.");
+    if (!telegramConnection || telegramConnection.status !== "connected" || !item.telegramText.trim()) {
+      setStatus("Connect a verified Telegram channel in Setup and add post text first.");
       return;
     }
 
@@ -796,7 +1011,7 @@ export function SocialHub() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          chatId: telegramChatId.trim(),
+          chatId: telegramConnection.externalId,
           text: item.telegramText.trim(),
           artwork: item.artwork || "",
         }),
@@ -957,20 +1172,84 @@ export function SocialHub() {
                           <span className={styles.telegramIcon}><TelegramIcon /></span>
                           <div>
                             <b>Telegram</b>
-                            <span>{telegramChatId || "Hoodlums bot · channel not set"}</span>
+                            <span>
+                              {telegramConfigured === false
+                                ? "Server bot not configured"
+                                : telegramConnection?.status === "connected"
+                                  ? telegramConnection.displayName
+                                  : telegramConnection?.status === "reconnect_needed"
+                                    ? "Needs reconnecting"
+                                    : "Not connected yet"}
+                            </span>
                           </div>
-                          <span className={telegramChatId ? styles.connectionStateLive : styles.connectionState}>
-                            {telegramChatId ? "Channel saved" : "Server bot"}
+                          <span
+                            className={
+                              telegramConfigured === false
+                                ? styles.connectionStateError
+                                : telegramConnection?.status === "connected"
+                                  ? styles.connectionStateLive
+                                  : telegramConnection?.status === "reconnect_needed"
+                                    ? styles.connectionStateWarning
+                                    : styles.connectionState
+                            }
+                          >
+                            {telegramConfigured === null
+                              ? "Checking…"
+                              : telegramConfigured === false
+                                ? "Not configured"
+                                : telegramConnection?.status === "connected"
+                                  ? "Connected"
+                                  : telegramConnection?.status === "reconnect_needed"
+                                    ? "Reconnect needed"
+                                    : "Not connected"}
                           </span>
                         </div>
-                        <label className={styles.connectionField}>
-                          <span>Channel username or chat ID</span>
-                          <input
-                            value={telegramChatId}
-                            onChange={(event) => setTelegramChatId(event.target.value)}
-                            placeholder="@yourchannel or -1001234567890"
-                          />
-                        </label>
+
+                        {telegramConfigured === false ? (
+                          <p className={styles.connectionHelper}>
+                            The Hoodlums Telegram bot isn&apos;t set up on this deployment yet. Ask the site owner to set{" "}
+                            <code>TELEGRAM_BOT_TOKEN</code> (and optionally <code>TELEGRAM_BOT_USERNAME</code>) in Vercel.
+                          </p>
+                        ) : telegramConnection?.status === "connected" ? (
+                          <>
+                            <p className={styles.connectionHelper}>
+                              The Hoodlums bot can post in {telegramConnection.displayName}.
+                            </p>
+                            <div className={styles.composerActions}>
+                              <button type="button" onClick={disconnectTelegramChannel} disabled={telegramConnectBusy}>
+                                {telegramConnectBusy ? "Disconnecting…" : "Disconnect"}
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <label className={styles.connectionField}>
+                              <span>Channel username or chat ID</span>
+                              <input
+                                value={telegramConnectInput}
+                                onChange={(event) => setTelegramConnectInput(event.target.value)}
+                                placeholder="@yourchannel or -1001234567890"
+                                disabled={!telegramConfigured || telegramConnectBusy}
+                              />
+                            </label>
+                            {telegramConnection?.status === "reconnect_needed" && telegramConnection.reconnectReason ? (
+                              <p className={styles.connectionHelper}>{telegramConnection.reconnectReason}</p>
+                            ) : null}
+                            <button
+                              type="button"
+                              className={styles.aiMakeButton}
+                              onClick={connectTelegramChannel}
+                              disabled={!telegramConfigured || telegramConnectBusy || !walletAddress}
+                            >
+                              <b>{telegramConnectBusy ? "Verifying…" : "Connect Telegram"}</b>
+                              <span>
+                                {walletAddress
+                                  ? "Add the Hoodlums bot as an admin in your channel first, then connect it here."
+                                  : "Connect your wallet first, then link a Telegram channel here."}
+                              </span>
+                            </button>
+                          </>
+                        )}
                         <label className={styles.checkbox}>
                           <input
                             type="checkbox"
@@ -979,9 +1258,7 @@ export function SocialHub() {
                           />
                           <span>Include project artwork when available</span>
                         </label>
-                        <p className={styles.connectionHelper}>
-                          Add the Hoodlums bot as an administrator allowed to post — no BotFather token is entered in the Studio.
-                        </p>
+                        <InlineStatus status={telegramStatus} />
                       </article>
                     </div>
                   </section>
@@ -1006,10 +1283,21 @@ export function SocialHub() {
                         />
                         <div className={styles.disabledActions}>
                           <button type="button" onClick={noteScreenshotsUnavailable}>Upload screenshots</button>
-                          <span>{voiceExampleCount} / 20 examples</span>
+                          <span>
+                            {voiceExampleFilter.pastedLineCount > 0
+                              ? `${voiceExampleCount} usable / ${voiceExampleFilter.pastedLineCount} pasted`
+                              : `${voiceExampleCount} / 20 examples`}
+                          </span>
                         </div>
                       </div>
-                      <p className={styles.exampleLabel}>Screenshot-to-text isn&apos;t available yet — paste post text above instead.</p>
+                      {voiceExampleFilter.rejectedCount > 0 ? (
+                        <p className={styles.exampleLabel}>
+                          {voiceExampleFilter.rejectedCount} pasted line{voiceExampleFilter.rejectedCount === 1 ? "" : "s"} skipped as too
+                          short, page furniture, or duplicates.
+                        </p>
+                      ) : (
+                        <p className={styles.exampleLabel}>Screenshot-to-text isn&apos;t available yet — paste post text above instead.</p>
+                      )}
                       <div className={styles.progressRow}>
                         <div><span>EXAMPLES ADDED</span><b>{voiceExampleCount} / 20</b></div>
                         <div className={styles.progressTrack}><span style={{ width: `${voiceProgressPercent}%` }} /></div>
@@ -1018,11 +1306,12 @@ export function SocialHub() {
                         type="button"
                         className={styles.aiMakeButton}
                         onClick={buildVoiceProfile}
-                        disabled={voiceBusy || voiceExampleCount < 2}
+                        disabled={voiceBusy || voiceExampleCount < MIN_USABLE_VOICE_EXAMPLES}
                       >
                         <b>{voiceBusy ? "Learning your voice…" : "Learn my voice"}</b>
                         <span>Builds a reusable voice profile for AI drafts and mascot posts.</span>
                       </button>
+                      <InlineStatus status={voiceStatus} />
                       <p className={styles.limeNote}>Your examples teach style only — the AI will only ever talk about your project.</p>
                     </div>
 
@@ -1132,6 +1421,7 @@ export function SocialHub() {
                                 {draftBusy ? "Drafting…" : "Draft with AI"}
                               </button>
                             </div>
+                            <InlineStatus status={setupDraftStatus} />
                           </div>
                         </div>
 
@@ -1280,6 +1570,7 @@ export function SocialHub() {
                             </div>
                           </div>
                         ) : null}
+                        <InlineStatus status={mascotSceneStatus} />
                       </div>
                       <div className={styles.mascotDrop}>
                         {mascotReferenceImage ? (
@@ -1300,6 +1591,7 @@ export function SocialHub() {
                         <button type="button" onClick={() => mascotFileInputRef.current?.click()} disabled={mascotBusy}>
                           {mascotBusy ? "Analysing…" : mascotVisualDNA ? "Replace image" : "Choose image"}
                         </button>
+                        <InlineStatus status={mascotUploadStatus} />
                       </div>
                     </div>
                   </section>
@@ -1413,6 +1705,7 @@ export function SocialHub() {
                           <b>{calendarAiBusy ? "Making it…" : "AI makes it"}</b>
                           <span>Generates a voice-aware draft for this day and adds it to the Queue.</span>
                         </button>
+                        <InlineStatus status={calendarDraftStatus} />
                         <button type="button" disabled className={styles.ownPostButton}>
                           <b>I&apos;ll post my own</b>
                           <span>Upload or write it yourself — we&apos;ll publish it on time.</span>

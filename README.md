@@ -248,7 +248,7 @@ An additional `/monad` test page deploys the same fixed-supply EVM token design 
 
 ### Social publishing workspace
 
-The `/social` route loads saved projects and provides reusable launch, contract-live, and community announcement drafts. Users can edit and save copy locally, copy it, download project artwork, open the official X composer for final approval, and publish to Telegram with their own bot token and channel ID. Telegram bot tokens are submitted only for the requested post, cleared from the form afterward, and are not stored in browser project data.
+The `/social` route loads saved projects and provides reusable launch, contract-live, and community announcement drafts. Users can edit and save copy locally, copy it, download project artwork, and open the official X composer for final approval. Telegram publishing goes through the shared Hoodlums bot (`TELEGRAM_BOT_TOKEN`, server-only): the Setup card shows a clear "Not configured" state if that env var is unset, and otherwise a wallet-signed "Connect Telegram" step verifies the bot is actually an admin in the named channel before any post can be sent — there is no free-text bot token or unverified channel field.
 
 ### Account status
 

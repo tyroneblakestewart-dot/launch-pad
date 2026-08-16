@@ -99,7 +99,18 @@ export async function POST(request: Request) {
       serviceKey: "social-posting",
       message: `Wallet ${authorisation.walletAddress} connected Telegram (${verification.displayName}).`,
     });
-    return NextResponse.json({ connection: { platform: connection.platform, status: connection.status, displayName: connection.displayName } }, { status: 200, headers });
+    return NextResponse.json(
+      {
+        connection: {
+          platform: connection.platform,
+          status: connection.status,
+          displayName: connection.displayName,
+          externalId: connection.externalId,
+          reconnectReason: connection.reconnectReason,
+        },
+      },
+      { status: 200, headers },
+    );
   } catch (error) {
     const unavailable = error instanceof SocialConnectionsStoreUnavailableError;
     return NextResponse.json(
