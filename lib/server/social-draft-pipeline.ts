@@ -319,6 +319,136 @@ function bannedPhrasesInstruction(phrases: string[]): string {
   ].join("\n");
 }
 
+/**
+ * Function words filtered out of the immediate short-signature-phrase check
+ * below — a two/three-word gram containing any of these reads as ordinary
+ * grammar, not a memorable catchphrase, so it must never trigger a ban after
+ * a single occurrence (issue #366 follow-up: "do not ban ... every ordinary
+ * use of words such as 'community'"). Deliberately short and mechanical, not
+ * a general-purpose stopword list — it only needs to keep this one check
+ * conservative.
+ */
+const SIGNATURE_PHRASE_STOPWORDS = new Set([
+  "a", "an", "the", "and", "or", "but", "is", "are", "was", "were", "be", "been", "being",
+  "to", "of", "in", "on", "at", "for", "with", "from", "as", "it", "it's", "its", "this", "that",
+  "these", "those", "we", "our", "you", "your", "they", "their", "i", "my", "me", "us",
+  "not", "no", "so", "if", "then", "than", "more", "most", "some", "all", "every", "any",
+  "into", "out", "up", "down", "over", "under", "again", "just", "only", "also", "still",
+  "will", "would", "can", "could", "should", "do", "does", "did", "has", "have", "had",
+  "here", "there", "when", "what", "who", "why", "how", "each", "own", "one", "let",
+]);
+
+const SIGNATURE_PHRASE_MIN_WORDS = 2;
+const SIGNATURE_PHRASE_MAX_WORDS = 3;
+const SIGNATURE_PHRASE_MIN_WORD_LENGTH = 4;
+/** Deliberately smaller than MAX_BANNED_PHRASES — this list is meant to name a handful of the most recent signature phrases, not exhaustively catalogue every recent draft. */
+const MAX_SIGNATURE_PHRASES = 10;
+
+function isSignaturePhrase(phrase: string): boolean {
+  return phrase
+    .split(" ")
+    .every((word) => word.length >= SIGNATURE_PHRASE_MIN_WORD_LENGTH && !SIGNATURE_PHRASE_STOPWORDS.has(word));
+}
+
+/** A phrase overlapping the project's own name, ticker or chain label is never bannable — this check must never end up prohibiting the project's own identity. */
+function isProtectedFactPhrase(phrase: string, project: { name: string; ticker: string }, chainLabel: string): boolean {
+  return [project.name, project.ticker, chainLabel]
+    .map((value) => normaliseForPhraseMatch(value))
+    .filter(Boolean)
+    .some((value) => phrase.includes(value) || value.includes(phrase));
+}
+
+/**
+ * Distinctive 2-3 word phrases pulled from each recent X draft individually —
+ * banned after a single prior occurrence, unlike extractRepeatedPhrases's 2+
+ * recurrence threshold. A short signature phrase like "bold humor" was
+ * slipping straight into a second draft because that 2+ threshold only trips
+ * on the phrase's *third* appearance (issue #366 follow-up point 1).
+ * Deliberately conservative to keep false positives low: every word in the
+ * phrase must be a real content word (no stopwords, at least
+ * SIGNATURE_PHRASE_MIN_WORD_LENGTH letters), and any phrase overlapping the
+ * project's own name, ticker or chain label is always excluded (point 2).
+ *
+ * Unlike extractRepeatedPhrases, this deliberately does NOT collapse a short
+ * phrase into a longer phrase that contains it — a reuse might repeat only
+ * the short core ("bold humor") without the surrounding words ("brings bold
+ * humor"), and checkDraftRepetition matches banned phrases by exact
+ * substring, so dropping the short form in favour of the long one would let
+ * that reuse straight through.
+ */
+export function extractImmediateSignaturePhrases(
+  recentDrafts: string[],
+  project: { name: string; ticker: string },
+  chainLabel: string,
+): string[] {
+  const found = new Set<string>();
+  recentDrafts.forEach((draft) => {
+    const words = normaliseForPhraseMatch(draft).split(" ").filter(Boolean);
+    for (let n = SIGNATURE_PHRASE_MIN_WORDS; n <= SIGNATURE_PHRASE_MAX_WORDS; n += 1) {
+      wordNgrams(words, n).forEach((phrase) => {
+        if (isSignaturePhrase(phrase) && !isProtectedFactPhrase(phrase, project, chainLabel)) {
+          found.add(phrase);
+        }
+      });
+    }
+  });
+
+  // Shorter phrases first so a compact catchphrase like "bold humor" survives
+  // the cap ahead of longer, less-reusable variants built around it.
+  return Array.from(found)
+    .sort((a, b) => a.split(" ").length - b.split(" ").length || a.length - b.length)
+    .slice(0, MAX_SIGNATURE_PHRASES);
+}
+
+function immediateSignaturePhrasesInstruction(phrases: string[]): string {
+  if (phrases.length === 0) return "";
+  return [
+    "These short signature phrases already appeared in a recent post in this batch and must not be reused, even once, in either draft — pick genuinely different wording, not just a reordering:",
+    ...phrases.map((phrase, index) => `${index + 1}. "${phrase}"`),
+  ].join("\n");
+}
+
+/**
+ * A narrow, explicit list of standalone AI-cliché filler words that read as
+ * bot-like when they recur across a batch, even though each word alone is
+ * far too common/generic to ever ban outright (issue #366 follow-up point
+ * 4 — the user's screenshot named "vibe" specifically). Rolling-window rule,
+ * the same shape as checkDraftIdentityOpener: one use is always allowed, a
+ * second use within the window is not. Kept deliberately short rather than a
+ * broad style-policing list — this targets the specific filler flagged, not
+ * a user's genuine vocabulary.
+ */
+export const WATCHED_FILLER_TERMS: readonly string[] = ["vibe", "vibes"];
+
+function textContainsWatchedTerm(text: string, term: string): boolean {
+  return new RegExp(`\\b${term}\\b`, "iu").test(text);
+}
+
+/**
+ * Mechanical guard, run after parsing (issue #366 follow-up point 4): rejects
+ * a watched filler term's second appearance within the rolling recent-draft
+ * window. A single use is always allowed — this only fires once the same
+ * term already showed up in a recent draft too.
+ */
+export function checkDraftWatchedFillerTerms(xText: string, recentDrafts: string[]): DraftAngleComplianceResult {
+  for (const term of WATCHED_FILLER_TERMS) {
+    const alreadyUsed = recentDrafts.some((draft) => textContainsWatchedTerm(draft, term));
+    if (alreadyUsed && textContainsWatchedTerm(xText, term)) {
+      return {
+        violated: true,
+        feedback: `The word "${term}" already appeared in a recent post in this batch. Rewrite without it — pick different, more specific wording instead of that filler.`,
+      };
+    }
+  }
+  return { violated: false };
+}
+
+function watchedFillerTermsInstruction(recentDrafts: string[]): string {
+  const used = WATCHED_FILLER_TERMS.filter((term) => recentDrafts.some((draft) => textContainsWatchedTerm(draft, term)));
+  if (used.length === 0) return "";
+  return `The word(s) ${used.map((term) => `"${term}"`).join(", ")} already appeared in a recent post in this batch — avoid reusing ${used.length > 1 ? "them" : "it"} here.`;
+}
+
 /** Guard against voice drift: liked lines are secondary reinforcement, capped and ordered, never the primary voice reference (issue #348). */
 function likedLinesInstruction(likedSampleLines: string[]): string {
   if (likedSampleLines.length === 0) return "";
@@ -383,6 +513,11 @@ function allowedFactsLedgerInstruction(
     .join("\n");
 }
 
+/** Shared X/prompt chain label for a project — also used to protect the chain name from the short-signature-phrase ban below. */
+export function resolveChainLabel(chain: DraftProject["chain"]): string {
+  return chain === "robinhood" ? "Robinhood Chain" : "Solana";
+}
+
 export function buildDraftRequestBody(
   input: {
     project: DraftProject;
@@ -406,7 +541,7 @@ export function buildDraftRequestBody(
     (input.angleIndex ?? 0) * VOICE_EXAMPLES_PER_DRAFT,
   );
   const recentDrafts = (input.recentDrafts ?? []).slice(0, MAX_RECENT_DRAFTS_CONTEXT);
-  const chain = input.project.chain === "robinhood" ? "Robinhood Chain" : "Solana";
+  const chain = resolveChainLabel(input.project.chain);
   const angle = resolveDraftAngle(input.theme, input.angleIndex, Boolean(input.directionBrief?.trim()));
   const themeLine = input.theme?.trim() ? `Theme for this post: ${input.theme.trim()}.` : "";
   const dayLine = input.dayLabel?.trim() ? `This post is scheduled for ${input.dayLabel.trim()}.` : "";
@@ -441,6 +576,8 @@ export function buildDraftRequestBody(
               recentDraftsInstruction(recentDrafts),
               identityOpenerWarningInstruction(input.project, recentDrafts),
               bannedPhrasesInstruction(extractRepeatedPhrases(recentDrafts)),
+              immediateSignaturePhrasesInstruction(extractImmediateSignaturePhrases(recentDrafts, input.project, chain)),
+              watchedFillerTermsInstruction(recentDrafts),
               ANTI_FORMULA_RULES,
               input.correctiveFeedback?.trim() ? `IMPORTANT CORRECTION (this is a regenerated attempt): ${input.correctiveFeedback.trim()}` : "",
               "Return only the strict draft JSON object.",
@@ -754,26 +891,36 @@ export type DraftComplianceCheckInput = {
   directionBrief?: string | null;
   bannedPhrases?: string[];
   project?: { name: string; ticker: string };
+  /** Only needed to protect the chain label from the immediate-signature-phrase check below when a project is also supplied. */
+  chainLabel?: string;
   recentDrafts?: string[];
 };
 
 /**
  * Runs every mechanical safety check — angle form, then factual risk, then
- * the project-identity opener, then repetition/phrase-overlap —
- * short-circuiting on the first violation. The route calls this identically
- * on the first response and, after a corrective retry, on the retry's
- * response too, so a second bad draft can never slip through unchecked the
- * way the first response's compliance check alone did (issue #364, following
- * on from #363).
+ * the project-identity opener, then the watched-filler-term rolling window,
+ * then repetition/phrase-overlap (which also folds in the immediate
+ * short-signature-phrase ban whenever a project is supplied, issue #366
+ * follow-up) — short-circuiting on the first violation. The route calls this
+ * identically on the first response and, after a corrective retry, on the
+ * retry's response too, so a second bad draft can never slip through
+ * unchecked the way the first response's compliance check alone did (issue
+ * #364, following on from #363).
  */
 export function checkDraftCompliance(draft: SocialDraft, input: DraftComplianceCheckInput): DraftAngleComplianceResult {
   const angleResult = checkDraftAngleCompliance(draft.xText, input);
   if (angleResult.violated) return angleResult;
   const factualResult = checkDraftFactualRisk(draft);
   if (factualResult.violated) return factualResult;
+  const recentDrafts = input.recentDrafts ?? [];
   if (input.project) {
-    const identityResult = checkDraftIdentityOpener(draft.xText, input.project, input.recentDrafts ?? []);
+    const identityResult = checkDraftIdentityOpener(draft.xText, input.project, recentDrafts);
     if (identityResult.violated) return identityResult;
   }
-  return checkDraftRepetition(draft, input.bannedPhrases ?? [], input.recentDrafts ?? []);
+  const fillerResult = checkDraftWatchedFillerTerms(draft.xText, recentDrafts);
+  if (fillerResult.violated) return fillerResult;
+  const immediatePhrases = input.project
+    ? extractImmediateSignaturePhrases(recentDrafts, input.project, input.chainLabel ?? "")
+    : [];
+  return checkDraftRepetition(draft, [...(input.bannedPhrases ?? []), ...immediatePhrases], recentDrafts);
 }

@@ -14,6 +14,7 @@ import {
   checkDraftCompliance,
   extractRepeatedPhrases,
   parseDraftResponseDetailed,
+  resolveChainLabel,
   type DraftProject,
 } from "@/lib/server/social-draft-pipeline";
 import { authoriseSocialStudioRequest } from "@/lib/server/social-studio-entitlement";
@@ -245,6 +246,7 @@ export async function POST(request: Request) {
     directionBrief,
     bannedPhrases,
     project: { name: project.name, ticker: project.ticker },
+    chainLabel: resolveChainLabel(project.chain),
     recentDrafts,
   };
   const compliance = checkDraftCompliance(result.draft, complianceInput);

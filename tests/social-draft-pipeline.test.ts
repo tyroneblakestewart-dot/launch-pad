@@ -3,6 +3,7 @@ import type { OpenAIResponse } from "@/lib/server/generate-site-style";
 import {
   DRAFT_ANGLES,
   FACT_DEPENDENT_ANGLE_KEYS,
+  WATCHED_FILLER_TERMS,
   X_DRAFT_CHARACTER_LIMIT,
   buildDraftRequestBody,
   checkDraftAngleCompliance,
@@ -10,9 +11,12 @@ import {
   checkDraftFactualRisk,
   checkDraftIdentityOpener,
   checkDraftRepetition,
+  checkDraftWatchedFillerTerms,
+  extractImmediateSignaturePhrases,
   extractRepeatedPhrases,
   parseDraftResponse,
   parseDraftResponseDetailed,
+  resolveChainLabel,
   type DraftProject,
 } from "@/lib/server/social-draft-pipeline";
 import type { SocialDraft, VoiceProfile } from "@/lib/social-studio-types";
@@ -330,6 +334,33 @@ describe("buildDraftRequestBody", () => {
     );
     const developerText = body.input[0]?.content[0]?.text ?? "";
     expect(developerText).not.toContain("must NOT begin with the project name or ticker");
+  });
+
+  it("includes an immediate short-signature-phrase exclusion in the developer prompt (issue #366 follow-up)", () => {
+    const body = buildDraftRequestBody(
+      { project: PROJECT, voiceProfile: null, recentDrafts: ["The crew brings bold humor to everything we build."] },
+      "gpt-5-mini",
+    );
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("short signature phrases already appeared");
+    expect(developerText.toLowerCase()).toContain("bold humor");
+  });
+
+  it("includes a watched-filler-term exclusion in the developer prompt once a recent draft used one (issue #366 follow-up)", () => {
+    const body = buildDraftRequestBody(
+      { project: PROJECT, voiceProfile: null, recentDrafts: ["Loving the vibe from this community lately."] },
+      "gpt-5-mini",
+    );
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain('"vibe"');
+    expect(developerText).toContain("already appeared in a recent post");
+  });
+
+  it("omits both new exclusion instructions when no recent drafts are supplied", () => {
+    const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini");
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).not.toContain("short signature phrases already appeared");
+    expect(developerText).not.toContain("already appeared in a recent post in this batch");
   });
 });
 
@@ -679,5 +710,135 @@ describe("checkDraftRepetition close phrase reuse against a single recent draft 
   it("still rejects with only the phrase list when no recentDrafts are passed (backward compatible default)", () => {
     const draft: SocialDraft = { xText: "the doom crew brings bold humor every time", telegramText: "clean" };
     expect(checkDraftRepetition(draft, ["bold humor"]).violated).toBe(true);
+  });
+});
+
+describe("resolveChainLabel", () => {
+  it("maps robinhood to the Robinhood Chain label and everything else to Solana", () => {
+    expect(resolveChainLabel("robinhood")).toBe("Robinhood Chain");
+    expect(resolveChainLabel("solana")).toBe("Solana");
+  });
+});
+
+describe("extractImmediateSignaturePhrases (issue #366 follow-up)", () => {
+  it("flags a distinctive 2-3 word phrase after a single occurrence, not just 2+ recurrences", () => {
+    const phrases = extractImmediateSignaturePhrases(
+      ["The crew brings bold humor to everything we build."],
+      DOOM_PROJECT,
+      "Robinhood Chain",
+    );
+    expect(phrases).toContain("bold humor");
+  });
+
+  it("never flags the project's own name, ticker, or chain label", () => {
+    const phrases = extractImmediateSignaturePhrases(
+      ["$DOOM keeps shipping on Robinhood Chain, and Doom holders love it."],
+      DOOM_PROJECT,
+      "Robinhood Chain",
+    );
+    expect(phrases.some((phrase) => phrase.includes("doom"))).toBe(false);
+    expect(phrases.some((phrase) => phrase.includes("robinhood chain"))).toBe(false);
+  });
+
+  it("ignores ordinary stopword-heavy filler and single generic words like 'community'", () => {
+    const phrases = extractImmediateSignaturePhrases(
+      ["We love our community and the energy it brings to us every day."],
+      DOOM_PROJECT,
+      "Robinhood Chain",
+    );
+    expect(phrases).toEqual([]);
+  });
+
+  it("returns an empty list for no recent drafts", () => {
+    expect(extractImmediateSignaturePhrases([], DOOM_PROJECT, "Robinhood Chain")).toEqual([]);
+  });
+});
+
+describe("checkDraftWatchedFillerTerms (issue #366 follow-up)", () => {
+  it("allows a watched term's first use when no recent draft used it", () => {
+    const result = checkDraftWatchedFillerTerms("Loving the vibe from this drop.", []);
+    expect(result).toEqual({ violated: false });
+  });
+
+  it("rejects a second use of a watched term within the rolling window, naming it in feedback", () => {
+    const result = checkDraftWatchedFillerTerms("Still riding that vibe today.", ["Loving the vibe from this drop."]);
+    expect(result.violated).toBe(true);
+    if (result.violated) expect(result.feedback).toContain('"vibe"');
+  });
+
+  it("is case-insensitive and matches the plural form too", () => {
+    const result = checkDraftWatchedFillerTerms("The Vibes are unreal right now.", ["good vibes only around here."]);
+    expect(result.violated).toBe(true);
+  });
+
+  it("does not reject ordinary vocabulary that isn't on the watched list", () => {
+    const result = checkDraftWatchedFillerTerms("The community energy is unreal today.", ["The community energy was great yesterday."]);
+    expect(result).toEqual({ violated: false });
+  });
+
+  it("exposes the watched term list as containing 'vibe'", () => {
+    expect(WATCHED_FILLER_TERMS).toContain("vibe");
+  });
+});
+
+describe("checkDraftCompliance immediate signature phrases and watched filler terms (issue #366 follow-up)", () => {
+  it("rejects a second 'bold humor' after a single recent occurrence, naming the phrase in feedback", () => {
+    const draft: SocialDraft = { xText: "This crew never runs out of bold humor.", telegramText: "clean" };
+    const result = checkDraftCompliance(draft, {
+      angleIndex: 1,
+      project: DOOM_PROJECT,
+      chainLabel: "Robinhood Chain",
+      recentDrafts: ["The doom crew brings bold humor to everything we build."],
+    });
+    expect(result.violated).toBe(true);
+    if (result.violated) expect(result.feedback).toContain("bold humor");
+  });
+
+  it("rejects a second 'vibe' within the rolling window", () => {
+    const draft: SocialDraft = { xText: "Still riding that same vibe today.", telegramText: "clean" };
+    const result = checkDraftCompliance(draft, {
+      angleIndex: 1,
+      project: DOOM_PROJECT,
+      chainLabel: "Robinhood Chain",
+      recentDrafts: ["Loving the vibe from this drop."],
+    });
+    expect(result.violated).toBe(true);
+    if (result.violated) expect(result.feedback).toContain("vibe");
+  });
+
+  it("does not reject the project name, ticker, or the Robinhood Chain label", () => {
+    const draft: SocialDraft = { xText: "Doom keeps building on Robinhood Chain, one day at a time.", telegramText: "clean" };
+    const result = checkDraftCompliance(draft, {
+      angleIndex: 1,
+      project: DOOM_PROJECT,
+      chainLabel: "Robinhood Chain",
+      recentDrafts: ["Robinhood Chain gives DOOM the speed we need to move fast."],
+    });
+    expect(result).toEqual({ violated: false });
+  });
+
+  it("does not reject normal filler or a draft that merely matches recent voice cadence with different wording", () => {
+    const draft: SocialDraft = {
+      xText: "Another quiet day of steady progress for the whole crew.",
+      telegramText: "clean",
+    };
+    const result = checkDraftCompliance(draft, {
+      angleIndex: 1,
+      project: DOOM_PROJECT,
+      chainLabel: "Robinhood Chain",
+      recentDrafts: ["Another calm day of steady work from the whole team."],
+    });
+    expect(result).toEqual({ violated: false });
+  });
+
+  it("allows a single use of 'vibe' with no recent occurrence", () => {
+    const draft: SocialDraft = { xText: "Loving the vibe from this drop.", telegramText: "clean" };
+    const result = checkDraftCompliance(draft, {
+      angleIndex: 1,
+      project: DOOM_PROJECT,
+      chainLabel: "Robinhood Chain",
+      recentDrafts: [],
+    });
+    expect(result).toEqual({ violated: false });
   });
 });
