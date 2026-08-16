@@ -5,15 +5,26 @@
 // in localStorage or long-lived React state (CLAUDE.md rule 7).
 
 import {
+  DEFAULT_POSTING_CADENCE,
   DEFAULT_QUEUE_TARGET,
   EMPTY_SOCIAL_STUDIO_RECORD,
   MAX_QUEUE_TARGET,
+  type PostingCadence,
   type SocialStudioProjectRecord,
 } from "@/lib/social-studio-types";
 
 function normaliseQueueTarget(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_QUEUE_TARGET;
   return Math.min(MAX_QUEUE_TARGET, Math.max(1, Math.round(value)));
+}
+
+/** Falls back to the default cadence for a missing or unrecognised stored value (e.g. a pre-#358 record). */
+function normalisePostingCadence(value: unknown): PostingCadence {
+  return value === "conservative" || value === "active" ? value : DEFAULT_POSTING_CADENCE;
+}
+
+function normaliseDirectionBrief(value: unknown): string {
+  return typeof value === "string" ? value.slice(0, 500) : "";
 }
 
 const DATABASE_NAME = "hoodlums-social-studio";
@@ -74,6 +85,11 @@ async function runInStore<T>(
  * queueTarget (issue #352) is coerced the same way: a missing, non-numeric
  * or out-of-range value (including records saved before this field existed)
  * falls back to DEFAULT_QUEUE_TARGET rather than rejecting the record.
+ *
+ * postingCadence and directionBrief (issue #358) follow the same pattern: a
+ * missing/unrecognised cadence falls back to DEFAULT_POSTING_CADENCE, and a
+ * non-string brief falls back to "" (which changes nothing about
+ * generation), rather than either rejecting the record.
  */
 function normaliseSocialStudioRecord(
   raw: SocialStudioProjectRecord | null | undefined,
@@ -85,6 +101,8 @@ function normaliseSocialStudioRecord(
     queue: Array.isArray(merged.queue) ? merged.queue : [],
     sampleLineFeedback: Array.isArray(merged.sampleLineFeedback) ? merged.sampleLineFeedback : [],
     queueTarget: normaliseQueueTarget(merged.queueTarget),
+    postingCadence: normalisePostingCadence(merged.postingCadence),
+    directionBrief: normaliseDirectionBrief(merged.directionBrief),
   };
 }
 

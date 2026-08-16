@@ -5,7 +5,14 @@
 // Kept dependency-free of components/social-hub.tsx so it can be tested
 // directly instead of only through source-string assertions.
 
-import { DEFAULT_QUEUE_TARGET, MAX_QUEUE_TARGET, type SocialPlatform } from "@/lib/social-studio-types";
+import {
+  DEFAULT_POSTING_CADENCE,
+  DEFAULT_QUEUE_TARGET,
+  MAX_QUEUE_TARGET,
+  POSTING_CADENCE_OPTIONS,
+  type PostingCadence,
+  type SocialPlatform,
+} from "@/lib/social-studio-types";
 
 export type ConnectionStatusSummary = {
   platform: SocialPlatform;
@@ -63,4 +70,22 @@ export function computeDefaultScheduledAt(
 /** The free X intent-composer URL used for both the existing manual queue and #344's needs_composer hand-off. */
 export function buildXIntentUrl(text: string): string {
   return `https://x.com/intent/post?text=${encodeURIComponent(text)}`;
+}
+
+/** Waking-hours window (07:00–23:00) that a cadence's default schedule spread fans approvals across, instead of clustering them (issue #358). */
+const WAKING_HOURS_MS = 16 * 60 * 60 * 1000;
+
+/** Falls back to the default cadence for any unrecognised or missing stored value (e.g. a pre-#358 record). */
+export function normalisePostingCadence(value: unknown): PostingCadence {
+  return POSTING_CADENCE_OPTIONS.some((option) => option.id === value) ? (value as PostingCadence) : DEFAULT_POSTING_CADENCE;
+}
+
+/** The Ready-to-review replenish target a cadence drives (issue #358) — always that cadence's own daily posting ceiling. */
+export function cadenceQueueTarget(cadence: PostingCadence): number {
+  return POSTING_CADENCE_OPTIONS.find((option) => option.id === cadence)?.postsPerDayMax ?? DEFAULT_QUEUE_TARGET;
+}
+
+/** Default schedule-time spread for a cadence: waking hours divided evenly across its daily posting ceiling, so approvals fan out across the day instead of clustering at "now". */
+export function cadenceSpreadHoursMs(cadence: PostingCadence): number {
+  return Math.round(WAKING_HOURS_MS / cadenceQueueTarget(cadence));
 }

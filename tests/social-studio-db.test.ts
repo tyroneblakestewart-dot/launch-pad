@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteSocialStudioRecord, getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
 import {
+  DEFAULT_POSTING_CADENCE,
   DEFAULT_QUEUE_TARGET,
   EMPTY_SOCIAL_STUDIO_RECORD,
   MAX_QUEUE_TARGET,
@@ -50,6 +51,8 @@ const RECORD: SocialStudioProjectRecord = {
     { text: "b", sentiment: "disliked", updatedAt: "2026-01-01T00:01:00.000Z" },
   ],
   queueTarget: 8,
+  postingCadence: "conservative",
+  directionBrief: "Push the community angle, big announcement coming Friday",
 };
 
 describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
@@ -97,6 +100,8 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         ...legacy,
         sampleLineFeedback: [],
         queueTarget: DEFAULT_QUEUE_TARGET,
+        postingCadence: DEFAULT_POSTING_CADENCE,
+        directionBrief: "",
       });
     });
 
@@ -114,7 +119,38 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
       await expect(getSocialStudioRecord("legacy-project-3")).resolves.toEqual({
         ...legacy,
         queueTarget: DEFAULT_QUEUE_TARGET,
+        postingCadence: DEFAULT_POSTING_CADENCE,
+        directionBrief: "",
       });
+    });
+
+    it("fills in postingCadence and directionBrief with their defaults when a pre-#358 record has neither key", async () => {
+      const legacy = {
+        voiceProfile: RECORD.voiceProfile,
+        voiceExamples: RECORD.voiceExamples,
+        mascotVisualDNA: RECORD.mascotVisualDNA,
+        mascotReferenceImage: RECORD.mascotReferenceImage,
+        queue: RECORD.queue,
+        sampleLineFeedback: RECORD.sampleLineFeedback,
+        queueTarget: RECORD.queueTarget,
+        // postingCadence and directionBrief intentionally omitted, as in records saved before issue #358.
+      };
+      await putSocialStudioRecord("legacy-project-4", legacy as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("legacy-project-4")).resolves.toEqual({
+        ...legacy,
+        postingCadence: DEFAULT_POSTING_CADENCE,
+        directionBrief: "",
+      });
+    });
+
+    it("falls back to the default cadence for an unrecognised stored postingCadence instead of throwing", async () => {
+      await putSocialStudioRecord("bad-cadence-1", { ...RECORD, postingCadence: "aggressive" } as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("bad-cadence-1")).resolves.toMatchObject({ postingCadence: DEFAULT_POSTING_CADENCE });
+    });
+
+    it("coerces a non-string directionBrief to empty instead of throwing", async () => {
+      await putSocialStudioRecord("bad-brief-1", { ...RECORD, directionBrief: 42 } as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("bad-brief-1")).resolves.toMatchObject({ directionBrief: "" });
     });
 
     it("clamps a non-numeric, fractional or out-of-range stored queueTarget instead of throwing", async () => {

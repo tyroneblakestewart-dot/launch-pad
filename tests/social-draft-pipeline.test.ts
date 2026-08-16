@@ -93,6 +93,31 @@ describe("buildDraftRequestBody", () => {
     expect(developerText).toContain("primary and authoritative reference");
     expect(developerText.indexOf("confident and playful")).toBeLessThan(developerText.indexOf("most recent liked line"));
   });
+
+  it("omits any direction-brief instruction when none is supplied, leaving the body identical to the no-brief case (issue #358)", () => {
+    const withoutBriefField = buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini");
+    const withNullBrief = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, directionBrief: null }, "gpt-5-mini");
+    const withEmptyBrief = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, directionBrief: "   " }, "gpt-5-mini");
+    expect(withoutBriefField).toEqual(withNullBrief);
+    expect(withoutBriefField).toEqual(withEmptyBrief);
+
+    const developerText = withoutBriefField.input[0]?.content[0]?.text ?? "";
+    expect(developerText).not.toContain("current focus");
+  });
+
+  it("includes the direction brief as secondary, non-verbatim steering when supplied (issue #358)", () => {
+    const body = buildDraftRequestBody(
+      { project: PROJECT, voiceProfile: VOICE, directionBrief: "Push the community angle, big announcement coming Friday" },
+      "gpt-5-mini",
+    );
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("Push the community angle, big announcement coming Friday");
+    expect(developerText).toContain("current focus for this week");
+    expect(developerText).toContain("do not quote it verbatim");
+
+    // Secondary to the taught voice, which is listed earlier in the instructions.
+    expect(developerText.indexOf("confident and playful")).toBeLessThan(developerText.indexOf("Push the community angle"));
+  });
 });
 
 describe("parseDraftResponse", () => {

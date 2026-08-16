@@ -29,6 +29,7 @@ type DraftRequestBody = {
   dayLabel?: unknown;
   theme?: unknown;
   likedSampleLines?: unknown;
+  directionBrief?: unknown;
 };
 
 function noStoreHeaders(extra: Record<string, string> = {}) {
@@ -120,6 +121,7 @@ export async function POST(request: Request) {
   const dayLabel = typeof body.dayLabel === "string" ? body.dayLabel.slice(0, 60) : null;
   const theme = typeof body.theme === "string" ? body.theme.slice(0, 200) : null;
   const likedSampleLines = normaliseLikedSampleLines(body.likedSampleLines);
+  const directionBrief = typeof body.directionBrief === "string" ? body.directionBrief.slice(0, 500) : null;
 
   const ai = resolveAIResponsesRuntime(process.env, getVercelOidcToken(request));
   if (!ai) {
@@ -134,7 +136,9 @@ export async function POST(request: Request) {
     response = await fetch(ai.responsesUrl, {
       method: "POST",
       headers: { Authorization: `Bearer ${ai.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(buildDraftRequestBody({ project, voiceProfile, dayLabel, theme, likedSampleLines }, ai.model)),
+      body: JSON.stringify(
+        buildDraftRequestBody({ project, voiceProfile, dayLabel, theme, likedSampleLines, directionBrief }, ai.model),
+      ),
       signal: AbortSignal.timeout(25_000),
     });
   } catch (error) {

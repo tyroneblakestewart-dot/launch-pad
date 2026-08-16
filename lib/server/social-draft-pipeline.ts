@@ -45,6 +45,22 @@ function likedLinesInstruction(likedSampleLines: string[]): string {
   ].join("\n");
 }
 
+/**
+ * Optional per-project steering (issue #358's Direction brief) — the user's
+ * stated focus for the week, applied to both X and Telegram. Secondary to
+ * the taught voice and liked-line reinforcement above, and never quoted
+ * verbatim. Empty/whitespace-only input is a no-op so an unset brief changes
+ * nothing about generation.
+ */
+function directionBriefInstruction(directionBrief: string | null | undefined): string {
+  const trimmed = directionBrief?.trim();
+  if (!trimmed) return "";
+  return [
+    "The user's current focus for this week (secondary to the taught voice and liked-line reinforcement above — reflect this focus in the post's content, do not quote it verbatim):",
+    trimmed,
+  ].join("\n");
+}
+
 export function buildDraftRequestBody(
   input: {
     project: DraftProject;
@@ -52,6 +68,7 @@ export function buildDraftRequestBody(
     dayLabel?: string | null;
     theme?: string | null;
     likedSampleLines?: string[];
+    directionBrief?: string | null;
   },
   model: string,
 ) {
@@ -85,6 +102,7 @@ export function buildDraftRequestBody(
               "Both drafts are shown to the user for review and editing before they choose to post — do not claim they have already been posted.",
               voiceInstruction(input.voiceProfile),
               likedLinesInstruction(likedSampleLines),
+              directionBriefInstruction(input.directionBrief),
               "Return only the strict draft JSON object.",
             ]
               .filter(Boolean)

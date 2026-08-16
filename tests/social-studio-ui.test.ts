@@ -223,6 +223,64 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain("still reinforce new drafts and voice");
   });
 
+  it("compacts Ready-to-review draft cards behind a collapsed X preview, still exposing edit/approve/delete (issue #358)", async () => {
+    const social = await source("components", "social-hub.tsx");
+
+    // Collapsed by default: a single clamped X preview with its character count, not both full bodies.
+    expect(social).toContain("const [expandedQueueItemIds, setExpandedQueueItemIds] = useState<Record<string, boolean>>({});");
+    expect(social).toContain("function toggleQueueItemExpanded(id: string)");
+    expect(social).toContain("const isExpanded = Boolean(expandedQueueItemIds[item.id]);");
+    expect(social).toContain("className={styles.queuePreview}");
+    expect(social).toContain("className={styles.queuePreviewText}");
+    expect(social).toContain("Telegram hidden — tap to edit both");
+
+    // Expanding still reveals the same editable X/Telegram fields, wired to the same update handler.
+    expect(social).toContain('onChange={(event) => updateQueueItem(item.id, { xText: event.target.value })}');
+    expect(social).toContain('onChange={(event) => updateQueueItem(item.id, { telegramText: event.target.value })}');
+
+    // The compact schedule control replaces the old full-width labeled row.
+    expect(social).toContain("className={styles.scheduleCompact}");
+    expect(social).toContain("className={styles.scheduleCompactInput}");
+
+    // Approve/Post to X/Send to Telegram/Delete are untouched (issue #356's action row).
+    expect(social).toContain("onClick={() => approveQueueItem(item)}");
+    expect(social).toContain("onClick={() => postQueueItemToX(item)}");
+    expect(social).toContain("onClick={() => sendQueueItemToTelegram(item)}");
+    expect(social).toContain("onClick={() => removeQueueItem(item.id)}");
+  });
+
+  it("adds an optional Direction brief that steers drafts without being quoted verbatim (issue #358)", async () => {
+    const social = await source("components", "social-hub.tsx");
+
+    expect(social).toContain('const [directionBrief, setDirectionBrief] = useState("");');
+    expect(social).toContain("setDirectionBrief(record.directionBrief);");
+    expect(social).toContain('setDirectionBrief("");');
+    expect(social).toContain("Direction brief");
+    expect(social).toContain("OPTIONAL");
+    expect(social).toContain("Tell the AI your focus this week. Applies to both X and Telegram.");
+    expect(social).toContain("directionBrief: directionBrief.trim() || null,");
+    expect(social).toContain("directionBrief,\n      sampleLineFeedback,");
+  });
+
+  it("adds a single-select posting cadence hard-capped at the plan's 5 posts/day entitlement (issue #358)", async () => {
+    const social = await source("components", "social-hub.tsx");
+
+    expect(social).toContain("Posting cadence");
+    expect(social).toContain("import {\n  DEFAULT_POSTING_CADENCE,\n  DEFAULT_QUEUE_TARGET,\n  EMPTY_SOCIAL_STUDIO_RECORD,\n  MAX_POSTS_PER_DAY,\n  POSTING_CADENCE_OPTIONS,\n} from \"@/lib/social-studio-types\";");
+    expect(social).toContain("function updatePostingCadence(cadence: PostingCadence)");
+    expect(social).toContain("const nextTarget = cadenceQueueTarget(cadence);");
+    expect(social).toContain("persistSocialStudio({ postingCadence: cadence, queueTarget: nextTarget });");
+    expect(social).toContain("{POSTING_CADENCE_OPTIONS.map((option) => (");
+    expect(social).toContain("aria-pressed={postingCadence === option.id}");
+
+    // Both cadence tiers, and no offer of anything beyond the 5/day ceiling.
+    expect(social).toContain("MAX_POSTS_PER_DAY");
+    const types = await source("lib", "social-studio-types.ts");
+    expect(types).toContain('{ id: "conservative", label: "Conservative", description: "1–2 posts per day", postsPerDayMax: 2 },');
+    expect(types).toContain('{ id: "active", label: "Active", description: "3–5 posts per day", postsPerDayMax: 5 },');
+    expect(types).toContain("export const MAX_POSTS_PER_DAY = 5;");
+  });
+
   it("filters page furniture out of pasted voice examples before counting or teaching the AI (issue #340)", async () => {
     const social = await source("components", "social-hub.tsx");
 
