@@ -37,6 +37,15 @@ describe("toggleSampleLineFeedback", () => {
     expect(toggleSampleLineFeedback([], "   ", "liked", "2026-01-01T00:00:00.000Z")).toEqual([]);
   });
 
+  it("tolerates undefined/null current feedback (e.g. from a legacy stored record) instead of throwing", () => {
+    expect(toggleSampleLineFeedback(undefined, "Line one.", "liked", "2026-01-01T00:00:00.000Z")).toEqual([
+      { text: "Line one.", sentiment: "liked", updatedAt: "2026-01-01T00:00:00.000Z" },
+    ]);
+    expect(toggleSampleLineFeedback(null, "Line one.", "liked", "2026-01-01T00:00:00.000Z")).toEqual([
+      { text: "Line one.", sentiment: "liked", updatedAt: "2026-01-01T00:00:00.000Z" },
+    ]);
+  });
+
   it("caps total stored feedback, dropping the oldest entries first", () => {
     let feedback: SampleLineFeedback[] = [];
     for (let index = 0; index < MAX_STORED_SAMPLE_LINE_FEEDBACK + 5; index += 1) {
@@ -78,5 +87,10 @@ describe("likedReinforcementLines", () => {
 
   it("returns an empty array when nothing is liked", () => {
     expect(likedReinforcementLines([])).toEqual([]);
+  });
+
+  it("degrades to no likes yet instead of throwing when fed undefined/null (issue #350)", () => {
+    expect(likedReinforcementLines(undefined)).toEqual([]);
+    expect(likedReinforcementLines(null)).toEqual([]);
   });
 });

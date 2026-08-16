@@ -24,16 +24,17 @@ export const MAX_REINFORCEMENT_SAMPLE_LINES = 5;
  * at MAX_STORED_SAMPLE_LINE_FEEDBACK, dropping the oldest entries first.
  */
 export function toggleSampleLineFeedback(
-  current: readonly SampleLineFeedback[],
+  current: readonly SampleLineFeedback[] | null | undefined,
   text: string,
   sentiment: SampleLineFeedback["sentiment"],
   updatedAt: string,
 ): SampleLineFeedback[] {
+  const safeCurrent = Array.isArray(current) ? current : [];
   const trimmed = text.trim();
-  if (!trimmed) return [...current];
+  if (!trimmed) return [...safeCurrent];
 
-  const existing = current.find((entry) => entry.text === trimmed);
-  const withoutExisting = current.filter((entry) => entry.text !== trimmed);
+  const existing = safeCurrent.find((entry) => entry.text === trimmed);
+  const withoutExisting = safeCurrent.filter((entry) => entry.text !== trimmed);
 
   if (existing && existing.sentiment === sentiment) {
     return withoutExisting;
@@ -49,7 +50,8 @@ export function toggleSampleLineFeedback(
  * excluded entirely — disliking is purely a client-side "don't reinforce
  * this" signal, not negative training material sent to the model.
  */
-export function likedReinforcementLines(feedback: readonly SampleLineFeedback[]): string[] {
+export function likedReinforcementLines(feedback: readonly SampleLineFeedback[] | null | undefined): string[] {
+  if (!Array.isArray(feedback)) return [];
   return feedback
     .filter((entry) => entry.sentiment === "liked")
     .slice()
