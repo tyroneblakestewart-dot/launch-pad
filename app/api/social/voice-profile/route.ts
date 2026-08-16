@@ -7,6 +7,7 @@ import {
 } from "@/lib/server/api-protection";
 import { getVercelOidcToken, resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
 import type { OpenAIResponse } from "@/lib/server/generate-site-style";
+import { normaliseLikedSampleLines } from "@/lib/server/social-reinforcement";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import { authoriseSocialStudioRequest } from "@/lib/server/social-studio-entitlement";
 import {
@@ -22,6 +23,7 @@ type VoiceProfileRequestBody = {
   walletAddress?: unknown;
   project?: { name?: unknown; ticker?: unknown };
   examples?: unknown;
+  likedSampleLines?: unknown;
 };
 
 function noStoreHeaders(extra: Record<string, string> = {}) {
@@ -94,6 +96,7 @@ export async function POST(request: Request) {
   if (!normalisedExamples.ok) {
     return NextResponse.json({ error: normalisedExamples.error }, { status: 400, headers: noStoreHeaders(rateHeaders) });
   }
+  const likedSampleLines = normaliseLikedSampleLines(body.likedSampleLines);
 
   const ai = resolveAIResponsesRuntime(process.env, getVercelOidcToken(request));
   if (!ai) {
@@ -108,7 +111,9 @@ export async function POST(request: Request) {
     response = await fetch(ai.responsesUrl, {
       method: "POST",
       headers: { Authorization: `Bearer ${ai.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(buildVoiceProfileRequestBody({ name, ticker }, normalisedExamples.examples, ai.model)),
+      body: JSON.stringify(
+        buildVoiceProfileRequestBody({ name, ticker }, normalisedExamples.examples, ai.model, likedSampleLines),
+      ),
       signal: AbortSignal.timeout(25_000),
     });
   } catch (error) {

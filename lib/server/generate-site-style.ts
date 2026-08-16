@@ -57,7 +57,16 @@ export type SiteStyle = {
   tickerPhrase: string;
 };
 
-export const MAX_IMAGE_DATA_URL_LENGTH = 3_000_000;
+// Issue #348: raising the *source* upload limit to 15MB (see
+// lib/artwork-compression.ts) does not raise this. The client-side
+// compressor already guarantees a compressed artwork of at most
+// MAX_COMPRESSED_ARTWORK_BYTES (1.5MB binary) regardless of source size — a
+// bigger/more detailed source just needs a smaller compression step to land
+// under the same ceiling. As a base64 data: URL that ceiling is
+// estimateDataUrlLength(MAX_COMPRESSED_ARTWORK_BYTES) = 2,000,023 characters
+// worst case, so 3,500,000 keeps ~75% headroom above measured reality
+// instead of being multiplied blindly alongside the source limit.
+export const MAX_IMAGE_DATA_URL_LENGTH = 3_500_000;
 export const MAX_INSPIRATION_URL_LENGTH = 500;
 
 export const TOKEN_LANDING_PAGE_GENERATOR_PREFIX = `You are a token landing page generator. I will upload a meme image, and you will build a complete, single-file HTML/CSS/JS landing page that feels like it was BORN from that image.

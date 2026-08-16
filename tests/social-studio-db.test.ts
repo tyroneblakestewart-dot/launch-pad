@@ -40,6 +40,10 @@ const RECORD: SocialStudioProjectRecord = {
       createdAt: "2026-01-01T00:00:00.000Z",
     },
   ],
+  sampleLineFeedback: [
+    { text: "a", sentiment: "liked", updatedAt: "2026-01-01T00:00:00.000Z" },
+    { text: "b", sentiment: "disliked", updatedAt: "2026-01-01T00:01:00.000Z" },
+  ],
 };
 
 describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {

@@ -213,6 +213,7 @@ describe("backend test inventory", () => {
       "lib/server/social-draft-pipeline.ts",
       "lib/server/social-link-detection.ts",
       "lib/server/social-posting-cron.ts",
+      "lib/server/social-reinforcement.ts",
       "lib/server/social-scheduled-posts-store.ts",
       "lib/server/social-studio-action-auth.ts",
       "lib/server/social-studio-entitlement.ts",

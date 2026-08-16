@@ -71,6 +71,28 @@ describe("buildDraftRequestBody", () => {
     expect(body.reasoning).toEqual({ effort: "minimal" });
     expect(body.max_output_tokens).toBe(1_200);
   });
+
+  it("omits reinforcement material when no liked sample lines are supplied (issue #348)", () => {
+    const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: VOICE }, "gpt-5-mini");
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).not.toContain("previously approved");
+  });
+
+  it("includes liked sample lines as capped, ordered secondary reinforcement behind the taught voice (issue #348)", () => {
+    const body = buildDraftRequestBody(
+      { project: PROJECT, voiceProfile: VOICE, likedSampleLines: ["most recent liked line", "older liked line"] },
+      "gpt-5-mini",
+    );
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("1. most recent liked line");
+    expect(developerText).toContain("2. older liked line");
+    expect(developerText.indexOf("most recent liked line")).toBeLessThan(developerText.indexOf("older liked line"));
+
+    // Guard against voice drift: the taught-voice description (built from real posts) is stated as primary.
+    expect(developerText).toContain("secondary reinforcement only");
+    expect(developerText).toContain("primary and authoritative reference");
+    expect(developerText.indexOf("confident and playful")).toBeLessThan(developerText.indexOf("most recent liked line"));
+  });
 });
 
 describe("parseDraftResponse", () => {
