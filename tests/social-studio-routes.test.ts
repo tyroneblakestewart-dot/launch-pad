@@ -189,6 +189,26 @@ describe("POST /api/social/draft", () => {
     const response = await postDraft(request("/api/social/draft", { walletAddress: WALLET, project: { name: "", ticker: "" } }));
     expect(response.status).toBe(400);
   });
+
+  it("forwards a supplied directionBrief into the AI request body (issue #358)", async () => {
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(textPayload({ xText: "A fine X post.", telegramText: "A fine telegram post about Test Coin." })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await postDraft(
+      request("/api/social/draft", {
+        walletAddress: WALLET,
+        project: PROJECT,
+        directionBrief: "Push the community angle, big announcement coming Friday",
+      }),
+    );
+    expect(response.status).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] as [string, { body?: string }];
+    const sentBody = JSON.parse(init.body ?? "{}") as { input?: Array<{ content?: Array<{ text?: string }> }> };
+    const developerText = sentBody.input?.[0]?.content?.[0]?.text ?? "";
+    expect(developerText).toContain("Push the community angle, big announcement coming Friday");
+  });
 });
 
 describe("POST /api/social/mascot/visual-dna", () => {

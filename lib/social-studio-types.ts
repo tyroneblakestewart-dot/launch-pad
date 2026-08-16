@@ -54,6 +54,28 @@ export type QueueItem = {
 export const DEFAULT_QUEUE_TARGET = 5;
 export const MAX_QUEUE_TARGET = 20;
 
+/**
+ * Posting cadence (issue #358): a single-select pair of daily posting tiers,
+ * each hard-capped by the plan entitlement (Pro: 5 posts/day, Pro Bundle:
+ * 5 posts/day per token) — `postsPerDayMax` must never exceed
+ * MAX_POSTS_PER_DAY, and no third, higher tier should be added.
+ */
+export type PostingCadence = "conservative" | "active";
+
+export const MAX_POSTS_PER_DAY = 5;
+
+export const POSTING_CADENCE_OPTIONS: Array<{
+  id: PostingCadence;
+  label: string;
+  description: string;
+  postsPerDayMax: number;
+}> = [
+  { id: "conservative", label: "Conservative", description: "1–2 posts per day", postsPerDayMax: 2 },
+  { id: "active", label: "Active", description: "3–5 posts per day", postsPerDayMax: 5 },
+];
+
+export const DEFAULT_POSTING_CADENCE: PostingCadence = "active";
+
 export type SocialStudioProjectRecord = {
   voiceProfile: VoiceProfile | null;
   voiceExamples: string[];
@@ -62,6 +84,10 @@ export type SocialStudioProjectRecord = {
   queue: QueueItem[];
   sampleLineFeedback: SampleLineFeedback[];
   queueTarget: number;
+  /** Single-select daily posting tier (issue #358) driving queueTarget and the default schedule spread. */
+  postingCadence: PostingCadence;
+  /** Optional free-text steering for AI drafts (issue #358) — "Tell the AI your focus this week." Empty by default; empty changes nothing about generation. */
+  directionBrief: string;
 };
 
 export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
@@ -72,4 +98,6 @@ export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
   queue: [],
   sampleLineFeedback: [],
   queueTarget: DEFAULT_QUEUE_TARGET,
+  postingCadence: DEFAULT_POSTING_CADENCE,
+  directionBrief: "",
 };

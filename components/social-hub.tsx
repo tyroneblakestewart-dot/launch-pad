@@ -12,7 +12,8 @@ import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/soci
 import { getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
 import {
   buildXIntentUrl,
-  clampQueueTarget,
+  cadenceQueueTarget,
+  cadenceSpreadHoursMs,
   computeDefaultScheduledAt,
   connectedPlatforms,
   isAwaitingSend,
@@ -21,13 +22,20 @@ import {
 } from "@/lib/social-studio-queue";
 import type {
   MascotVisualDNA,
+  PostingCadence,
   QueueItem,
   SampleLineFeedback,
   SocialPlatform,
   SocialStudioProjectRecord,
   VoiceProfile,
 } from "@/lib/social-studio-types";
-import { DEFAULT_QUEUE_TARGET, EMPTY_SOCIAL_STUDIO_RECORD, MAX_QUEUE_TARGET } from "@/lib/social-studio-types";
+import {
+  DEFAULT_POSTING_CADENCE,
+  DEFAULT_QUEUE_TARGET,
+  EMPTY_SOCIAL_STUDIO_RECORD,
+  MAX_POSTS_PER_DAY,
+  POSTING_CADENCE_OPTIONS,
+} from "@/lib/social-studio-types";
 import { likedReinforcementLines, toggleSampleLineFeedback } from "@/lib/social-voice-feedback";
 import type { TokenProject } from "@/lib/types";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
@@ -394,7 +402,17 @@ export function SocialHub() {
   const [cancelingPostId, setCancelingPostId] = useState<string | null>(null);
   const [itemDestinations, setItemDestinations] = useState<Record<string, SocialPlatform[]>>({});
   const [itemScheduledAt, setItemScheduledAt] = useState<Record<string, string>>({});
+  // Compact draft cards (issue #358): collapsed by default, showing only the
+  // X preview — this tracks which Ready-to-review cards the user has
+  // expanded into their full editable X/Telegram fields. Ephemeral UI state,
+  // never persisted.
+  const [expandedQueueItemIds, setExpandedQueueItemIds] = useState<Record<string, boolean>>({});
   const replenishInFlightRef = useRef(false);
+
+  // Direction brief and posting cadence (issue #358), persisted per project
+  // alongside the rest of the Social Studio record.
+  const [directionBrief, setDirectionBrief] = useState("");
+  const [postingCadence, setPostingCadence] = useState<PostingCadence>(DEFAULT_POSTING_CADENCE);
 
   useEffect(() => {
     const loadedProjects = safeProjects(localStorage.getItem(PROJECT_STORAGE_KEY));
@@ -475,9 +493,12 @@ export function SocialHub() {
         setQueue([]);
         setSampleLineFeedback([]);
         setQueueTarget(DEFAULT_QUEUE_TARGET);
+        setDirectionBrief("");
+        setPostingCadence(DEFAULT_POSTING_CADENCE);
         setScheduledPosts([]);
         setItemDestinations({});
         setItemScheduledAt({});
+        setExpandedQueueItemIds({});
         return;
       }
       const record = await getSocialStudioRecord(selectedProjectId).catch(() => EMPTY_SOCIAL_STUDIO_RECORD);
@@ -489,9 +510,12 @@ export function SocialHub() {
       setQueue(record.queue);
       setSampleLineFeedback(record.sampleLineFeedback);
       setQueueTarget(record.queueTarget);
+      setDirectionBrief(record.directionBrief);
+      setPostingCadence(record.postingCadence);
       setScheduledPosts([]);
       setItemDestinations({});
       setItemScheduledAt({});
+      setExpandedQueueItemIds({});
     }
     void loadRecord();
     return () => {
@@ -510,6 +534,8 @@ export function SocialHub() {
       mascotReferenceImage,
       queue,
       queueTarget,
+      postingCadence,
+      directionBrief,
       sampleLineFeedback,
       ...overrides,
     };
@@ -882,6 +908,7 @@ export function SocialHub() {
           dayLabel: options.dayLabel ?? null,
           theme: options.theme ?? null,
           likedSampleLines: likedReinforcementLines(sampleLineFeedback),
+          directionBrief: directionBrief.trim() || null,
         }),
       });
       const payload = (await response.json()) as {
@@ -1122,10 +1149,20 @@ export function SocialHub() {
     setStatus("X composer opened with the approved post filled in.");
   }
 
-  function updateQueueTarget(rawValue: number) {
-    const next = clampQueueTarget(rawValue);
-    setQueueTarget(next);
-    persistSocialStudio({ queueTarget: next });
+  /**
+   * Posting cadence is single-select (issue #358) and drives two things at
+   * once: the Ready-to-review replenish target, and (via the effect below)
+   * the default schedule-time spread for newly-approved drafts.
+   */
+  function updatePostingCadence(cadence: PostingCadence) {
+    const nextTarget = cadenceQueueTarget(cadence);
+    setPostingCadence(cadence);
+    setQueueTarget(nextTarget);
+    persistSocialStudio({ postingCadence: cadence, queueTarget: nextTarget });
+  }
+
+  function toggleQueueItemExpanded(id: string) {
+    setExpandedQueueItemIds((current) => ({ ...current, [id]: !current[id] }));
   }
 
   // Fills in a default destination selection and schedule time for any
@@ -1150,13 +1187,15 @@ export function SocialHub() {
       const next = { ...current };
       for (const item of queue) {
         if (next[item.id] === undefined) {
-          next[item.id] = toDateTimeLocalValue(computeDefaultScheduledAt(awaitingIso, new Date()));
+          next[item.id] = toDateTimeLocalValue(
+            computeDefaultScheduledAt(awaitingIso, new Date(), cadenceSpreadHoursMs(postingCadence)),
+          );
           changed = true;
         }
       }
       return changed ? next : current;
     });
-  }, [queue, myConnectedPlatforms, awaitingSendPosts]);
+  }, [queue, myConnectedPlatforms, awaitingSendPosts, postingCadence]);
 
   // Queue tab data is fetched client-side only (never in the background) on
   // tab open, on window/tab focus while the tab is active, and after
@@ -2145,7 +2184,7 @@ export function SocialHub() {
                         <h2>What&apos;s going out</h2>
                         <p>
                           Ready to review: {queue.length} of {queueTarget} draft{queueTarget === 1 ? "" : "s"} ready
-                          {readyToReviewShortfall > 0 ? " — refilling now" : ""}. Adjust the target in Settings &amp; Rules.
+                          {readyToReviewShortfall > 0 ? " — refilling now" : ""}. Adjust the cadence in Settings &amp; Rules.
                         </p>
                       </div>
                     </div>
@@ -2160,6 +2199,7 @@ export function SocialHub() {
                       <div className={styles.queueList}>
                         {queue.map((item) => {
                           const selectedDestinations = itemDestinations[item.id] ?? [];
+                          const isExpanded = Boolean(expandedQueueItemIds[item.id]);
                           return (
                             <article className={styles.queueItem} key={item.id}>
                               {item.artwork ? (
@@ -2167,31 +2207,56 @@ export function SocialHub() {
                                 <img className={styles.queueThumb} src={item.artwork} alt="Queued post artwork" />
                               ) : null}
                               <div className={styles.queueItemBody}>
-                                <span className={styles.exampleLabel}>
-                                  {item.source === "calendar-ai"
-                                    ? `Calendar AI · ${item.dayLabel}`
-                                    : item.source === "setup-ai"
-                                      ? "Setup AI"
-                                      : item.source === "auto-replenish"
-                                        ? "Auto-generated"
-                                        : "Manual"}
-                                </span>
-                                <label className={styles.connectionField}>
-                                  <span>X ({item.xText.length}/280)</span>
-                                  <textarea
-                                    value={item.xText}
-                                    onChange={(event) => updateQueueItem(item.id, { xText: event.target.value })}
-                                    rows={3}
-                                  />
-                                </label>
-                                <label className={styles.connectionField}>
-                                  <span>Telegram</span>
-                                  <textarea
-                                    value={item.telegramText}
-                                    onChange={(event) => updateQueueItem(item.id, { telegramText: event.target.value })}
-                                    rows={3}
-                                  />
-                                </label>
+                                <div className={styles.queueItemHead}>
+                                  <span className={styles.exampleLabel}>
+                                    {item.source === "calendar-ai"
+                                      ? `Calendar AI · ${item.dayLabel}`
+                                      : item.source === "setup-ai"
+                                        ? "Setup AI"
+                                        : item.source === "auto-replenish"
+                                          ? "Auto-generated"
+                                          : "Manual"}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className={styles.queueExpandToggle}
+                                    aria-expanded={isExpanded}
+                                    onClick={() => toggleQueueItemExpanded(item.id)}
+                                  >
+                                    {isExpanded ? "Collapse" : "Edit"}
+                                  </button>
+                                </div>
+                                {isExpanded ? (
+                                  <>
+                                    <label className={styles.connectionField}>
+                                      <span>X ({item.xText.length}/280)</span>
+                                      <textarea
+                                        value={item.xText}
+                                        onChange={(event) => updateQueueItem(item.id, { xText: event.target.value })}
+                                        rows={3}
+                                      />
+                                    </label>
+                                    <label className={styles.connectionField}>
+                                      <span>Telegram</span>
+                                      <textarea
+                                        value={item.telegramText}
+                                        onChange={(event) => updateQueueItem(item.id, { telegramText: event.target.value })}
+                                        rows={3}
+                                      />
+                                    </label>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className={styles.queuePreview}
+                                    onClick={() => toggleQueueItemExpanded(item.id)}
+                                  >
+                                    <span className={styles.queuePreviewText}>{item.xText || "No X text yet — tap to write one."}</span>
+                                    <span className={styles.queuePreviewMeta}>
+                                      X {item.xText.length}/280 · Telegram hidden — tap to edit both
+                                    </span>
+                                  </button>
+                                )}
                                 {myConnectedPlatforms.length > 0 ? (
                                   <div className={styles.destinationToggles}>
                                     {myConnectedPlatforms.map((platform) => {
@@ -2212,10 +2277,11 @@ export function SocialHub() {
                                 ) : (
                                   <p className={styles.connectionHelper}>Connect X or Telegram in Setup before approving a post.</p>
                                 )}
-                                <label className={styles.connectionField}>
-                                  <span>Scheduled for</span>
+                                <label className={styles.scheduleCompact}>
+                                  <span>Scheduled</span>
                                   <input
                                     type="datetime-local"
+                                    className={styles.scheduleCompactInput}
                                     value={itemScheduledAt[item.id] ?? ""}
                                     onChange={(event) => setItemScheduledAtValue(item.id, event.target.value)}
                                   />
@@ -2419,23 +2485,49 @@ export function SocialHub() {
                   <section className={styles.block}>
                     <div className={styles.sectionHeading}>
                       <div>
-                        <h2>Ready to review target</h2>
-                        <p>
-                          How many AI drafts the Queue tab keeps loaded for review. It refills to this number whenever you open the Queue
-                          tab or approve/delete a draft — never in the background.
-                        </p>
+                        <h2>
+                          Direction brief <span className={styles.optionalBadge}>OPTIONAL</span>
+                        </h2>
+                        <p>Tell the AI your focus this week. Applies to both X and Telegram.</p>
                       </div>
                     </div>
                     <label className={styles.connectionField}>
-                      <span>Target drafts (1–{MAX_QUEUE_TARGET})</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={MAX_QUEUE_TARGET}
-                        value={queueTarget}
-                        onChange={(event) => updateQueueTarget(Number(event.target.value))}
+                      <span>Direction brief</span>
+                      <textarea
+                        value={directionBrief}
+                        onChange={(event) => setDirectionBrief(event.target.value.slice(0, 500))}
+                        onBlur={() => persistSocialStudio()}
+                        rows={3}
+                        placeholder='e.g. "Push the community angle, big announcement coming Friday"'
                       />
                     </label>
+                  </section>
+
+                  <section className={styles.block}>
+                    <div className={styles.sectionHeading}>
+                      <div>
+                        <h2>Posting cadence</h2>
+                        <p>
+                          How many AI drafts the Queue tab keeps loaded for review, and how they&apos;re spread across the day
+                          once approved. Capped at your plan&apos;s {MAX_POSTS_PER_DAY} posts/day entitlement — it refills
+                          whenever you open the Queue tab or approve/delete a draft, never in the background.
+                        </p>
+                      </div>
+                    </div>
+                    <div className={styles.cadenceOptions}>
+                      {POSTING_CADENCE_OPTIONS.map((option) => (
+                        <button
+                          type="button"
+                          key={option.id}
+                          aria-pressed={postingCadence === option.id}
+                          className={postingCadence === option.id ? styles.cadenceOptionActive : styles.cadenceOption}
+                          onClick={() => updatePostingCadence(option.id)}
+                        >
+                          <b>{option.label}</b>
+                          <span>{option.description}</span>
+                        </button>
+                      ))}
+                    </div>
                   </section>
 
                   <section className={styles.block}>

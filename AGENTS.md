@@ -400,3 +400,42 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Background replenishment (generating drafts while the user is away) is
   explicitly out of scope, as the issue specifies — a future full-autopilot
   mode would need to reuse #344's per-wallet monthly X cost cap.
+- Compact draft cards, Direction brief and posting cadence (issue #358).
+  Ready-to-review cards now collapse by default to a single clamped X-body
+  preview with its character count, with the Telegram variant and both
+  editable fields behind a per-card expand toggle
+  (`expandedQueueItemIds`/`toggleQueueItemExpanded` in
+  `components/social-hub.tsx`, ephemeral UI state, never persisted); the
+  schedule picker moved from a full-width labeled row to a compact inline
+  `datetime-local` control. Tighter padding/gaps land in
+  `components/social-hub.module.css` (`.queueList`/`.queueItem`/
+  `.queueItemBody`) at both desktop and the existing 480px breakpoint,
+  without touching #356's action row. A new optional **Direction brief**
+  free-text field in Settings & Rules ("Tell the AI your focus this week")
+  persists per project (`SocialStudioProjectRecord.directionBrief`,
+  migrate-on-read defaulted to `""` in `lib/social-studio-db.ts`) and is
+  threaded into `buildDraftRequestBody`
+  (`lib/server/social-draft-pipeline.ts`) as secondary, explicitly
+  non-verbatim steering behind the taught voice and liked-line
+  reinforcement — an empty/whitespace-only brief adds no instruction text,
+  so it changes nothing about generation. A new single-select **Posting
+  cadence** (Conservative 1–2/day, Active 3–5/day, default Active) replaces
+  the old free-numeric "Ready to review target" input; each tier's
+  `postsPerDayMax` is asserted in tests to never exceed the new
+  `MAX_POSTS_PER_DAY = 5` plan-entitlement constant
+  (`lib/social-studio-types.ts`) and no third, higher tier is offered.
+  Selecting a cadence drives both the existing `queueTarget` replenish size
+  and the default schedule-time spread for newly-approved drafts — waking
+  hours (07:00–23:00) divided evenly across the cadence's daily ceiling via
+  `cadenceQueueTarget`/`cadenceSpreadHoursMs`/`normalisePostingCadence` in
+  `lib/social-studio-queue.ts` — rather than the previous fixed 2-hour
+  spread. At the 5/day ceiling this is unchanged from before (Active's
+  target was already `DEFAULT_QUEUE_TARGET = 5`), and X API cost stays
+  around $2.25/wallet/month against the existing `SOCIAL_X_MONTHLY_COST_CAP_USD`
+  default of $5 (issue #342), so no cap change was needed. Not verified on
+  a real mobile Safari device this pass (rule 7) — the new card density and
+  compact schedule control were checked by reading the CSS against the
+  390px breakpoint already in use, not on-device; flagged for the owner to
+  confirm. Per-content-type toggles (milestone announcements, market
+  moments, community posts, mascot drops, replies to mentions) shown in the
+  issue's mockup remain a follow-up, out of scope for this PR.

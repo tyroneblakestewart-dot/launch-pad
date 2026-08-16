@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { MAX_QUEUE_TARGET } from "@/lib/social-studio-types";
+import { MAX_POSTS_PER_DAY, MAX_QUEUE_TARGET, POSTING_CADENCE_OPTIONS } from "@/lib/social-studio-types";
 import {
   buildXIntentUrl,
+  cadenceQueueTarget,
+  cadenceSpreadHoursMs,
   clampQueueTarget,
   computeDefaultScheduledAt,
   connectedPlatforms,
   isAwaitingSend,
   isHistoryStatus,
+  normalisePostingCadence,
   replenishShortfall,
 } from "@/lib/social-studio-queue";
 
@@ -95,5 +98,35 @@ describe("buildXIntentUrl", () => {
     expect(buildXIntentUrl("hello world & friends")).toBe(
       "https://x.com/intent/post?text=hello%20world%20%26%20friends",
     );
+  });
+});
+
+describe("posting cadence (issue #358)", () => {
+  it("never offers a cadence option above the plan's daily posting entitlement", () => {
+    expect(POSTING_CADENCE_OPTIONS.length).toBeGreaterThan(0);
+    for (const option of POSTING_CADENCE_OPTIONS) {
+      expect(option.postsPerDayMax).toBeLessThanOrEqual(MAX_POSTS_PER_DAY);
+    }
+  });
+
+  it("maps Conservative to its low-end target and Active to the 5/day ceiling", () => {
+    expect(cadenceQueueTarget("conservative")).toBe(2);
+    expect(cadenceQueueTarget("active")).toBe(5);
+    expect(cadenceQueueTarget("active")).toBe(MAX_POSTS_PER_DAY);
+  });
+
+  it("spreads a lower-frequency cadence's default schedule times further apart than a higher-frequency one", () => {
+    const conservativeSpread = cadenceSpreadHoursMs("conservative");
+    const activeSpread = cadenceSpreadHoursMs("active");
+    expect(conservativeSpread).toBeGreaterThan(activeSpread);
+    expect(conservativeSpread).toBe(8 * 60 * 60 * 1000);
+  });
+
+  it("normalisePostingCadence falls back to the default for anything unrecognised", () => {
+    expect(normalisePostingCadence("conservative")).toBe("conservative");
+    expect(normalisePostingCadence("active")).toBe("active");
+    expect(normalisePostingCadence("aggressive")).toBe("active");
+    expect(normalisePostingCadence(undefined)).toBe("active");
+    expect(normalisePostingCadence(null)).toBe("active");
   });
 });

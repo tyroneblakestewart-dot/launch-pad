@@ -918,18 +918,117 @@
   border: 0;
 }
 
-.queueList { display: flex; flex-direction: column; gap: 14px; }
+/* Density (issue #358): tighter padding/gaps than the original #352 card so
+   three-to-four "Ready to review" drafts are visible at once on desktop and
+   at least two at 390px, without touching the #356 action row below. */
+.queueList { display: flex; flex-direction: column; gap: 10px; }
 .queueItem {
   display: flex;
-  gap: 14px;
-  padding: 16px;
+  gap: 12px;
+  padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 16px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.006));
 }
-.queueThumb { width: 84px; height: 84px; flex: none; border-radius: 12px; object-fit: cover; }
-.queueItemBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.queueThumb { width: 60px; height: 60px; flex: none; border-radius: 10px; object-fit: cover; }
+.queueItemBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
 .queueItemBody > p { margin: 0; color: #c3c9c4; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+
+.queueItemHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.queueExpandToggle {
+  flex: none;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  color: #a8aaa9;
+  background: rgba(255, 255, 255, 0.03);
+  font: 700 10px "IBM Plex Mono", monospace;
+}
+.queueExpandToggle:hover,
+.queueExpandToggle:focus-visible { border-color: rgba(198, 245, 62, 0.4); color: #f4f7f1; }
+
+/* Collapsed draft preview (issue #358): a clamped X-body line plus its
+   character count, with the Telegram variant and both editable fields
+   behind this single tap target. */
+.queuePreview {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.015);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.queuePreview:hover,
+.queuePreview:focus-visible { border-color: rgba(198, 245, 62, 0.35); }
+.queuePreviewText {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+  color: #e6ebe4;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.queuePreviewMeta { color: #6f746e; font: 600 10px "IBM Plex Mono", monospace; }
+
+/* Compact inline schedule control (issue #358), replacing the old
+   full-width labeled datetime row. */
+.scheduleCompact { display: inline-flex; align-items: center; gap: 8px; width: fit-content; }
+.scheduleCompact > span { color: #8d918c; font: 700 9.5px "IBM Plex Mono", monospace; letter-spacing: 0.08em; text-transform: uppercase; }
+.scheduleCompactInput {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  outline: none;
+  color: #f4f7f1;
+  background: #080d09;
+  font: 600 11px "IBM Plex Mono", monospace;
+  width: auto;
+}
+.scheduleCompactInput:focus { border-color: rgba(198, 245, 62, 0.46); }
+
+/* Settings & Rules: Direction brief badge and Posting cadence tiles (issue #358). */
+.optionalBadge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #8d918c;
+  font: 700 9px "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+  vertical-align: middle;
+}
+.cadenceOptions { display: flex; gap: 10px; flex-wrap: wrap; }
+.cadenceOption,
+.cadenceOptionActive {
+  flex: 1 1 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  color: #c3c9c4;
+  background: rgba(255, 255, 255, 0.025);
+  text-align: left;
+}
+.cadenceOption b,
+.cadenceOptionActive b { font-size: 13px; color: #f4f7f1; }
+.cadenceOption span,
+.cadenceOptionActive span { font-size: 11.5px; color: #8d918c; }
+.cadenceOptionActive {
+  border-color: transparent;
+  background: linear-gradient(180deg, #c6f53e, #a7dd4a);
+}
+.cadenceOptionActive b,
+.cadenceOptionActive span { color: #071008; }
 
 /* Queue tab destination toggles and status pills (issue #352). */
 .destinationToggles { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -1263,6 +1362,15 @@
   .tabBar { top: 72px; padding: 6px 8px; }
   .panelBody { padding: 16px 14px 24px; }
   .sectionStack { gap: 22px; }
+  /* Ready-to-review density at 390px (issue #358): keeps at least two
+     collapsed draft cards visible without scrolling past the fold. */
+  .queueList { gap: 8px; }
+  .queueItem { padding: 10px; gap: 10px; }
+  .queueThumb { width: 46px; height: 46px; }
+  .queueItemBody { gap: 6px; }
+  .destinationToggle,
+  .destinationToggleActive { min-height: 30px; padding: 0 11px; font-size: 11px; }
+  .cadenceOptions { flex-direction: column; }
   .connectionCard,
   .botRow,
   .templatePanel,
