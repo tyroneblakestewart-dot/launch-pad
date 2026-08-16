@@ -11,6 +11,7 @@ import { TelegramMark, XMark } from "@/components/brand-icons";
 import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
 import { getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
 import {
+  advanceRollingRecentDrafts,
   buildXIntentUrl,
   cadenceQueueTarget,
   cadenceSpreadHoursMs,
@@ -889,13 +890,13 @@ export function SocialHub() {
   }
 
   async function generateDraft(
-    options: { dayLabel?: string; theme?: string; replenish?: boolean } = {},
+    options: { dayLabel?: string; theme?: string; replenish?: boolean; recentDraftsOverride?: string[] } = {},
     report: (next: PanelStatus) => void = () => {},
-  ): Promise<boolean> {
+  ): Promise<{ xText: string; telegramText: string } | null> {
     const project = draftProjectPayload();
     if (!project) {
       report({ tone: "error", message: "Choose a project before generating a draft." });
-      return false;
+      return null;
     }
 
     report({ tone: "progress", message: "Writing a draft with AI…" });
@@ -914,7 +915,7 @@ export function SocialHub() {
           likedSampleLines: likedReinforcementLines(sampleLineFeedback),
           directionBrief: directionBrief.trim() || null,
           voiceExamples: voiceExampleFilter.usable,
-          recentDrafts: queue.map((item) => item.xText),
+          recentDrafts: options.recentDraftsOverride ?? queue.map((item) => item.xText),
           angleIndex,
         }),
       });
@@ -952,10 +953,10 @@ export function SocialHub() {
         setComposeOpen(true);
         report({ tone: "success", message: "AI draft ready. Review it below before posting." });
       }
-      return true;
+      return payload.draft;
     } catch (error) {
       report({ tone: "error", message: error instanceof Error ? error.message : "The draft could not be generated." });
-      return false;
+      return null;
     }
   }
 
@@ -979,6 +980,15 @@ export function SocialHub() {
    * Deliberately only called from app-open/tab-focus/approve/delete
    * handlers, never from a timer or the server: background replenishment
    * while the user is away is out of scope for this PR (see issue #352).
+   *
+   * Each generateDraft call in this loop closes over the same `queue` state
+   * captured when the loop started — React does not apply setQueue
+   * synchronously mid-loop, so every request used to see the same stale
+   * (often empty) recentDrafts, defeating the recent-draft/banned-phrase
+   * logic for the whole batch (issue #366). rollingRecentDrafts is a local
+   * list, seeded from the queue once and advanced synchronously after each
+   * successful generation, so draft 2 sees draft 1, draft 3 sees drafts 1-2,
+   * and so on — independent of when/whether setQueue has re-rendered yet.
    */
   async function replenishQueue() {
     if (!selectedProjectId || replenishInFlightRef.current) return;
@@ -987,11 +997,13 @@ export function SocialHub() {
 
     replenishInFlightRef.current = true;
     let generated = 0;
+    let rollingRecentDrafts = queue.map((item) => item.xText);
     try {
       for (let index = 0; index < shortfall; index += 1) {
         setReplenishStatus({ tone: "progress", message: `Generating draft ${index + 1} of ${shortfall} for Ready to review…` });
-        const ok = await generateDraft({ replenish: true });
-        if (!ok) break;
+        const draft = await generateDraft({ replenish: true, recentDraftsOverride: rollingRecentDrafts });
+        if (!draft) break;
+        rollingRecentDrafts = advanceRollingRecentDrafts(rollingRecentDrafts, draft.xText);
         generated += 1;
       }
     } finally {

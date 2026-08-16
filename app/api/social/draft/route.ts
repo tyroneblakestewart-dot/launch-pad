@@ -14,6 +14,7 @@ import {
   checkDraftCompliance,
   extractRepeatedPhrases,
   parseDraftResponseDetailed,
+  resolveChainLabel,
   type DraftProject,
 } from "@/lib/server/social-draft-pipeline";
 import { authoriseSocialStudioRequest } from "@/lib/server/social-studio-entitlement";
@@ -239,7 +240,15 @@ export async function POST(request: Request) {
   // returns a safe error instead of the unsafe draft. A missing draft is
   // recoverable; a false claim handed to the user ready to publish is not.
   const bannedPhrases = extractRepeatedPhrases(recentDrafts);
-  const complianceInput = { theme, angleIndex, directionBrief, bannedPhrases };
+  const complianceInput = {
+    theme,
+    angleIndex,
+    directionBrief,
+    bannedPhrases,
+    project: { name: project.name, ticker: project.ticker },
+    chainLabel: resolveChainLabel(project.chain),
+    recentDrafts,
+  };
   const compliance = checkDraftCompliance(result.draft, complianceInput);
   if (!compliance.violated) {
     return NextResponse.json({ draft: result.draft }, { headers: noStoreHeaders(rateHeaders) });

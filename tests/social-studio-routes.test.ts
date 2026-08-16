@@ -295,6 +295,63 @@ describe("POST /api/social/draft", () => {
     expect(JSON.stringify(payload)).not.toContain("10k holders");
     expect(payload.error).toBeTruthy();
   });
+
+  it("threads project + recentDrafts into the compliance check and retries when the draft opens with the project identity again (issue #366)", async () => {
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(textPayload({ xText: "Test Coin is picking up serious steam today.", telegramText: "A fine telegram post." })),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(textPayload({ xText: "The community keeps showing up for Test Coin.", telegramText: "A fine telegram post." })),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await postDraft(
+      request("/api/social/draft", {
+        walletAddress: WALLET,
+        project: PROJECT,
+        angleIndex: 1,
+        recentDrafts: ["$TEST just keeps building, no signs of slowing down at all."],
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const payload = (await response.json()) as { draft?: { xText: string } };
+    expect(payload.draft?.xText).toBe("The community keeps showing up for Test Coin.");
+
+    const [, retryInit] = fetchMock.mock.calls[1] as [string, { body?: string }];
+    const retryBody = JSON.parse(retryInit.body ?? "{}") as { input?: Array<{ content?: Array<{ text?: string }> }> };
+    const retryDeveloperText = retryBody.input?.[0]?.content?.[0]?.text ?? "";
+    expect(retryDeveloperText).toContain("IMPORTANT CORRECTION");
+    expect(retryDeveloperText).toContain("already opened with");
+  });
+
+  it("fails closed when the retry draft still opens with the project identity after a recent identity opener (issue #366)", async () => {
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(textPayload({ xText: "Test Coin is picking up serious steam today.", telegramText: "A fine telegram post." })),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(textPayload({ xText: "TEST is having an incredible week.", telegramText: "A fine telegram post." })),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await postDraft(
+      request("/api/social/draft", {
+        walletAddress: WALLET,
+        project: PROJECT,
+        angleIndex: 1,
+        recentDrafts: ["$TEST just keeps building, no signs of slowing down at all."],
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(502);
+    const payload = (await response.json()) as { draft?: unknown; error?: string };
+    expect(payload.draft).toBeUndefined();
+    expect(payload.error).toBeTruthy();
+  });
 });
 
 describe("POST /api/social/mascot/visual-dna", () => {
