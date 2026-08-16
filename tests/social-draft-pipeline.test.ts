@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OpenAIResponse } from "@/lib/server/generate-site-style";
 import {
+  DRAFT_ANGLES,
   X_DRAFT_CHARACTER_LIMIT,
   buildDraftRequestBody,
   parseDraftResponse,
@@ -117,6 +118,105 @@ describe("buildDraftRequestBody", () => {
 
     // Secondary to the taught voice, which is listed earlier in the instructions.
     expect(developerText.indexOf("confident and playful")).toBeLessThan(developerText.indexOf("Push the community angle"));
+  });
+
+  it("always includes the anti-formula rules against repeating openings, length, signature phrases and hashtags (issue #360)", () => {
+    const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini");
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("do not always open with the project name");
+    expect(developerText).toContain("Vary post length meaningfully");
+    expect(developerText).toContain("Do not reuse the same signature phrase");
+    expect(developerText).toContain("Do not append hashtags to every post");
+  });
+
+  it("omits the example-post block when no voice examples are supplied, degrading cleanly to today's behaviour (issue #360)", () => {
+    const withoutExamples = buildDraftRequestBody({ project: PROJECT, voiceProfile: VOICE }, "gpt-5-mini");
+    const withEmptyExamples = buildDraftRequestBody({ project: PROJECT, voiceProfile: VOICE, voiceExamples: [] }, "gpt-5-mini");
+    expect(withoutExamples).toEqual(withEmptyExamples);
+    const developerText = withoutExamples.input[0]?.content[0]?.text ?? "";
+    expect(developerText).not.toContain("real posts written by the user");
+  });
+
+  it("passes a rotating sample of real voice examples labelled as style reference only, never to be copied (issue #360 cause 1)", () => {
+    const examples = Array.from({ length: 12 }, (_, index) => `Example post number ${index + 1}`);
+    const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: VOICE, voiceExamples: examples, angleIndex: 0 }, "gpt-5-mini");
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("real posts written by the user");
+    expect(developerText).toContain("style reference only");
+    expect(developerText).toContain("never copy, quote or lightly reword");
+    expect(developerText).toContain("Example post number 1");
+
+    // Supplements, never replaces, the flattened profile summary.
+    expect(developerText.indexOf("confident and playful")).toBeLessThan(developerText.indexOf("Example post number 1"));
+
+    const nextBatchBody = buildDraftRequestBody(
+      { project: PROJECT, voiceProfile: VOICE, voiceExamples: examples, angleIndex: 1 },
+      "gpt-5-mini",
+    );
+    const nextDeveloperText = nextBatchBody.input[0]?.content[0]?.text ?? "";
+    // A different angleIndex shifts the rotating window so a different set of examples is sampled.
+    expect(nextDeveloperText).not.toMatch(/Example post number 1\b/);
+    expect(nextDeveloperText).toContain("Example post number 6");
+  });
+
+  it("caps the sampled voice examples at 5 per request even when far more are supplied (issue #360 cost note)", () => {
+    const examples = Array.from({ length: 20 }, (_, index) => `Example post number ${index + 1}`);
+    const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: VOICE, voiceExamples: examples, angleIndex: 0 }, "gpt-5-mini");
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    const matches = developerText.match(/Example post number \d+/g) ?? [];
+    expect(matches.length).toBe(5);
+  });
+
+  it("rotates the fallback angle deterministically across a batch when no theme is given (issue #360 cause 2)", () => {
+    const seenAngles = new Set<string>();
+    for (let angleIndex = 0; angleIndex < DRAFT_ANGLES.length; angleIndex += 1) {
+      const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, angleIndex }, "gpt-5-mini");
+      const userText = body.input[1]?.content[0]?.text ?? "";
+      const matchingAngle = DRAFT_ANGLES.find((angle) => userText.includes(angle));
+      expect(matchingAngle).toBeDefined();
+      seenAngles.add(matchingAngle as string);
+    }
+    // Every angle in the set is reachable across a full rotation, not just one repeated die roll.
+    expect(seenAngles.size).toBe(DRAFT_ANGLES.length);
+
+    // Rotation wraps back to the same angle after a full cycle.
+    const first = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, angleIndex: 0 }, "gpt-5-mini");
+    const wrapped = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, angleIndex: DRAFT_ANGLES.length }, "gpt-5-mini");
+    expect(first.input[1]?.content[0]?.text).toEqual(wrapped.input[1]?.content[0]?.text);
+  });
+
+  it("an explicit theme always overrides the rotating angle", () => {
+    const body = buildDraftRequestBody(
+      { project: PROJECT, voiceProfile: null, theme: "community AMA recap", angleIndex: 3 },
+      "gpt-5-mini",
+    );
+    const userText = body.input[1]?.content[0]?.text ?? "";
+    expect(userText).toContain("Theme for this post: community AMA recap.");
+    DRAFT_ANGLES.forEach((angle) => expect(userText).not.toContain(angle));
+  });
+
+  it("omits recent-draft avoid-context when none are supplied, degrading cleanly to today's behaviour (issue #360 cause 3)", () => {
+    const withoutRecent = buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini");
+    const withEmptyRecent = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, recentDrafts: [] }, "gpt-5-mini");
+    expect(withoutRecent).toEqual(withEmptyRecent);
+    const developerText = withoutRecent.input[0]?.content[0]?.text ?? "";
+    expect(developerText).not.toContain("Ready to review");
+  });
+
+  it("passes the most recent Ready-to-review drafts as avoid-context, capped at 5 and truncated (issue #360 cause 3)", () => {
+    const recentDrafts = Array.from({ length: 8 }, (_, index) => `Recent draft number ${index + 1}`);
+    const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, recentDrafts }, "gpt-5-mini");
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("clearly different in structure, opening and phrasing");
+    expect(developerText).toContain("Recent draft number 1");
+    expect(developerText).toContain("Recent draft number 5");
+    expect(developerText).not.toContain("Recent draft number 6");
+
+    const longDraft = "x".repeat(500);
+    const truncatedBody = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, recentDrafts: [longDraft] }, "gpt-5-mini");
+    const truncatedText = truncatedBody.input[0]?.content[0]?.text ?? "";
+    expect(truncatedText).not.toContain(longDraft);
+    expect(truncatedText).toContain(`${"x".repeat(200)}…`);
   });
 });
 
