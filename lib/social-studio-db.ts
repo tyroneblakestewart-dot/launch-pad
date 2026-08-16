@@ -4,7 +4,17 @@
 // lib/token-project-db.ts (issue #307) — they live only in IndexedDB, never
 // in localStorage or long-lived React state (CLAUDE.md rule 7).
 
-import { EMPTY_SOCIAL_STUDIO_RECORD, type SocialStudioProjectRecord } from "@/lib/social-studio-types";
+import {
+  DEFAULT_QUEUE_TARGET,
+  EMPTY_SOCIAL_STUDIO_RECORD,
+  MAX_QUEUE_TARGET,
+  type SocialStudioProjectRecord,
+} from "@/lib/social-studio-types";
+
+function normaliseQueueTarget(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_QUEUE_TARGET;
+  return Math.min(MAX_QUEUE_TARGET, Math.max(1, Math.round(value)));
+}
 
 const DATABASE_NAME = "hoodlums-social-studio";
 const DATABASE_VERSION = 1;
@@ -60,6 +70,10 @@ async function runInStore<T>(
  * and defensively coerces fields that must be arrays back to `[]` if they
  * are missing or corrupted. Migrate-on-read, not just on write, so no
  * caller has to remember this every time the record shape grows.
+ *
+ * queueTarget (issue #352) is coerced the same way: a missing, non-numeric
+ * or out-of-range value (including records saved before this field existed)
+ * falls back to DEFAULT_QUEUE_TARGET rather than rejecting the record.
  */
 function normaliseSocialStudioRecord(
   raw: SocialStudioProjectRecord | null | undefined,
@@ -70,6 +84,7 @@ function normaliseSocialStudioRecord(
     voiceExamples: Array.isArray(merged.voiceExamples) ? merged.voiceExamples : [],
     queue: Array.isArray(merged.queue) ? merged.queue : [],
     sampleLineFeedback: Array.isArray(merged.sampleLineFeedback) ? merged.sampleLineFeedback : [],
+    queueTarget: normaliseQueueTarget(merged.queueTarget),
   };
 }
 

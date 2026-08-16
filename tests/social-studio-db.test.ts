@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteSocialStudioRecord, getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
-import { EMPTY_SOCIAL_STUDIO_RECORD, type SocialStudioProjectRecord } from "@/lib/social-studio-types";
+import {
+  DEFAULT_QUEUE_TARGET,
+  EMPTY_SOCIAL_STUDIO_RECORD,
+  MAX_QUEUE_TARGET,
+  type SocialStudioProjectRecord,
+} from "@/lib/social-studio-types";
 import { createFakeIndexedDB } from "./fake-indexeddb-test-helper";
 
 beforeEach(() => {
@@ -44,6 +49,7 @@ const RECORD: SocialStudioProjectRecord = {
     { text: "a", sentiment: "liked", updatedAt: "2026-01-01T00:00:00.000Z" },
     { text: "b", sentiment: "disliked", updatedAt: "2026-01-01T00:01:00.000Z" },
   ],
+  queueTarget: 8,
 };
 
 describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
@@ -90,7 +96,39 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
       await expect(getSocialStudioRecord("legacy-project")).resolves.toEqual({
         ...legacy,
         sampleLineFeedback: [],
+        queueTarget: DEFAULT_QUEUE_TARGET,
       });
+    });
+
+    it("fills in queueTarget with the default when a pre-#352 record has no such key (issue #352)", async () => {
+      const legacy = {
+        voiceProfile: RECORD.voiceProfile,
+        voiceExamples: RECORD.voiceExamples,
+        mascotVisualDNA: RECORD.mascotVisualDNA,
+        mascotReferenceImage: RECORD.mascotReferenceImage,
+        queue: RECORD.queue,
+        sampleLineFeedback: RECORD.sampleLineFeedback,
+        // queueTarget intentionally omitted, as in records saved before issue #352.
+      };
+      await putSocialStudioRecord("legacy-project-3", legacy as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("legacy-project-3")).resolves.toEqual({
+        ...legacy,
+        queueTarget: DEFAULT_QUEUE_TARGET,
+      });
+    });
+
+    it("clamps a non-numeric, fractional or out-of-range stored queueTarget instead of throwing", async () => {
+      await putSocialStudioRecord("bad-target-1", { ...RECORD, queueTarget: Number.NaN } as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("bad-target-1")).resolves.toMatchObject({ queueTarget: DEFAULT_QUEUE_TARGET });
+
+      await putSocialStudioRecord("bad-target-2", { ...RECORD, queueTarget: 3.6 } as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("bad-target-2")).resolves.toMatchObject({ queueTarget: 4 });
+
+      await putSocialStudioRecord("bad-target-3", { ...RECORD, queueTarget: 0 } as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("bad-target-3")).resolves.toMatchObject({ queueTarget: 1 });
+
+      await putSocialStudioRecord("bad-target-4", { ...RECORD, queueTarget: 999 } as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("bad-target-4")).resolves.toMatchObject({ queueTarget: MAX_QUEUE_TARGET });
     });
 
     it("fills in voiceExamples and queue with defaults when a legacy record has neither key", async () => {

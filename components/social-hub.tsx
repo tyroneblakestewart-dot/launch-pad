@@ -9,14 +9,24 @@ import {
 } from "@/lib/account-wallet-state";
 import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
 import { getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
+import {
+  buildXIntentUrl,
+  clampQueueTarget,
+  computeDefaultScheduledAt,
+  connectedPlatforms,
+  isAwaitingSend,
+  isHistoryStatus,
+  replenishShortfall,
+} from "@/lib/social-studio-queue";
 import type {
   MascotVisualDNA,
   QueueItem,
   SampleLineFeedback,
+  SocialPlatform,
   SocialStudioProjectRecord,
   VoiceProfile,
 } from "@/lib/social-studio-types";
-import { EMPTY_SOCIAL_STUDIO_RECORD } from "@/lib/social-studio-types";
+import { DEFAULT_QUEUE_TARGET, EMPTY_SOCIAL_STUDIO_RECORD, MAX_QUEUE_TARGET } from "@/lib/social-studio-types";
 import { likedReinforcementLines, toggleSampleLineFeedback } from "@/lib/social-voice-feedback";
 import type { TokenProject } from "@/lib/types";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
@@ -42,12 +52,41 @@ type TelegramConnectionState = {
 
 /** Shape returned by GET /api/social/connections for one platform row. */
 type SocialConnectionSummary = {
-  platform: "x" | "telegram";
+  platform: SocialPlatform;
   status: "connected" | "reconnect_needed";
   displayName: string;
   externalId: string;
   reconnectReason: string | null;
 };
+
+/** One destination's delivery state within GET /api/social/posts, mirrored from lib/server/social-scheduled-posts-store.ts's client-facing shape. */
+type ScheduledPostDestinationSummary = {
+  id: string;
+  platform: SocialPlatform;
+  status: "pending" | "sent" | "failed" | "needs_composer";
+  errorMessage: string | null;
+  sentAt: string | null;
+};
+
+/** One row returned by GET /api/social/posts — issue #335's durable approve-first queue, read here for the "Approved & scheduled" and "History" Queue tab sections (issue #352). */
+type ScheduledPostSummary = {
+  id: string;
+  body: string;
+  artworkDataUrl: string | null;
+  status: "scheduled" | "sent" | "partially_sent" | "needs_composer" | "failed" | "canceled";
+  scheduledAt: string;
+  canceledAt: string | null;
+  destinations: ScheduledPostDestinationSummary[];
+};
+
+const SOCIAL_STUDIO_ACTION_PURPOSES = {
+  postCreate: "social:post-create",
+  postCancel: "social:post-cancel",
+} as const;
+
+function platformLabel(platform: SocialPlatform): string {
+  return platform === "x" ? "X" : "Telegram";
+}
 
 async function readJsonResponse<T>(response: Response, fallback: string): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as { error?: string } & Partial<T>;
@@ -57,6 +96,18 @@ async function readJsonResponse<T>(response: Response, fallback: string): Promis
 
 function newQueueItemId(): string {
   return `queue-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** Formats a Date for an <input type="datetime-local"> value, in the browser's local time zone. */
+function toDateTimeLocalValue(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatScheduledAt(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function storedWalletAddress(): string {
@@ -344,6 +395,22 @@ export function SocialHub() {
   const [telegramConnectInput, setTelegramConnectInput] = useState("");
   const [telegramConnectBusy, setTelegramConnectBusy] = useState(false);
 
+  // Queue tab backend wiring (issue #352): connections (both platforms, not
+  // just Telegram), the durable approve-first queue read from GET
+  // /api/social/posts, and the per-project auto-replenish target. Ready
+  // to review stays the existing local `queue` array/IndexedDB field;
+  // approved/history posts are fetched, never persisted locally.
+  const [connections, setConnections] = useState<SocialConnectionSummary[]>([]);
+  const [queueTarget, setQueueTarget] = useState(DEFAULT_QUEUE_TARGET);
+  const [scheduledPosts, setScheduledPosts] = useState<ScheduledPostSummary[]>([]);
+  const [postsStatus, setPostsStatus] = useState<PanelStatus>(null);
+  const [replenishStatus, setReplenishStatus] = useState<PanelStatus>(null);
+  const [approvingItemId, setApprovingItemId] = useState<string | null>(null);
+  const [cancelingPostId, setCancelingPostId] = useState<string | null>(null);
+  const [itemDestinations, setItemDestinations] = useState<Record<string, SocialPlatform[]>>({});
+  const [itemScheduledAt, setItemScheduledAt] = useState<Record<string, string>>({});
+  const replenishInFlightRef = useRef(false);
+
   useEffect(() => {
     const loadedProjects = safeProjects(localStorage.getItem(PROJECT_STORAGE_KEY));
     const drafts = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
@@ -376,17 +443,19 @@ export function SocialHub() {
 
   useEffect(() => {
     let cancelled = false;
-    async function loadTelegramConnection() {
+    async function loadConnections() {
       if (!walletAddress) {
         setTelegramConnection(null);
+        setConnections([]);
         return;
       }
       try {
         const response = await fetch(`/api/social/connections?walletAddress=${encodeURIComponent(walletAddress)}`, { cache: "no-store" });
         const payload = await readJsonResponse<{ connections?: SocialConnectionSummary[] }>(response, "Could not load your connections.");
         if (cancelled) return;
-        const connections = Array.isArray(payload.connections) ? payload.connections : [];
-        const telegram = connections.find((connection) => connection.platform === "telegram");
+        const loaded = Array.isArray(payload.connections) ? payload.connections : [];
+        setConnections(loaded);
+        const telegram = loaded.find((connection) => connection.platform === "telegram");
         setTelegramConnection(
           telegram && (telegram.status === "connected" || telegram.status === "reconnect_needed")
             ? {
@@ -398,10 +467,13 @@ export function SocialHub() {
             : null,
         );
       } catch {
-        if (!cancelled) setTelegramConnection(null);
+        if (!cancelled) {
+          setTelegramConnection(null);
+          setConnections([]);
+        }
       }
     }
-    void loadTelegramConnection();
+    void loadConnections();
     return () => {
       cancelled = true;
     };
@@ -417,6 +489,10 @@ export function SocialHub() {
         setMascotReferenceImage(null);
         setQueue([]);
         setSampleLineFeedback([]);
+        setQueueTarget(DEFAULT_QUEUE_TARGET);
+        setScheduledPosts([]);
+        setItemDestinations({});
+        setItemScheduledAt({});
         return;
       }
       const record = await getSocialStudioRecord(selectedProjectId).catch(() => EMPTY_SOCIAL_STUDIO_RECORD);
@@ -427,6 +503,10 @@ export function SocialHub() {
       setMascotReferenceImage(record.mascotReferenceImage);
       setQueue(record.queue);
       setSampleLineFeedback(record.sampleLineFeedback);
+      setQueueTarget(record.queueTarget);
+      setScheduledPosts([]);
+      setItemDestinations({});
+      setItemScheduledAt({});
     }
     void loadRecord();
     return () => {
@@ -444,6 +524,7 @@ export function SocialHub() {
       mascotVisualDNA,
       mascotReferenceImage,
       queue,
+      queueTarget,
       sampleLineFeedback,
       ...overrides,
     };
@@ -482,6 +563,17 @@ export function SocialHub() {
   );
   const selectedDayLabel = `${selectedDay.day} ${MONTH_NAMES[selectedDay.month]} ${selectedDay.year}`;
 
+  const myConnectedPlatforms = useMemo(() => connectedPlatforms(connections), [connections]);
+  const awaitingSendPosts = useMemo(
+    () => scheduledPosts.filter((post) => isAwaitingSend(post.status)),
+    [scheduledPosts],
+  );
+  const historyPosts = useMemo(
+    () => scheduledPosts.filter((post) => isHistoryStatus(post.status)),
+    [scheduledPosts],
+  );
+  const readyToReviewShortfall = replenishShortfall(queue.length, queueTarget);
+
   function selectProject(id: string) {
     const project = projects.find((item) => item.id === id);
     if (!project) return;
@@ -502,6 +594,8 @@ export function SocialHub() {
     setMascotSceneStatus(null);
     setSetupDraftStatus(null);
     setCalendarDraftStatus(null);
+    setPostsStatus(null);
+    setReplenishStatus(null);
     setStatus(`${project.name || "Project"} loaded into Hoodlums Social.`);
   }
 
@@ -782,7 +876,7 @@ export function SocialHub() {
   }
 
   async function generateDraft(
-    options: { dayLabel?: string; theme?: string } = {},
+    options: { dayLabel?: string; theme?: string; replenish?: boolean } = {},
     report: (next: PanelStatus) => void = () => {},
   ): Promise<boolean> {
     const project = draftProjectPayload();
@@ -813,14 +907,14 @@ export function SocialHub() {
         throw new Error(payload.error || "The draft could not be generated.");
       }
 
-      if (options.dayLabel) {
+      if (options.dayLabel || options.replenish) {
         const item: QueueItem = {
           id: newQueueItemId(),
           xText: payload.draft.xText,
           telegramText: payload.draft.telegramText,
           artwork: null,
-          source: "calendar-ai",
-          dayLabel: options.dayLabel,
+          source: options.dayLabel ? "calendar-ai" : "auto-replenish",
+          dayLabel: options.dayLabel ?? null,
           createdAt: new Date().toISOString(),
         };
         setQueue((current) => {
@@ -828,7 +922,11 @@ export function SocialHub() {
           persistSocialStudio({ queue: next });
           return next;
         });
-        report({ tone: "success", message: `AI draft for ${options.dayLabel} added to the Queue.` });
+        report(
+          options.dayLabel
+            ? { tone: "success", message: `AI draft for ${options.dayLabel} added to the Queue.` }
+            : { tone: "success", message: "New draft added to Ready to review." },
+        );
       } else {
         setMessage(payload.draft.xText);
         setTelegramMessage(payload.draft.telegramText);
@@ -853,6 +951,251 @@ export function SocialHub() {
     await generateDraft({ dayLabel: selectedDayLabel }, setCalendarDraftStatus);
     setCalendarAiBusy(false);
   }
+
+  /**
+   * Client-side "always something loaded" replenish (issue #352). Generates
+   * exactly the shortfall computed once at call time — never re-checks the
+   * pool mid-loop — and is guarded by replenishInFlightRef so a tab-focus
+   * event during an in-flight generation is a no-op rather than a pile-up.
+   * Deliberately only called from app-open/tab-focus/approve/delete
+   * handlers, never from a timer or the server: background replenishment
+   * while the user is away is out of scope for this PR (see issue #352).
+   */
+  async function replenishQueue() {
+    if (!selectedProjectId || replenishInFlightRef.current) return;
+    const shortfall = replenishShortfall(queue.length, queueTarget);
+    if (shortfall <= 0) return;
+
+    replenishInFlightRef.current = true;
+    let generated = 0;
+    try {
+      for (let index = 0; index < shortfall; index += 1) {
+        setReplenishStatus({ tone: "progress", message: `Generating draft ${index + 1} of ${shortfall} for Ready to review…` });
+        const ok = await generateDraft({ replenish: true });
+        if (!ok) break;
+        generated += 1;
+      }
+    } finally {
+      replenishInFlightRef.current = false;
+    }
+    setReplenishStatus(
+      generated > 0
+        ? { tone: "success", message: `Added ${generated} new draft${generated === 1 ? "" : "s"} to Ready to review.` }
+        : { tone: "error", message: "Couldn't generate new drafts right now. Try again from Setup or Calendar." },
+    );
+  }
+
+  async function loadScheduledPosts() {
+    if (!walletAddress) {
+      setScheduledPosts([]);
+      return;
+    }
+    setPostsStatus({ tone: "progress", message: "Loading approved posts…" });
+    try {
+      const response = await fetch(`/api/social/posts?walletAddress=${encodeURIComponent(walletAddress)}`, { cache: "no-store" });
+      const payload = await readJsonResponse<{ posts?: ScheduledPostSummary[] }>(response, "Could not load approved posts.");
+      setScheduledPosts(Array.isArray(payload.posts) ? payload.posts : []);
+      setPostsStatus(null);
+    } catch (error) {
+      setPostsStatus({ tone: "error", message: error instanceof Error ? error.message : "Could not load approved posts." });
+    }
+  }
+
+  /** Shared wallet-signed challenge/signature round trip behind every Queue tab approve/cancel action — the same challenge/nonce primitives Telegram connect/disconnect above use directly. */
+  async function signSocialStudioChallenge(
+    purpose: (typeof SOCIAL_STUDIO_ACTION_PURPOSES)[keyof typeof SOCIAL_STUDIO_ACTION_PURPOSES],
+    payload: Record<string, string>,
+  ): Promise<{ account: string; challengeId: string; nonce: string; signature: string }> {
+    const provider = getInjectedEvmProvider();
+    if (!provider) throw new Error("Connect an EVM wallet first.");
+    const walletClient = createWalletClient({ transport: custom(provider) });
+    const [account] = await walletClient.getAddresses();
+    if (!account) throw new Error("Connect an EVM wallet first.");
+    const walletChainId = await walletClient.getChainId();
+
+    const challengeResponse = await fetch("/api/social/challenge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ walletAddress: account, walletChainId, purpose, payload }),
+    });
+    const challenge = await readJsonResponse<{ challengeId: string; nonce: string; message: string }>(
+      challengeResponse,
+      "Could not start that action.",
+    );
+    const signature = await walletClient.signMessage({ account, message: challenge.message });
+    return { account, challengeId: challenge.challengeId, nonce: challenge.nonce, signature };
+  }
+
+  function toggleItemDestination(itemId: string, platform: SocialPlatform) {
+    setItemDestinations((current) => {
+      const selected = current[itemId] ?? [];
+      const next = selected.includes(platform) ? selected.filter((entry) => entry !== platform) : [...selected, platform];
+      return { ...current, [itemId]: next };
+    });
+  }
+
+  function setItemScheduledAtValue(itemId: string, value: string) {
+    setItemScheduledAt((current) => ({ ...current, [itemId]: value }));
+  }
+
+  /**
+   * Approves a Ready-to-review draft (issue #352 -> issue #335's
+   * approval-is-creation POST /api/social/posts). The backend stores one
+   * shared `body` per post, but xText and telegramText usually differ, so
+   * each selected destination becomes its own wallet-signed approval call
+   * with that platform's own text — one X-only post and/or one
+   * Telegram-only post, both carrying the same schedule time and artwork.
+   */
+  async function approveQueueItem(item: QueueItem) {
+    const destinations = (itemDestinations[item.id] ?? []).filter((platform) => myConnectedPlatforms.includes(platform));
+    if (destinations.length === 0) {
+      setPostsStatus({ tone: "error", message: "Select at least one connected destination before approving." });
+      return;
+    }
+    const scheduledAtInput = itemScheduledAt[item.id];
+    const scheduledAtIso = scheduledAtInput ? new Date(scheduledAtInput).toISOString() : new Date().toISOString();
+
+    setApprovingItemId(item.id);
+    setPostsStatus({ tone: "progress", message: "Approving…" });
+    let approvedAny = false;
+    let failureMessage = "";
+    try {
+      for (const platform of destinations) {
+        const body = (platform === "x" ? item.xText : item.telegramText).trim();
+        if (!body) {
+          failureMessage = `Add ${platformLabel(platform)} text before approving it.`;
+          break;
+        }
+        if (platform === "x" && body.length > 280) {
+          failureMessage = `X posts must be 280 characters or fewer. Remove ${body.length - 280} characters.`;
+          break;
+        }
+        try {
+          const auth = await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.postCreate, {
+            body,
+            destinations: platform,
+            scheduledAt: scheduledAtIso,
+          });
+          const response = await fetch("/api/social/posts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              body,
+              artworkDataUrl: item.artwork || undefined,
+              destinations: [platform],
+              scheduledAt: scheduledAtIso,
+              challengeId: auth.challengeId,
+              nonce: auth.nonce,
+              signature: auth.signature,
+            }),
+          });
+          await readJsonResponse<{ post?: unknown }>(response, `${platformLabel(platform)} approval failed.`);
+          approvedAny = true;
+        } catch (error) {
+          failureMessage = error instanceof Error ? error.message : `${platformLabel(platform)} approval failed.`;
+          break;
+        }
+      }
+    } finally {
+      setApprovingItemId(null);
+    }
+
+    if (approvedAny) {
+      removeQueueItem(item.id, { silent: true });
+      await loadScheduledPosts();
+      void replenishQueue();
+    }
+    setPostsStatus(
+      approvedAny
+        ? { tone: "success", message: failureMessage ? `Approved, but ${failureMessage.charAt(0).toLowerCase()}${failureMessage.slice(1)}` : "Approved and scheduled." }
+        : { tone: "error", message: failureMessage || "Approval failed." },
+    );
+  }
+
+  async function cancelScheduledPost(postId: string) {
+    setCancelingPostId(postId);
+    setPostsStatus({ tone: "progress", message: "Canceling…" });
+    try {
+      const auth = await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.postCancel, { postId });
+      const response = await fetch("/api/social/posts/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId, challengeId: auth.challengeId, nonce: auth.nonce, signature: auth.signature }),
+      });
+      await readJsonResponse<{ ok?: boolean }>(response, "Could not cancel that post.");
+      setPostsStatus({ tone: "success", message: "Post canceled." });
+      await loadScheduledPosts();
+    } catch (error) {
+      setPostsStatus({ tone: "error", message: error instanceof Error ? error.message : "Could not cancel that post." });
+    } finally {
+      setCancelingPostId(null);
+    }
+  }
+
+  function openComposerForPost(post: ScheduledPostSummary) {
+    window.open(buildXIntentUrl(post.body), "_blank", "noopener,noreferrer");
+    setStatus("X composer opened with the approved post filled in.");
+  }
+
+  function updateQueueTarget(rawValue: number) {
+    const next = clampQueueTarget(rawValue);
+    setQueueTarget(next);
+    persistSocialStudio({ queueTarget: next });
+  }
+
+  // Fills in a default destination selection and schedule time for any
+  // Ready-to-review draft that doesn't have one yet (new drafts from
+  // Setup/Calendar/replenish, or connections that just finished loading) —
+  // never overwrites a selection the user already made.
+  useEffect(() => {
+    const awaitingIso = awaitingSendPosts.map((post) => post.scheduledAt);
+    setItemDestinations((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const item of queue) {
+        if (next[item.id] === undefined) {
+          next[item.id] = [...myConnectedPlatforms];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+    setItemScheduledAt((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const item of queue) {
+        if (next[item.id] === undefined) {
+          next[item.id] = toDateTimeLocalValue(computeDefaultScheduledAt(awaitingIso, new Date()));
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [queue, myConnectedPlatforms, awaitingSendPosts]);
+
+  // Queue tab data is fetched client-side only (never in the background) on
+  // tab open, on window/tab focus while the tab is active, and after
+  // approve/cancel actions elsewhere — issue #352's explicit "replenish on
+  // app open / tab focus" boundary, not a poller or a server cron.
+  useEffect(() => {
+    if (activeTab !== "queue") return;
+    void loadScheduledPosts();
+    void replenishQueue();
+
+    function handleFocusOrVisible() {
+      if (document.visibilityState === "hidden") return;
+      void loadScheduledPosts();
+      void replenishQueue();
+    }
+    window.addEventListener("focus", handleFocusOrVisible);
+    document.addEventListener("visibilitychange", handleFocusOrVisible);
+    return () => {
+      window.removeEventListener("focus", handleFocusOrVisible);
+      document.removeEventListener("visibilitychange", handleFocusOrVisible);
+    };
+    // Re-runs only when the Queue tab is opened or the active project/wallet changes — loadScheduledPosts/replenishQueue close over the latest state on every render already.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedProjectId, walletAddress]);
 
   function toggleMascotAction(label: string) {
     setCustomActionEntry(null);
@@ -992,13 +1335,28 @@ export function SocialHub() {
     });
   }
 
-  function removeQueueItem(id: string) {
+  function removeQueueItem(id: string, options: { silent?: boolean } = {}) {
     setQueue((current) => {
       const next = current.filter((item) => item.id !== id);
       persistSocialStudio({ queue: next });
       return next;
     });
-    setStatus("Removed from the Queue.");
+    setItemDestinations((current) => {
+      if (!(id in current)) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    setItemScheduledAt((current) => {
+      if (!(id in current)) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    if (!options.silent) {
+      setStatus("Removed from Ready to review.");
+      void replenishQueue();
+    }
   }
 
   function postQueueItemToX(item: QueueItem) {
@@ -1800,55 +2158,159 @@ export function SocialHub() {
                     <div className={styles.sectionHeading}>
                       <div>
                         <h2>What&apos;s going out</h2>
-                        <p>Drafts from Setup and Calendar land here. Nothing posts until you tap approve — real cron scheduling is not built yet.</p>
-                      </div>
-                      <div className={styles.segmentedDisabled}>
-                        <span className={styles.segmentActive}>Approve first</span>
-                        <span>Auto-publish</span>
+                        <p>
+                          Ready to review: {queue.length} of {queueTarget} draft{queueTarget === 1 ? "" : "s"} ready
+                          {readyToReviewShortfall > 0 ? " — refilling now" : ""}. Adjust the target in Settings &amp; Rules.
+                        </p>
                       </div>
                     </div>
+                    <InlineStatus status={replenishStatus} />
                     {queue.length === 0 ? (
                       <div className={styles.queueEmpty}>
-                        <b>The queue is empty.</b>
-                        <p>Use &quot;Draft with AI&quot; in Setup, &quot;AI makes it&quot; in Calendar, or &quot;Add to Queue&quot; after generating mascot artwork.</p>
+                        <b>Ready to review is empty.</b>
+                        <p>Use &quot;Draft with AI&quot; in Setup, &quot;AI makes it&quot; in Calendar, or wait a moment — new drafts generate automatically.</p>
+                      </div>
+                    ) : null}
+                    {queue.length > 0 ? (
+                      <div className={styles.queueList}>
+                        {queue.map((item) => {
+                          const selectedDestinations = itemDestinations[item.id] ?? [];
+                          return (
+                            <article className={styles.queueItem} key={item.id}>
+                              {item.artwork ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img className={styles.queueThumb} src={item.artwork} alt="Queued post artwork" />
+                              ) : null}
+                              <div className={styles.queueItemBody}>
+                                <span className={styles.exampleLabel}>
+                                  {item.source === "calendar-ai"
+                                    ? `Calendar AI · ${item.dayLabel}`
+                                    : item.source === "setup-ai"
+                                      ? "Setup AI"
+                                      : item.source === "auto-replenish"
+                                        ? "Auto-generated"
+                                        : "Manual"}
+                                </span>
+                                <label className={styles.connectionField}>
+                                  <span>X ({item.xText.length}/280)</span>
+                                  <textarea
+                                    value={item.xText}
+                                    onChange={(event) => updateQueueItem(item.id, { xText: event.target.value })}
+                                    rows={3}
+                                  />
+                                </label>
+                                <label className={styles.connectionField}>
+                                  <span>Telegram</span>
+                                  <textarea
+                                    value={item.telegramText}
+                                    onChange={(event) => updateQueueItem(item.id, { telegramText: event.target.value })}
+                                    rows={3}
+                                  />
+                                </label>
+                                {myConnectedPlatforms.length > 0 ? (
+                                  <div className={styles.destinationToggles}>
+                                    {myConnectedPlatforms.map((platform) => {
+                                      const selected = selectedDestinations.includes(platform);
+                                      return (
+                                        <button
+                                          type="button"
+                                          key={platform}
+                                          aria-pressed={selected}
+                                          className={selected ? styles.destinationToggleActive : styles.destinationToggle}
+                                          onClick={() => toggleItemDestination(item.id, platform)}
+                                        >
+                                          {platform === "x" ? <XIcon /> : <TelegramIcon />} {platformLabel(platform)}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <p className={styles.connectionHelper}>Connect X or Telegram in Setup before approving a post.</p>
+                                )}
+                                <label className={styles.connectionField}>
+                                  <span>Scheduled for</span>
+                                  <input
+                                    type="datetime-local"
+                                    value={itemScheduledAt[item.id] ?? ""}
+                                    onChange={(event) => setItemScheduledAtValue(item.id, event.target.value)}
+                                  />
+                                </label>
+                                <div className={styles.composerActions}>
+                                  <button
+                                    type="button"
+                                    onClick={() => approveQueueItem(item)}
+                                    disabled={approvingItemId === item.id || selectedDestinations.length === 0}
+                                  >
+                                    {approvingItemId === item.id ? "Approving…" : "Approve"}
+                                  </button>
+                                  <button type="button" onClick={() => postQueueItemToX(item)}>
+                                    <XIcon /> Post to X
+                                  </button>
+                                  <button type="button" onClick={() => sendQueueItemToTelegram(item)} disabled={busy}>
+                                    <TelegramIcon /> Send to Telegram
+                                  </button>
+                                  <button type="button" onClick={() => removeQueueItem(item.id)}>Delete</button>
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </section>
+
+                  <section className={styles.block}>
+                    <div className={styles.sectionHeading}>
+                      <div>
+                        <h2>Approved &amp; scheduled</h2>
+                        <p>Waiting to send. Cancel any time before it goes out.</p>
+                      </div>
+                    </div>
+                    <InlineStatus status={postsStatus} />
+                    {awaitingSendPosts.length === 0 ? (
+                      <div className={styles.queueEmpty}>
+                        <b>Nothing scheduled yet.</b>
+                        <p>Approve a draft above to schedule it.</p>
                       </div>
                     ) : (
                       <div className={styles.queueList}>
-                        {queue.map((item) => (
-                          <article className={styles.queueItem} key={item.id}>
-                            {item.artwork ? (
+                        {awaitingSendPosts.map((post) => (
+                          <article className={styles.queueItem} key={post.id}>
+                            {post.artworkDataUrl ? (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img className={styles.queueThumb} src={item.artwork} alt="Queued post artwork" />
+                              <img className={styles.queueThumb} src={post.artworkDataUrl} alt="Approved post artwork" />
                             ) : null}
                             <div className={styles.queueItemBody}>
-                              <span className={styles.exampleLabel}>
-                                {item.source === "calendar-ai" ? `Calendar AI · ${item.dayLabel}` : item.source === "setup-ai" ? "Setup AI" : "Manual"}
-                              </span>
-                              <label className={styles.connectionField}>
-                                <span>X ({item.xText.length}/280)</span>
-                                <textarea
-                                  value={item.xText}
-                                  onChange={(event) => updateQueueItem(item.id, { xText: event.target.value })}
-                                  rows={3}
-                                />
-                              </label>
-                              <label className={styles.connectionField}>
-                                <span>Telegram</span>
-                                <textarea
-                                  value={item.telegramText}
-                                  onChange={(event) => updateQueueItem(item.id, { telegramText: event.target.value })}
-                                  rows={3}
-                                />
-                              </label>
-                              <div className={styles.composerActions}>
-                                <button type="button" onClick={() => postQueueItemToX(item)}>
-                                  <XIcon /> Post to X
-                                </button>
-                                <button type="button" onClick={() => sendQueueItemToTelegram(item)} disabled={busy}>
-                                  <TelegramIcon /> Send to Telegram
-                                </button>
-                                <button type="button" onClick={() => removeQueueItem(item.id)}>Remove</button>
+                              <span className={styles.exampleLabel}>Scheduled for {formatScheduledAt(post.scheduledAt)}</span>
+                              <p>{post.body}</p>
+                              <div className={styles.destinationToggles}>
+                                {post.destinations.map((destination) => (
+                                  <span
+                                    key={destination.id}
+                                    className={[
+                                      styles.statusPill,
+                                      destination.status === "needs_composer" ? styles.statusPillNeedsComposer : styles.statusPillPending,
+                                    ].join(" ")}
+                                  >
+                                    {destination.platform === "x" ? <XIcon /> : <TelegramIcon />} {platformLabel(destination.platform)} ·{" "}
+                                    {destination.status === "needs_composer" ? "Needs composer" : "Pending"}
+                                  </span>
+                                ))}
                               </div>
+                              {post.destinations.some((destination) => destination.status === "needs_composer") ? (
+                                <div className={styles.composerActions}>
+                                  <button type="button" onClick={() => openComposerForPost(post)}>
+                                    <XIcon /> Link posts publish from your own X account — tap to post
+                                  </button>
+                                </div>
+                              ) : null}
+                              {post.status === "scheduled" ? (
+                                <div className={styles.composerActions}>
+                                  <button type="button" onClick={() => cancelScheduledPost(post.id)} disabled={cancelingPostId === post.id}>
+                                    {cancelingPostId === post.id ? "Canceling…" : "Cancel"}
+                                  </button>
+                                </div>
+                              ) : null}
                             </div>
                           </article>
                         ))}
@@ -1856,36 +2318,66 @@ export function SocialHub() {
                     )}
                   </section>
 
-                  <section className={styles.performanceCard}>
-                    <div className={styles.sectionHeading}>
-                      <div>
-                        <h2>How it&apos;s going</h2>
-                        <p>Your numbers, updated as they move.</p>
-                      </div>
-                      <span className={styles.privateBadge}>ONLY YOU CAN SEE THIS</span>
-                    </div>
-                    <div className={styles.metricGrid}>
-                      {["Posts published", "Approval rate", "Best post"].map((label) => (
-                        <div key={label}>
-                          <span>{label}</span>
-                          <b>—</b>
-                          <small>Coming soon</small>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-
                   <section className={styles.block}>
                     <div className={styles.sectionHeading}>
                       <div>
                         <span className={styles.eyebrow}>HISTORY</span>
-                        <p>Real publish history will be stored here when queue persistence is implemented.</p>
+                        <p>Sent, failed and canceled posts, with the outcome per destination.</p>
                       </div>
-                      <ComingSoon compact />
                     </div>
-                    <div className={styles.historyPlaceholder}>
-                      <span>No fabricated history.</span>
-                    </div>
+                    {historyPosts.length === 0 ? (
+                      <div className={styles.historyPlaceholder}>
+                        <span>No publish history yet.</span>
+                      </div>
+                    ) : (
+                      <div className={styles.queueList}>
+                        {historyPosts.map((post) => (
+                          <article className={styles.queueItem} key={post.id}>
+                            <div className={styles.queueItemBody}>
+                              <span className={styles.exampleLabel}>
+                                {post.status === "canceled" ? "Canceled" : formatScheduledAt(post.scheduledAt)}
+                              </span>
+                              <p>{post.body}</p>
+                              {post.status === "canceled" ? (
+                                <p className={styles.connectionHelper}>Canceled before it was sent.</p>
+                              ) : (
+                                <div className={styles.destinationToggles}>
+                                  {post.destinations.map((destination) => {
+                                    const connection = connections.find((entry) => entry.platform === destination.platform);
+                                    const needsReconnect = destination.status === "failed" && connection?.status === "reconnect_needed";
+                                    return (
+                                      <span
+                                        key={destination.id}
+                                        className={[
+                                          styles.statusPill,
+                                          destination.status === "sent"
+                                            ? styles.statusPillSent
+                                            : destination.status === "needs_composer"
+                                              ? styles.statusPillNeedsComposer
+                                              : styles.statusPillFailed,
+                                        ].join(" ")}
+                                      >
+                                        {destination.platform === "x" ? <XIcon /> : <TelegramIcon />} {platformLabel(destination.platform)} ·{" "}
+                                        {destination.status === "sent"
+                                          ? "Sent"
+                                          : destination.status === "needs_composer"
+                                            ? "Needs composer"
+                                            : destination.errorMessage || "Failed"}
+                                        {needsReconnect ? (
+                                          <button type="button" onClick={() => setActiveTab("setup")}>
+                                            Reconnect
+                                          </button>
+                                        ) : null}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    )}
                   </section>
                 </div>
               ) : null}
@@ -1929,6 +2421,28 @@ export function SocialHub() {
                         ))}
                       </div>
                     </div>
+                  </section>
+
+                  <section className={styles.block}>
+                    <div className={styles.sectionHeading}>
+                      <div>
+                        <h2>Ready to review target</h2>
+                        <p>
+                          How many AI drafts the Queue tab keeps loaded for review. It refills to this number whenever you open the Queue
+                          tab or approve/delete a draft — never in the background.
+                        </p>
+                      </div>
+                    </div>
+                    <label className={styles.connectionField}>
+                      <span>Target drafts (1–{MAX_QUEUE_TARGET})</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={MAX_QUEUE_TARGET}
+                        value={queueTarget}
+                        onChange={(event) => updateQueueTarget(Number(event.target.value))}
+                      />
+                    </label>
                   </section>
 
                   <section className={styles.block}>
