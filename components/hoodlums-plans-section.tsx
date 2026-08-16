@@ -9,6 +9,8 @@ import {
   PLAN_CALLOUTS,
   PLAN_FAQS,
   PLANS_BILLING_OPTIONS,
+  STREET_TEAM_OPTION,
+  STREET_TEAM_TARGET_ID,
   planPriceForBilling,
   proBundlePriceForBilling,
   togglePlanFaq,
@@ -17,6 +19,7 @@ import {
 import type { LaunchPath } from "@/lib/types";
 import { requestWorkspaceOpen } from "@/lib/workspace-open-request";
 import styles from "./hoodlums-plans-section.module.css";
+import { StreetTeamCard } from "./street-team-card";
 
 function scrollToPlanDetail(targetId: string): void {
   document.getElementById(targetId)?.scrollIntoView({
@@ -113,6 +116,15 @@ export function HoodlumsPlansSection() {
                     {option.detailsLink.label}
                   </button>
                 ) : null}
+                {option.id === "pro" ? (
+                  <button
+                    type="button"
+                    className={styles.bundleTextLink}
+                    onClick={() => scrollToPlanDetail(STREET_TEAM_TARGET_ID)}
+                  >
+                    {STREET_TEAM_OPTION.crossSellLabel}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={styles.planCta}
@@ -161,6 +173,8 @@ export function HoodlumsPlansSection() {
             <p>{PRO_BUNDLE_OPTION.foot}</p>
           </div>
         </article>
+
+        <StreetTeamCard />
 
         <div className={styles.calloutGrid}>
           {PLAN_CALLOUTS.map((callout) => (

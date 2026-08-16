@@ -383,6 +383,26 @@ export function resetSocialStudioActionRateLimitsForTests() {
   ["social-studio-action", "social-studio-read"].forEach((name) => namedRateStore(name).clear());
 }
 
+// Street Team add-on interest capture (issue #343) — a lightweight demand
+// signal, not a sensitive write, so it gets a single generous per-IP limit
+// rather than separate read/action buckets.
+export const STREET_TEAM_INTEREST_LIMIT = 20;
+export const STREET_TEAM_INTEREST_WINDOW_MS = 60 * 60 * 1000;
+
+export function consumeStreetTeamInterestRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(
+    namedRateStore("street-team-interest"),
+    ip,
+    STREET_TEAM_INTEREST_LIMIT,
+    STREET_TEAM_INTEREST_WINDOW_MS,
+    now,
+  );
+}
+
+export function resetStreetTeamInterestRateLimitForTests() {
+  namedRateStore("street-team-interest").clear();
+}
+
 /**
  * Same-origin check for Social Studio connect/posting endpoints, mirroring
  * isAdminRequestOriginAllowed's fallback chain (falls back to the shared

@@ -277,6 +277,26 @@
   text-underline-offset: 3px;
 }
 
+.streetTeamCard {
+  scroll-margin-top: 92px;
+}
+
+.streetTeamBundleNote,
+.streetTeamFootNote {
+  width: 100%;
+  margin: 8px 0 0;
+  color: #929693;
+  font: 500 10.5px/1.5 var(--mono, "IBM Plex Mono", monospace);
+}
+
+.streetTeamError {
+  width: 100%;
+  margin: 10px 0 0;
+  color: #ff9a9a;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .bundleCard {
   position: relative;
   display: grid;

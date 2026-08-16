@@ -27,9 +27,12 @@ describe("Bond + Pro Site promise audit", () => {
       "Everything in Bond + Site",
       "[token].hoodlums.dev subdomain",
       "Premium bespoke AI design",
-      "Full HTML export — coming soon; publish at hoodlums.dev/slug today",
+      "Full HTML export",
+      "Publish at slug.hoodlums.dev",
       "Dexscreener chart + holder stats",
     ]);
+    expect(plan?.bullets.some((bullet) => bullet.toLowerCase().includes("coming soon"))).toBe(false);
+    expect(plan?.bullets).not.toContain("Publish at hoodlums.dev/slug");
   });
 
   it("keeps client and server project-challenge normalization identical", () => {
