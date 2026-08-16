@@ -408,6 +408,8 @@ export function SocialHub() {
   // never persisted.
   const [expandedQueueItemIds, setExpandedQueueItemIds] = useState<Record<string, boolean>>({});
   const replenishInFlightRef = useRef(false);
+  /** Rotates the example-post window and fallback angle across successive draft requests (issue #360) — never reset, so repeated Setup/Calendar clicks vary too, not just a batch loop. */
+  const draftAngleCounterRef = useRef(0);
 
   // Direction brief and posting cadence (issue #358), persisted per project
   // alongside the rest of the Social Studio record.
@@ -898,6 +900,8 @@ export function SocialHub() {
 
     report({ tone: "progress", message: "Writing a draft with AI…" });
     try {
+      const angleIndex = draftAngleCounterRef.current;
+      draftAngleCounterRef.current += 1;
       const response = await fetch("/api/social/draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -909,6 +913,9 @@ export function SocialHub() {
           theme: options.theme ?? null,
           likedSampleLines: likedReinforcementLines(sampleLineFeedback),
           directionBrief: directionBrief.trim() || null,
+          voiceExamples: voiceExampleFilter.usable,
+          recentDrafts: queue.map((item) => item.xText),
+          angleIndex,
         }),
       });
       const payload = (await response.json()) as {

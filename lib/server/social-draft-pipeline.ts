@@ -35,6 +35,75 @@ function voiceInstruction(voiceProfile: VoiceProfile | null): string {
   ].join("\n");
 }
 
+/** How many of the user's real pasted posts ride along on any one draft request (issue #360). */
+const VOICE_EXAMPLES_PER_DRAFT = 5;
+const VOICE_EXAMPLE_TRUNCATE_LENGTH = 400;
+const MAX_RECENT_DRAFTS_CONTEXT = 5;
+const RECENT_DRAFT_TRUNCATE_LENGTH = 200;
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
+}
+
+/**
+ * Deterministic circular window over `items`, sized to `count`. Advancing
+ * `offset` by `count` between calls walks a full rotation through every
+ * example roughly once before repeating, instead of the same handful landing
+ * in every draft request (issue #360 cause 1).
+ */
+function rotatingSample(items: string[], count: number, offset: number): string[] {
+  if (items.length === 0) return [];
+  const size = Math.min(count, items.length);
+  const start = ((offset % items.length) + items.length) % items.length;
+  return Array.from({ length: size }, (_, index) => items[(start + index) % items.length]);
+}
+
+/** Real posts supplement, never replace, the flattened voice-profile summary above (issue #360 cause 1). */
+function voiceExamplesInstruction(examples: string[]): string {
+  if (examples.length === 0) return "";
+  return [
+    `Here are ${examples.length} real posts written by the user, for style reference only — never copy, quote or lightly reword any line from these:`,
+    ...examples.map((example, index) => `${index + 1}. ${example}`),
+  ].join("\n");
+}
+
+/**
+ * Angles a draft can be asked to take when no explicit theme was supplied,
+ * rotated deterministically across a batch by angleIndex so five drafts in a
+ * row get five different structural jobs instead of five rolls of the same
+ * die (issue #360 cause 2).
+ */
+export const DRAFT_ANGLES = [
+  "Ask the community a genuine, open-ended question about the project or their experience with it.",
+  "Make an observation about the culture or energy building around the project — don't just restate a tagline.",
+  "Share a concrete milestone or progress note, even a small one.",
+  "Write a short, punchy one-liner — well under the character limit, no elaboration needed.",
+  "Speak directly to holders: a shout-out, a thank-you, or a call to action just for them.",
+  "Share a behind-the-scenes note about how the project is being built or run.",
+] as const;
+
+function angleLine(angleIndex: number | undefined): string {
+  const index = (((angleIndex ?? 0) % DRAFT_ANGLES.length) + DRAFT_ANGLES.length) % DRAFT_ANGLES.length;
+  return `No specific theme was given — take this angle: ${DRAFT_ANGLES[index]}`;
+}
+
+/** Avoid-context so a draft doesn't just reword what's already sitting unreviewed (issue #360 cause 3). */
+function recentDraftsInstruction(recentDrafts: string[]): string {
+  if (recentDrafts.length === 0) return "";
+  return [
+    "These drafts are already sitting in Ready to review, generated moments ago. Write something clearly different in structure, opening and phrasing — not merely a reworded version of one of these:",
+    ...recentDrafts.map((draft, index) => `${index + 1}. ${draft}`),
+  ].join("\n");
+}
+
+/** Static rules guarding against the formulaic pattern this issue was filed about — same construction, same phrase, hashtags every time. */
+const ANTI_FORMULA_RULES = [
+  "Avoid falling into a formula across posts: do not always open with the project name, ticker, or a 'X is not ... it's ...' construction — vary how each post opens.",
+  "Vary post length meaningfully rather than always landing near the same length.",
+  "Do not reuse the same signature phrase (a specific catchphrase, slogan or metaphor) in consecutive posts.",
+  "Do not append hashtags to every post — only include them when they genuinely add value, never as a reflexive sign-off.",
+].join("\n");
+
 /** Guard against voice drift: liked lines are secondary reinforcement, capped and ordered, never the primary voice reference (issue #348). */
 function likedLinesInstruction(likedSampleLines: string[]): string {
   if (likedSampleLines.length === 0) return "";
@@ -69,14 +138,23 @@ export function buildDraftRequestBody(
     theme?: string | null;
     likedSampleLines?: string[];
     directionBrief?: string | null;
+    voiceExamples?: string[];
+    recentDrafts?: string[];
+    angleIndex?: number;
   },
   model: string,
 ) {
   const likedSampleLines = input.likedSampleLines ?? [];
+  const voiceExamples = rotatingSample(
+    (input.voiceExamples ?? []).map((example) => truncate(example, VOICE_EXAMPLE_TRUNCATE_LENGTH)),
+    VOICE_EXAMPLES_PER_DRAFT,
+    (input.angleIndex ?? 0) * VOICE_EXAMPLES_PER_DRAFT,
+  );
+  const recentDrafts = (input.recentDrafts ?? [])
+    .slice(0, MAX_RECENT_DRAFTS_CONTEXT)
+    .map((draft) => truncate(draft, RECENT_DRAFT_TRUNCATE_LENGTH));
   const chain = input.project.chain === "robinhood" ? "Robinhood Chain" : "Solana";
-  const themeLine = input.theme?.trim()
-    ? `Theme for this post: ${input.theme.trim()}.`
-    : "No specific theme was given — write a general announcement or community post.";
+  const themeLine = input.theme?.trim() ? `Theme for this post: ${input.theme.trim()}.` : angleLine(input.angleIndex);
   const dayLine = input.dayLabel?.trim() ? `This post is scheduled for ${input.dayLabel.trim()}.` : "";
 
   return {
@@ -101,8 +179,11 @@ export function buildDraftRequestBody(
               "Never invent price predictions, guaranteed returns or financial advice. Never use the words: guaranteed, financial advice, to the moon, rug, 100x.",
               "Both drafts are shown to the user for review and editing before they choose to post — do not claim they have already been posted.",
               voiceInstruction(input.voiceProfile),
+              voiceExamplesInstruction(voiceExamples),
               likedLinesInstruction(likedSampleLines),
               directionBriefInstruction(input.directionBrief),
+              recentDraftsInstruction(recentDrafts),
+              ANTI_FORMULA_RULES,
               "Return only the strict draft JSON object.",
             ]
               .filter(Boolean)

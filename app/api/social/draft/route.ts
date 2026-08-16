@@ -30,7 +30,23 @@ type DraftRequestBody = {
   theme?: unknown;
   likedSampleLines?: unknown;
   directionBrief?: unknown;
+  voiceExamples?: unknown;
+  recentDrafts?: unknown;
+  angleIndex?: unknown;
 };
+
+const MAX_VOICE_EXAMPLES_ACCEPTED = 20;
+const MAX_RECENT_DRAFTS_ACCEPTED = 5;
+
+function stringArray(value: unknown, maxItems: number, maxLength: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, maxItems)
+    .map((item) => item.slice(0, maxLength));
+}
 
 function noStoreHeaders(extra: Record<string, string> = {}) {
   return { "Cache-Control": "no-store", ...extra };
@@ -122,6 +138,9 @@ export async function POST(request: Request) {
   const theme = typeof body.theme === "string" ? body.theme.slice(0, 200) : null;
   const likedSampleLines = normaliseLikedSampleLines(body.likedSampleLines);
   const directionBrief = typeof body.directionBrief === "string" ? body.directionBrief.slice(0, 500) : null;
+  const voiceExamples = stringArray(body.voiceExamples, MAX_VOICE_EXAMPLES_ACCEPTED, 2_000);
+  const recentDrafts = stringArray(body.recentDrafts, MAX_RECENT_DRAFTS_ACCEPTED, 2_000);
+  const angleIndex = typeof body.angleIndex === "number" && Number.isFinite(body.angleIndex) ? body.angleIndex : 0;
 
   const ai = resolveAIResponsesRuntime(process.env, getVercelOidcToken(request));
   if (!ai) {
@@ -137,7 +156,10 @@ export async function POST(request: Request) {
       method: "POST",
       headers: { Authorization: `Bearer ${ai.apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify(
-        buildDraftRequestBody({ project, voiceProfile, dayLabel, theme, likedSampleLines, directionBrief }, ai.model),
+        buildDraftRequestBody(
+          { project, voiceProfile, dayLabel, theme, likedSampleLines, directionBrief, voiceExamples, recentDrafts, angleIndex },
+          ai.model,
+        ),
       ),
       signal: AbortSignal.timeout(25_000),
     });
