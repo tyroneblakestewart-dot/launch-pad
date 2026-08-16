@@ -53,9 +53,29 @@ async function runInStore<T>(
   }
 }
 
+/**
+ * Merges a raw stored record over the current default shape so that fields
+ * added in a later release (e.g. issue #348's sampleLineFeedback) are
+ * present with their default on records persisted before that release,
+ * and defensively coerces fields that must be arrays back to `[]` if they
+ * are missing or corrupted. Migrate-on-read, not just on write, so no
+ * caller has to remember this every time the record shape grows.
+ */
+function normaliseSocialStudioRecord(
+  raw: SocialStudioProjectRecord | null | undefined,
+): SocialStudioProjectRecord {
+  const merged: SocialStudioProjectRecord = { ...EMPTY_SOCIAL_STUDIO_RECORD, ...raw };
+  return {
+    ...merged,
+    voiceExamples: Array.isArray(merged.voiceExamples) ? merged.voiceExamples : [],
+    queue: Array.isArray(merged.queue) ? merged.queue : [],
+    sampleLineFeedback: Array.isArray(merged.sampleLineFeedback) ? merged.sampleLineFeedback : [],
+  };
+}
+
 export async function getSocialStudioRecord(projectId: string): Promise<SocialStudioProjectRecord> {
   const result = await runInStore<SocialStudioProjectRecord | undefined>("readonly", (store) => store.get(projectId));
-  return result ?? EMPTY_SOCIAL_STUDIO_RECORD;
+  return normaliseSocialStudioRecord(result);
 }
 
 export async function putSocialStudioRecord(projectId: string, record: SocialStudioProjectRecord): Promise<void> {

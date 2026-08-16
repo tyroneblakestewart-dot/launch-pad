@@ -75,4 +75,49 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
     await expect(getSocialStudioRecord("project-a")).resolves.toEqual(RECORD);
     await expect(getSocialStudioRecord("project-b")).resolves.toEqual({ ...RECORD, voiceExamples: [] });
   });
+
+  describe("migrating legacy-shaped records on read (issue #350)", () => {
+    it("fills in sampleLineFeedback with the default when a pre-#348 record has no such key", async () => {
+      const legacy = {
+        voiceProfile: RECORD.voiceProfile,
+        voiceExamples: RECORD.voiceExamples,
+        mascotVisualDNA: RECORD.mascotVisualDNA,
+        mascotReferenceImage: RECORD.mascotReferenceImage,
+        queue: RECORD.queue,
+        // sampleLineFeedback intentionally omitted, as in records saved before issue #348.
+      };
+      await putSocialStudioRecord("legacy-project", legacy as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("legacy-project")).resolves.toEqual({
+        ...legacy,
+        sampleLineFeedback: [],
+      });
+    });
+
+    it("fills in voiceExamples and queue with defaults when a legacy record has neither key", async () => {
+      const legacy = {
+        voiceProfile: null,
+        mascotVisualDNA: null,
+        mascotReferenceImage: null,
+        sampleLineFeedback: [],
+      };
+      await putSocialStudioRecord("legacy-project-2", legacy as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("legacy-project-2")).resolves.toEqual(EMPTY_SOCIAL_STUDIO_RECORD);
+    });
+
+    it("coerces non-array sampleLineFeedback, voiceExamples and queue to empty arrays instead of throwing", async () => {
+      const corrupted = {
+        ...RECORD,
+        sampleLineFeedback: "not-an-array",
+        voiceExamples: null,
+        queue: 42,
+      };
+      await putSocialStudioRecord("corrupted-project", corrupted as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("corrupted-project")).resolves.toEqual({
+        ...RECORD,
+        sampleLineFeedback: [],
+        voiceExamples: [],
+        queue: [],
+      });
+    });
+  });
 });
