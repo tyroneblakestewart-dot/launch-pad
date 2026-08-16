@@ -30,6 +30,35 @@ export const PLAN_CALLOUTS = [
   },
 ] as const;
 
+/**
+ * A coming-soon $25/month add-on to Pro (issue #343) — deliberately kept
+ * out of LAUNCH_PATH_OPTIONS / PLAN_CHOOSER_OPTIONS so it never appears in
+ * the "How do you want to launch?" chooser modal. It only renders as its
+ * own card in the full plan-details view and as a cross-sell line on Pro.
+ */
+export const STREET_TEAM_TARGET_ID = "street-team";
+
+export const STREET_TEAM_OPTION = {
+  id: "street-team",
+  name: "Street Team",
+  price: "$25/month · add-on to Pro",
+  badge: "COMING SOON",
+  description:
+    "Someone's talking about your token right now. Street Team answers — in your voice, while you sleep.",
+  bullets: [
+    "10 replies a day — only to people already talking about your token",
+    "Positive posts only — never argues, never feeds the FUD",
+    "Never the same account twice — no one gets spammed",
+    "Your voice and your mascot, same as your posts",
+    "You choose: reply as they land, or spread through the day",
+    "Approve each one, or let it run",
+  ],
+  callout: "We show up for the people who show up for you. Never the timeline.",
+  footNote: "Added at renewal — one payment, one date, no part-months.",
+  bundleNote: "Pro Bundle? Street Team covers all three tokens at $60/month (not $25 × 3).",
+  crossSellLabel: "Getting mentions? Street Team replies in your voice — coming soon →",
+} as const;
+
 export const PLAN_FAQS = [
   {
     question: "Does Pro work for tokens I didn't launch here?",

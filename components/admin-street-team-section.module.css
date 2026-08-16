@@ -1,0 +1,36 @@
+.panel {
+  border: 1px solid rgba(188, 231, 89, 0.15);
+  border-radius: 16px;
+  background: rgba(10, 13, 11, 0.88);
+  padding: 18px;
+}
+
+.sectionHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.sectionTitle { margin: 0; color: #eef3ea; font-size: 1.05rem; }
+.sectionIntro { max-width: 760px; margin: 6px 0 0; color: rgba(238, 243, 234, 0.62); font-size: 0.88rem; line-height: 1.5; }
+.refreshButton { flex: none; border-radius: 9px; border: 1px solid rgba(188, 231, 89, 0.3); background: transparent; color: #bce759; padding: 8px 12px; font-size: 0.78rem; font-weight: 750; cursor: pointer; }
+.refreshButton:disabled { cursor: default; opacity: 0.55; }
+.error, .notice { margin: 0 0 12px; border-radius: 10px; padding: 10px 12px; font-size: 0.8rem; }
+.error { border: 1px solid rgba(255, 119, 119, 0.28); background: rgba(255, 119, 119, 0.08); color: #ff9a9a; }
+.notice { border: 1px solid rgba(240, 191, 78, 0.25); background: rgba(240, 191, 78, 0.08); color: #f0bf4e; }
+.empty { margin: 12px 0 0; color: rgba(238, 243, 234, 0.62); font-size: 0.78rem; }
+
+.summaryRow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 16px; max-width: 220px; }
+.summaryCard { border: 1px solid rgba(238, 243, 234, 0.09); border-radius: 12px; background: rgba(255, 255, 255, 0.018); padding: 12px; text-align: center; }
+.summaryValue { margin: 0; color: #bce759; font-size: 1.3rem; font-weight: 800; }
+.summaryLabel { margin: 4px 0 0; color: rgba(238, 243, 234, 0.6); font-size: 0.72rem; }
+
+.rowList { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid rgba(238, 243, 234, 0.09); border-radius: 13px; background: rgba(255, 255, 255, 0.018); padding: 12px 14px; }
+.wallet { color: #eef3ea; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.82rem; font-weight: 700; }
+.anonymous { color: rgba(238, 243, 234, 0.55); font-style: italic; }
+.meta { display: flex; align-items: center; gap: 10px; flex: none; }
+.planBadge { border-radius: 999px; padding: 4px 10px; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; color: rgba(238, 243, 234, 0.7); background: rgba(238, 243, 234, 0.06); border: 1px solid rgba(238, 243, 234, 0.16); }
+.timestamp { color: rgba(238, 243, 234, 0.5); font-size: 0.72rem; white-space: nowrap; }
+
+@media (max-width: 520px) {
+  .panel { padding: 14px; }
+  .sectionHeader { flex-direction: column; }
+  .summaryRow { max-width: none; }
+  .row { flex-direction: column; align-items: flex-start; }
+}
