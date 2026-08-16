@@ -32,6 +32,10 @@ const nextConfig: NextConfig = {
     GENERATE_SITE_STYLE_SHARED_SECRET: generationSharedToken,
     NEXT_PUBLIC_GENERATE_SITE_STYLE_SHARED_SECRET: generationSharedToken,
     GENERATE_SITE_STYLE_ALLOWED_ORIGIN: generationAllowedOrigin,
+    // Bridges the server-only Vercel commit SHA to the client bundle so
+    // crash reports (issue #353) can be tied to a release without relying
+    // on the Vercel project's "expose system env vars" toggle being on.
+    NEXT_PUBLIC_CLIENT_ERROR_BUILD_ID: process.env.VERCEL_GIT_COMMIT_SHA || "",
   },
 };
 

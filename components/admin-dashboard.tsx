@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AdminAccountsSection } from "@/components/admin-accounts-section";
+import { AdminClientErrorsSection } from "@/components/admin-client-errors-section";
 import {
   AdminActivity,
   AdminIssues,
@@ -32,6 +33,7 @@ type SectionId =
   | "accounts"
   | "outreach"
   | "street-team"
+  | "client-errors"
   | "system-health";
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
@@ -45,6 +47,7 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "accounts", label: "Accounts" },
   { id: "outreach", label: "Outreach" },
   { id: "street-team", label: "Street Team" },
+  { id: "client-errors", label: "Errors" },
   { id: "system-health", label: "System Health" },
 ];
 
@@ -171,7 +174,8 @@ export function AdminDashboard() {
     activeSection === "test-access" ||
     activeSection === "accounts" ||
     activeSection === "outreach" ||
-    activeSection === "street-team";
+    activeSection === "street-team" ||
+    activeSection === "client-errors";
 
   return (
     <main className={styles.dashboard}>
@@ -259,6 +263,7 @@ export function AdminDashboard() {
         {activeSection === "accounts" ? <AdminAccountsSection /> : null}
         {activeSection === "outreach" ? <AdminOutreachSection /> : null}
         {activeSection === "street-team" ? <AdminStreetTeamSection /> : null}
+        {activeSection === "client-errors" ? <AdminClientErrorsSection /> : null}
         {activeSection === "system-health" ? <AdminSystemHealth /> : null}
       </section>
     </main>

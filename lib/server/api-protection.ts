@@ -403,6 +403,22 @@ export function resetStreetTeamInterestRateLimitForTests() {
   namedRateStore("street-team-interest").clear();
 }
 
+// Client-side crash reporting (issue #353). No wallet auth — errors happen
+// to anonymous visitors too — so this is the main abuse control. Deliberately
+// tighter than the client's own per-session cap (20) since one IP can front
+// many devices/tabs, and a crash loop that clears sessionStorage (e.g. a
+// private/incognito reload) must still not flood the store.
+export const CLIENT_ERRORS_LIMIT = 40;
+export const CLIENT_ERRORS_WINDOW_MS = 60 * 60 * 1000;
+
+export function consumeClientErrorsRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("client-errors"), ip, CLIENT_ERRORS_LIMIT, CLIENT_ERRORS_WINDOW_MS, now);
+}
+
+export function resetClientErrorsRateLimitForTests() {
+  namedRateStore("client-errors").clear();
+}
+
 /**
  * Same-origin check for Social Studio connect/posting endpoints, mirroring
  * isAdminRequestOriginAllowed's fallback chain (falls back to the shared

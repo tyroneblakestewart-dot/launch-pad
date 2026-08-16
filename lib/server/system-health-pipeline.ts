@@ -22,7 +22,7 @@ import {
 import { getAdminOperationsStore } from "@/lib/server/admin-operations-store";
 import { getPostgresPool } from "@/lib/server/postgres";
 import { getSocialXCostStore, readXApiSendCostUsd, readXMonthlyCostCapUsd, type SocialXCostStore } from "@/lib/server/social-x-cost-store";
-import { contractsClient, HEALTH_CHECK_TIMEOUT_MS, withTimeout } from "@/lib/server/system-health";
+import { CLIENT_ERRORS_RED_THRESHOLD, contractsClient, HEALTH_CHECK_TIMEOUT_MS, withTimeout } from "@/lib/server/system-health";
 
 type PoolLike = {
   totalCount: number;
@@ -1202,6 +1202,114 @@ export function buildDeploymentPipeline(deps: DeploymentPipelineDeps = {}): Admi
 }
 
 // ---------------------------------------------------------------------------
+// Client errors (issue #353)
+// ---------------------------------------------------------------------------
+
+export type ClientErrorsPipelineDeps = {
+  databaseUrl?: string;
+  getPool?: (databaseUrl: string) => PoolLike;
+  now?: Date;
+};
+
+export async function buildClientErrorsPipeline(deps: ClientErrorsPipelineDeps = {}): Promise<AdminServicePipeline> {
+  const databaseUrl = deps.databaseUrl ?? process.env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl) {
+    const message = "DATABASE_URL is not configured.";
+    return {
+      id: "client-errors",
+      label: "Client errors",
+      stages: [
+        stage("table-exists", "client_errors table exists", "amber", message),
+        stage("new-groups-24h", "New error groups (last 24h)", "amber", message),
+        stage("open-groups", "Unresolved error groups", "amber", message),
+      ],
+    };
+  }
+
+  const pool = (deps.getPool ?? ((url: string) => getPostgresPool(url) as unknown as PoolLike))(databaseUrl);
+
+  let tableExists = false;
+  let tableExistsStage: AdminPipelineStage;
+  try {
+    const result = await withTimeout(
+      pool.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'client_errors'`,
+      ),
+      HEALTH_CHECK_TIMEOUT_MS,
+      "timed out",
+    );
+    tableExists = result.rows.length > 0;
+    tableExistsStage = tableExists
+      ? stage("table-exists", "client_errors table exists", "green", "The client_errors table is present.")
+      : stage("table-exists", "client_errors table exists", "red", "Migration 021_client_errors.sql has not been applied yet.");
+  } catch {
+    tableExistsStage = stage("table-exists", "client_errors table exists", "red", "Could not check whether the client_errors table exists.");
+  }
+
+  let newGroupsStage: AdminPipelineStage;
+  let openGroupsStage: AdminPipelineStage;
+  if (!tableExists) {
+    newGroupsStage = stage("new-groups-24h", "New error groups (last 24h)", "amber", "Not probed; the client_errors table does not exist yet.");
+    openGroupsStage = stage("open-groups", "Unresolved error groups", "amber", "Not probed; the client_errors table does not exist yet.");
+  } else {
+    const since = new Date((deps.now ?? new Date()).getTime() - 24 * 60 * 60 * 1000);
+    try {
+      const result = await withTimeout(
+        pool.query<{ count: number | string }>(
+          `SELECT COUNT(*)::int AS count FROM (
+             SELECT message, route_path FROM client_errors
+              GROUP BY message, route_path
+             HAVING MIN(created_at) >= $1
+           ) AS new_groups`,
+          [since],
+        ),
+        HEALTH_CHECK_TIMEOUT_MS,
+        "timed out",
+      );
+      const count = Number(result.rows[0]?.count ?? 0);
+      newGroupsStage =
+        count === 0
+          ? stage("new-groups-24h", "New error groups (last 24h)", "green", "No new client error groups in the last 24 hours.")
+          : stage("new-groups-24h", "New error groups (last 24h)", count >= CLIENT_ERRORS_RED_THRESHOLD ? "red" : "amber", `${count} new client error group(s) in the last 24 hours.`);
+    } catch {
+      newGroupsStage = stage("new-groups-24h", "New error groups (last 24h)", "red", "Could not count new client error groups.");
+    }
+
+    try {
+      const result = await withTimeout(
+        pool.query<{ count: number | string }>(
+          `WITH error_groups AS (
+             SELECT message, route_path, MAX(created_at) AS last_seen
+               FROM client_errors
+              GROUP BY message, route_path
+           )
+           SELECT COUNT(*)::int AS count
+             FROM error_groups eg
+             LEFT JOIN client_error_resolutions r
+               ON r.message = eg.message AND r.route_path = eg.route_path
+            WHERE r.resolved_at IS NULL OR eg.last_seen > r.resolved_at`,
+        ),
+        HEALTH_CHECK_TIMEOUT_MS,
+        "timed out",
+      );
+      const count = Number(result.rows[0]?.count ?? 0);
+      openGroupsStage =
+        count === 0
+          ? stage("open-groups", "Unresolved error groups", "green", "0 unresolved error groups.")
+          : stage("open-groups", "Unresolved error groups", "green", `${count} unresolved error group(s).`);
+    } catch {
+      openGroupsStage = stage("open-groups", "Unresolved error groups", "red", "Could not count unresolved error groups.");
+    }
+  }
+
+  return {
+    id: "client-errors",
+    label: "Client errors",
+    stages: [tableExistsStage, newGroupsStage, openGroupsStage],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
 
@@ -1217,6 +1325,7 @@ export type SystemHealthPipelineDeps = {
   outreach?: OutreachPipelineDeps;
   socialStudioAi?: SocialStudioAiPipelineDeps;
   socialPosting?: SocialPostingPipelineDeps;
+  clientErrors?: ClientErrorsPipelineDeps;
 };
 
 /** Builds a single service's pipeline on demand — used by the drill-down endpoint. */
@@ -1253,5 +1362,7 @@ export async function buildServicePipeline(
       });
     case "social-posting":
       return buildSocialPostingPipeline({ env: deps.env, ...deps.socialPosting });
+    case "client-errors":
+      return buildClientErrorsPipeline(deps.clientErrors);
   }
 }

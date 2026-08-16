@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AdminServiceControl } from "@/lib/admin-operations";
 import {
+  buildClientErrorsPipeline,
   buildContractsPipeline,
   buildDatabasePipeline,
   buildDeploymentPipeline,
@@ -410,6 +411,81 @@ describe("buildSubscribersPipeline", () => {
       status: "green",
       message: expect.stringContaining("No subscribers yet"),
     });
+  });
+});
+
+describe("buildClientErrorsPipeline", () => {
+  function fakePool(overrides: {
+    query?: (text: string, params?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>;
+  } = {}) {
+    return {
+      totalCount: 1,
+      idleCount: 1,
+      waitingCount: 0,
+      query:
+        overrides.query ??
+        (async (text: string) => {
+          if (text.includes("information_schema.tables")) return { rows: [{ table_name: "client_errors" }] };
+          if (text.includes("new_groups")) return { rows: [{ count: 0 }] };
+          if (text.includes("error_groups")) return { rows: [{ count: 0 }] };
+          return { rows: [] };
+        }),
+    };
+  }
+
+  it("reports every stage amber when DATABASE_URL is not configured", async () => {
+    const pipeline = await buildClientErrorsPipeline({ databaseUrl: "" });
+    expect(pipeline.stages.every((stage) => stage.status === "amber")).toBe(true);
+  });
+
+  it("is green end to end when the table exists and there are no new or open groups", async () => {
+    const pipeline = await buildClientErrorsPipeline({ databaseUrl: "postgres://test", getPool: () => fakePool() });
+    expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "new-groups-24h")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "open-groups")).toMatchObject({ status: "green" });
+  });
+
+  it("is red on table-exists and does not probe the other stages when the migration has not been applied", async () => {
+    const pipeline = await buildClientErrorsPipeline({
+      databaseUrl: "postgres://test",
+      getPool: () => fakePool({ query: async () => ({ rows: [] }) }),
+    });
+    expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "new-groups-24h")).toMatchObject({ status: "amber" });
+    expect(stageById(pipeline, "open-groups")).toMatchObject({ status: "amber" });
+  });
+
+  it("escalates from amber to red as more new groups appear in the last 24 hours", async () => {
+    const amberPipeline = await buildClientErrorsPipeline({
+      databaseUrl: "postgres://test",
+      getPool: () =>
+        fakePool({
+          query: async (text: string) => {
+            if (text.includes("information_schema.tables")) return { rows: [{ table_name: "client_errors" }] };
+            if (text.includes("new_groups")) return { rows: [{ count: 1 }] };
+            return { rows: [{ count: 0 }] };
+          },
+        }),
+    });
+    expect(stageById(amberPipeline, "new-groups-24h")).toMatchObject({ status: "amber" });
+
+    const redPipeline = await buildClientErrorsPipeline({
+      databaseUrl: "postgres://test",
+      getPool: () =>
+        fakePool({
+          query: async (text: string) => {
+            if (text.includes("information_schema.tables")) return { rows: [{ table_name: "client_errors" }] };
+            if (text.includes("new_groups")) return { rows: [{ count: 3 }] };
+            return { rows: [{ count: 0 }] };
+          },
+        }),
+    });
+    expect(stageById(redPipeline, "new-groups-24h")).toMatchObject({ status: "red" });
+  });
+
+  it("is reachable through the buildServicePipeline dispatcher", async () => {
+    const pipeline = await buildServicePipeline("client-errors", { clientErrors: { databaseUrl: "" } });
+    expect(pipeline.id).toBe("client-errors");
   });
 });
 
