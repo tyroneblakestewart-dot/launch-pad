@@ -29,6 +29,25 @@ export function replenishShortfall(readyCount: number, target: number): number {
   return Math.max(0, target - readyCount);
 }
 
+/**
+ * Matches the server's MAX_RECENT_DRAFTS_CONTEXT input cap
+ * (lib/server/social-draft-pipeline.ts) — no point carrying a longer local
+ * window than the server will ever read.
+ */
+export const MAX_ROLLING_RECENT_DRAFTS = 5;
+
+/**
+ * Advances a refill batch's local rolling recent-draft context by one newly
+ * generated X text, most recent first, capped at MAX_ROLLING_RECENT_DRAFTS
+ * (issue #366). A refill loop seeds this from the current queue once, then
+ * calls this after each successful generation instead of reading the
+ * React `queue` state — which does not update synchronously mid-loop, so
+ * every request in a batch was seeing the same stale (often empty) context.
+ */
+export function advanceRollingRecentDrafts(current: string[], newDraftXText: string): string[] {
+  return [newDraftXText, ...current].slice(0, MAX_ROLLING_RECENT_DRAFTS);
+}
+
 /** Clamps a user-entered Settings & Rules target into [1, MAX_QUEUE_TARGET], falling back to the default for non-finite input. */
 export function clampQueueTarget(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_QUEUE_TARGET;

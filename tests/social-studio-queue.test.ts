@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { MAX_POSTS_PER_DAY, MAX_QUEUE_TARGET, POSTING_CADENCE_OPTIONS } from "@/lib/social-studio-types";
 import {
+  MAX_ROLLING_RECENT_DRAFTS,
+  advanceRollingRecentDrafts,
   buildXIntentUrl,
   cadenceQueueTarget,
   cadenceSpreadHoursMs,
@@ -98,6 +100,28 @@ describe("buildXIntentUrl", () => {
     expect(buildXIntentUrl("hello world & friends")).toBe(
       "https://x.com/intent/post?text=hello%20world%20%26%20friends",
     );
+  });
+});
+
+describe("advanceRollingRecentDrafts (issue #366)", () => {
+  it("prepends the newest draft ahead of the seeded context", () => {
+    expect(advanceRollingRecentDrafts(["older draft"], "newest draft")).toEqual(["newest draft", "older draft"]);
+  });
+
+  it("caps the rolling window at MAX_ROLLING_RECENT_DRAFTS, dropping the oldest entries", () => {
+    const seeded = Array.from({ length: MAX_ROLLING_RECENT_DRAFTS }, (_, index) => `draft ${index}`);
+    const next = advanceRollingRecentDrafts(seeded, "brand new draft");
+    expect(next.length).toBe(MAX_ROLLING_RECENT_DRAFTS);
+    expect(next[0]).toBe("brand new draft");
+    expect(next).not.toContain(`draft ${MAX_ROLLING_RECENT_DRAFTS - 1}`);
+  });
+
+  it("advancing repeatedly lets each new call see everything generated so far in the batch, not a stale snapshot", () => {
+    let rolling: string[] = [];
+    rolling = advanceRollingRecentDrafts(rolling, "draft 1");
+    rolling = advanceRollingRecentDrafts(rolling, "draft 2");
+    rolling = advanceRollingRecentDrafts(rolling, "draft 3");
+    expect(rolling).toEqual(["draft 3", "draft 2", "draft 1"]);
   });
 });
 

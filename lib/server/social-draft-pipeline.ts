@@ -57,6 +57,31 @@ function rotatingSample(items: string[], count: number, offset: number): string[
   return Array.from({ length: size }, (_, index) => items[(start + index) % items.length]);
 }
 
+/**
+ * Strips leading punctuation/emoji/whitespace (but never a leading `$`, which
+ * is part of a ticker opener) so identity matching only cares about the first
+ * real word, not what decorates it (issue #366).
+ */
+function stripLeadingDecoration(text: string): string {
+  return text.replace(/^[^\p{L}\p{N}$]+/u, "");
+}
+
+/**
+ * True when `text` opens with the project's name or ticker (with or without
+ * a leading `$`), case-insensitively and token-aware — a short ticker like
+ * "DOOM" must not falsely match a longer word like "doomsday" (issue #366).
+ */
+function textStartsWithIdentity(text: string, project: { name: string; ticker: string }): boolean {
+  const stripped = stripLeadingDecoration(text.trim()).toLowerCase();
+  if (!stripped) return false;
+  const identities = [project.ticker, project.name].map((value) => value.trim().toLowerCase()).filter(Boolean);
+  return identities.some((identity) => {
+    const escaped = identity.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`^\\$?${escaped}(?![\\p{L}\\p{N}])`, "u");
+    return pattern.test(stripped);
+  });
+}
+
 /** Real posts supplement, never replace, the flattened voice-profile summary above (issue #360 cause 1). */
 function voiceExamplesInstruction(examples: string[]): string {
   if (examples.length === 0) return "";
@@ -205,6 +230,18 @@ function recentDraftsInstruction(recentDrafts: string[]): string {
     `Recent post openings (do not reuse or closely echo any of these):`,
     ...openings,
   ].join("\n");
+}
+
+/**
+ * Explicit, non-negotiable ban on opening with the project name/ticker, only
+ * emitted when the rolling recent-draft window shows it's already happened —
+ * prompt wording alone ("vary how each post opens") did not stop nearly
+ * every post in a real batch from starting with "Doom" (issue #366). One
+ * identity-led opener is still allowed when the window has none.
+ */
+function identityOpenerWarningInstruction(project: DraftProject, recentDrafts: string[]): string {
+  if (!recentDrafts.some((draft) => textStartsWithIdentity(draft, project))) return "";
+  return `A recent post already opened with "${project.name}" or "${project.ticker}". This post's X draft must NOT begin with the project name or ticker, with or without a "$", punctuation, or an emoji before it — open from a different human perspective (a holder's voice, an observation, a moment, a question) instead of moving the project name later in the same sentence.`;
 }
 
 /** Static rules guarding against the formulaic pattern this issue was filed about — same construction, same phrase, hashtags every time. */
@@ -402,6 +439,7 @@ export function buildDraftRequestBody(
               directionBriefInstruction(input.directionBrief),
               allowedFactsLedgerInstruction(input.project, chain, input.directionBrief),
               recentDraftsInstruction(recentDrafts),
+              identityOpenerWarningInstruction(input.project, recentDrafts),
               bannedPhrasesInstruction(extractRepeatedPhrases(recentDrafts)),
               ANTI_FORMULA_RULES,
               input.correctiveFeedback?.trim() ? `IMPORTANT CORRECTION (this is a regenerated attempt): ${input.correctiveFeedback.trim()}` : "",
@@ -619,12 +657,49 @@ export function checkDraftFactualRisk(draft: SocialDraft): DraftAngleComplianceR
 const NOT_JUST_CONSTRUCTION_PATTERN = /\b(?:isn't|is not|ain't)\s+just\b[^.!?\n]{0,60}\b(?:it's|it is)\b/i;
 
 /**
- * Mechanical guard, run after parsing (issue #364): checks the parsed draft
- * for the banned "isn't just X, it's Y" construction and for reuse of any
- * phrase already flagged by extractRepeatedPhrases from the recent-drafts
- * context passed to this request.
+ * Minimum/maximum window for the close-phrase-reuse comparison below (issue
+ * #366) — deliberately more conservative than extractRepeatedPhrases's 2+
+ * word floor, since this compares against only one prior draft at a time
+ * rather than requiring 2+ recurrences, so it needs a longer, more
+ * distinctive run to avoid flagging unavoidable short facts like a two-word
+ * chain name.
  */
-export function checkDraftRepetition(draft: SocialDraft, bannedPhrases: string[]): DraftAngleComplianceResult {
+const PHRASE_OVERLAP_MIN_WORDS = 4;
+const PHRASE_OVERLAP_MAX_WORDS = 10;
+
+/**
+ * The longest exact run of PHRASE_OVERLAP_MIN_WORDS+ normalised words shared
+ * between two X drafts that contains at least one meaningfully distinctive
+ * word, or null if there's no such overlap. Checking the longest match first
+ * surfaces the most useful phrase for corrective feedback.
+ */
+function longestSharedDistinctivePhrase(candidateXText: string, recentXText: string): string | null {
+  const candidateWords = normaliseForPhraseMatch(candidateXText).split(" ").filter(Boolean);
+  const recentWords = normaliseForPhraseMatch(recentXText).split(" ").filter(Boolean);
+  const recentGrams = new Set<string>();
+  for (let n = PHRASE_OVERLAP_MIN_WORDS; n <= PHRASE_OVERLAP_MAX_WORDS; n += 1) {
+    wordNgrams(recentWords, n).forEach((gram) => recentGrams.add(gram));
+  }
+  for (let n = PHRASE_OVERLAP_MAX_WORDS; n >= PHRASE_OVERLAP_MIN_WORDS; n -= 1) {
+    const match = wordNgrams(candidateWords, n).find((gram) => recentGrams.has(gram) && isDistinctivePhrase(gram));
+    if (match) return match;
+  }
+  return null;
+}
+
+/**
+ * Mechanical guard, run after parsing (issue #364, extended #366): checks
+ * the parsed draft for the banned "isn't just X, it's Y" construction, reuse
+ * of any phrase already flagged by extractRepeatedPhrases (recurring across
+ * 2+ recent posts), and — new for #366 — a close 4+ word shared phrase
+ * against any *single* recent draft, since waiting for a phrase to recur
+ * twice let the second occurrence straight into the queue.
+ */
+export function checkDraftRepetition(
+  draft: SocialDraft,
+  bannedPhrases: string[],
+  recentDrafts: string[] = [],
+): DraftAngleComplianceResult {
   const combined = `${draft.xText} ${draft.telegramText}`;
   if (NOT_JUST_CONSTRUCTION_PATTERN.test(combined)) {
     return {
@@ -641,7 +716,36 @@ export function checkDraftRepetition(draft: SocialDraft, bannedPhrases: string[]
       };
     }
   }
+  for (const recentDraft of recentDrafts) {
+    const shared = longestSharedDistinctivePhrase(draft.xText, recentDraft);
+    if (shared) {
+      return {
+        violated: true,
+        feedback: `The previous draft's X post shares the phrase "${shared}" almost word-for-word with a recent post. Rewrite that part with different wording — this is about copied phrasing, not the taught voice's tone or cadence.`,
+      };
+    }
+  }
   return { violated: false };
+}
+
+/**
+ * Mechanical guard, run after parsing (issue #366): prompt wording alone did
+ * not stop nearly every post in a real batch from opening with the project
+ * name/ticker. This is a rolling-window rule, not a permanent ban — a draft
+ * opening with the project identity only violates when a recent draft in the
+ * window already did the same, so one identity-led opener is always allowed.
+ */
+export function checkDraftIdentityOpener(
+  xText: string,
+  project: { name: string; ticker: string },
+  recentDrafts: string[],
+): DraftAngleComplianceResult {
+  if (!recentDrafts.some((draft) => textStartsWithIdentity(draft, project))) return { violated: false };
+  if (!textStartsWithIdentity(xText, project)) return { violated: false };
+  return {
+    violated: true,
+    feedback: `A recent post already opened with "${project.name}" or "${project.ticker}". Rewrite this post's opening line so it does not start with the project name or ticker (with or without "$", punctuation, or an emoji before it) — open from a different human perspective instead of simply moving the project name later in the sentence.`,
+  };
 }
 
 export type DraftComplianceCheckInput = {
@@ -649,20 +753,27 @@ export type DraftComplianceCheckInput = {
   angleIndex?: number;
   directionBrief?: string | null;
   bannedPhrases?: string[];
+  project?: { name: string; ticker: string };
+  recentDrafts?: string[];
 };
 
 /**
  * Runs every mechanical safety check — angle form, then factual risk, then
- * repetition — short-circuiting on the first violation. The route calls
- * this identically on the first response and, after a corrective retry, on
- * the retry's response too, so a second bad draft can never slip through
- * unchecked the way the first response's compliance check alone did
- * (issue #364, following on from #363).
+ * the project-identity opener, then repetition/phrase-overlap —
+ * short-circuiting on the first violation. The route calls this identically
+ * on the first response and, after a corrective retry, on the retry's
+ * response too, so a second bad draft can never slip through unchecked the
+ * way the first response's compliance check alone did (issue #364, following
+ * on from #363).
  */
 export function checkDraftCompliance(draft: SocialDraft, input: DraftComplianceCheckInput): DraftAngleComplianceResult {
   const angleResult = checkDraftAngleCompliance(draft.xText, input);
   if (angleResult.violated) return angleResult;
   const factualResult = checkDraftFactualRisk(draft);
   if (factualResult.violated) return factualResult;
-  return checkDraftRepetition(draft, input.bannedPhrases ?? []);
+  if (input.project) {
+    const identityResult = checkDraftIdentityOpener(draft.xText, input.project, input.recentDrafts ?? []);
+    if (identityResult.violated) return identityResult;
+  }
+  return checkDraftRepetition(draft, input.bannedPhrases ?? [], input.recentDrafts ?? []);
 }
