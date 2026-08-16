@@ -12,7 +12,7 @@ import { authoriseSocialStudioRequest } from "@/lib/server/social-studio-entitle
 import {
   buildVoiceProfileRequestBody,
   normaliseVoiceExamples,
-  parseVoiceProfileResponse,
+  parseVoiceProfileResponseDetailed,
 } from "@/lib/server/social-voice-profile-pipeline";
 
 export const runtime = "nodejs";
@@ -135,13 +135,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "The AI returned an invalid response." }, { status: 502, headers: noStoreHeaders(rateHeaders) });
   }
 
-  const voiceProfile = parseVoiceProfileResponse(payload, normalisedExamples.examples.length);
-  if (!voiceProfile) {
+  const parsed = parseVoiceProfileResponseDetailed(payload, normalisedExamples.examples.length);
+  if (!parsed.ok) {
+    console.error("Voice-profile parse failed", parsed);
+    const incomplete = parsed.reason === "empty_output" || parsed.reason === "json_parse_error";
     return NextResponse.json(
-      { error: "The AI returned an invalid voice profile. Try again." },
+      {
+        error: incomplete
+          ? "The AI response was incomplete. Try again."
+          : "The AI response didn't match the expected format. Try again.",
+      },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
 
-  return NextResponse.json({ voiceProfile }, { headers: noStoreHeaders(rateHeaders) });
+  return NextResponse.json({ voiceProfile: parsed.profile }, { headers: noStoreHeaders(rateHeaders) });
 }
