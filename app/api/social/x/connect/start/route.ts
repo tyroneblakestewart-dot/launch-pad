@@ -8,7 +8,7 @@ import {
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import { SocialConnectionsStoreUnavailableError, getSocialConnectionsStore } from "@/lib/server/social-connections-store";
 import { authoriseSocialStudioAction, type AuthoriseSocialStudioActionResult } from "@/lib/server/social-studio-action-auth";
-import { buildXAuthorizeUrl, isXSocialConnectConfigured, requestXOAuthToken } from "@/lib/server/social-x-client";
+import { X_BIO_LINK_HINT, buildXAuthorizeUrl, isXSocialConnectConfigured, requestXOAuthToken } from "@/lib/server/social-x-client";
 
 // Step 1 of Social Studio's X 3-legged OAuth connect flow (issue #335):
 // verify the wallet's signed intent to connect, request a short-lived X
@@ -94,5 +94,5 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ authorizeUrl: buildXAuthorizeUrl(tokenResult.requestToken) }, { status: 200, headers });
+  return NextResponse.json({ authorizeUrl: buildXAuthorizeUrl(tokenResult.requestToken), bioLinkHint: X_BIO_LINK_HINT }, { status: 200, headers });
 }

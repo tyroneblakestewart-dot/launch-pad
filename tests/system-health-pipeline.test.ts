@@ -606,6 +606,44 @@ describe("buildSocialPostingPipeline (issue #335)", () => {
     });
     expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "red" });
     expect(stageById(pipeline, "queue-counts")).toMatchObject({ status: "amber" });
+    expect(stageById(pipeline, "cost-cap")).toMatchObject({ status: "amber" });
+  });
+
+  it("reports this month's X posting spend and the configured cap (issue #342)", async () => {
+    const pipeline = await buildSocialPostingPipeline({
+      databaseUrl: "postgres://test",
+      env: { SOCIAL_X_API_SEND_COST_USD: "0.015", SOCIAL_X_MONTHLY_COST_CAP_USD: "5" },
+      getPool: () => fakePool(),
+      getServiceControl: async () => activeControl({ key: "social-posting" }),
+      getCostStore: () => ({
+        monthlyTotalsAllWallets: async () => [
+          { walletAddress: "0xabc", totalUsd: 0.03, sendCount: 2 },
+          { walletAddress: "0xdef", totalUsd: 5, sendCount: 333 },
+        ],
+      }),
+    });
+    const costCap = stageById(pipeline, "cost-cap");
+    expect(costCap.status).toBe("green");
+    expect(costCap.message).toContain("$0.015/send");
+    expect(costCap.message).toContain("$5.00/wallet/month cap");
+    expect(costCap.message).toContain("335 sends");
+    expect(costCap.message).toContain("2 wallets");
+    expect(costCap.message).toContain("1 at/over cap");
+  });
+
+  it("is red on the cost-cap stage when the cost store throws", async () => {
+    const pipeline = await buildSocialPostingPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      getPool: () => fakePool(),
+      getServiceControl: async () => activeControl({ key: "social-posting" }),
+      getCostStore: () => ({
+        monthlyTotalsAllWallets: async () => {
+          throw new Error("db exploded");
+        },
+      }),
+    });
+    expect(stageById(pipeline, "cost-cap")).toMatchObject({ status: "red" });
   });
 
   it("surfaces isolation state from the shared chat-style isolation stage", async () => {

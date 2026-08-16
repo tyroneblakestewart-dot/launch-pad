@@ -1,3 +1,4 @@
+import { bodyContainsLink } from "@/lib/server/social-link-detection";
 import {
   getSocialConnectionsStore,
   type SocialConnectionsStore,
@@ -8,6 +9,7 @@ import {
   type SocialScheduledPostsStore,
 } from "@/lib/server/social-scheduled-posts-store";
 import { postTweetForUser } from "@/lib/server/social-x-client";
+import { getSocialXCostStore, readXApiSendCostUsd, readXMonthlyCostCapUsd, type SocialXCostStore } from "@/lib/server/social-x-cost-store";
 import { parseArtwork, publishTelegramPost } from "@/lib/server/telegram";
 
 // Shared posting engine for both destinations (issue #335), following the
@@ -22,12 +24,25 @@ import { parseArtwork, publishTelegramPost } from "@/lib/server/telegram";
 // its still-pending destinations keep their long "paused" backoff so they
 // resume automatically the moment the user reconnects, instead of being
 // lost.
+//
+// Cost control (issue #342): X's pay-per-use pricing charges far more for a
+// link-bearing post than a plain one, so an X destination whose body
+// contains a link is NEVER sent through the API — it's routed to
+// needs_composer instead (free X intent-composer handoff, done by the user).
+// Every remaining (link-free) X send is metered: if sending it would push
+// the wallet's running total for the current UTC calendar month past the
+// owner-configured cap, the send is paused (not failed) until next month.
+// Telegram is unaffected by either check — its Bot API is free.
 
 export const MAX_DESTINATION_ATTEMPTS = 5;
 export const RETRY_BACKOFF_BASE_SECONDS = 60;
 export const PAUSED_RETRY_DELAY_SECONDS = 60 * 60;
 export const DUE_DESTINATIONS_BATCH_LIMIT = 25;
 export const CONNECTION_RECONNECT_FAILURE_THRESHOLD = 3;
+export const LINK_POST_COMPOSER_REASON =
+  "This post contains a link — link posts are published from your own X account to control API cost. Tap to post it from the X composer.";
+export const MONTHLY_COST_CAP_REASON =
+  "This wallet's monthly X posting cost cap has been reached — X sends resume next month. Telegram is unaffected.";
 
 export function computeRetryBackoffSeconds(attemptCount: number): number {
   return RETRY_BACKOFF_BASE_SECONDS * 2 ** Math.max(0, attemptCount);
@@ -39,6 +54,8 @@ export type SocialPostingCronResult = {
   sent: number;
   retried: number;
   failed: number;
+  /** X destinations routed to the free composer instead of the paid API because their body contained a link. */
+  routedToComposer: number;
   error: string | null;
 };
 
@@ -47,15 +64,18 @@ export type SocialPostingCronDeps = {
   now?: Date;
   scheduledPostsStore?: SocialScheduledPostsStore;
   connectionsStore?: SocialConnectionsStore;
+  costStore?: SocialXCostStore;
   postTweetForUser?: typeof postTweetForUser;
   publishTelegramPost?: typeof publishTelegramPost;
+  /** Overridable for tests; defaults to the real link detector. */
+  bodyContainsLink?: typeof bodyContainsLink;
 };
 
 function emptyResult(now: Date, overrides: Partial<SocialPostingCronResult> = {}): SocialPostingCronResult {
-  return { ranAt: now.toISOString(), processed: 0, sent: 0, retried: 0, failed: 0, error: null, ...overrides };
+  return { ranAt: now.toISOString(), processed: 0, sent: 0, retried: 0, failed: 0, routedToComposer: 0, error: null, ...overrides };
 }
 
-type Outcome = "sent" | "retried" | "failed";
+type Outcome = "sent" | "retried" | "failed" | "routed_to_composer";
 
 type FailureOptions = {
   /** A confirmed "this connection is broken" signal (revoked token, bot removed as admin, unreadable credentials) — flips the connection to reconnect_needed immediately, on the first occurrence. */
@@ -107,10 +127,17 @@ async function sendOneDestination(
   env: Record<string, string | undefined>,
   scheduledPostsStore: SocialScheduledPostsStore,
   connectionsStore: SocialConnectionsStore,
+  costStore: SocialXCostStore,
   now: Date,
   postTweet: typeof postTweetForUser,
   publishTelegram: typeof publishTelegramPost,
+  linkDetector: typeof bodyContainsLink,
 ): Promise<Outcome> {
+  if (destination.platform === "x" && linkDetector(destination.body)) {
+    await scheduledPostsStore.markDestinationNeedsComposer(destination.destinationId, LINK_POST_COMPOSER_REASON);
+    return "routed_to_composer";
+  }
+
   const connection = await connectionsStore.get(destination.walletAddress, destination.platform);
   if (!connection) {
     return recordFailureAndSchedule(scheduledPostsStore, connectionsStore, destination, "No connection is on file for this destination.", now, {
@@ -153,10 +180,18 @@ async function sendOneDestination(
       });
     }
 
+    const costPerSend = readXApiSendCostUsd(env);
+    const monthlyCap = readXMonthlyCostCapUsd(env);
+    const monthlySoFar = await costStore.monthlyTotalUsd(destination.walletAddress, now);
+    if (monthlySoFar + costPerSend > monthlyCap) {
+      return recordFailureAndSchedule(scheduledPostsStore, connectionsStore, destination, MONTHLY_COST_CAP_REASON, now, { paused: true });
+    }
+
     const result = await postTweet(destination.body, parsed, env);
     if (result.status === "posted") {
       await scheduledPostsStore.markDestinationSent(destination.destinationId, result.xPostId, now);
       await connectionsStore.resetFailures(destination.walletAddress, "x");
+      await costStore.recordSend(destination.walletAddress, destination.destinationId, costPerSend, now);
       return "sent";
     }
     if (result.status === "not_configured") {
@@ -216,20 +251,24 @@ export async function runSocialPostingCron(deps: SocialPostingCronDeps = {}): Pr
   const now = deps.now ?? new Date();
   const scheduledPostsStore = deps.scheduledPostsStore ?? getSocialScheduledPostsStore();
   const connectionsStore = deps.connectionsStore ?? getSocialConnectionsStore();
+  const costStore = deps.costStore ?? getSocialXCostStore();
   const postTweet = deps.postTweetForUser ?? postTweetForUser;
   const publishTelegram = deps.publishTelegramPost ?? publishTelegramPost;
+  const linkDetector = deps.bodyContainsLink ?? bodyContainsLink;
 
   try {
     const due = await scheduledPostsStore.listDueDestinations(now, DUE_DESTINATIONS_BATCH_LIMIT);
     let sent = 0;
     let retried = 0;
     let failed = 0;
+    let routedToComposer = 0;
     const touchedPosts = new Set<string>();
 
     for (const destination of due) {
-      const outcome = await sendOneDestination(destination, env, scheduledPostsStore, connectionsStore, now, postTweet, publishTelegram);
+      const outcome = await sendOneDestination(destination, env, scheduledPostsStore, connectionsStore, costStore, now, postTweet, publishTelegram, linkDetector);
       if (outcome === "sent") sent += 1;
       else if (outcome === "retried") retried += 1;
+      else if (outcome === "routed_to_composer") routedToComposer += 1;
       else failed += 1;
       touchedPosts.add(destination.scheduledPostId);
     }
@@ -238,7 +277,7 @@ export async function runSocialPostingCron(deps: SocialPostingCronDeps = {}): Pr
       await scheduledPostsStore.recomputePostStatus(postId);
     }
 
-    return emptyResult(now, { processed: due.length, sent, retried, failed });
+    return emptyResult(now, { processed: due.length, sent, retried, failed, routedToComposer });
   } catch (error) {
     return emptyResult(now, { error: error instanceof Error ? error.message.slice(0, 500) : "Social posting cron run failed unexpectedly." });
   }

@@ -19,6 +19,16 @@ const X_AUTHORIZE_ENDPOINT = "https://api.twitter.com/oauth/authorize";
 const X_ACCESS_TOKEN_ENDPOINT = "https://api.twitter.com/oauth/access_token";
 const X_VERIFY_CREDENTIALS_ENDPOINT = "https://api.twitter.com/1.1/account/verify_credentials.json";
 
+// Shown once a wallet connects X (issue #342 cost control): scheduled/AI
+// draft text is instructed to never include a link (see
+// social-draft-pipeline.ts) and the posting cron routes any link-bearing
+// post to the free composer instead of the paid API — so the project's link
+// needs a home other than the post body. The X connect UI isn't wired up
+// yet (see the roadmap notes in CLAUDE.md), so this currently only surfaces
+// through the connect-start API response; it's ready for that UI pass.
+export const X_BIO_LINK_HINT =
+  "Add your project link to your X bio now — scheduled and AI-drafted posts intentionally never include a link (it keeps posting free instead of 13x more expensive), so your bio is where people will find it.";
+
 export type XSocialConsumerCredentials = { consumerKey: string; consumerSecret: string };
 
 export function readXSocialConsumerCredentials(
