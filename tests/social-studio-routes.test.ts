@@ -251,7 +251,7 @@ describe("POST /api/social/draft", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("fails open — returns the original (non-compliant) draft — when the corrective retry itself fails", async () => {
+  it("returns a safe error rather than the unsafe original draft when the corrective retry request itself fails (issue #364 — no more failing open)", async () => {
     setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
     const fetchMock = vi
       .fn()
@@ -263,10 +263,37 @@ describe("POST /api/social/draft", () => {
     const response = await postDraft(
       request("/api/social/draft", { walletAddress: WALLET, project: PROJECT, angleIndex: 1 }),
     );
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(502);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    const payload = (await response.json()) as { draft?: { xText: string } };
-    expect(payload.draft?.xText).toBe("Is DOOM really building momentum?");
+    const payload = (await response.json()) as { draft?: unknown; error?: string };
+    expect(payload.draft).toBeUndefined();
+    expect(payload.error).toBeTruthy();
+  });
+
+  it("regression: never returns a retry's draft that still fails safety checks — it is re-checked, not trusted (issue #364, fail-open bug from #363)", async () => {
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
+    // angleIndex 1 = culture-observation, which forbids ending in a question mark.
+    // Both the first draft and the "corrected" retry still violate a check —
+    // the first on angle form, the retry on the new factual-risk check.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(textPayload({ xText: "Is DOOM really building momentum?", telegramText: "A fine telegram post." })),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(textPayload({ xText: "DOOM just hit 10k holders and counting.", telegramText: "A fine telegram post." })),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await postDraft(
+      request("/api/social/draft", { walletAddress: WALLET, project: PROJECT, angleIndex: 1 }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(502);
+    const payload = (await response.json()) as { draft?: unknown; error?: string };
+    // The unsafe retry draft (a fabricated holder count) must never reach the caller.
+    expect(payload.draft).toBeUndefined();
+    expect(JSON.stringify(payload)).not.toContain("10k holders");
+    expect(payload.error).toBeTruthy();
   });
 });
 

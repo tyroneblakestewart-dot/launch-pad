@@ -131,13 +131,40 @@ function resolveAngleIndex(angleIndex: number | undefined): number {
 }
 
 /**
+ * Angles whose instruction asks for a specific fact (a milestone, a holder
+ * detail, a behind-the-scenes note) the model has no grounding for unless a
+ * direction brief was supplied — asking for one anyway is what produced the
+ * invented "10k holders" / "first liquidity pool" claims (issue #364).
+ */
+export const FACT_DEPENDENT_ANGLE_KEYS: readonly string[] = ["milestone", "holder-shoutout", "behind-the-scenes"];
+
+function isFactDependentAngle(angle: DraftAngle): boolean {
+  return FACT_DEPENDENT_ANGLE_KEYS.includes(angle.key);
+}
+
+/**
  * Resolves the angle that applies to this draft request, or null when an
  * explicit theme was supplied — a theme always fully overrides the rotating
  * angle, so no form requirement is emitted at all in that case.
+ *
+ * Without a direction brief, fact-dependent angles are skipped entirely by
+ * scanning forward from the rotated index to the next safe angle — the
+ * rotation still walks every *reachable* angle deterministically, it just
+ * never lands on one the model has nothing real to say for (issue #364).
  */
-export function resolveDraftAngle(theme: string | null | undefined, angleIndex: number | undefined): DraftAngle | null {
+export function resolveDraftAngle(
+  theme: string | null | undefined,
+  angleIndex: number | undefined,
+  hasDirectionBrief: boolean,
+): DraftAngle | null {
   if (theme?.trim()) return null;
-  return DRAFT_ANGLES[resolveAngleIndex(angleIndex)];
+  const start = resolveAngleIndex(angleIndex);
+  if (hasDirectionBrief) return DRAFT_ANGLES[start];
+  for (let offset = 0; offset < DRAFT_ANGLES.length; offset += 1) {
+    const candidate = DRAFT_ANGLES[(start + offset) % DRAFT_ANGLES.length];
+    if (!isFactDependentAngle(candidate)) return candidate;
+  }
+  return DRAFT_ANGLES[start];
 }
 
 /**
@@ -183,10 +210,77 @@ function recentDraftsInstruction(recentDrafts: string[]): string {
 /** Static rules guarding against the formulaic pattern this issue was filed about — same construction, same phrase, hashtags every time. */
 const ANTI_FORMULA_RULES = [
   "Avoid falling into a formula across posts: do not always open with the project name, ticker, or a 'X is not ... it's ...' construction — vary how each post opens.",
+  "Never use the \"isn't just X, it's Y\" / \"not X, it's Y\" construction anywhere in either draft, not only as an opening line.",
   "Vary post length meaningfully rather than always landing near the same length.",
   "Do not reuse the same signature phrase (a specific catchphrase, slogan or metaphor) in consecutive posts.",
   "Do not append hashtags to every post — only include them when they genuinely add value, never as a reflexive sign-off.",
 ].join("\n");
+
+function normaliseForPhraseMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s']/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function wordNgrams(words: string[], n: number): string[] {
+  const grams: string[] = [];
+  for (let index = 0; index + n <= words.length; index += 1) {
+    grams.push(words.slice(index, index + n).join(" "));
+  }
+  return grams;
+}
+
+const REPEATED_PHRASE_MIN_WORDS = 2;
+const REPEATED_PHRASE_MAX_WORDS = 6;
+/** A phrase only counts as "distinctive" (worth banning) if it contains at least one word this long — filters out generic filler like "the doom" or "what s". */
+const REPEATED_PHRASE_MIN_DISTINCTIVE_WORD_LENGTH = 5;
+const MAX_BANNED_PHRASES = 8;
+
+function isDistinctivePhrase(phrase: string): boolean {
+  return phrase.split(" ").some((word) => word.length >= REPEATED_PHRASE_MIN_DISTINCTIVE_WORD_LENGTH);
+}
+
+/**
+ * Distinctive multi-word phrases that recur across 2+ of the recent drafts
+ * already sitting in Ready to review — real output kept reusing phrases
+ * like "bold humor" and "a crew that actually shows up" even though the
+ * existing avoid-context is structural only (issue #364). Flagging the
+ * actual repeated phrases lets the next prompt ban them by name.
+ */
+export function extractRepeatedPhrases(recentDrafts: string[]): string[] {
+  const counts = new Map<string, number>();
+  recentDrafts.forEach((draft) => {
+    const words = normaliseForPhraseMatch(draft).split(" ").filter(Boolean);
+    const seenInThisDraft = new Set<string>();
+    for (let n = REPEATED_PHRASE_MIN_WORDS; n <= REPEATED_PHRASE_MAX_WORDS; n += 1) {
+      wordNgrams(words, n).forEach((phrase) => {
+        if (isDistinctivePhrase(phrase)) seenInThisDraft.add(phrase);
+      });
+    }
+    seenInThisDraft.forEach((phrase) => counts.set(phrase, (counts.get(phrase) ?? 0) + 1));
+  });
+
+  const repeated = Array.from(counts.entries())
+    .filter(([, count]) => count >= 2)
+    .map(([phrase]) => phrase)
+    .sort((a, b) => b.length - a.length);
+
+  const kept: string[] = [];
+  repeated.forEach((phrase) => {
+    if (!kept.some((existing) => existing.includes(phrase))) kept.push(phrase);
+  });
+  return kept.slice(0, MAX_BANNED_PHRASES);
+}
+
+function bannedPhrasesInstruction(phrases: string[]): string {
+  if (phrases.length === 0) return "";
+  return [
+    "These exact phrases already appeared in 2 or more recent posts and must not be reused in any form:",
+    ...phrases.map((phrase, index) => `${index + 1}. "${phrase}"`),
+  ].join("\n");
+}
 
 /** Guard against voice drift: liked lines are secondary reinforcement, capped and ordered, never the primary voice reference (issue #348). */
 function likedLinesInstruction(likedSampleLines: string[]): string {
@@ -220,6 +314,38 @@ function directionBriefInstruction(directionBrief: string | null | undefined): s
   ].join("\n");
 }
 
+/**
+ * Structurally forecloses fact invention (issue #364): real generated
+ * drafts have asserted a holder count and a "first liquidity pool" that
+ * were both false. Rather than discourage invention, this states the
+ * complete set of facts the model actually has — deliberately excluding
+ * token supply, which this route never receives and would itself invite
+ * invention if listed here.
+ */
+function allowedFactsLedgerInstruction(
+  project: DraftProject,
+  chainLabel: string,
+  directionBrief: string | null | undefined,
+): string {
+  const trimmedBrief = directionBrief?.trim();
+  return [
+    "ALLOWED FACTS — this is the complete list of facts you may treat as true. Nothing else about this project is known to you:",
+    `- Project name: ${project.name}`,
+    `- Ticker: ${project.ticker}`,
+    `- Chain: ${chainLabel}`,
+    `- Description: ${project.description || "No description supplied."}`,
+    `- Contract address: ${project.contractAddress || "not yet live."}`,
+    `- Direction brief: ${trimmedBrief || "none supplied."}`,
+    "The description and direction brief above are source material for tone and subject matter only — they are not permission to infer or invent adjacent facts they don't explicitly state.",
+    "Never invent or imply: holder counts, wallet counts, user numbers, prices, percentages, market caps, trading volumes, liquidity events, pool launches, exchange listings, integrations, partnerships, dates, launch events, milestones, or any 'first' claim — unless that exact fact is listed above.",
+    trimmedBrief
+      ? "Every specific factual detail in either draft must be directly supported by the direction brief above or another allowed fact above — do not add specifics they don't state."
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function buildDraftRequestBody(
   input: {
     project: DraftProject;
@@ -244,7 +370,7 @@ export function buildDraftRequestBody(
   );
   const recentDrafts = (input.recentDrafts ?? []).slice(0, MAX_RECENT_DRAFTS_CONTEXT);
   const chain = input.project.chain === "robinhood" ? "Robinhood Chain" : "Solana";
-  const angle = resolveDraftAngle(input.theme, input.angleIndex);
+  const angle = resolveDraftAngle(input.theme, input.angleIndex, Boolean(input.directionBrief?.trim()));
   const themeLine = input.theme?.trim() ? `Theme for this post: ${input.theme.trim()}.` : "";
   const dayLine = input.dayLabel?.trim() ? `This post is scheduled for ${input.dayLabel.trim()}.` : "";
 
@@ -274,7 +400,9 @@ export function buildDraftRequestBody(
               voiceExamplesInstruction(voiceExamples),
               likedLinesInstruction(likedSampleLines),
               directionBriefInstruction(input.directionBrief),
+              allowedFactsLedgerInstruction(input.project, chain, input.directionBrief),
               recentDraftsInstruction(recentDrafts),
+              bannedPhrasesInstruction(extractRepeatedPhrases(recentDrafts)),
               ANTI_FORMULA_RULES,
               input.correctiveFeedback?.trim() ? `IMPORTANT CORRECTION (this is a regenerated attempt): ${input.correctiveFeedback.trim()}` : "",
               "Return only the strict draft JSON object.",
@@ -396,9 +524,9 @@ export type DraftAngleComplianceResult = { violated: false } | { violated: true;
  */
 export function checkDraftAngleCompliance(
   xText: string,
-  input: { theme?: string | null; angleIndex?: number },
+  input: { theme?: string | null; angleIndex?: number; directionBrief?: string | null },
 ): DraftAngleComplianceResult {
-  const angle = resolveDraftAngle(input.theme, input.angleIndex);
+  const angle = resolveDraftAngle(input.theme, input.angleIndex, Boolean(input.directionBrief?.trim()));
   if (!angle) return { violated: false };
 
   const trimmed = xText.trim();
@@ -415,4 +543,126 @@ export function checkDraftAngleCompliance(
     };
   }
   return { violated: false };
+}
+
+/**
+ * Deterministic patterns for claims this endpoint has no data to verify —
+ * a specific holder/wallet count, a dollar figure, a percentage move, or an
+ * event claim (pool live, listed, partnered, "first"). These ban the
+ * *shape* of the claim regardless of whether it happens to be true, since
+ * nothing passed to this route can confirm it either way (issue #364).
+ */
+const HIGH_RISK_CLAIM_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
+  {
+    pattern: /\b\d[\d,]*\.?\d*\s?[kKmM]?\+?\s+(holders?|wallets?|users?|members?|buyers?)\b/,
+    label: "a specific holder/wallet/user count",
+  },
+  {
+    pattern: /\$\s?\d[\d,]*\.?\d*\s?[kKmMbB]?/,
+    label: "a specific dollar figure",
+  },
+  {
+    pattern: /\b\d[\d,]*\.?\d*\s?[kKmMbB]?\s*(market\s?cap|mcap|volume|liquidity)\b/i,
+    label: "a specific market cap/volume/liquidity figure",
+  },
+  {
+    pattern:
+      /\b(up|down|gained?|dropped?|rose|fell|surged|jumped|soared|climbed|increased?|decreased?)\b[^.!?\n]{0,25}\d+(\.\d+)?%|\d+(\.\d+)?%[^.!?\n]{0,25}\b(up|down|gain|drop|increase|decrease)\b/i,
+    label: "a percentage price move",
+  },
+  {
+    pattern: /\bliquidity pool\b[^.!?\n]{0,20}\blive\b|\bpool (?:is|just went) live\b/i,
+    label: "an unverified liquidity/pool launch claim",
+  },
+  {
+    pattern: /\blisted on\b/i,
+    label: "an unverified exchange listing claim",
+  },
+  {
+    pattern: /\bpartnered?\s+with\b/i,
+    label: "an unverified partnership claim",
+  },
+  {
+    pattern: /\bfirst\b[^.!?\n]{0,40}\b(pool|liquidity|listing|launch|mint(?:ed)?)\b/i,
+    label: "an unverified 'first' claim",
+  },
+  {
+    pattern: /\bhit\s+(?:a\s+)?(?:new\s+)?milestone\b/i,
+    label: "an unverified milestone claim",
+  },
+];
+
+/**
+ * Mechanical guard, run after parsing (issue #364): rejects the deterministic
+ * high-risk-claim patterns above in either draft. This is the structural
+ * backstop for the allowed-facts ledger — the ledger tells the model not to
+ * invent, this catches it if it does anyway.
+ */
+export function checkDraftFactualRisk(draft: SocialDraft): DraftAngleComplianceResult {
+  for (const [field, text] of [
+    ["X", draft.xText],
+    ["Telegram", draft.telegramText],
+  ] as const) {
+    for (const { pattern, label } of HIGH_RISK_CLAIM_PATTERNS) {
+      const match = text.match(pattern);
+      if (match) {
+        return {
+          violated: true,
+          feedback: `The previous draft's ${field} post included ${label} ("${match[0].trim()}"), which is not in the allowed facts. Remove it entirely — never invent or imply a fact that wasn't explicitly given.`,
+        };
+      }
+    }
+  }
+  return { violated: false };
+}
+
+const NOT_JUST_CONSTRUCTION_PATTERN = /\b(?:isn't|is not|ain't)\s+just\b[^.!?\n]{0,60}\b(?:it's|it is)\b/i;
+
+/**
+ * Mechanical guard, run after parsing (issue #364): checks the parsed draft
+ * for the banned "isn't just X, it's Y" construction and for reuse of any
+ * phrase already flagged by extractRepeatedPhrases from the recent-drafts
+ * context passed to this request.
+ */
+export function checkDraftRepetition(draft: SocialDraft, bannedPhrases: string[]): DraftAngleComplianceResult {
+  const combined = `${draft.xText} ${draft.telegramText}`;
+  if (NOT_JUST_CONSTRUCTION_PATTERN.test(combined)) {
+    return {
+      violated: true,
+      feedback: 'The previous draft used the banned "isn\'t just X, it\'s Y" construction. Rewrite without that pattern anywhere in either post.',
+    };
+  }
+  const normalisedCombined = normaliseForPhraseMatch(combined);
+  for (const phrase of bannedPhrases) {
+    if (normalisedCombined.includes(phrase)) {
+      return {
+        violated: true,
+        feedback: `The previous draft reused the phrase "${phrase}", which has already appeared in multiple recent posts. Rewrite with different wording.`,
+      };
+    }
+  }
+  return { violated: false };
+}
+
+export type DraftComplianceCheckInput = {
+  theme?: string | null;
+  angleIndex?: number;
+  directionBrief?: string | null;
+  bannedPhrases?: string[];
+};
+
+/**
+ * Runs every mechanical safety check — angle form, then factual risk, then
+ * repetition — short-circuiting on the first violation. The route calls
+ * this identically on the first response and, after a corrective retry, on
+ * the retry's response too, so a second bad draft can never slip through
+ * unchecked the way the first response's compliance check alone did
+ * (issue #364, following on from #363).
+ */
+export function checkDraftCompliance(draft: SocialDraft, input: DraftComplianceCheckInput): DraftAngleComplianceResult {
+  const angleResult = checkDraftAngleCompliance(draft.xText, input);
+  if (angleResult.violated) return angleResult;
+  const factualResult = checkDraftFactualRisk(draft);
+  if (factualResult.violated) return factualResult;
+  return checkDraftRepetition(draft, input.bannedPhrases ?? []);
 }

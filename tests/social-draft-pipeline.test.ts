@@ -2,14 +2,19 @@ import { describe, expect, it } from "vitest";
 import type { OpenAIResponse } from "@/lib/server/generate-site-style";
 import {
   DRAFT_ANGLES,
+  FACT_DEPENDENT_ANGLE_KEYS,
   X_DRAFT_CHARACTER_LIMIT,
   buildDraftRequestBody,
   checkDraftAngleCompliance,
+  checkDraftCompliance,
+  checkDraftFactualRisk,
+  checkDraftRepetition,
+  extractRepeatedPhrases,
   parseDraftResponse,
   parseDraftResponseDetailed,
   type DraftProject,
 } from "@/lib/server/social-draft-pipeline";
-import type { VoiceProfile } from "@/lib/social-studio-types";
+import type { SocialDraft, VoiceProfile } from "@/lib/social-studio-types";
 
 function responseWith(payload: unknown): OpenAIResponse {
   return { output: [{ content: [{ type: "output_text", text: JSON.stringify(payload) }] }] };
@@ -182,10 +187,11 @@ describe("buildDraftRequestBody", () => {
     expect(matches.length).toBe(5);
   });
 
-  it("rotates the fallback angle deterministically across a batch when no theme is given, as a hard developer-prompt requirement (issue #360 cause 2, #362 cause 2)", () => {
+  it("rotates the fallback angle deterministically across a batch when a direction brief is supplied, reaching every angle including fact-dependent ones (issue #360 cause 2, #362 cause 2, #364)", () => {
+    const brief = "Keep everyone posted on this week's progress";
     const seenAngles = new Set<string>();
     for (let angleIndex = 0; angleIndex < DRAFT_ANGLES.length; angleIndex += 1) {
-      const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, angleIndex }, "gpt-5-mini");
+      const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, angleIndex, directionBrief: brief }, "gpt-5-mini");
       const developerText = body.input[0]?.content[0]?.text ?? "";
       const matchingAngle = DRAFT_ANGLES.find((angle) => developerText.includes(angle.instruction) && developerText.includes(angle.constraint));
       expect(matchingAngle).toBeDefined();
@@ -196,9 +202,26 @@ describe("buildDraftRequestBody", () => {
     expect(seenAngles.size).toBe(DRAFT_ANGLES.length);
 
     // Rotation wraps back to the same angle after a full cycle.
-    const first = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, angleIndex: 0 }, "gpt-5-mini");
-    const wrapped = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, angleIndex: DRAFT_ANGLES.length }, "gpt-5-mini");
+    const first = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, angleIndex: 0, directionBrief: brief }, "gpt-5-mini");
+    const wrapped = buildDraftRequestBody(
+      { project: PROJECT, voiceProfile: null, angleIndex: DRAFT_ANGLES.length, directionBrief: brief },
+      "gpt-5-mini",
+    );
     expect(first.input[0]?.content[0]?.text).toEqual(wrapped.input[0]?.content[0]?.text);
+  });
+
+  it("excludes fact-dependent angles (milestone, holder-shoutout, behind-the-scenes) from the rotation entirely when no direction brief is supplied, since the model has nothing real to ground them in (issue #364)", () => {
+    const seenAngles = new Set<string>();
+    for (let angleIndex = 0; angleIndex < DRAFT_ANGLES.length; angleIndex += 1) {
+      const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, angleIndex }, "gpt-5-mini");
+      const developerText = body.input[0]?.content[0]?.text ?? "";
+      const matchingAngle = DRAFT_ANGLES.find((angle) => developerText.includes(angle.instruction) && developerText.includes(angle.constraint));
+      expect(matchingAngle).toBeDefined();
+      expect(FACT_DEPENDENT_ANGLE_KEYS).not.toContain(matchingAngle?.key);
+      seenAngles.add(matchingAngle?.key as string);
+    }
+    // Only the non-fact-dependent angles are ever reachable without a brief.
+    expect(seenAngles.size).toBe(DRAFT_ANGLES.length - FACT_DEPENDENT_ANGLE_KEYS.length);
   });
 
   it("gives every non-question angle a hard constraint forbidding a question mark, and only the community-question angle allows one (issue #362 cause 2)", () => {
@@ -388,5 +411,145 @@ describe("parseDraftResponseDetailed", () => {
     if (result.ok) {
       expect(result.draft.xText).toBe("A fine X post.");
     }
+  });
+});
+
+describe("allowed-facts ledger (issue #364)", () => {
+  it("lists exactly the facts this route receives, and never mentions token supply", () => {
+    const body = buildDraftRequestBody(
+      { project: PROJECT, voiceProfile: null, directionBrief: "Push the community angle" },
+      "gpt-5-mini",
+    );
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("ALLOWED FACTS");
+    expect(developerText).toContain("Project name: Test Coin");
+    expect(developerText).toContain("Ticker: TEST");
+    expect(developerText).toContain("Chain: Solana");
+    expect(developerText).toContain("Description: A community-driven meme token.");
+    expect(developerText).toContain("Direction brief: Push the community angle");
+    // Token supply is not passed to this route — listing it would itself invite invention.
+    expect(developerText.toLowerCase()).not.toContain("supply");
+  });
+
+  it("states that the description and direction brief are source material, not permission to infer facts", () => {
+    const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini");
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("source material for tone and subject matter only");
+    expect(developerText).toContain("not permission to infer or invent");
+  });
+
+  it("explicitly prohibits inventing holder counts, prices, milestones, listings and partnerships", () => {
+    const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini");
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    ["holder counts", "prices", "market caps", "liquidity events", "exchange listings", "partnerships", "milestones", "'first' claim"].forEach(
+      (phrase) => {
+        expect(developerText).toContain(phrase);
+      },
+    );
+  });
+
+  it("requires every factual detail to trace to the brief or an allowed fact only when a brief is supplied", () => {
+    const withBrief = buildDraftRequestBody({ project: PROJECT, voiceProfile: null, directionBrief: "Big week ahead" }, "gpt-5-mini");
+    const withoutBrief = buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini");
+    const withBriefText = withBrief.input[0]?.content[0]?.text ?? "";
+    const withoutBriefText = withoutBrief.input[0]?.content[0]?.text ?? "";
+    expect(withBriefText).toContain("must be directly supported by the direction brief above or another allowed fact");
+    expect(withoutBriefText).not.toContain("must be directly supported by the direction brief above or another allowed fact");
+  });
+});
+
+describe("checkDraftFactualRisk (issue #364)", () => {
+  it("does not flag a clean draft with no risky claims", () => {
+    const draft: SocialDraft = { xText: "DOOM is picking up energy this week.", telegramText: "Come hang out with the DOOM crew." };
+    expect(checkDraftFactualRisk(draft)).toEqual({ violated: false });
+  });
+
+  const cases: Array<[string, SocialDraft]> = [
+    ["a holder count", { xText: "doom just hit a new milestone: 10k holders strong and counting", telegramText: "clean" }],
+    ["a wallet count", { xText: "500 wallets and growing", telegramText: "clean" }],
+    ["a dollar figure", { xText: "clean", telegramText: "we just crossed $2m market cap" }],
+    ["a percentage move", { xText: "DOOM is up 40% today", telegramText: "clean" }],
+    ["a liquidity pool live claim", { xText: "our liquidity pool is finally live", telegramText: "clean" }],
+    ["an exchange listing claim", { xText: "clean", telegramText: "we just got listed on a major exchange" }],
+    ["a partnership claim", { xText: "clean", telegramText: "we just partnered with a huge brand" }],
+    ["a 'first' claim", { xText: "clean", telegramText: "our first liquidity pool minted and live in action" }],
+  ];
+
+  it.each(cases)("flags %s", (_label, draft) => {
+    const result = checkDraftFactualRisk(draft);
+    expect(result.violated).toBe(true);
+  });
+});
+
+describe("extractRepeatedPhrases (issue #364)", () => {
+  it("returns a distinctive phrase that recurs across at least two recent drafts", () => {
+    const drafts = [
+      "the doom crew is bold humor at its finest",
+      "nothing beats bold humor from the doom crew",
+      "a totally different post about something else entirely",
+    ];
+    const phrases = extractRepeatedPhrases(drafts);
+    expect(phrases.some((phrase) => phrase.includes("bold humor"))).toBe(true);
+  });
+
+  it("does not flag a distinctive phrase that appears in only one draft", () => {
+    const drafts = ["a wildly unique phrase appears here", "a totally different sentence with nothing in common"];
+    const phrases = extractRepeatedPhrases(drafts);
+    expect(phrases.some((phrase) => phrase.includes("wildly unique"))).toBe(false);
+  });
+
+  it("returns an empty list for no recent drafts", () => {
+    expect(extractRepeatedPhrases([])).toEqual([]);
+  });
+});
+
+describe("checkDraftRepetition (issue #364)", () => {
+  it("flags the \"isn't just X, it's Y\" construction", () => {
+    const draft: SocialDraft = { xText: "DOOM isn't just a token, it's a movement.", telegramText: "clean" };
+    expect(checkDraftRepetition(draft, []).violated).toBe(true);
+  });
+
+  it("flags the \"not X, it's Y\" variant", () => {
+    const draft: SocialDraft = { xText: "clean", telegramText: "This is not just hype, it's a real community." };
+    expect(checkDraftRepetition(draft, []).violated).toBe(true);
+  });
+
+  it("flags reuse of a phrase already on the banned list", () => {
+    const draft: SocialDraft = { xText: "the doom crew brings bold humor every time", telegramText: "clean" };
+    expect(checkDraftRepetition(draft, ["bold humor"]).violated).toBe(true);
+  });
+
+  it("does not flag a clean draft with no banned phrases", () => {
+    const draft: SocialDraft = { xText: "DOOM keeps building steadily.", telegramText: "Come hang with the crew." };
+    expect(checkDraftRepetition(draft, [])).toEqual({ violated: false });
+  });
+});
+
+describe("checkDraftCompliance (issue #364)", () => {
+  it("runs the angle check first and reports its violation", () => {
+    // angleIndex 1 = culture-observation, which forbids a question mark.
+    const draft: SocialDraft = { xText: "Is DOOM really building momentum?", telegramText: "clean" };
+    const result = checkDraftCompliance(draft, { angleIndex: 1 });
+    expect(result.violated).toBe(true);
+    if (result.violated) expect(result.feedback).toContain("culture-observation");
+  });
+
+  it("runs the factual-risk check when the angle passes", () => {
+    const draft: SocialDraft = { xText: "500 wallets and growing.", telegramText: "clean" };
+    const result = checkDraftCompliance(draft, { angleIndex: 1 });
+    expect(result.violated).toBe(true);
+    if (result.violated) expect(result.feedback).toContain("holder/wallet/user count");
+  });
+
+  it("runs the repetition check when angle and factual risk both pass", () => {
+    const draft: SocialDraft = { xText: "DOOM keeps building steadily, no gimmicks.", telegramText: "clean" };
+    const result = checkDraftCompliance(draft, { angleIndex: 1, bannedPhrases: ["keeps building"] });
+    expect(result.violated).toBe(true);
+    if (result.violated) expect(result.feedback).toContain("keeps building");
+  });
+
+  it("reports no violation when every check passes", () => {
+    const draft: SocialDraft = { xText: "DOOM keeps building steadily.", telegramText: "Come hang with the crew." };
+    expect(checkDraftCompliance(draft, { angleIndex: 1 })).toEqual({ violated: false });
   });
 });
