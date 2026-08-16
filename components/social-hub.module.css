@@ -929,6 +929,47 @@
 }
 .queueThumb { width: 84px; height: 84px; flex: none; border-radius: 12px; object-fit: cover; }
 .queueItemBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.queueItemBody > p { margin: 0; color: #c3c9c4; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+
+/* Queue tab destination toggles and status pills (issue #352). */
+.destinationToggles { display: flex; gap: 8px; flex-wrap: wrap; }
+.destinationToggle,
+.destinationToggleActive {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: #c3c9c4;
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 12px;
+  font-weight: 700;
+}
+.destinationToggle svg,
+.destinationToggleActive svg { width: 13px; height: 13px; fill: currentColor; }
+.destinationToggleActive { color: #071008; background: linear-gradient(180deg, #c6f53e, #a7dd4a); border-color: transparent; }
+
+.statusPill {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: #c3c9c4;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.statusPill svg { width: 12px; height: 12px; fill: currentColor; }
+.statusPill button { margin-left: 4px; padding: 0; border: 0; background: transparent; color: #c6f53e; font-size: 11px; font-weight: 700; text-decoration: underline; }
+.statusPillPending { color: #e8c765; }
+.statusPillNeedsComposer { color: #e8c765; border-color: rgba(232, 199, 101, 0.35); background: rgba(232, 199, 101, 0.08); }
+.statusPillSent { color: #c6f53e; border-color: rgba(198, 245, 62, 0.3); background: rgba(198, 245, 62, 0.08); }
+.statusPillFailed { color: #ef8686; border-color: rgba(239, 134, 134, 0.32); background: rgba(239, 134, 134, 0.08); }
 
 .mascotDrop {
   min-height: 250px;

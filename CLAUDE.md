@@ -411,3 +411,41 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   for the owner to verify directly; today's code never attaches mascot
   images to an X API send regardless (Telegram-only or manual composer
   download), so this doesn't change current behaviour either way.
+- Social Studio Queue tab (issue #352) wires the previously-inert
+  `components/social-hub.tsx` Queue tab to the real backend from #335/#344
+  — the "no UI" gap those PRs deliberately left. Three sections in order:
+  "Ready to review" (the existing local `queue`/IndexedDB pool — edit
+  inline, per-item destination toggles limited to actually-connected
+  platforms via `GET /api/social/connections`, and Approve); "Approved &
+  scheduled" (`GET /api/social/posts` rows with status `scheduled` or
+  `needs_composer`, with Cancel and a `needs_composer` "tap to post" X
+  intent-composer hand-off); and History (`sent`/`partially_sent`/
+  `failed`/`canceled`, with a per-destination outcome and a "Reconnect" tap
+  to Setup when a failure lines up with a `reconnect_needed` connection).
+  Because `POST /api/social/posts` stores one shared `body` per post but
+  `QueueItem` keeps separate `xText`/`telegramText`, approving a draft to
+  both destinations makes one wallet-signed call per selected destination
+  (`lib/social-studio-queue.ts` + inline `approveQueueItem` in
+  `social-hub.tsx`) rather than stretching the single-body schema — no new
+  route needed, matching rule 10. Auto-replenish is client-side only, per
+  the issue's explicit boundary against background generation cost: it
+  fires on Queue-tab open, on window/tab focus while that tab is active,
+  and after an approve or delete, generating exactly the shortfall to a
+  new, per-project, Settings & Rules-configurable `queueTarget` (default
+  5, capped at `MAX_QUEUE_TARGET` = 20 in `lib/social-studio-types.ts`),
+  guarded by an in-flight ref so overlapping triggers never double-generate.
+  `queueTarget` extends the existing `SocialStudioProjectRecord` and rides
+  #350's migrate-on-read normalisation in `lib/social-studio-db.ts`, so
+  pre-#352 saved records default it instead of failing to load. Pure
+  classification/spread/shortfall/clamp logic lives in
+  `lib/social-studio-queue.ts`, unit-tested directly in
+  `tests/social-studio-queue.test.ts` rather than only through the
+  existing source-string assertions in `tests/social-studio-ui.test.ts`.
+  Not verified on a real mobile Safari device this pass (rule 7) — the
+  Ready-to-review card now carries four actions (Approve, the pre-existing
+  quick Post to X / Send to Telegram, and Delete) plus destination toggles
+  and a schedule picker, and that density has only been checked by reading
+  the CSS, not on-device at 390px; flagged for the owner to confirm.
+  Background replenishment (generating drafts while the user is away) is
+  explicitly out of scope, as the issue specifies — a future full-autopilot
+  mode would need to reuse #344's per-wallet monthly X cost cap.

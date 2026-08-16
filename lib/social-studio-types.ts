@@ -37,15 +37,22 @@ export type SampleLineFeedback = {
   updatedAt: string;
 };
 
+/** Mirrors lib/server/social-connections-store.ts's SocialPlatform without importing a server-only module into the client bundle. */
+export type SocialPlatform = "x" | "telegram";
+
 export type QueueItem = {
   id: string;
   xText: string;
   telegramText: string;
   artwork: string | null;
-  source: "setup-ai" | "calendar-ai" | "manual";
+  source: "setup-ai" | "calendar-ai" | "manual" | "auto-replenish";
   dayLabel: string | null;
   createdAt: string;
 };
+
+/** Default and cap for issue #352's "always something loaded" Ready-to-review pool size, user-configurable in Settings & Rules. */
+export const DEFAULT_QUEUE_TARGET = 5;
+export const MAX_QUEUE_TARGET = 20;
 
 export type SocialStudioProjectRecord = {
   voiceProfile: VoiceProfile | null;
@@ -54,6 +61,7 @@ export type SocialStudioProjectRecord = {
   mascotReferenceImage: string | null;
   queue: QueueItem[];
   sampleLineFeedback: SampleLineFeedback[];
+  queueTarget: number;
 };
 
 export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
@@ -63,4 +71,5 @@ export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
   mascotReferenceImage: null,
   queue: [],
   sampleLineFeedback: [],
+  queueTarget: DEFAULT_QUEUE_TARGET,
 };
