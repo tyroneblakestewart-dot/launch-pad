@@ -1,4 +1,5 @@
 import { extractOutputText, type OpenAIResponse } from "@/lib/server/generate-site-style";
+import { MAX_REINFORCEMENT_SAMPLE_LINES } from "@/lib/social-voice-feedback";
 import type { SocialDraft, VoiceProfile } from "@/lib/social-studio-types";
 
 export const X_DRAFT_CHARACTER_LIMIT = 280;
@@ -34,15 +35,27 @@ function voiceInstruction(voiceProfile: VoiceProfile | null): string {
   ].join("\n");
 }
 
+/** Guard against voice drift: liked lines are secondary reinforcement, capped and ordered, never the primary voice reference (issue #348). */
+function likedLinesInstruction(likedSampleLines: string[]): string {
+  if (likedSampleLines.length === 0) return "";
+  return [
+    `The user previously approved these ${likedSampleLines.length} AI-written sample line(s) as sounding authentically like their voice (most recent first, capped at ${MAX_REINFORCEMENT_SAMPLE_LINES}).`,
+    "Treat them as secondary reinforcement only — the taught-voice description above, built from the user's own real posts, is always the primary and authoritative reference.",
+    ...likedSampleLines.map((line, index) => `${index + 1}. ${line}`),
+  ].join("\n");
+}
+
 export function buildDraftRequestBody(
   input: {
     project: DraftProject;
     voiceProfile: VoiceProfile | null;
     dayLabel?: string | null;
     theme?: string | null;
+    likedSampleLines?: string[];
   },
   model: string,
 ) {
+  const likedSampleLines = input.likedSampleLines ?? [];
   const chain = input.project.chain === "robinhood" ? "Robinhood Chain" : "Solana";
   const themeLine = input.theme?.trim()
     ? `Theme for this post: ${input.theme.trim()}.`
@@ -71,8 +84,11 @@ export function buildDraftRequestBody(
               "Never invent price predictions, guaranteed returns or financial advice. Never use the words: guaranteed, financial advice, to the moon, rug, 100x.",
               "Both drafts are shown to the user for review and editing before they choose to post — do not claim they have already been posted.",
               voiceInstruction(input.voiceProfile),
+              likedLinesInstruction(likedSampleLines),
               "Return only the strict draft JSON object.",
-            ].join("\n"),
+            ]
+              .filter(Boolean)
+              .join("\n"),
           },
         ],
       },

@@ -25,6 +25,18 @@ export type SocialDraft = {
   telegramText: string;
 };
 
+/**
+ * Feedback on one AI-written Voice preview sample line — "sounds like me"
+ * vs "not me" (issue #348). This is purely a style-reinforcement signal,
+ * never a publish action: liked lines feed back into future voice-profile
+ * and draft generation as capped, secondary reinforcement examples.
+ */
+export type SampleLineFeedback = {
+  text: string;
+  sentiment: "liked" | "disliked";
+  updatedAt: string;
+};
+
 export type QueueItem = {
   id: string;
   xText: string;
@@ -41,6 +53,7 @@ export type SocialStudioProjectRecord = {
   mascotVisualDNA: MascotVisualDNA | null;
   mascotReferenceImage: string | null;
   queue: QueueItem[];
+  sampleLineFeedback: SampleLineFeedback[];
 };
 
 export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
@@ -49,4 +62,5 @@ export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
   mascotVisualDNA: null,
   mascotReferenceImage: null,
   queue: [],
+  sampleLineFeedback: [],
 };

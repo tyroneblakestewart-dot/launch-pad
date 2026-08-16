@@ -71,6 +71,43 @@ describe("buildVoiceProfileRequestBody", () => {
     const developerText = body.input[0]?.content[0]?.text ?? "";
     expect(developerText).toContain("exactly three");
   });
+
+  it("omits reinforcement material entirely when no liked sample lines are supplied (issue #348)", () => {
+    const body = buildVoiceProfileRequestBody({ name: "Test Coin", ticker: "TEST" }, ["example one", "example two"], "gpt-5-mini");
+    const userText = body.input[1]?.content[0]?.text ?? "";
+    expect(userText).not.toContain("previously approved");
+  });
+
+  it("includes liked sample lines as secondary reinforcement, ordered as given, alongside the pasted examples (issue #348)", () => {
+    const body = buildVoiceProfileRequestBody(
+      { name: "Test Coin", ticker: "TEST" },
+      ["example one", "example two"],
+      "gpt-5-mini",
+      ["most recent liked line", "older liked line"],
+    );
+    const userText = body.input[1]?.content[0]?.text ?? "";
+    expect(userText).toContain("example one");
+    expect(userText).toContain("1. most recent liked line");
+    expect(userText).toContain("2. older liked line");
+    expect(userText.indexOf("most recent liked line")).toBeLessThan(userText.indexOf("older liked line"));
+
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("secondary reinforcement only");
+  });
+
+  it("states in the prompt that pasted examples always take precedence over liked lines, guarding against voice drift", () => {
+    const body = buildVoiceProfileRequestBody(
+      { name: "Test Coin", ticker: "TEST" },
+      ["example one", "example two"],
+      "gpt-5-mini",
+      ["liked line"],
+    );
+    const userText = body.input[1]?.content[0]?.text ?? "";
+    expect(userText).toContain("Treat them as secondary reinforcement only");
+    expect(userText).toContain("always take precedence over these approved lines");
+    // The pasted examples appear before the liked-lines block in the same message.
+    expect(userText.indexOf("Example posts")).toBeLessThan(userText.indexOf("previously approved"));
+  });
 });
 
 describe("parseVoiceProfileResponse", () => {

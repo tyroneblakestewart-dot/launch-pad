@@ -12,10 +12,12 @@ import { getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studi
 import type {
   MascotVisualDNA,
   QueueItem,
+  SampleLineFeedback,
   SocialStudioProjectRecord,
   VoiceProfile,
 } from "@/lib/social-studio-types";
 import { EMPTY_SOCIAL_STUDIO_RECORD } from "@/lib/social-studio-types";
+import { likedReinforcementLines, toggleSampleLineFeedback } from "@/lib/social-voice-feedback";
 import type { TokenProject } from "@/lib/types";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./social-hub.module.css";
@@ -308,6 +310,7 @@ export function SocialHub() {
   const [voiceExamplesText, setVoiceExamplesText] = useState("");
   const [voiceProfile, setVoiceProfile] = useState<VoiceProfile | null>(null);
   const [voiceBusy, setVoiceBusy] = useState(false);
+  const [sampleLineFeedback, setSampleLineFeedback] = useState<SampleLineFeedback[]>([]);
   const [mascotVisualDNA, setMascotVisualDNA] = useState<MascotVisualDNA | null>(null);
   const [mascotReferenceImage, setMascotReferenceImage] = useState<string | null>(null);
   const [mascotBusy, setMascotBusy] = useState(false);
@@ -413,6 +416,7 @@ export function SocialHub() {
         setMascotVisualDNA(null);
         setMascotReferenceImage(null);
         setQueue([]);
+        setSampleLineFeedback([]);
         return;
       }
       const record = await getSocialStudioRecord(selectedProjectId).catch(() => EMPTY_SOCIAL_STUDIO_RECORD);
@@ -422,6 +426,7 @@ export function SocialHub() {
       setMascotVisualDNA(record.mascotVisualDNA);
       setMascotReferenceImage(record.mascotReferenceImage);
       setQueue(record.queue);
+      setSampleLineFeedback(record.sampleLineFeedback);
     }
     void loadRecord();
     return () => {
@@ -439,6 +444,7 @@ export function SocialHub() {
       mascotVisualDNA,
       mascotReferenceImage,
       queue,
+      sampleLineFeedback,
       ...overrides,
     };
   }
@@ -711,6 +717,15 @@ export function SocialHub() {
     };
   }
 
+  /** Toggles "sounds like me" / "not me" on one Voice preview sample line — a style signal only, never a publish action (issue #348). */
+  function toggleSampleLineLike(text: string, sentiment: SampleLineFeedback["sentiment"]) {
+    setSampleLineFeedback((current) => {
+      const next = toggleSampleLineFeedback(current, text, sentiment, new Date().toISOString());
+      persistSocialStudio({ sampleLineFeedback: next });
+      return next;
+    });
+  }
+
   async function buildVoiceProfile() {
     const project = draftProjectPayload();
     if (!project) {
@@ -735,7 +750,12 @@ export function SocialHub() {
       const response = await fetch("/api/social/voice-profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress, project, examples }),
+        body: JSON.stringify({
+          walletAddress,
+          project,
+          examples,
+          likedSampleLines: likedReinforcementLines(sampleLineFeedback),
+        }),
       });
       const payload = (await response.json()) as { voiceProfile?: VoiceProfile; error?: string };
       if (!response.ok || !payload.voiceProfile) {
@@ -782,6 +802,7 @@ export function SocialHub() {
           voiceProfile,
           dayLabel: options.dayLabel ?? null,
           theme: options.theme ?? null,
+          likedSampleLines: likedReinforcementLines(sampleLineFeedback),
         }),
       });
       const payload = (await response.json()) as {
@@ -1327,9 +1348,47 @@ export function SocialHub() {
                           <p className={styles.exampleLabel}>
                             Tone: {voiceProfile.tone} · Vocabulary: {voiceProfile.vocabulary} · Cadence: {voiceProfile.cadence} · Emoji: {voiceProfile.emojiHabits}
                           </p>
-                          {voiceProfile.sampleLines.map((line, index) => (
-                            <p className={styles.limeNote} key={index}>{line}</p>
-                          ))}
+                          {voiceProfile.sampleLines.map((line, index) => {
+                            const feedback = sampleLineFeedback.find((entry) => entry.text === line);
+                            const liked = feedback?.sentiment === "liked";
+                            const disliked = feedback?.sentiment === "disliked";
+                            return (
+                              <div className={styles.sampleLineRow} key={index}>
+                                <p className={styles.limeNote}>{line}</p>
+                                <div className={styles.sampleLineActions}>
+                                  <button
+                                    type="button"
+                                    aria-pressed={liked}
+                                    aria-label={
+                                      liked
+                                        ? "Remove: this sample sounds like me"
+                                        : "Mark this sample: sounds like me, not a request to post it"
+                                    }
+                                    className={liked ? styles.sampleLineButtonLikedActive : styles.sampleLineButton}
+                                    onClick={() => toggleSampleLineLike(line, "liked")}
+                                  >
+                                    👍
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-pressed={disliked}
+                                    aria-label={disliked ? "Remove: this sample doesn't sound like me" : "Mark this sample: doesn't sound like me"}
+                                    className={disliked ? styles.sampleLineButtonDislikedActive : styles.sampleLineButton}
+                                    onClick={() => toggleSampleLineLike(line, "disliked")}
+                                  >
+                                    👎
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {likedReinforcementLines(sampleLineFeedback).length > 0 && (
+                            <p className={styles.exampleLabel}>
+                              {likedReinforcementLines(sampleLineFeedback).length} previously-approved line
+                              {likedReinforcementLines(sampleLineFeedback).length === 1 ? "" : "s"} still reinforce new drafts and voice
+                              updates, alongside your pasted examples.
+                            </p>
+                          )}
                         </div>
                       ) : (
                         <div className={styles.previewEmpty}>

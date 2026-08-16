@@ -1,4 +1,5 @@
 import { extractOutputText, type OpenAIResponse } from "@/lib/server/generate-site-style";
+import { MAX_REINFORCEMENT_SAMPLE_LINES } from "@/lib/social-voice-feedback";
 import type { VoiceProfile } from "@/lib/social-studio-types";
 
 export const MIN_VOICE_EXAMPLES = 2;
@@ -64,7 +65,17 @@ export function buildVoiceProfileRequestBody(
   project: { name: string; ticker: string },
   examples: string[],
   model: string,
+  likedSampleLines: string[] = [],
 ) {
+  const likedLinesBlock =
+    likedSampleLines.length > 0
+      ? [
+          `The user also previously approved these ${likedSampleLines.length} AI-written sample line(s) as sounding authentically like their voice (most recent first, capped at ${MAX_REINFORCEMENT_SAMPLE_LINES}).`,
+          "Treat them as secondary reinforcement only: the pasted example posts above are the primary, authoritative voice reference and always take precedence over these approved lines.",
+          ...likedSampleLines.map((line, index) => `${index + 1}. ${line}`),
+        ].join("\n")
+      : null;
+
   return {
     model,
     store: false,
@@ -85,8 +96,13 @@ export function buildVoiceProfileRequestBody(
               `Then write exactly three brand-new one-line sample posts about the project "${project.name}" ($${project.ticker}) in that exact voice, as a demonstration only — they are previews, not posts that will be published automatically.`,
               "The sampleLines array must contain exactly three entries, no more and no fewer.",
               "Do not copy any example verbatim. Do not invent price predictions, guarantees or financial advice.",
+              likedSampleLines.length > 0
+                ? "If previously-approved sample lines are included below, they are secondary reinforcement only — the pasted example posts are always the primary, authoritative voice reference."
+                : "",
               "Return only the strict voice_profile JSON object.",
-            ].join("\n"),
+            ]
+              .filter(Boolean)
+              .join("\n"),
           },
         ],
       },
@@ -100,7 +116,10 @@ export function buildVoiceProfileRequestBody(
               `Ticker: ${project.ticker}`,
               "Example posts (style reference only):",
               ...examples.map((example, index) => `${index + 1}. ${example}`),
-            ].join("\n"),
+              likedLinesBlock,
+            ]
+              .filter(Boolean)
+              .join("\n"),
           },
         ],
       },

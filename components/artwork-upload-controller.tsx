@@ -4,15 +4,15 @@ import { useEffect } from "react";
 import {
   ARTWORK_COMPRESSION_STEPS,
   fitArtworkDimensions,
+  MAX_ARTWORK_SOURCE_BYTES,
+  MAX_COMPRESSED_ARTWORK_BYTES,
+  TARGET_COMPRESSED_ARTWORK_BYTES,
   type ArtworkCompressionStep,
 } from "@/lib/artwork-compression";
 import styles from "./artwork-upload-controller.module.css";
 
-const EXISTING_UPLOAD_LIMIT = 1_500_000;
-const MAX_SOURCE_BYTES = 20_000_000;
-const TARGET_BYTES = 1_250_000;
 const UPLOAD_HELP =
-  "PNG, JPG, WEBP, GIF or AVIF · up to 20 MB · large files auto-optimised";
+  "PNG, JPG, WEBP, GIF or AVIF · up to 15 MB · large files auto-optimised";
 
 function isArtworkInput(target: EventTarget | null): target is HTMLInputElement {
   return (
@@ -162,11 +162,11 @@ async function optimiseArtwork(file: File): Promise<File> {
       const blob = await encodeArtwork(image, step, type);
       if (!blob) continue;
       if (!smallestBlob || blob.size < smallestBlob.size) smallestBlob = blob;
-      if (blob.size <= TARGET_BYTES) return makeOptimisedFile(file, blob);
+      if (blob.size <= TARGET_COMPRESSED_ARTWORK_BYTES) return makeOptimisedFile(file, blob);
     }
   }
 
-  if (smallestBlob && smallestBlob.size <= EXISTING_UPLOAD_LIMIT) {
+  if (smallestBlob && smallestBlob.size <= MAX_COMPRESSED_ARTWORK_BYTES) {
     return makeOptimisedFile(file, smallestBlob);
   }
 
@@ -206,19 +206,19 @@ export function ArtworkUploadController() {
         return;
       }
 
-      if (file.size > MAX_SOURCE_BYTES) {
+      if (file.size > MAX_ARTWORK_SOURCE_BYTES) {
         event.preventDefault();
         event.stopImmediatePropagation();
         input.value = "";
         setStatus(
-          `That file is ${formatMegabytes(file.size)}. Choose an image below 20 MB.`,
+          `That file is ${formatMegabytes(file.size)}. Choose an image below 15 MB.`,
           "error",
           input,
         );
         return;
       }
 
-      if (file.size <= EXISTING_UPLOAD_LIMIT) {
+      if (file.size <= MAX_COMPRESSED_ARTWORK_BYTES) {
         setStatus(`Uploading ${file.name}…`, "working", input);
         window.setTimeout(() => {
           setStatus(`Artwork loaded · ${formatMegabytes(file.size)}`, "success", input);
@@ -228,8 +228,9 @@ export function ArtworkUploadController() {
 
       event.preventDefault();
       event.stopImmediatePropagation();
+      const largeFileNote = file.size > 8_000_000 ? " — this can take a few seconds for a large photo" : "";
       setStatus(
-        `Optimising ${file.name} (${formatMegabytes(file.size)})…`,
+        `Optimising ${file.name} (${formatMegabytes(file.size)})…${largeFileNote}`,
         "working",
         input,
       );

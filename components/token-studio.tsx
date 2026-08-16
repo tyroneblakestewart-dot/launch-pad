@@ -5,6 +5,7 @@ import {
   REOPEN_GENERATED_SITE_EVENT,
   type PublishableSitePayload,
 } from "@/components/full-website-generator";
+import { MAX_ARTWORK_SOURCE_BYTES } from "@/lib/artwork-compression";
 import { CHAIN_CONFIG, ROBINHOOD_MAINNET } from "@/lib/chains";
 import { FREE_SITE_SECTION_DEFAULTS, type FreeSiteSectionKey } from "@/lib/free-site-sections";
 import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
@@ -381,8 +382,8 @@ export function TokenStudio() {
       setNotice("Please choose an image file.");
       return;
     }
-    if (file.size > 1_500_000) {
-      setNotice("Keep preview artwork below 1.5 MB so local saving remains reliable.");
+    if (file.size > MAX_ARTWORK_SOURCE_BYTES) {
+      setNotice("Keep preview artwork below 15 MB so local saving remains reliable.");
       return;
     }
     const reader = new FileReader();

@@ -4,7 +4,14 @@ import { decodeArtworkDataUrl } from "@/lib/server/public-site-artwork";
 import type { ProjectStatus, SupportedChain } from "@/lib/types";
 
 export const MAX_PUBLISHED_HTML_BYTES = 90_000;
-export const MAX_ARTWORK_REFERENCE_BYTES = 8_100_000;
+// Issue #348: this is the stored, published-facing copy of the same
+// compressed-artwork ceiling documented in lib/server/generate-site-style.ts
+// (MAX_IMAGE_DATA_URL_LENGTH) — raising the 15MB *source* upload limit
+// (lib/artwork-compression.ts) does not raise the compressed output, which
+// stays bounded at ~2,000,023 base64 characters worst case. 9,000,000 keeps
+// generous, round headroom above that measured reality for the final
+// published artifact rather than being multiplied blindly.
+export const MAX_ARTWORK_REFERENCE_BYTES = 9_000_000;
 export const MAX_CONTRACT_ADDRESS_LENGTH = 128;
 
 const CONTRACT_ADDRESS_PATTERN = /^[A-Za-z0-9]+$/;

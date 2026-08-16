@@ -130,6 +130,13 @@ describe("publishable site payload validation", () => {
     expect(normalisePublishableSite({ ...base, chainId: "1" }).valid).toBe(false);
     expect(normalisePublishableSite({ ...base, artworkReference: "data:image/png;base64,AAAA" }).valid).toBe(false);
   });
+
+  it("rejects an artwork reference over the raised MAX_ARTWORK_REFERENCE_BYTES ceiling before ever attempting to decode it (issue #348)", () => {
+    const oversized = `data:image/webp;base64,${"A".repeat(MAX_ARTWORK_REFERENCE_BYTES)}`;
+    const result = normalisePublishableSite({ ...validSitePayload(), artworkReference: oversized });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.reason).toBe("The artwork reference is too large.");
+  });
 });
 
 describe("public publishing migration", () => {
