@@ -7,6 +7,7 @@ import {
   ACCOUNT_WALLET_STORAGE_KEY,
   parseStoredAccountWallet,
 } from "@/lib/account-wallet-state";
+import { TelegramMark, XMark } from "@/components/brand-icons";
 import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
 import { getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
 import {
@@ -300,22 +301,6 @@ function buildTemplate(project: TokenProject, template: TemplateId): string {
 
 function shortAddress(value: string): string {
   return value.length > 14 ? `${value.slice(0, 7)}…${value.slice(-5)}` : value;
-}
-
-function XIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-    </svg>
-  );
-}
-
-function TelegramIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M21.94 4.3 18.9 19.1c-.23 1.02-.84 1.27-1.7.79l-4.7-3.46-2.27 2.18c-.25.25-.46.46-.94.46l.33-4.78 8.7-7.86c.38-.34-.08-.53-.59-.19l-10.75 6.77-4.63-1.45c-1.01-.31-1.03-1 .21-1.49l18.1-6.98c.84-.3 1.57.2 1.28 1.21z" />
-    </svg>
-  );
 }
 
 function ComingSoon({ compact = false }: { compact?: boolean }) {
@@ -1535,7 +1520,7 @@ export function SocialHub() {
                     <div className={styles.twoCols}>
                       <article className={styles.connectionCard}>
                         <div className={styles.connectionCardTop}>
-                          <span className={styles.xIcon}><XIcon /></span>
+                          <span className={styles.xIcon}><XMark /></span>
                           <div>
                             <b>X</b>
                             <span>{xHandle || "Uses the account already signed into X"}</span>
@@ -1548,7 +1533,7 @@ export function SocialHub() {
                       </article>
                       <article className={styles.connectionCard}>
                         <div className={styles.connectionCardTop}>
-                          <span className={styles.telegramIcon}><TelegramIcon /></span>
+                          <span className={styles.telegramIcon}><TelegramMark /></span>
                           <div>
                             <b>Telegram</b>
                             <span>
@@ -1844,7 +1829,7 @@ export function SocialHub() {
 
                         <div className={styles.postActions}>
                           <button type="button" className={styles.xButton} onClick={openXComposer} disabled={!xReady}>
-                            <XIcon /> Approve &amp; open X composer
+                            <XMark /> Approve &amp; open X composer
                           </button>
                           <button
                             type="button"
@@ -1852,7 +1837,7 @@ export function SocialHub() {
                             onClick={postTelegram}
                             disabled={!telegramReady || busy}
                           >
-                            <TelegramIcon /> {busy ? "Publishing…" : "Approve & post to Telegram"}
+                            <TelegramMark /> {busy ? "Publishing…" : "Approve & post to Telegram"}
                           </button>
                         </div>
 
@@ -2130,8 +2115,8 @@ export function SocialHub() {
                         <div className={styles.miniDivider} />
                         <span className={styles.eyebrow}>WHERE IT POSTS</span>
                         <div className={styles.destinationChips}>
-                          <span><XIcon /> X</span>
-                          <span><TelegramIcon /> Telegram</span>
+                          <span><XMark /> X</span>
+                          <span><TelegramMark /> Telegram</span>
                         </div>
                         <p>Posting to Telegram keeps the community talking between announcements.</p>
                         <div className={styles.miniDivider} />
@@ -2219,7 +2204,7 @@ export function SocialHub() {
                                           className={selected ? styles.destinationToggleActive : styles.destinationToggle}
                                           onClick={() => toggleItemDestination(item.id, platform)}
                                         >
-                                          {platform === "x" ? <XIcon /> : <TelegramIcon />} {platformLabel(platform)}
+                                          {platform === "x" ? <XMark /> : <TelegramMark />} {platformLabel(platform)}
                                         </button>
                                       );
                                     })}
@@ -2235,21 +2220,29 @@ export function SocialHub() {
                                     onChange={(event) => setItemScheduledAtValue(item.id, event.target.value)}
                                   />
                                 </label>
-                                <div className={styles.composerActions}>
+                                <div className={styles.queueItemActions}>
                                   <button
                                     type="button"
+                                    className={styles.queueActionApprove}
                                     onClick={() => approveQueueItem(item)}
                                     disabled={approvingItemId === item.id || selectedDestinations.length === 0}
                                   >
                                     {approvingItemId === item.id ? "Approving…" : "Approve"}
                                   </button>
-                                  <button type="button" onClick={() => postQueueItemToX(item)}>
-                                    <XIcon /> Post to X
+                                  <button type="button" className={styles.queueActionSecondary} onClick={() => postQueueItemToX(item)}>
+                                    <XMark /> Post to X
                                   </button>
-                                  <button type="button" onClick={() => sendQueueItemToTelegram(item)} disabled={busy}>
-                                    <TelegramIcon /> Send to Telegram
+                                  <button
+                                    type="button"
+                                    className={styles.queueActionSecondary}
+                                    onClick={() => sendQueueItemToTelegram(item)}
+                                    disabled={busy}
+                                  >
+                                    <TelegramMark /> Send to Telegram
                                   </button>
-                                  <button type="button" onClick={() => removeQueueItem(item.id)}>Delete</button>
+                                  <button type="button" className={styles.queueActionDelete} onClick={() => removeQueueItem(item.id)}>
+                                    Delete
+                                  </button>
                                 </div>
                               </div>
                             </article>
@@ -2292,7 +2285,7 @@ export function SocialHub() {
                                       destination.status === "needs_composer" ? styles.statusPillNeedsComposer : styles.statusPillPending,
                                     ].join(" ")}
                                   >
-                                    {destination.platform === "x" ? <XIcon /> : <TelegramIcon />} {platformLabel(destination.platform)} ·{" "}
+                                    {destination.platform === "x" ? <XMark /> : <TelegramMark />} {platformLabel(destination.platform)} ·{" "}
                                     {destination.status === "needs_composer" ? "Needs composer" : "Pending"}
                                   </span>
                                 ))}
@@ -2300,7 +2293,7 @@ export function SocialHub() {
                               {post.destinations.some((destination) => destination.status === "needs_composer") ? (
                                 <div className={styles.composerActions}>
                                   <button type="button" onClick={() => openComposerForPost(post)}>
-                                    <XIcon /> Link posts publish from your own X account — tap to post
+                                    <XMark /> Link posts publish from your own X account — tap to post
                                   </button>
                                 </div>
                               ) : null}
@@ -2357,7 +2350,7 @@ export function SocialHub() {
                                               : styles.statusPillFailed,
                                         ].join(" ")}
                                       >
-                                        {destination.platform === "x" ? <XIcon /> : <TelegramIcon />} {platformLabel(destination.platform)} ·{" "}
+                                        {destination.platform === "x" ? <XMark /> : <TelegramMark />} {platformLabel(destination.platform)} ·{" "}
                                         {destination.status === "sent"
                                           ? "Sent"
                                           : destination.status === "needs_composer"
