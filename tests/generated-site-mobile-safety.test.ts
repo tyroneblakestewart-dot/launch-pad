@@ -6,6 +6,8 @@ import {
 } from "@/components/full-website-generator";
 import {
   ARTWORK_PLACEHOLDER,
+  isCompleteGeneratedPageHtml,
+  isGeneratedPageRejectedForLayoutOnly,
   prepareGeneratedPageForPreview,
 } from "@/lib/generated-site-page";
 
@@ -20,7 +22,7 @@ function completeGeneratedHtml(): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Mobile generated-site test</title>
 <style>
-*{box-sizing:border-box}body{margin:0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.row{display:flex;gap:16px}img{max-width:100%}@media(max-width:700px){.stats{grid-template-columns:1fr}.row{flex-direction:column}}
+*{box-sizing:border-box}body{margin:0}.stats{display:grid;grid-template-columns:1fr;gap:20px}.row{display:flex;gap:16px}img{max-width:100%}@media(min-width:700px){.stats{grid-template-columns:repeat(3,1fr)}}
 </style>
 </head>
 <body>
@@ -66,32 +68,24 @@ describe("generated-site mobile safety layer", () => {
     expect(css.slice(0, mobileStart)).not.toContain("flex-direction");
   });
 
-  it("stacks generated grids and flex rows into one full-width vertical flow at 640px and below", () => {
+  it("is a targeted seatbelt at 640px and below, never one that dictates flex/grid direction (issue #338 fix 2)", () => {
     const prepared = prepareGeneratedPageForPreview(completeGeneratedHtml(), ARTWORK);
     const css = safetyCss(prepared);
     const mobile = css.slice(css.indexOf("@media (max-width:640px)"));
 
-    expect(mobile).toContain("max-width:100vw!important");
-    expect(mobile).toContain("overflow-x:hidden!important");
-    expect(mobile).toContain("overflow-y:auto!important");
-    expect(mobile).toContain("grid-template-columns:minmax(0,1fr)!important");
-    expect(mobile).toContain("grid-auto-flow:row!important");
-    expect(mobile).toContain("flex-direction:column!important");
-    expect(mobile).toContain("align-items:stretch!important");
-    expect(mobile).toContain("flex:0 1 auto!important");
-    expect(mobile).toContain("grid-area:auto!important");
-  });
+    expect(mobile).toContain("width:100%;max-width:100vw;overflow-x:hidden;overflow-y:auto");
+    expect(mobile).toContain("box-sizing:border-box;min-width:0");
+    expect(mobile).toContain("overflow-wrap:anywhere;word-break:break-word");
 
-  it("makes cards, media, tables and long text fluid without adding any desktop rule", () => {
-    const prepared = prepareGeneratedPageForPreview(completeGeneratedHtml(), ARTWORK);
-    const mobile = safetyCss(prepared).split("@media (max-width:640px)")[1];
-
-    expect(mobile).toContain('[class*="card"]');
-    expect(mobile).toContain('[class*="stat"]');
-    expect(mobile).toContain("img,picture,video,canvas{display:block;max-width:100%!important;height:auto!important}");
-    expect(mobile).toContain("table-layout:fixed!important");
-    expect(mobile).toContain("overflow-wrap:anywhere!important");
-    expect(mobile).toContain("white-space:pre-wrap!important");
+    // The #333 blanket force-stack reset must not come back: real stacking
+    // is the mobile-first generation prompt's and the responsive-baseline
+    // check's job (issue #326, #338 fix 4), not this seatbelt's.
+    expect(mobile).not.toContain("grid-template-columns");
+    expect(mobile).not.toContain("grid-auto-flow");
+    expect(mobile).not.toContain("flex-direction");
+    expect(mobile).not.toContain("flex-wrap");
+    expect(mobile).not.toContain("align-items");
+    expect(css).not.toContain("!important");
   });
 
   it("also repairs existing published sites because the public route uses the same default injection", () => {
@@ -129,7 +123,7 @@ describe("mobile full-screen background tap reporting", () => {
     expect(bridge).toContain("Math.abs(x-startX)>10||Math.abs(y-startY)>10");
   });
 
-  it("reports only a stationary non-interactive background tap", () => {
+  it("reports only a stationary non-interactive background tap, from a narrowed selector of genuinely clickable elements (issue #338 fix 1)", () => {
     const prepared = prepareGeneratedPageForPreview(
       completeGeneratedHtml(),
       ARTWORK,
@@ -138,11 +132,22 @@ describe("mobile full-screen background tap reporting", () => {
     const bridge = tapBridge(prepared);
 
     expect(bridge).toContain("target.closest(interactive)");
-    expect(bridge).toContain("a,area[href],button,input,select,textarea,label,summary,iframe");
-    expect(bridge).toContain("[onclick]");
-    expect(bridge).toContain("[role='button']");
-    expect(bridge).toContain("[role='link']");
-    expect(bridge).toContain("[tabindex]:not([tabindex='-1'])");
+    expect(bridge).toContain(
+      "a[href],button,input,select,textarea,summary,audio[controls],video[controls],[role='button'],[role='link']",
+    );
+    // PR #333 widened this to [tabindex], [onclick], bare label and a long
+    // role list; a generated page wrapping whole sections in a tabindexed or
+    // onclick-bearing container then swallowed the reveal gesture almost
+    // everywhere. None of those belong in the narrowed selector.
+    expect(bridge).not.toContain("[onclick]");
+    expect(bridge).not.toContain("[tabindex]");
+    expect(bridge).not.toContain(",label,");
+    expect(bridge).not.toContain("[role='menuitem']");
+    expect(bridge).not.toContain("[role='option']");
+    expect(bridge).not.toContain("[role='switch']");
+    expect(bridge).not.toContain("[role='checkbox']");
+    expect(bridge).not.toContain("[role='radio']");
+    expect(bridge).not.toContain("[contenteditable]");
     expect(bridge).toContain(
       "var report=!moved&&!startedInteractive&&!isInteractive(target)",
     );
@@ -182,5 +187,81 @@ describe("mobile full-screen background tap reporting", () => {
     expect(source).toContain(
       ".full-generated-page-fullscreen.full-generated-page-controls-visible .full-generated-page-controls",
     );
+  });
+});
+
+// Issue #338 fix 4a tightened the responsive-baseline rule enough that real,
+// already-accepted pre-#326 desktop-first content now fails it. Fix 4b keeps
+// that content rendering (structural/safety checks only, never the strict
+// mobile-first gate) and instead surfaces a visible prompt, so a stricter
+// mechanical check can never silently break an already-published site or
+// crash the studio's reopen flow for an old draft.
+describe("legacy pre-#326 content still renders with a visible prompt instead of throwing (issue #338 fix 4b)", () => {
+  function desktopFirstHtml(): string {
+    const padding = "Legacy desktop-first generated-site content. ".repeat(130);
+    return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Legacy generated-site test</title>
+<style>
+*{box-sizing:border-box}body{margin:0}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}img{max-width:100%}
+</style>
+</head>
+<body>
+<header><nav><a href="#about">About</a><button type="button">Menu</button></nav></header>
+<main>
+<section id="hero"><h1>Legacy generated-site test</h1><img src="${ARTWORK_PLACEHOLDER}" alt="Uploaded artwork"></section>
+<section id="about"><h2>About</h2><p>${padding}</p></section>
+<section id="tokenomics"><h2>Tokenomics</h2><div class="grid"><article>Supply</article><article>Community</article><article>Launch</article></div></section>
+<section id="roadmap"><h2>Roadmap</h2><div class="grid"><article>Start</article><article>Grow</article><article>Ship</article></div></section>
+<section id="how-to-buy"><h2>How to buy</h2><ol><li>Connect</li><li>Choose</li><li>Swap</li></ol></section>
+<section id="community"><h2>Community</h2><button type="button">Join</button></section>
+</main>
+<script>document.body.dataset.ready='true';</script>
+</body>
+</html>`;
+  }
+
+  it("fails the strict acceptance gate but is recognised as a layout-only, otherwise-safe rejection", () => {
+    expect(isCompleteGeneratedPageHtml(desktopFirstHtml())).toBe(false);
+    expect(isGeneratedPageRejectedForLayoutOnly(desktopFirstHtml())).toBe(true);
+  });
+
+  it("prepareGeneratedPageForPreview renders it instead of throwing", () => {
+    expect(() => prepareGeneratedPageForPreview(desktopFirstHtml(), ARTWORK)).not.toThrow();
+  });
+
+  it("still throws for genuinely incomplete or unsafe HTML, not just anything that fails the strict gate", () => {
+    expect(() => prepareGeneratedPageForPreview("<html></html>", ARTWORK)).toThrow(
+      "The generated website document is incomplete.",
+    );
+  });
+
+  it("the studio renders a visible regenerate-for-mobile prompt around the same rejection signal", () => {
+    const source = readFileSync(
+      path.join(process.cwd(), "components", "full-website-generator.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      'import { isGeneratedPageRejectedForLayoutOnly, prepareGeneratedPageForPreview } from "@/lib/generated-site-page";',
+    );
+    expect(source).toContain("const needsMobileRegeneration = isGeneratedPageRejectedForLayoutOnly(html);");
+    expect(source).toContain("full-generated-page-mobile-warning");
+    expect(source).toContain("if (mobileRegenerateWarning) controls.append(mobileRegenerateWarning);");
+  });
+
+  it("the served /[slug] route and the studio preview both render on the structural/safety check alone, not the strict mobile-first gate", () => {
+    const pageSource = readFileSync(
+      path.join(process.cwd(), "app", "[slug]", "page.tsx"),
+      "utf8",
+    );
+
+    expect(pageSource).toContain(
+      "const hasGeneratedHtml = isStructurallyCompleteGeneratedPageHtml(site.generatedSiteHtml);",
+    );
+    expect(pageSource).not.toContain("isCompleteGeneratedPageHtml(site.generatedSiteHtml)");
   });
 });

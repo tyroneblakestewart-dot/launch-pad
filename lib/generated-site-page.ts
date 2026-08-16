@@ -73,33 +73,23 @@ const RESPONSIVE_UNIT_PATTERN =
 // 390px viewport.
 const FIXED_WIDE_WIDTH_PATTERN = /(?<![\w-])width\s*:\s*(\d{3,5})px/gi;
 const MIN_OVERFLOW_RISK_WIDTH_PX = 480;
-// A grid with three or more explicit fixed/fractional tracks outside any
-// media query is the clearest, most common way a generated page lays out
-// side-by-side columns that are never told to stack — the "desktop layout
-// squished onto the phone" failure mode from issue #323. The threshold
-// starts at three, not two, because an always-active two-up grid (e.g. a
-// stat-pair row) is a common, legitimate mobile-safe pattern already shipped
-// in the free-site template's own tokenomics variants
-// (docs/free-site-template-source.html); flagging it would reject known-good
-// output. Issue #325 extended this beyond `repeat(N, ...)` (the only shape
-// the original pattern matched) to explicit track lists
-// (`grid-template-columns: 96px 1fr 1fr`) and to a two-track grid where
-// either track is a fixed pixel value wide enough that it alone cannot fit a
-// 390px viewport — see isUnstackedGridDeclaration below. `repeat(auto-fit,
-// ...)` and `repeat(auto-fill, ...)` stay excluded because those are
-// inherently responsive: the browser recomputes the track count from
-// available width.
+// Issue #338 fix 4a: any grid with two or more explicit fixed/fractional
+// tracks outside any media query is now rejected outright, full stop — this
+// supersedes the #325/#326 heuristic, which allowed an always-active two-up
+// grid (on the theory that a stat-pair row is a common, safe pattern) and
+// which treated a `max-width` breakpoint that later stacked the grid as
+// sufficient. Both of those loopholes let a fundamentally desktop-first page
+// pass: "wide by default, narrowed by a phone-only override" is exactly the
+// clamped-not-designed pattern the owner flagged (issue #338) — a genuinely
+// mobile-first page never needs a `max-width` query to fix its base layout,
+// because the base layout is already the mobile one. Multi-column layout may
+// now only appear inside a `min-width` media query. `repeat(auto-fit, ...)`
+// and `repeat(auto-fill, ...)` stay excluded because those are inherently
+// responsive: the browser recomputes the track count from available width,
+// so they never need a breakpoint to begin with.
 const GRID_TEMPLATE_COLUMNS_VALUE_PATTERN = /grid-template-columns\s*:\s*([^;{}]+)/gi;
-const GRID_TEMPLATE_COLUMNS_DECLARATION_PATTERN = /grid-template-columns\s*:/i;
-const MAX_WIDTH_MEDIA_CONDITION_PATTERN = /max-width\s*:\s*\d+(?:\.\d+)?px/i;
 const AUTO_FIT_OR_FILL_REPEAT_PATTERN = /repeat\(\s*(?:auto-fit|auto-fill)/i;
 const LITERAL_REPEAT_TRACK_PATTERN = /^repeat\(\s*(\d+)\s*,\s*([\s\S]+)\)$/i;
-const FIXED_PX_TRACK_PATTERN = /^(\d+(?:\.\d+)?)px$/i;
-// A single fixed-pixel grid track this wide cannot fit next to any other
-// content inside a 390px viewport, even paired with just one other track —
-// the "two-track grids where a track is a wide fixed px value" pattern from
-// issue #325.
-const MIN_FIXED_GRID_TRACK_WIDTH_PX = 200;
 // Caps how many times a literal `repeat(N, ...)` is expanded into individual
 // tracks, purely to keep the check O(1) against a pathological huge N; no
 // real layout declares more tracks than this.
@@ -145,36 +135,26 @@ function expandGridTracks(value: string): string[] {
   return tracks;
 }
 
-function isUnstackedGridDeclaration(rawValue: string): boolean {
+function isMultiColumnGridDeclaration(rawValue: string): boolean {
   const value = rawValue.trim();
   if (!value || AUTO_FIT_OR_FILL_REPEAT_PATTERN.test(value)) return false;
-  const tracks = expandGridTracks(value);
-  if (tracks.length >= 3) return true;
-  if (tracks.length === 2) {
-    return tracks.some((track) => {
-      const match = track.match(FIXED_PX_TRACK_PATTERN);
-      return Boolean(match) && Number(match![1]) >= MIN_FIXED_GRID_TRACK_WIDTH_PX;
-    });
-  }
-  return false;
+  return expandGridTracks(value).length >= 2;
 }
 
-// A row of content laid out with `display: flex` that can never wrap and is
-// never told to switch to a column on a mobile breakpoint is the flexbox
-// equivalent of the unstacked-grid pattern above — issue #325's "icon |
-// heading | paragraph" card rows clipped at the phone's edge. Detecting this
-// precisely needs a real CSS parser (matching a `display: flex` declaration
-// to how many, and how wide, its actual children are); the intentionally
-// narrow, low-false-positive proxy used here requires the rule to also
-// declare `flex-wrap: nowrap` explicitly. Plain everyday flex chrome (nav
-// bars, button rows, icon+label pairs, key/value rows like the free-site
-// ledger tokenomics variant) never states `nowrap` — it's already the
-// default — so only a deliberate "never let this row wrap" declaration, the
-// shape an always-active multi-card flex row actually takes, trips this
-// check.
+// A row of content laid out with `display: flex` that can never wrap is the
+// flexbox equivalent of the unstacked-grid pattern above — issue #325's
+// "icon | heading | paragraph" card rows clipped at the phone's edge.
+// Detecting this precisely needs a real CSS parser (matching a
+// `display: flex` declaration to how many, and how wide, its actual children
+// are); the intentionally narrow, low-false-positive proxy used here
+// requires the rule to also declare `flex-wrap: nowrap` explicitly. Plain
+// everyday flex chrome (nav bars, button rows, icon+label pairs, key/value
+// rows like the free-site ledger tokenomics variant) never states `nowrap`
+// — it's already the default — so only a deliberate "never let this row
+// wrap" declaration, the shape an always-active multi-card flex row actually
+// takes, trips this check.
 const FLEX_DISPLAY_PATTERN = /display\s*:\s*flex\b/i;
 const FLEX_WRAP_NOWRAP_PATTERN = /flex-wrap\s*:\s*nowrap\b/i;
-const FLEX_WRAP_WRAP_PATTERN = /flex-wrap\s*:\s*wrap\b/i;
 const FLEX_DIRECTION_COLUMN_PATTERN = /flex-direction\s*:\s*column\b/i;
 
 // Returns the `{ ... }` body of every top-level CSS rule in `css`. Callers
@@ -227,86 +207,41 @@ function stripMediaQueryBlocks(css: string): string {
   return result;
 }
 
-// Splits CSS into its top-level `@media (...) { ... }` blocks, each as its
-// raw condition text plus its body, so a caller can check whether a
-// mobile-range breakpoint actually touches a given property — unlike
-// `stripMediaQueryBlocks`, which only needs to discard that content.
-function extractMediaBlocks(css: string): { condition: string; body: string }[] {
-  const blocks: { condition: string; body: string }[] = [];
-  let index = 0;
-  while (index < css.length) {
-    const mediaIndex = css.indexOf("@media", index);
-    if (mediaIndex === -1) break;
-    const braceStart = css.indexOf("{", mediaIndex);
-    if (braceStart === -1) break;
-    const condition = css.slice(mediaIndex + "@media".length, braceStart);
-    let depth = 1;
-    let cursor = braceStart + 1;
-    while (cursor < css.length && depth > 0) {
-      if (css[cursor] === "{") depth++;
-      else if (css[cursor] === "}") depth--;
-      cursor++;
-    }
-    blocks.push({ condition, body: css.slice(braceStart + 1, cursor - 1) });
-    index = cursor;
-  }
-  return blocks;
-}
-
-// Layer 2b of the responsiveness contract (issue #323, extended by #325): a
-// page can pass the media-query/fixed-width checks above and still be the
-// exact "desktop squished onto the phone" bug the owner reported — an
-// always-active multi-column grid with no breakpoint that ever collapses it.
-// This does not try to prove the breakpoint targets the *same* grid selector
-// (that needs a real CSS parser); it only requires that some max-width
-// breakpoint touches `grid-template-columns` at all, which the
-// mechanical-baseline philosophy in docs/responsive-qa.md accepts as a
-// reasonable proxy.
+// Layer 2b of the responsiveness contract (issue #323, extended by #325,
+// tightened by #338 fix 4a): a page can pass the media-query/fixed-width
+// checks above and still be the exact "desktop squished onto the phone" bug
+// the owner reported — an always-active multi-column grid. Unlike the
+// pre-#338 version, this does not look for a stacking breakpoint at all: a
+// multi-column declaration outside a media query is rejected regardless of
+// whether something later narrows it, because that "wide by default,
+// narrowed for phones" shape is itself desktop-first.
 function hasUnstackedMultiColumnGrid(html: string): boolean {
   const styleCss = extractStyleBlocksCss(html);
   const alwaysActiveCss = stripMediaQueryBlocks(styleCss);
 
   GRID_TEMPLATE_COLUMNS_VALUE_PATTERN.lastIndex = 0;
   let declarationMatch: RegExpExecArray | null;
-  let hasUnstackedDeclaration = false;
   while ((declarationMatch = GRID_TEMPLATE_COLUMNS_VALUE_PATTERN.exec(alwaysActiveCss))) {
-    if (isUnstackedGridDeclaration(declarationMatch[1])) {
-      hasUnstackedDeclaration = true;
-      break;
-    }
+    if (isMultiColumnGridDeclaration(declarationMatch[1])) return true;
   }
-  if (!hasUnstackedDeclaration) return false;
-
-  const hasMobileStackingBreakpoint = extractMediaBlocks(styleCss).some(
-    (block) =>
-      MAX_WIDTH_MEDIA_CONDITION_PATTERN.test(block.condition) &&
-      GRID_TEMPLATE_COLUMNS_DECLARATION_PATTERN.test(block.body),
-  );
-  return !hasMobileStackingBreakpoint;
+  return false;
 }
 
 // Issue #325's flexbox counterpart to hasUnstackedMultiColumnGrid above —
 // see the FLEX_DISPLAY_PATTERN comment for why the trigger is deliberately
 // narrow (an explicit `flex-wrap: nowrap`, not merely the absence of
-// `flex-wrap: wrap`).
+// `flex-wrap: wrap`). Tightened the same way by #338 fix 4a: no stacking-
+// breakpoint escape hatch.
 function hasUnstackedFlexRow(html: string): boolean {
   const styleCss = extractStyleBlocksCss(html);
   const alwaysActiveCss = stripMediaQueryBlocks(styleCss);
 
-  const hasUnstackedFlexBody = extractTopLevelRuleBodies(alwaysActiveCss).some(
+  return extractTopLevelRuleBodies(alwaysActiveCss).some(
     (body) =>
       FLEX_DISPLAY_PATTERN.test(body) &&
       FLEX_WRAP_NOWRAP_PATTERN.test(body) &&
       !FLEX_DIRECTION_COLUMN_PATTERN.test(body),
   );
-  if (!hasUnstackedFlexBody) return false;
-
-  const hasMobileStackingBreakpoint = extractMediaBlocks(styleCss).some(
-    (block) =>
-      MAX_WIDTH_MEDIA_CONDITION_PATTERN.test(block.condition) &&
-      (FLEX_DIRECTION_COLUMN_PATTERN.test(block.body) || FLEX_WRAP_WRAP_PATTERN.test(block.body)),
-  );
-  return !hasMobileStackingBreakpoint;
 }
 
 function hasResponsiveBaseline(html: string): boolean {
@@ -349,13 +284,28 @@ function hasRetailMarketplacePresentation(html: string): boolean {
 }
 
 // Everything isCompleteGeneratedPageHtml checks except the responsive
-// baseline, factored out so a caller (the one-retry-on-layout-rejection flow
-// in lib/site-page-openai-pipeline.ts) can tell "this page is otherwise
-// complete and safe, it only failed the layout check" apart from every other
-// rejection reason, without duplicating the whole gate.
-function isStructurallyCompleteGeneratedPageHtml(
+// baseline. Originally factored out only so a caller (the
+// one-retry-on-layout-rejection flow in lib/site-page-openai-pipeline.ts)
+// could tell "this page is otherwise complete and safe, it only failed the
+// layout check" apart from every other rejection reason.
+//
+// Issue #338 fix 4b: also exported directly for *display* of already-stored
+// content (prepareGeneratedPageForPreview, app/[slug]/page.tsx), which must
+// stay deliberately looser than *acceptance* of new content
+// (isCompleteGeneratedPageHtml, used by the generation/publish routes). Fix
+// 4a tightened the responsive-baseline rule enough that plenty of real,
+// already-accepted pre-#326 content now fails it — gating rendering on the
+// same strict check would silently break already-published sites and crash
+// the studio's reopen flow for old drafts the moment this check tightened.
+// Those surfaces render on the structural/safety checks alone (this
+// function) and lean on the seatbelt CSS clamp (issue #338 fix 2) plus, in
+// the studio, a visible "Regenerate for mobile" prompt driven by
+// isGeneratedPageRejectedForLayoutOnly below — never a silent full-page
+// failure. New content (freshly generated or freshly (re)published) still
+// goes through the strict isCompleteGeneratedPageHtml gate below.
+export function isStructurallyCompleteGeneratedPageHtml(
   value: unknown,
-  acceptance: GeneratedPageAcceptanceProfile,
+  acceptance: GeneratedPageAcceptanceProfile = {},
 ): value is string {
   if (typeof value !== "string") return false;
   const html = value.trim();
@@ -466,39 +416,44 @@ function escapeForHtmlAttribute(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
+// Issue #338 fix 1: PR #333 widened this to `[tabindex]`, `[onclick]`, bare
+// `label` and a long role list, on the theory that any focusable/interactive-
+// looking element should keep the tap. In practice a generated page that
+// wraps whole sections in a tabindexed or onclick-bearing container (common
+// in AI output aiming for "accessible" markup) made those wide selectors
+// match huge swaths of the page, so the reveal gesture got eaten almost
+// everywhere. Narrowed back to things that are genuinely clickable on their
+// own — a tap elsewhere (including on a `<label>` or a tabindexed div) now
+// reveals the controls instead of being silently absorbed.
 const GENERATED_PAGE_INTERACTIVE_TAP_SELECTOR = [
-  "a",
-  "area[href]",
+  "a[href]",
   "button",
   "input",
   "select",
   "textarea",
-  "label",
   "summary",
-  "iframe",
   "audio[controls]",
   "video[controls]",
-  "[onclick]",
-  "[contenteditable]:not([contenteditable='false'])",
   "[role='button']",
   "[role='link']",
-  "[role='menuitem']",
-  "[role='option']",
-  "[role='switch']",
-  "[role='checkbox']",
-  "[role='radio']",
-  "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
-// Shared by the studio iframe and the durably served /[slug] iframe. The
-// existing desktop overflow clamp remains unchanged. The new declarations
-// are strictly inside the <=640px media query, where generated layout
-// containers are forced into one vertical track and their direct children
-// lose fixed flex/grid placement that could otherwise sit beyond 390px.
-// Every declaration that must beat generated CSS is !important because this
-// safety style is injected near the start of <head>, before the page's own
-// authored styles.
-const GENERATED_SITE_SAFETY_RESET = `<style>html,body{max-width:100%;overflow-x:hidden}img,video,table,pre{max-width:100%}@media (max-width:640px){html,body{width:100%!important;max-width:100vw!important;overflow-x:hidden!important;overflow-y:auto!important}*,*::before,*::after{box-sizing:border-box!important;min-width:0!important}body :where(main,header,footer,nav,section,article,aside,div,ul,ol,dl,form){width:100%!important;max-width:100%!important;overflow-x:hidden!important;grid-template-columns:minmax(0,1fr)!important;grid-auto-flow:row!important;flex-direction:column!important;flex-wrap:nowrap!important;align-items:stretch!important}body :where(main,header,footer,nav,section,article,aside,div,ul,ol,dl,form)>:not(script):not(style):not(link):not(meta){width:100%!important;min-width:0!important;max-width:100%!important;flex:0 1 auto!important;grid-area:auto!important}body :where(article,li,figure,[class*="card"],[class*="stat"],[class*="tile"],[class*="panel"]){width:100%!important;max-width:100%!important}img,picture,video,canvas{display:block;max-width:100%!important;height:auto!important}svg,iframe{max-width:100%!important}table{width:100%!important;max-width:100%!important;table-layout:fixed!important}th,td,pre,code{overflow-wrap:anywhere!important;word-break:break-word!important}pre,code{max-width:100%!important;white-space:pre-wrap!important}}</style>`;
+// Shared by the studio iframe and the durably served /[slug] iframe.
+//
+// Issue #338 fix 2: PR #333 turned the small #324 overflow clamp into a
+// blanket <=640px `!important` reset that force-stacked every structural
+// container (`flex-direction:column!important`,
+// `grid-template-columns:minmax(0,1fr)!important` on every div/nav/section/
+// ul/etc). That made any desktop-first page *look* stacked on a phone,
+// which hid whether the generator had actually produced mobile-first CSS —
+// and it also flattened legitimate side-by-side mobile design (button
+// pairs, nav rows) on every page, including correctly designed published
+// sites. Real stacking is the job of the mobile-first generation prompt and
+// the `hasResponsiveBaseline` mechanical check above (see issue #326 and
+// #338 fix 4); this stays a rarely-needed seatbelt that only clamps overall
+// width/overflow, box-sizing and long-text wrapping — it never dictates
+// flex/grid direction.
+const GENERATED_SITE_SAFETY_RESET = `<style>html,body{max-width:100%;overflow-x:hidden}img,video,table,pre{max-width:100%}@media (max-width:640px){html,body{width:100%;max-width:100vw;overflow-x:hidden;overflow-y:auto}*,*::before,*::after{box-sizing:border-box;min-width:0}th,td,pre,code{overflow-wrap:anywhere;word-break:break-word}}</style>`;
 
 export type PrepareGeneratedPageForPreviewOptions = {
   // Issue #327 problem 3: the studio's mobile full-screen preview needs to
@@ -516,7 +471,12 @@ export function prepareGeneratedPageForPreview(
   artworkDataUrl: string,
   options: PrepareGeneratedPageForPreviewOptions = {},
 ): string {
-  if (!isCompleteGeneratedPageHtml(html)) {
+  // Structural/safety only (issue #338 fix 4b) — not the strict
+  // isCompleteGeneratedPageHtml gate, so an already-accepted pre-#326
+  // desktop-first page still renders here instead of throwing the moment
+  // fix 4a's stricter responsive-baseline rule shipped. See the comment on
+  // isStructurallyCompleteGeneratedPageHtml above.
+  if (!isStructurallyCompleteGeneratedPageHtml(html)) {
     throw new Error("The generated website document is incomplete.");
   }
   if (!artworkDataUrl.startsWith("data:image/")) {

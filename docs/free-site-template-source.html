@@ -242,7 +242,12 @@ body[data-bg="particles"] .fx-particles { display: block; }
 .prompt b { color: var(--primary); font-weight: 600; }
 .prompt em { color: var(--secondary); font-style: normal; }
 
-.stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 20px; }
+/* Issue #338 fix 4c: this was an always-active two-up grid (safe under the
+   old #325/#326 heuristic, but a violation of the stricter #338 rule that a
+   multi-column row may only appear inside a min-width media query). Base is
+   now a single column; the two-up layout only switches on at 480px. */
+.stat-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 20px; }
+@media (min-width: 480px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 768px) { .stat-grid { grid-template-columns: repeat(3, 1fr); } }
 .stat { border: 1px solid var(--border); border-radius: 10px; padding: 16px; background: color-mix(in oklab, var(--background) 60%, transparent); }
 .stat-k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .15em; }
@@ -355,7 +360,10 @@ body[data-tokenomics="grid"] .terminal { background: transparent; border: 0; box
 body[data-tokenomics="grid"] .terminal-chrome { display: none; }
 body[data-tokenomics="grid"] .terminal-body { padding: 0; font-family: var(--font-body); }
 body[data-tokenomics="grid"] .terminal-body > .prompt { display: none; }
-body[data-tokenomics="grid"] .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 0; }
+/* Issue #338 fix 4c: same fix as the base .stat-grid rule above — single
+   column at base, two-up only from 480px. */
+body[data-tokenomics="grid"] .stat-grid { grid-template-columns: 1fr; gap: 20px; margin-top: 0; }
+@media (min-width: 480px) { body[data-tokenomics="grid"] .stat-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 768px) { body[data-tokenomics="grid"] .stat-grid { grid-template-columns: repeat(3, 1fr); gap: 24px; } }
 body[data-tokenomics="grid"] .stat { padding: 40px 28px; border-radius: 20px; background: var(--surface); border: 1px solid var(--border); text-align: left; }
 body[data-tokenomics="grid"] .stat-k { font-size: 12px; }

@@ -17,20 +17,33 @@ document extends.
   that is missing the viewport meta tag, that has zero CSS media queries and
   zero responsive units (so it made no attempt at a responsive layout), that
   hardcodes a wide fixed-pixel container outside any breakpoint (the
-  clearest way a page overflows a 390px viewport), or that declares an
-  always-active three-or-more-column CSS grid with no max-width breakpoint
-  that ever stacks it — the "desktop layout squished onto the phone" bug
-  (issue #323). This runs on every generated page before it can be
+  clearest way a page overflows a 390px viewport), or that declares a
+  multi-column CSS grid or an unstacked (`flex-wrap: nowrap`) flex row
+  outside any `min-width` media query at all — the "desktop layout squished
+  onto the phone" bug (issue #323, tightened by issue #338 to a strict
+  mobile-first rule: side-by-side layout may only ever appear inside a
+  `min-width` breakpoint, never at the base, no matter what stacks it
+  later). This is the shared acceptance gate for both the bespoke AI
+  pipeline and the free-site template, and runs before either can be
   published — see `tests/generated-site-page.test.ts`'s "responsive
   baseline" suite. When a bespoke AI page is rejected for this reason alone,
   the generation route (`app/api/generate-site-page/route.ts`) retries once
   automatically with corrective feedback before failing.
 - `prepareGeneratedPageForPreview` also injects a code-enforced overflow
   clamp (`html,body{max-width:100%;overflow-x:hidden}` plus
-  `img,video,table,pre{max-width:100%}`) into every prepared page, and the
-  served `/[slug]` route's own page shell (`app/[slug]/public-site-reset.css`)
-  carries the same clamp — a safety net that holds even if some generated
-  markup slips past the mechanical baseline above.
+  `img,video,table,pre{max-width:100%}`, plus a `min-width:0`/box-sizing/
+  overflow-wrap layer at ≤640px — see issue #338 fix 2) into every prepared
+  page, and the served `/[slug]` route's own page shell
+  (`app/[slug]/public-site-reset.css`) carries the same clamp — a rarely-
+  needed safety net, not something that dictates flex/grid direction, that
+  holds even if some generated markup slips past the mechanical baseline
+  above. Because that baseline tightened after issue #326, rendering
+  already-stored content (this function, and `app/[slug]/page.tsx`) checks
+  only structural/safety completeness
+  (`isStructurallyCompleteGeneratedPageHtml`), not the strict mobile-first
+  gate — a pre-#326 page still renders behind the clamp, and the studio
+  shows a "Regenerate for mobile" prompt on reopen instead of silently
+  relying on it.
 
 This is a mechanical baseline, not a design review: a page can pass it and
 still look bad at some width (cramped spacing, an awkward line break, a
