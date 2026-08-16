@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkClientErrorsHealth,
   checkContractsHealth,
   checkDatabaseHealth,
   checkDeploymentHealth,
@@ -273,8 +274,37 @@ describe("checkSocialPostingHealth", () => {
   });
 });
 
+describe("checkClientErrorsHealth", () => {
+  it("is green when there are no new error groups in the last 24 hours", async () => {
+    const result = await checkClientErrorsHealth({ ping: async () => ({ newGroupCount: 0 }) });
+    expect(result).toMatchObject({ id: "client-errors", status: "green" });
+  });
+
+  it("is amber when 1-2 new error groups appeared in the last 24 hours", async () => {
+    const result = await checkClientErrorsHealth({ ping: async () => ({ newGroupCount: 2 }) });
+    expect(result).toMatchObject({ id: "client-errors", status: "amber" });
+  });
+
+  it("is red when 3 or more new error groups appeared in the last 24 hours", async () => {
+    const result = await checkClientErrorsHealth({ ping: async () => ({ newGroupCount: 3 }) });
+    expect(result).toMatchObject({ id: "client-errors", status: "red" });
+  });
+
+  it("is red when the ping rejects (e.g. the migration has not been applied)", async () => {
+    const result = await checkClientErrorsHealth({
+      ping: async () => Promise.reject(new Error(`relation "client_errors" does not exist`)),
+    });
+    expect(result).toMatchObject({ id: "client-errors", status: "red" });
+  });
+
+  it("is amber when DATABASE_URL is not configured", async () => {
+    const result = await checkClientErrorsHealth({ databaseUrl: "" });
+    expect(result).toMatchObject({ id: "client-errors", status: "amber" });
+  });
+});
+
 describe("getSystemHealth", () => {
-  it("returns all ten checks, one per required area", async () => {
+  it("returns all eleven checks, one per required area", async () => {
     const checks = await getSystemHealth({
       env: { NODE_ENV: "development" },
       database: { databaseUrl: "" },
@@ -284,9 +314,11 @@ describe("getSystemHealth", () => {
       tokenChat: { databaseUrl: "" },
       outreach: { databaseUrl: "" },
       socialPosting: { databaseUrl: "" },
+      clientErrors: { databaseUrl: "" },
     });
     expect(checks.map((check) => check.id).sort()).toEqual(
       [
+        "client-errors",
         "contracts",
         "database",
         "deployment",

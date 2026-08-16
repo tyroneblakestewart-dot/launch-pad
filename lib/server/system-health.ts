@@ -18,7 +18,8 @@ export type SystemHealthCheck = {
     | "token-chat"
     | "outreach"
     | "social-studio-ai"
-    | "social-posting";
+    | "social-posting"
+    | "client-errors";
   label: string;
   status: SystemHealthStatus;
   message: string;
@@ -405,6 +406,65 @@ export async function checkSocialPostingHealth(
   }
 }
 
+export type ClientErrorsPing = () => Promise<{ newGroupCount: number }>;
+
+/**
+ * A "new group" is a (message, route_path) pair whose very first-ever
+ * occurrence fell inside the given window — a genuinely fresh crash, not
+ * just one that happened to fire again recently. Kept red/amber at the
+ * summary-card level (not just in the pipeline drill-down) so a fresh
+ * client-side crash is visible at a glance rather than requiring a click-in.
+ */
+async function countNewClientErrorGroups(
+  pool: { query: <T = Record<string, unknown>>(text: string, params?: unknown[]) => Promise<{ rows: T[] }> },
+  since: Date,
+): Promise<number> {
+  const result = await pool.query<{ count: number | string }>(
+    `SELECT COUNT(*)::int AS count FROM (
+       SELECT message, route_path FROM client_errors
+        GROUP BY message, route_path
+       HAVING MIN(created_at) >= $1
+     ) AS new_groups`,
+    [since],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+export const CLIENT_ERRORS_RED_THRESHOLD = 3;
+
+/** Reports whether the `client_errors` table is reachable, and how many new error groups appeared in the last 24h. */
+export async function checkClientErrorsHealth(deps: {
+  databaseUrl?: string;
+  ping?: ClientErrorsPing;
+  now?: Date;
+} = {}): Promise<SystemHealthCheck> {
+  const id = "client-errors" as const;
+  const label = "Client errors";
+  const databaseUrl = deps.databaseUrl ?? process.env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl && !deps.ping) {
+    return { id, label, status: "amber", message: "DATABASE_URL is not configured." };
+  }
+  const since = new Date((deps.now ?? new Date()).getTime() - 24 * 60 * 60 * 1000);
+  const ping = deps.ping ?? (async () => ({ newGroupCount: await countNewClientErrorGroups(getPostgresPool(databaseUrl), since) }));
+  try {
+    const { newGroupCount } = await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, "Client errors health check timed out.");
+    if (newGroupCount === 0) {
+      return { id, label, status: "green", message: "No new client error groups in the last 24 hours." };
+    }
+    if (newGroupCount < CLIENT_ERRORS_RED_THRESHOLD) {
+      return { id, label, status: "amber", message: `${newGroupCount} new client error group(s) appeared in the last 24 hours.` };
+    }
+    return { id, label, status: "red", message: `${newGroupCount} new client error groups appeared in the last 24 hours.` };
+  } catch {
+    return {
+      id,
+      label,
+      status: "red",
+      message: "The client_errors table is not reachable. Apply migration 021_client_errors.sql.",
+    };
+  }
+}
+
 export type SystemHealthDeps = {
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
@@ -415,6 +475,7 @@ export type SystemHealthDeps = {
   tokenChat?: Parameters<typeof checkTokenChatHealth>[0];
   outreach?: Parameters<typeof checkOutreachHealth>[0];
   socialPosting?: Parameters<typeof checkSocialPostingHealth>[0];
+  clientErrors?: Parameters<typeof checkClientErrorsHealth>[0];
 };
 
 /**
@@ -423,18 +484,42 @@ export type SystemHealthDeps = {
  * the others or the response as a whole.
  */
 export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<SystemHealthCheck[]> {
-  const [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat, outreach, socialStudioAi, socialPosting] =
-    await Promise.all([
-      checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
-      checkDatabaseHealth(deps.database),
-      checkContractsHealth(deps.contracts),
-      checkDeploymentHealth(deps.env),
-      checkSubscribersHealth(deps.subscribers),
-      checkHoodchatHealth(deps.hoodchat),
-      checkTokenChatHealth(deps.tokenChat),
-      checkOutreachHealth({ env: deps.env, ...deps.outreach }),
-      checkSocialStudioAiHealth(deps.env, deps.requestOidcToken),
-      checkSocialPostingHealth({ env: deps.env, ...deps.socialPosting }),
-    ]);
-  return [websiteGeneration, database, contracts, deployment, subscribers, hoodchat, tokenChat, outreach, socialStudioAi, socialPosting];
+  const [
+    websiteGeneration,
+    database,
+    contracts,
+    deployment,
+    subscribers,
+    hoodchat,
+    tokenChat,
+    outreach,
+    socialStudioAi,
+    socialPosting,
+    clientErrors,
+  ] = await Promise.all([
+    checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
+    checkDatabaseHealth(deps.database),
+    checkContractsHealth(deps.contracts),
+    checkDeploymentHealth(deps.env),
+    checkSubscribersHealth(deps.subscribers),
+    checkHoodchatHealth(deps.hoodchat),
+    checkTokenChatHealth(deps.tokenChat),
+    checkOutreachHealth({ env: deps.env, ...deps.outreach }),
+    checkSocialStudioAiHealth(deps.env, deps.requestOidcToken),
+    checkSocialPostingHealth({ env: deps.env, ...deps.socialPosting }),
+    checkClientErrorsHealth(deps.clientErrors),
+  ]);
+  return [
+    websiteGeneration,
+    database,
+    contracts,
+    deployment,
+    subscribers,
+    hoodchat,
+    tokenChat,
+    outreach,
+    socialStudioAi,
+    socialPosting,
+    clientErrors,
+  ];
 }
