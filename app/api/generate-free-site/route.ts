@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { AI_FEATURE_KEYS } from "@/lib/ai-feature-keys";
 import {
   buildFreeSiteDesignRequestBody,
   parseFreeSiteDesignResponse,
@@ -22,6 +23,7 @@ import {
   getClientIp,
   isGenerateSiteStyleRequestAuthorised,
 } from "@/lib/server/api-protection";
+import { recordTextOperationCostBestEffort, runAfterResponse } from "@/lib/server/ai-operation-cost-store";
 import { sanitiseProviderDetail } from "@/lib/server/sanitise-provider-detail";
 import {
   isValidImageDataUrl,
@@ -255,9 +257,33 @@ export async function POST(request: Request) {
     );
   }
 
+  // No wallet in this route's request contract (issue #368) — every attempt
+  // is genuinely unattributed spend, not silently credited to a guessed wallet.
+  // A const arrow function (not a hoisted function declaration) keeps `ai`'s
+  // non-null narrowing valid inside it.
+  const recordFreeSiteCost = (featureKey: string, result: ProviderResult): void => {
+    runAfterResponse(() =>
+      recordTextOperationCostBestEffort({
+        featureKey,
+        walletAddress: null,
+        accessSource: "free",
+        provider: ai.source,
+        response: result.ok ? result.payload : undefined,
+        fallbackModel: ai.model,
+      }),
+    );
+  };
+
   const artworkBody = buildPageArtworkIdentityRequestBody(input, ai.model);
   const artworkResult = await requestArtworkIdentity(
-    () => requestProvider(ai, artworkBody, ARTWORK_TIMEOUT_MS),
+    (stage) =>
+      requestProvider(ai, artworkBody, ARTWORK_TIMEOUT_MS).then((result) => {
+        recordFreeSiteCost(
+          stage.endsWith("-retry") ? AI_FEATURE_KEYS.FREE_SITE_ARTWORK_IDENTITY_RETRY : AI_FEATURE_KEYS.FREE_SITE_ARTWORK_IDENTITY,
+          result,
+        );
+        return result;
+      }),
     {
       first: "artwork-analysis",
       retry: "artwork-analysis-retry",
@@ -281,6 +307,7 @@ export async function POST(request: Request) {
 
   const designBody = buildFreeSiteDesignRequestBody(input, ai.model, artworkIdentity, sections);
   let designResult = await requestProvider(ai, designBody, DESIGN_TIMEOUT_MS);
+  recordFreeSiteCost(AI_FEATURE_KEYS.FREE_SITE_DESIGN, designResult);
   if (!designResult.ok && isTransientProviderFailure(designResult)) {
     const remainingBudgetMs =
       ROUTE_BUDGET_MS - (Date.now() - requestStartedAt) - DESIGN_RETRY_SAFETY_MARGIN_MS;
@@ -291,6 +318,7 @@ export async function POST(request: Request) {
         describeProviderFailure(designResult),
       );
       designResult = await requestProvider(ai, designBody, retryTimeoutMs);
+      recordFreeSiteCost(AI_FEATURE_KEYS.FREE_SITE_DESIGN_RETRY, designResult);
     }
   }
   if (!designResult.ok) {

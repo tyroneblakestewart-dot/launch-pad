@@ -191,7 +191,14 @@ async function sendOneDestination(
     if (result.status === "posted") {
       await scheduledPostsStore.markDestinationSent(destination.destinationId, result.xPostId, now);
       await connectionsStore.resetFailures(destination.walletAddress, "x");
-      await costStore.recordSend(destination.walletAddress, destination.destinationId, costPerSend, now);
+      // Best-effort (issue #368): a DB failure here must never turn an
+      // already-successful post into a cron failure or schedule a duplicate
+      // retry — the destination stays "sent" either way.
+      try {
+        await costStore.recordSend(destination.walletAddress, destination.destinationId, costPerSend, now);
+      } catch (error) {
+        console.error("X posting cost recording failed after a successful send.", error instanceof Error ? error.message : error);
+      }
       return "sent";
     }
     if (result.status === "not_configured") {

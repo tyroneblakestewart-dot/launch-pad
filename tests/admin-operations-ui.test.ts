@@ -15,6 +15,7 @@ describe("admin operations dashboard", () => {
       "Overview",
       "Activity",
       "Money",
+      "Operations",
       "Issues",
       "System Health",
     ]) {

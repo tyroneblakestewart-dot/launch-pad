@@ -9,6 +9,7 @@ import {
   AdminOverview,
 } from "@/components/admin-operations-sections";
 import { AdminMoneySection } from "@/components/admin-money-section";
+import { AdminOperationsCostSection } from "@/components/admin-operations-cost-section";
 import { AdminOutreachSection } from "@/components/admin-outreach-section";
 import { AdminPagesSection } from "@/components/admin-pages-section";
 import { AdminSiteDomainsSection } from "@/components/admin-site-domains-section";
@@ -26,6 +27,7 @@ type SectionId =
   | "overview"
   | "activity"
   | "money"
+  | "operations-cost"
   | "issues"
   | "pages"
   | "subscribers"
@@ -40,6 +42,7 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "activity", label: "Activity" },
   { id: "money", label: "Money" },
+  { id: "operations-cost", label: "Operations" },
   { id: "issues", label: "Issues" },
   { id: "pages", label: "Pages" },
   { id: "subscribers", label: "Subscribers" },
@@ -243,6 +246,9 @@ export function AdminDashboard() {
         ) : null}
         {snapshot && activeSection === "money" ? (
           <AdminMoneySection snapshot={snapshot} />
+        ) : null}
+        {snapshot && activeSection === "operations-cost" ? (
+          <AdminOperationsCostSection snapshot={snapshot} onFixedCostsChanged={loadOperations} />
         ) : null}
         {snapshot && activeSection === "issues" ? (
           <AdminIssues

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { AI_FEATURE_KEYS } from "@/lib/ai-feature-keys";
 import {
   SOCIAL_MASCOT_IMAGE_LIMIT,
   consumeSocialMascotImageRateLimit,
@@ -6,6 +7,7 @@ import {
   isGenerateSiteStyleRequestAuthorised,
 } from "@/lib/server/api-protection";
 import { getVercelOidcToken, resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
+import { recordImageOperationCostBestEffort, runAfterResponse, type AiOperationAccessSource } from "@/lib/server/ai-operation-cost-store";
 import { buildMascotImagePrompt, type MascotVisualDNA } from "@/lib/server/mascot-prompt-builder";
 import { requestMascotImage } from "@/lib/server/mascot-image-request";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
@@ -133,6 +135,19 @@ export async function POST(request: Request) {
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }
+
+  const walletAddress = authorisation.walletAddress;
+  const accessSource: AiOperationAccessSource = authorisation.accessSource ?? "unknown";
+  runAfterResponse(() =>
+    recordImageOperationCostBestEffort({
+      featureKey: AI_FEATURE_KEYS.SOCIAL_MASCOT_IMAGE,
+      walletAddress,
+      accessSource,
+      provider: ai.source,
+      model: process.env.OPENAI_IMAGE_MODEL?.trim() || "gpt-image-1",
+      imageCount: 1,
+    }),
+  );
 
   return NextResponse.json({ imageDataUrl: result.imageDataUrl }, { headers: noStoreHeaders(rateHeaders) });
 }

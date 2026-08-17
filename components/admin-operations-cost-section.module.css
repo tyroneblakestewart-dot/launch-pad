@@ -1,0 +1,385 @@
+.panel {
+  display: grid;
+  gap: 18px;
+  border: 1px solid rgba(188, 231, 89, 0.15);
+  border-radius: 16px;
+  background: rgba(10, 13, 11, 0.88);
+  padding: 18px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 1.05rem;
+}
+
+.sectionIntro {
+  max-width: 760px;
+  margin: 6px 0 0;
+  font-size: 0.88rem;
+  color: rgba(238, 243, 234, 0.62);
+  line-height: 1.5;
+}
+
+.disclaimer {
+  margin: 0;
+  border: 1px solid rgba(188, 231, 89, 0.16);
+  border-radius: 12px;
+  background: rgba(188, 231, 89, 0.045);
+  padding: 12px 13px;
+  color: rgba(238, 243, 234, 0.75);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.periodGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.periodCard {
+  min-width: 0;
+  border: 1px solid rgba(238, 243, 234, 0.09);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.018);
+  padding: 14px;
+}
+
+.periodTitle {
+  margin: 0 0 6px;
+  color: rgba(238, 243, 234, 0.58);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.periodTotal {
+  margin: 0 0 10px;
+  color: #eef3ea;
+  font-size: 1.5rem;
+  font-weight: 750;
+}
+
+.periodDetails {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.periodDetails div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.periodDetails dt {
+  color: rgba(238, 243, 234, 0.55);
+  font-size: 0.76rem;
+}
+
+.periodDetails dd {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 0.82rem;
+  text-align: right;
+}
+
+.periodSub {
+  color: rgba(238, 243, 234, 0.5);
+  font-size: 0.72rem;
+}
+
+.good {
+  color: #72e88d;
+}
+
+.bad {
+  color: #ff7777;
+}
+
+.subheading {
+  margin: 4px 0 0;
+  color: #eef3ea;
+  font-size: 0.9rem;
+}
+
+.note,
+.empty {
+  margin: 0;
+  color: rgba(238, 243, 234, 0.62);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.error {
+  margin: 0;
+  border: 1px solid rgba(255, 119, 119, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 119, 119, 0.08);
+  color: #ff9a9a;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+}
+
+.breakdownList,
+.walletList,
+.fixedCostList {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breakdownItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid rgba(238, 243, 234, 0.09);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.018);
+  padding: 9px 12px;
+  font-size: 0.82rem;
+}
+
+.breakdownLabel {
+  color: #eef3ea;
+  font-weight: 700;
+}
+
+.breakdownCost {
+  color: #eef3ea;
+}
+
+.breakdownCount {
+  color: rgba(238, 243, 234, 0.55);
+  font-size: 0.72rem;
+}
+
+.reconciliationGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.moneyCard {
+  min-width: 0;
+  border: 1px solid rgba(238, 243, 234, 0.09);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.018);
+  padding: 14px;
+}
+
+.cardLabel {
+  margin: 0 0 7px;
+  color: rgba(238, 243, 234, 0.58);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cardValue {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 1.1rem;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.cardDetail {
+  margin: 6px 0 0;
+  color: rgba(238, 243, 234, 0.62);
+  font-size: 0.78rem;
+}
+
+.walletItem,
+.fixedCostItem {
+  border: 1px solid rgba(238, 243, 234, 0.09);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.018);
+  padding: 13px 14px;
+}
+
+.walletTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.address {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+  color: #eef3ea;
+}
+
+.activityMessage {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.badgeActive,
+.badgeAmber {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.badgeActive {
+  color: #72e88d;
+  background: rgba(114, 232, 141, 0.1);
+  border: 1px solid rgba(114, 232, 141, 0.25);
+}
+
+.badgeAmber {
+  color: #f0bf4e;
+  background: rgba(240, 191, 78, 0.1);
+  border: 1px solid rgba(240, 191, 78, 0.25);
+}
+
+.ledgerList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.ledgerItem {
+  border: 1px solid rgba(238, 243, 234, 0.08);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.014);
+  padding: 8px 11px;
+  color: rgba(238, 243, 234, 0.85);
+  font-size: 0.78rem;
+}
+
+.form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: rgba(238, 243, 234, 0.62);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.form input,
+.form select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 11px;
+  border: 1px solid rgba(188, 231, 89, 0.22);
+  border-radius: 8px;
+  outline: none;
+  background: #0a0d0b;
+  color: #eef3ea;
+  font: 500 13px/1.4 inherit;
+}
+
+.form input:focus,
+.form select:focus {
+  border-color: rgba(188, 231, 89, 0.5);
+  box-shadow: 0 0 0 3px rgba(188, 231, 89, 0.12);
+}
+
+.addButton,
+.confirmButton {
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 9px;
+  border: 1px solid #bce759;
+  background: #bce759;
+  color: #10150d;
+  font-weight: 800;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.isolateButton,
+.cancelButton {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 9px;
+  color: #f0bf4e;
+  background: transparent;
+  border: 1px solid rgba(240, 191, 78, 0.3);
+  font-weight: 750;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.addButton:disabled,
+.confirmButton:disabled,
+.isolateButton:disabled,
+.cancelButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+@media (max-width: 780px) {
+  .form {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .panel {
+    padding: 14px;
+  }
+
+  .sectionHeader {
+    flex-direction: column;
+  }
+
+  .periodGrid,
+  .reconciliationGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .formActions button {
+    flex: 1;
+  }
+}

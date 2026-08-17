@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { AI_FEATURE_KEYS } from "@/lib/ai-feature-keys";
 import {
   SOCIAL_DRAFT_LIMIT,
   consumeSocialDraftRateLimit,
@@ -6,6 +7,7 @@ import {
   isGenerateSiteStyleRequestAuthorised,
 } from "@/lib/server/api-protection";
 import { getVercelOidcToken, resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
+import { recordTextOperationCostBestEffort, runAfterResponse, type AiOperationAccessSource } from "@/lib/server/ai-operation-cost-store";
 import type { OpenAIResponse } from "@/lib/server/generate-site-style";
 import { normaliseLikedSampleLines } from "@/lib/server/social-reinforcement";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
@@ -161,6 +163,8 @@ export async function POST(request: Request) {
   // reads (rather than re-reading `ai` from an outer `let`) keeps that
   // narrowing valid for both the first attempt and the corrective retry.
   const resolvedAi = ai;
+  const walletAddress = authorisation.walletAddress;
+  const accessSource: AiOperationAccessSource = authorisation.accessSource ?? "unknown";
 
   type DraftAttemptResult = { ok: true; draft: SocialDraft } | { ok: false; status: number; error: string };
 
@@ -206,6 +210,17 @@ export async function POST(request: Request) {
     } catch {
       return { ok: false, status: 502, error: "The AI returned an invalid response." };
     }
+
+    runAfterResponse(() =>
+      recordTextOperationCostBestEffort({
+        featureKey: correctiveFeedback ? AI_FEATURE_KEYS.SOCIAL_DRAFT_RETRY : AI_FEATURE_KEYS.SOCIAL_DRAFT,
+        walletAddress,
+        accessSource,
+        provider: resolvedAi.source,
+        response: payload,
+        fallbackModel: resolvedAi.model,
+      }),
+    );
 
     const parsed = parseDraftResponseDetailed(payload);
     if (!parsed.ok) {

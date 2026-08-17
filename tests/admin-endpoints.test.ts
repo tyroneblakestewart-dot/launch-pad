@@ -126,6 +126,7 @@ async function expectWorkingSessionAndHealth(loginResponse: Response): Promise<v
       "database",
       "deployment",
       "hoodchat",
+      "operations-cost",
       "outreach",
       "social-posting",
       "social-studio-ai",

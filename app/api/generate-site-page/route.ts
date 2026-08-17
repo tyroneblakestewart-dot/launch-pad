@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { AI_FEATURE_KEYS } from "@/lib/ai-feature-keys";
 import {
   getInspirationDomain,
   isValidImageDataUrl,
@@ -31,6 +32,7 @@ import {
   resolveAIResponsesRuntime,
   type AIResponsesRuntime,
 } from "@/lib/server/ai-responses-runtime";
+import { recordTextOperationCostBestEffort, runAfterResponse, type AiOperationAccessSource } from "@/lib/server/ai-operation-cost-store";
 import { authoriseBespokeSiteGeneration } from "@/lib/server/bespoke-site-entitlement";
 import { sanitiseProviderDetail } from "@/lib/server/sanitise-provider-detail";
 import { requestArtworkIdentity } from "@/lib/server/artwork-identity-request";
@@ -276,10 +278,24 @@ export async function POST(request: Request) {
 
   const model = ai.model;
   const encoder = new TextEncoder();
+  const walletAddress = authorisation.walletAddress;
+  const accessSource: AiOperationAccessSource = authorisation.accessSource ?? "unknown";
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false;
+      const recordBespokeCost = (featureKey: string, response: OpenAIResponse | undefined) => {
+        runAfterResponse(() =>
+          recordTextOperationCostBestEffort({
+            featureKey,
+            walletAddress,
+            accessSource,
+            provider: ai.source,
+            response,
+            fallbackModel: model,
+          }),
+        );
+      };
       const send = (event: GenerateSitePageStreamEvent) => {
         if (closed) return;
         try {
@@ -309,7 +325,14 @@ export async function POST(request: Request) {
 
         const [artworkResult, inspirationResult] = await Promise.all([
           requestArtworkIdentity(
-            (stage) => requestOpenAI(ai, artworkBody, ANALYSIS_TIMEOUT_MS, stage),
+            (stage) =>
+              requestOpenAI(ai, artworkBody, ANALYSIS_TIMEOUT_MS, stage).then((result) => {
+                recordBespokeCost(
+                  stage === "page-artwork-analysis-retry" ? AI_FEATURE_KEYS.BESPOKE_ARTWORK_IDENTITY_RETRY : AI_FEATURE_KEYS.BESPOKE_ARTWORK_IDENTITY,
+                  result.ok ? result.payload : undefined,
+                );
+                return result;
+              }),
             {
               first: "page-artwork-analysis",
               retry: "page-artwork-analysis-retry",
@@ -317,7 +340,10 @@ export async function POST(request: Request) {
             },
           ),
           inspirationBody
-            ? requestOpenAI(ai, inspirationBody, ANALYSIS_TIMEOUT_MS, "page-inspiration-analysis")
+            ? requestOpenAI(ai, inspirationBody, ANALYSIS_TIMEOUT_MS, "page-inspiration-analysis").then((result) => {
+                recordBespokeCost(AI_FEATURE_KEYS.BESPOKE_INSPIRATION_SEARCH, result.ok ? result.payload : undefined);
+                return result;
+              })
             : Promise.resolve<OpenAIRequestResult>({ ok: true, payload: {} }),
         ]);
 
@@ -395,6 +421,7 @@ export async function POST(request: Request) {
           request.signal,
           onBuildingPageProgress,
         );
+        recordBespokeCost(AI_FEATURE_KEYS.BESPOKE_FULL_PAGE, generation.ok ? generation.payload : generation.usageMetadata);
 
         // One automatic retry with corrective feedback when the only problem
         // was the responsive-layout baseline (issue #323) — every other
@@ -413,6 +440,7 @@ export async function POST(request: Request) {
             request.signal,
             onBuildingPageProgress,
           );
+          recordBespokeCost(AI_FEATURE_KEYS.BESPOKE_FULL_PAGE_LAYOUT_RETRY, generation.ok ? generation.payload : generation.usageMetadata);
         }
 
         if (!generation.ok) {

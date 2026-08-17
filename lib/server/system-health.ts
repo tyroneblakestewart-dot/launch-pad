@@ -2,7 +2,10 @@ import { createPublicClient, http } from "viem";
 import { getBondingCurveAddress, HOODLUMS_BONDING_CURVE_READ_ABI } from "@/lib/bonding-curve-config";
 import { ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { getFactoryAddress, HOODLUMS_TOKEN_FACTORY_ABI } from "@/lib/factory-config";
+import { monthlyEquivalentUsd, proratedFixedCostForThisMonthSoFar, utcMonthBounds } from "@/lib/operations-cost-math";
+import { readOperationsCostThresholds } from "@/lib/server/ai-pricing";
 import { resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
+import { getFixedOperatingCostsStore } from "@/lib/server/fixed-operating-costs-store";
 import { getPostgresPool } from "@/lib/server/postgres";
 
 export type SystemHealthStatus = "green" | "amber" | "red";
@@ -19,7 +22,8 @@ export type SystemHealthCheck = {
     | "outreach"
     | "social-studio-ai"
     | "social-posting"
-    | "client-errors";
+    | "client-errors"
+    | "operations-cost";
   label: string;
   status: SystemHealthStatus;
   message: string;
@@ -465,6 +469,77 @@ export async function checkClientErrorsHealth(deps: {
   }
 }
 
+export type OperationsCostPing = () => Promise<{ totalCostUsd: number }>;
+
+/**
+ * Reports this month's estimated variable (AI+X) + prorated fixed operating
+ * cost against the configured amber/red thresholds (issue #368). Makes no
+ * paid external call — only reads already-recorded cost rows and the fixed
+ * operating cost list.
+ */
+export async function checkOperationsCostHealth(deps: {
+  databaseUrl?: string;
+  ping?: OperationsCostPing;
+  env?: Record<string, string | undefined>;
+  now?: Date;
+} = {}): Promise<SystemHealthCheck> {
+  const id = "operations-cost" as const;
+  const label = "Operations cost";
+  const env = deps.env ?? process.env;
+  const thresholds = readOperationsCostThresholds(env);
+  if (!thresholds.valid) {
+    return { id, label, status: "amber", message: thresholds.message };
+  }
+
+  const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl && !deps.ping) {
+    return { id, label, status: "amber", message: "DATABASE_URL is not configured." };
+  }
+
+  const ping =
+    deps.ping ??
+    (async () => {
+      const now = deps.now ?? new Date();
+      const monthStart = utcMonthBounds(now).start;
+      const pool = getPostgresPool(databaseUrl);
+      const [aiResult, xResult, fixedCosts] = await Promise.all([
+        pool.query<{ total: string | null }>(
+          `SELECT COALESCE(SUM(estimated_cost_usd), 0)::text AS total FROM ai_operation_costs WHERE occurred_at >= $1`,
+          [monthStart],
+        ),
+        pool.query<{ total: string | null }>(
+          `SELECT COALESCE(SUM(cost_usd), 0)::text AS total FROM social_x_send_costs WHERE sent_at >= $1`,
+          [monthStart],
+        ),
+        getFixedOperatingCostsStore().list(),
+      ]);
+      const aiCostUsd = Number.parseFloat(aiResult.rows[0]?.total || "0") || 0;
+      const xCostUsd = Number.parseFloat(xResult.rows[0]?.total || "0") || 0;
+      const monthlyEquivalentTotalUsd = fixedCosts.reduce((sum, cost) => sum + monthlyEquivalentUsd(cost.amountUsd, cost.cadence), 0);
+      const fixedCostUsd = proratedFixedCostForThisMonthSoFar(monthlyEquivalentTotalUsd, now);
+      return { totalCostUsd: aiCostUsd + xCostUsd + fixedCostUsd };
+    });
+
+  try {
+    const { totalCostUsd } = await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, "Operations cost health check timed out.");
+    const status: SystemHealthStatus =
+      totalCostUsd >= thresholds.redUsd ? "red" : totalCostUsd >= thresholds.amberUsd ? "amber" : "green";
+    return {
+      id,
+      label,
+      status,
+      message: `This month's estimated operating cost so far is $${totalCostUsd.toFixed(2)} (amber at $${thresholds.amberUsd.toFixed(2)}, red at $${thresholds.redUsd.toFixed(2)}).`,
+    };
+  } catch {
+    return {
+      id,
+      label,
+      status: "red",
+      message: "Operations cost tables are not reachable. Apply migration 022_operations_costs.sql.",
+    };
+  }
+}
+
 export type SystemHealthDeps = {
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
@@ -476,6 +551,7 @@ export type SystemHealthDeps = {
   outreach?: Parameters<typeof checkOutreachHealth>[0];
   socialPosting?: Parameters<typeof checkSocialPostingHealth>[0];
   clientErrors?: Parameters<typeof checkClientErrorsHealth>[0];
+  operationsCost?: Parameters<typeof checkOperationsCostHealth>[0];
 };
 
 /**
@@ -496,6 +572,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     socialStudioAi,
     socialPosting,
     clientErrors,
+    operationsCost,
   ] = await Promise.all([
     checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
     checkDatabaseHealth(deps.database),
@@ -508,6 +585,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     checkSocialStudioAiHealth(deps.env, deps.requestOidcToken),
     checkSocialPostingHealth({ env: deps.env, ...deps.socialPosting }),
     checkClientErrorsHealth(deps.clientErrors),
+    checkOperationsCostHealth({ env: deps.env, ...deps.operationsCost }),
   ]);
   return [
     websiteGeneration,
@@ -521,5 +599,6 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     socialStudioAi,
     socialPosting,
     clientErrors,
+    operationsCost,
   ];
 }
