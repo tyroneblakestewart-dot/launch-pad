@@ -1,3 +1,5 @@
+import { extractTwitterHandle } from "@/lib/social-links";
+
 export type GraduatingToken = {
   name: string;
   ticker: string;
@@ -228,38 +230,6 @@ function looksLikeImageUri(uri: string): boolean {
   const withoutQueryOrHash = uri.split(/[?#]/)[0] || "";
   const lower = withoutQueryOrHash.toLowerCase();
   return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
-}
-
-// X/Twitter handles are 1-15 characters of letters, digits and underscores.
-const TWITTER_HANDLE_PATTERN = /^[A-Za-z0-9_]{1,15}$/;
-
-/**
- * Normalises pump.fun metadata's "twitter" field (issue #298) — a profile
- * URL (https://x.com/handle or https://twitter.com/handle), a bare
- * "@handle", or a bare "handle" — down to a plain handle, or null if the
- * value is absent, not a string, or doesn't look like a real handle. Never
- * invents a handle: this only ever echoes what the creator published
- * themselves in their own token's metadata.
- */
-function extractTwitterHandle(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-
-  if (/^https?:\/\//i.test(trimmed)) {
-    try {
-      const url = new URL(trimmed);
-      const host = url.hostname.toLowerCase().replace(/^www\./, "");
-      if (host !== "x.com" && host !== "twitter.com") return null;
-      const segment = url.pathname.split("/").filter(Boolean)[0] || "";
-      return TWITTER_HANDLE_PATTERN.test(segment) ? segment : null;
-    } catch {
-      return null;
-    }
-  }
-
-  const withoutAt = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
-  return TWITTER_HANDLE_PATTERN.test(withoutAt) ? withoutAt : null;
 }
 
 type MetadataResolution = { artworkUrl: string; creatorXHandle: string | null };
