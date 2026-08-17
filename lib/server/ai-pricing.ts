@@ -8,7 +8,6 @@ export type AiPricingRates = {
   cachedInputCostUsdPerMillion: number;
   outputCostUsdPerMillion: number;
   webSearchCostUsdPerCall: number;
-  imageQuality: string;
   imageCostUsdPerImage: number;
 };
 
@@ -16,19 +15,42 @@ export type AiPricingRates = {
 // as of issue #368 — verify against https://platform.openai.com/docs/pricing
 // and https://developers.openai.com/api/docs/models/gpt-5-mini /
 // https://developers.openai.com/api/docs/models/gpt-image-1 before relying on
-// these for a live cost decision; prices change over time.
+// these for a live cost decision; prices change over time. Image *quality* is
+// a fixed owner decision hardcoded in lib/server/mascot-image-request.ts, not
+// a configurable setting — only the per-image *price* below is configurable.
 export const DEFAULT_AI_PRICING_RATES: AiPricingRates = {
   inputCostUsdPerMillion: 0.25,
   cachedInputCostUsdPerMillion: 0.025,
   outputCostUsdPerMillion: 2.0,
   webSearchCostUsdPerCall: 0.01,
-  imageQuality: "medium",
   imageCostUsdPerImage: 0.042,
 };
 
+const AI_PRICING_ENV_VARS: Array<{ key: keyof AiPricingRates; envVar: string }> = [
+  { key: "inputCostUsdPerMillion", envVar: "OPENAI_INPUT_COST_USD_PER_MILLION" },
+  { key: "cachedInputCostUsdPerMillion", envVar: "OPENAI_CACHED_INPUT_COST_USD_PER_MILLION" },
+  { key: "outputCostUsdPerMillion", envVar: "OPENAI_OUTPUT_COST_USD_PER_MILLION" },
+  { key: "webSearchCostUsdPerCall", envVar: "OPENAI_WEB_SEARCH_COST_USD_PER_CALL" },
+  { key: "imageCostUsdPerImage", envVar: "OPENAI_IMAGE_COST_USD_PER_IMAGE" },
+];
+
+/**
+ * Strictly parses a configured price: the whole trimmed string must be a
+ * finite non-negative number, so a partially-parsed value like "0.25junk"
+ * (which Number.parseFloat would silently accept as 0.25) is rejected rather
+ * than quietly used. An absent or blank variable is "unset", not invalid.
+ */
+function parseNonNegativePrice(raw: string | undefined): { value: number | null; presentAndInvalid: boolean } {
+  const trimmed = (raw ?? "").trim();
+  if (trimmed === "") return { value: null, presentAndInvalid: false };
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) return { value: null, presentAndInvalid: true };
+  return { value: parsed, presentAndInvalid: false };
+}
+
 function readNonNegativeFloat(raw: string | undefined, fallback: number): number {
-  const parsed = Number.parseFloat((raw ?? "").trim());
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+  const { value } = parseNonNegativePrice(raw);
+  return value ?? fallback;
 }
 
 export function readAiPricingRates(env: Record<string, string | undefined> = process.env): AiPricingRates {
@@ -49,12 +71,42 @@ export function readAiPricingRates(env: Record<string, string | undefined> = pro
       env.OPENAI_WEB_SEARCH_COST_USD_PER_CALL,
       DEFAULT_AI_PRICING_RATES.webSearchCostUsdPerCall,
     ),
-    imageQuality: (env.OPENAI_IMAGE_QUALITY ?? "").trim() || DEFAULT_AI_PRICING_RATES.imageQuality,
     imageCostUsdPerImage: readNonNegativeFloat(
       env.OPENAI_IMAGE_COST_USD_PER_IMAGE,
       DEFAULT_AI_PRICING_RATES.imageCostUsdPerImage,
     ),
   };
+}
+
+export type AiPricingConfigIssue = {
+  variable: string;
+  rawValue: string;
+  message: string;
+};
+
+/**
+ * Reports every configured (present, non-blank) pricing env var that failed
+ * strict parsing — negative, non-finite, or partially-parsed like
+ * "0.25junk". Recording still safely falls back to the documented default
+ * for these (readAiPricingRates/readNonNegativeFloat above), but that
+ * fallback must stay visible in System Health rather than silently looking
+ * healthy (issue #368 correction pass).
+ */
+export function validateAiPricingConfig(env: Record<string, string | undefined> = process.env): AiPricingConfigIssue[] {
+  const issues: AiPricingConfigIssue[] = [];
+  for (const { envVar } of AI_PRICING_ENV_VARS) {
+    const raw = env[envVar];
+    if (raw === undefined) continue;
+    const { presentAndInvalid } = parseNonNegativePrice(raw);
+    if (presentAndInvalid) {
+      issues.push({
+        variable: envVar,
+        rawValue: raw,
+        message: `${envVar}="${raw}" is not a valid non-negative number; the documented default is being used instead.`,
+      });
+    }
+  }
+  return issues;
 }
 
 export type TextUsageForCost = {

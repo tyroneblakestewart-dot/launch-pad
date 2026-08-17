@@ -537,10 +537,11 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   wrapper around Next's `after()` that falls back to an unawaited
   fire-and-forget when `after()` throws outside a real request scope (e.g.
   in tests), and a failed insert is caught and logged, never surfaced to the
-  caller. `mascot-image-request.ts` now explicitly requests `quality:
-  "medium"` (previously implicit) so its cost is predictable; `gpt-image-1`
-  itself is unchanged and is a known-deprecated follow-up, not addressed
-  here. The pre-existing X-cost bug where a DB failure in
+  caller. `mascot-image-request.ts` explicitly requests `quality: "medium"`
+  as a fixed owner decision, not a configurable setting — only the image's
+  per-unit **price** (`OPENAI_IMAGE_COST_USD_PER_IMAGE`) is configurable;
+  `gpt-image-1` itself is unchanged and is a known-deprecated follow-up, not
+  addressed here. The pre-existing X-cost bug where a DB failure in
   `costStore.recordSend` after a successful post could flip that post's
   status is now caught and logged the same way — the destination stays
   `sent` either way; `social_x_send_costs` remains the sole X-cost source of
@@ -553,17 +554,29 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   requests carry no wallet by design, so their cost is genuinely
   unattributed rather than hidden inside a wallet total) with a bounded
   top-10 wallet table showing each wallet's plan and test-allowlist status,
-  and a bounded 30-item reverse-chronological ledger. Fixed-cost CRUD lives
-  behind a new `app/api/admin/operations/fixed-costs` route with the same
-  admin-session + Origin protection as the existing operations route. A new
+  and a bounded 30-item reverse-chronological ledger. A top wallet's current
+  plan/test-access badge is derived from today's sources of truth at read
+  time — active (non-revoked) `test_access_wallets` rows and current
+  (non-expired) recurring-subscription lifecycle state — never from
+  historical `ai_operation_costs.access_source`, which is retained only as
+  per-row historical metadata; verified revenue is read strictly from
+  `plan_payment_events`; a tester's row can therefore show `Test access`
+  with `$0` verified revenue. Fixed-cost CRUD lives behind a new
+  `app/api/admin/operations/fixed-costs` route with the same admin-session +
+  Origin protection as the existing operations route. A new
   `operations-cost` System Health check/pipeline reports this month's
   estimated spend against configurable
-  `OPERATIONS_MONTHLY_COST_AMBER_USD`/`_RED_USD` thresholds, going red only
-  when the tables can't be read and amber (not a silent miscalculation) when
-  the threshold ordering itself is invalid. Every dollar figure in the UI is
-  labelled an estimate, not the provider invoice, with an explicit
-  reconcile-weekly-then-monthly note. Deliberately out of scope, per the
-  issue: Vercel billing integration (treated as a plain fixed-cost entry for
-  now; its `/v1/billing/charges` API is only daily-granularity and is worth
-  a dedicated future PR once overage materially affects margin), and any
+  `OPERATIONS_MONTHLY_COST_AMBER_USD`/`_RED_USD` thresholds: it goes red when
+  the cost tables can't be read (missing `DATABASE_URL`, missing migration,
+  timeout, or query failure) or when spend reaches the red threshold, and
+  amber when configured pricing or thresholds are invalid while storage
+  itself remains reachable — never a silent miscalculation. Every dollar
+  figure in the UI is labelled an estimate, not the provider invoice, with
+  an explicit reconcile-weekly-then-monthly note; when the cost snapshot
+  itself is unavailable, the section stops rendering monetary cards,
+  reconciliation, the ledger and the fixed-cost editor rather than falling
+  back to zero-filled figures. Deliberately out of scope, per the issue:
+  Vercel billing integration (treated as a plain fixed-cost entry for now;
+  its `/v1/billing/charges` API is only daily-granularity and is worth a
+  dedicated future PR once overage materially affects margin), and any
   pruning/rollup of the raw `ai_operation_costs` rows.

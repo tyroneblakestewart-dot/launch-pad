@@ -814,12 +814,30 @@ function emptyCostPeriod(overrides: Partial<{ aiCostUsd: number; xCostUsd: numbe
 describe("buildOperationsCostPipeline (issue #368)", () => {
   const env = { OPERATIONS_MONTHLY_COST_AMBER_USD: "100", OPERATIONS_MONTHLY_COST_RED_USD: "250" };
 
-  it("reports every stage amber when DATABASE_URL is not configured", async () => {
+  it("reports the tables stage red — not amber — when DATABASE_URL is not configured (issue #368 correction pass)", async () => {
     const pipeline = await buildOperationsCostPipeline({ env, databaseUrl: "" });
-    expect(stageById(pipeline, "tables")).toMatchObject({ status: "amber" });
+    expect(stageById(pipeline, "tables")).toMatchObject({ status: "red" });
     expect(stageById(pipeline, "monthly-cost")).toMatchObject({ status: "amber" });
     expect(stageById(pipeline, "pricing-config")).toMatchObject({ status: "green" });
     expect(stageById(pipeline, "thresholds")).toMatchObject({ status: "green" });
+  });
+
+  it("reports the pricing-config stage amber, by exact variable name, when a configured price is invalid", async () => {
+    const pipeline = await buildOperationsCostPipeline({
+      env: { ...env, OPENAI_OUTPUT_COST_USD_PER_MILLION: "not-a-number" },
+      databaseUrl: "",
+    });
+    const pricingStage = stageById(pipeline, "pricing-config");
+    expect(pricingStage.status).toBe("amber");
+    expect(pricingStage.message).toContain("OPENAI_OUTPUT_COST_USD_PER_MILLION");
+  });
+
+  it("reports the pricing-config stage green when every configured price is valid", async () => {
+    const pipeline = await buildOperationsCostPipeline({
+      env: { ...env, OPENAI_INPUT_COST_USD_PER_MILLION: "1" },
+      databaseUrl: "",
+    });
+    expect(stageById(pipeline, "pricing-config")).toMatchObject({ status: "green" });
   });
 
   it("is amber on the thresholds stage when red <= amber, independent of the database", async () => {

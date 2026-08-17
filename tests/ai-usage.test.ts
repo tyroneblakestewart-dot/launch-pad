@@ -40,6 +40,26 @@ describe("extractOpenAIUsage", () => {
     const usage = extractOpenAIUsage({ usage: { input_tokens: 100, input_tokens_details: { cached_tokens: -5 }, output_tokens: 50 } });
     expect(usage?.cachedInputTokens).toBe(0);
   });
+
+  it("clamps a malformed cached-token count above input tokens down to input tokens (issue #368 correction pass)", () => {
+    const usage = extractOpenAIUsage({
+      usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 500 }, output_tokens: 50 },
+    });
+    expect(usage?.inputTokens).toBe(100);
+    expect(usage?.cachedInputTokens).toBe(100);
+  });
+
+  it("truncates non-integer provider token counts to non-negative integers", () => {
+    const usage = extractOpenAIUsage({
+      usage: {
+        input_tokens: 100.9,
+        input_tokens_details: { cached_tokens: 40.5 },
+        output_tokens: 50.4,
+        total_tokens: 150.9,
+      },
+    });
+    expect(usage).toEqual({ inputTokens: 100, cachedInputTokens: 40, outputTokens: 50, totalTokens: 150 });
+  });
 });
 
 describe("countCompletedWebSearchCalls", () => {

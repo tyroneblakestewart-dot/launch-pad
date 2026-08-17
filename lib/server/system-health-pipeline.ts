@@ -9,7 +9,7 @@ import type {
 import { getBondingCurveAddress, HOODLUMS_BONDING_CURVE_READ_ABI } from "@/lib/bonding-curve-config";
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { getFactoryAddress, HOODLUMS_TOKEN_FACTORY_ABI } from "@/lib/factory-config";
-import { readAiPricingRates, readOperationsCostThresholds } from "@/lib/server/ai-pricing";
+import { readAiPricingRates, readOperationsCostThresholds, validateAiPricingConfig } from "@/lib/server/ai-pricing";
 import { resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
 import { getOperationsCostSnapshot, type OperationsCostSnapshotDeps } from "@/lib/server/admin-operations-costs";
 import {
@@ -1328,11 +1328,14 @@ export async function buildOperationsCostPipeline(deps: OperationsCostPipelineDe
   const thresholds = readOperationsCostThresholds(env);
   const rates = readAiPricingRates(env);
 
+  const pricingIssues = validateAiPricingConfig(env);
   const pricingStage = stage(
     "pricing-config",
     "Pricing configuration (OPENAI_*_COST_USD_*)",
-    "green",
-    `Input $${rates.inputCostUsdPerMillion}/M, cached $${rates.cachedInputCostUsdPerMillion}/M, output $${rates.outputCostUsdPerMillion}/M, search $${rates.webSearchCostUsdPerCall}/call, image (${rates.imageQuality}) $${rates.imageCostUsdPerImage}/image.`,
+    pricingIssues.length > 0 ? "amber" : "green",
+    pricingIssues.length > 0
+      ? `Invalid configured price(s), documented defaults used instead: ${pricingIssues.map((issue) => `${issue.variable}="${issue.rawValue}"`).join(", ")}.`
+      : `Input $${rates.inputCostUsdPerMillion}/M, cached $${rates.cachedInputCostUsdPerMillion}/M, output $${rates.outputCostUsdPerMillion}/M, search $${rates.webSearchCostUsdPerCall}/call, image $${rates.imageCostUsdPerImage}/image (medium, fixed).`,
   );
   const thresholdsStage = stage(
     "thresholds",
@@ -1344,12 +1347,12 @@ export async function buildOperationsCostPipeline(deps: OperationsCostPipelineDe
   );
 
   if (!databaseUrl) {
-    const message = "DATABASE_URL is not configured.";
+    const message = "DATABASE_URL is not configured, so operations cost tables cannot be read.";
     return {
       id: "operations-cost",
       label: "Operations cost",
       stages: [
-        stage("tables", "ai_operation_costs / fixed_operating_costs tables exist", "amber", message),
+        stage("tables", "ai_operation_costs / fixed_operating_costs tables exist", "red", message),
         pricingStage,
         stage("monthly-cost", "This month's estimated operating cost", "amber", `Not probed; ${message}`),
         thresholdsStage,

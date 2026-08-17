@@ -202,229 +202,231 @@ export function AdminOperationsCostSection({
         <p className={styles.error} role="alert">
           {costs.message}
         </p>
-      ) : null}
-
-      <div className={styles.periodGrid}>
-        <PeriodCard title="Today so far" period={costs.today} />
-        <PeriodCard title="This month" period={costs.thisMonth} />
-        <PeriodCard title="Last month" period={costs.lastMonth} />
-      </div>
-
-      <h3 className={styles.subheading}>This month&apos;s feature breakdown</h3>
-      {costs.featureBreakdown.length === 0 ? (
-        <p className={styles.empty}>No AI or X spend recorded yet this month.</p>
       ) : (
-        <ul className={styles.breakdownList}>
-          {costs.featureBreakdown.map((row) => (
-            <li key={row.featureLabel} className={styles.breakdownItem}>
-              <span className={styles.breakdownLabel}>{row.featureLabel}</span>
-              <span className={styles.breakdownCost}>{formatUsd(row.costUsd)}</span>
-              <span className={styles.breakdownCount}>{row.operationCount} ops</span>
-            </li>
-          ))}
-        </ul>
-      )}
+        <>
+          <div className={styles.periodGrid}>
+            <PeriodCard title="Today so far" period={costs.today} />
+            <PeriodCard title="This month" period={costs.thisMonth} />
+            <PeriodCard title="Last month" period={costs.lastMonth} />
+          </div>
 
-      <h3 className={styles.subheading}>Attributed vs unattributed spend</h3>
-      <p className={styles.note}>
-        Free-site and site-style generation requests have no wallet in their request contract, so their cost is genuinely
-        unattributed — it is not hidden inside any wallet&apos;s total below.
-      </p>
-      <div className={styles.reconciliationGrid}>
-        <article className={styles.moneyCard}>
-          <p className={styles.cardLabel}>Attributed this month</p>
-          <p className={styles.cardValue}>{formatUsd(costs.reconciliation.attributedCostUsd)}</p>
-        </article>
-        <article className={styles.moneyCard}>
-          <p className={styles.cardLabel}>Unattributed this month</p>
-          <p className={styles.cardValue}>{formatUsd(costs.reconciliation.unattributedCostUsd)}</p>
-        </article>
-      </div>
-
-      <h4 className={styles.subheading}>Top {costs.reconciliation.topWalletsLimit} wallets by variable cost this month</h4>
-      <p className={styles.note}>
-        This table is limited to the top {costs.reconciliation.topWalletsLimit} wallets — it does not cover all attributed
-        spend. See the attributed total above for the full figure.
-      </p>
-      {costs.reconciliation.topWallets.length === 0 ? (
-        <p className={styles.empty}>No wallet-attributed spend yet this month.</p>
-      ) : (
-        <ul className={styles.walletList}>
-          {costs.reconciliation.topWallets.map((wallet) => (
-            <li key={wallet.walletAddress} className={styles.walletItem}>
-              <div className={styles.walletTop}>
-                <span className={styles.address}>{shortWallet(wallet.walletAddress)}</span>
-                {wallet.accessSource === "test-allowlist" ? <span className={styles.badgeAmber}>Test access</span> : null}
-                {wallet.plan ? <span className={styles.badgeActive}>{wallet.plan}</span> : null}
-              </div>
-              <p className={styles.cardDetail}>
-                {formatUsd(wallet.variableCostUsd)} across {wallet.operationCount} operation(s) · verified revenue{" "}
-                {formatUsdCents(wallet.revenueUsdCents)}
-                {wallet.accessSource === "test-allowlist" ? " (test access — no payment expected)" : ""}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <h3 className={styles.subheading}>Live activity ledger</h3>
-      {costs.ledger.length === 0 ? (
-        <p className={styles.empty}>No operations recorded yet.</p>
-      ) : (
-        <ol className={styles.ledgerList}>
-          {costs.ledger.map((item) => (
-            <li key={item.id} className={styles.ledgerItem}>
-              {relativeTime(item.occurredAt)} · {item.featureLabel} · {formatUsd(item.costUsd)} ·{" "}
-              {item.walletAddress ? <span className={styles.address}>{shortWallet(item.walletAddress)}</span> : "Unattributed"}
-            </li>
-          ))}
-        </ol>
-      )}
-
-      <h3 className={styles.subheading}>Fixed operating costs</h3>
-      {error ? (
-        <p className={styles.error} role="alert">
-          {error}
-        </p>
-      ) : null}
-      <form className={styles.form} onSubmit={(event) => void submitFixedCost(event, "create")}>
-        <label>
-          <span>Name</span>
-          <input
-            type="text"
-            maxLength={120}
-            placeholder="Vercel hosting"
-            value={form.name}
-            disabled={submitting}
-            onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-          />
-        </label>
-        <label>
-          <span>Amount (USD)</span>
-          <input
-            type="number"
-            min="0.01"
-            step="0.01"
-            placeholder="20.00"
-            value={form.amountUsd}
-            disabled={submitting}
-            onChange={(event) => setForm((prev) => ({ ...prev, amountUsd: event.target.value }))}
-          />
-        </label>
-        <label>
-          <span>Cadence</span>
-          <select
-            value={form.cadence}
-            disabled={submitting}
-            onChange={(event) => setForm((prev) => ({ ...prev, cadence: event.target.value as "monthly" | "annual" }))}
-          >
-            <option value="monthly">Monthly</option>
-            <option value="annual">Annual</option>
-          </select>
-        </label>
-        <label>
-          <span>Note (optional)</span>
-          <input
-            type="text"
-            maxLength={500}
-            placeholder="Pro plan"
-            value={form.note}
-            disabled={submitting}
-            onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))}
-          />
-        </label>
-        <button type="submit" className={styles.addButton} disabled={submitting}>
-          {submitting ? "Adding…" : "Add fixed cost"}
-        </button>
-      </form>
-
-      {costs.fixedCosts.length === 0 ? (
-        <p className={styles.empty}>No fixed costs entered yet.</p>
-      ) : (
-        <ul className={styles.fixedCostList}>
-          {costs.fixedCosts.map((cost) =>
-            editingId === cost.id ? (
-              <li key={cost.id} className={styles.fixedCostItem}>
-                <form className={styles.form} onSubmit={(event) => void submitFixedCost(event, "update")}>
-                  <label>
-                    <span>Name</span>
-                    <input
-                      type="text"
-                      maxLength={120}
-                      value={editForm.name}
-                      disabled={submitting}
-                      onChange={(event) => setEditForm((prev) => ({ ...prev, name: event.target.value }))}
-                    />
-                  </label>
-                  <label>
-                    <span>Amount (USD)</span>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={editForm.amountUsd}
-                      disabled={submitting}
-                      onChange={(event) => setEditForm((prev) => ({ ...prev, amountUsd: event.target.value }))}
-                    />
-                  </label>
-                  <label>
-                    <span>Cadence</span>
-                    <select
-                      value={editForm.cadence}
-                      disabled={submitting}
-                      onChange={(event) => setEditForm((prev) => ({ ...prev, cadence: event.target.value as "monthly" | "annual" }))}
-                    >
-                      <option value="monthly">Monthly</option>
-                      <option value="annual">Annual</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Note (optional)</span>
-                    <input
-                      type="text"
-                      maxLength={500}
-                      value={editForm.note}
-                      disabled={submitting}
-                      onChange={(event) => setEditForm((prev) => ({ ...prev, note: event.target.value }))}
-                    />
-                  </label>
-                  <div className={styles.formActions}>
-                    <button type="submit" className={styles.confirmButton} disabled={submitting}>
-                      {submitting ? "Saving…" : "Save"}
-                    </button>
-                    <button type="button" className={styles.cancelButton} onClick={() => setEditingId(null)} disabled={submitting}>
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              </li>
-            ) : (
-              <li key={cost.id} className={styles.fixedCostItem}>
-                <div className={styles.walletTop}>
-                  <span className={styles.activityMessage}>{cost.name}</span>
-                  <span className={styles.cardValue}>{formatUsd(cost.amountUsd)}</span>
-                </div>
-                <p className={styles.cardDetail}>
-                  {cost.cadence === "annual" ? `Annual — ${formatUsd(cost.monthlyEquivalentUsd)}/month equivalent` : "Monthly"}
-                  {cost.note ? ` · ${cost.note}` : ""}
-                </p>
-                <div className={styles.formActions}>
-                  <button type="button" className={styles.isolateButton} onClick={() => startEdit(cost)}>
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.cancelButton}
-                    disabled={deletingId === cost.id}
-                    onClick={() => void deleteFixedCost(cost)}
-                  >
-                    {deletingId === cost.id ? "Deleting…" : "Delete"}
-                  </button>
-                </div>
-              </li>
-            ),
+          <h3 className={styles.subheading}>This month&apos;s feature breakdown</h3>
+          {costs.featureBreakdown.length === 0 ? (
+            <p className={styles.empty}>No AI or X spend recorded yet this month.</p>
+          ) : (
+            <ul className={styles.breakdownList}>
+              {costs.featureBreakdown.map((row) => (
+                <li key={row.featureLabel} className={styles.breakdownItem}>
+                  <span className={styles.breakdownLabel}>{row.featureLabel}</span>
+                  <span className={styles.breakdownCost}>{formatUsd(row.costUsd)}</span>
+                  <span className={styles.breakdownCount}>{row.operationCount} ops</span>
+                </li>
+              ))}
+            </ul>
           )}
-        </ul>
+
+          <h3 className={styles.subheading}>Attributed vs unattributed spend</h3>
+          <p className={styles.note}>
+            Free-site and site-style generation requests have no wallet in their request contract, so their cost is genuinely
+            unattributed — it is not hidden inside any wallet&apos;s total below.
+          </p>
+          <div className={styles.reconciliationGrid}>
+            <article className={styles.moneyCard}>
+              <p className={styles.cardLabel}>Attributed this month</p>
+              <p className={styles.cardValue}>{formatUsd(costs.reconciliation.attributedCostUsd)}</p>
+            </article>
+            <article className={styles.moneyCard}>
+              <p className={styles.cardLabel}>Unattributed this month</p>
+              <p className={styles.cardValue}>{formatUsd(costs.reconciliation.unattributedCostUsd)}</p>
+            </article>
+          </div>
+
+          <h4 className={styles.subheading}>Top {costs.reconciliation.topWalletsLimit} wallets by variable cost this month</h4>
+          <p className={styles.note}>
+            This table is limited to the top {costs.reconciliation.topWalletsLimit} wallets — it does not cover all attributed
+            spend. See the attributed total above for the full figure.
+          </p>
+          {costs.reconciliation.topWallets.length === 0 ? (
+            <p className={styles.empty}>No wallet-attributed spend yet this month.</p>
+          ) : (
+            <ul className={styles.walletList}>
+              {costs.reconciliation.topWallets.map((wallet) => (
+                <li key={wallet.walletAddress} className={styles.walletItem}>
+                  <div className={styles.walletTop}>
+                    <span className={styles.address}>{shortWallet(wallet.walletAddress)}</span>
+                    {wallet.accessSource === "test-allowlist" ? <span className={styles.badgeAmber}>Test access</span> : null}
+                    {wallet.plan ? <span className={styles.badgeActive}>{wallet.plan}</span> : null}
+                  </div>
+                  <p className={styles.cardDetail}>
+                    {formatUsd(wallet.variableCostUsd)} across {wallet.operationCount} operation(s) · verified revenue{" "}
+                    {formatUsdCents(wallet.revenueUsdCents)}
+                    {wallet.accessSource === "test-allowlist" ? " (test access — no payment expected)" : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <h3 className={styles.subheading}>Live activity ledger</h3>
+          {costs.ledger.length === 0 ? (
+            <p className={styles.empty}>No operations recorded yet.</p>
+          ) : (
+            <ol className={styles.ledgerList}>
+              {costs.ledger.map((item) => (
+                <li key={item.id} className={styles.ledgerItem}>
+                  {relativeTime(item.occurredAt)} · {item.featureLabel} · {formatUsd(item.costUsd)} ·{" "}
+                  {item.walletAddress ? <span className={styles.address}>{shortWallet(item.walletAddress)}</span> : "Unattributed"}
+                </li>
+              ))}
+            </ol>
+          )}
+
+          <h3 className={styles.subheading}>Fixed operating costs</h3>
+          {error ? (
+            <p className={styles.error} role="alert">
+              {error}
+            </p>
+          ) : null}
+          <form className={styles.form} onSubmit={(event) => void submitFixedCost(event, "create")}>
+            <label>
+              <span>Name</span>
+              <input
+                type="text"
+                maxLength={120}
+                placeholder="Vercel hosting"
+                value={form.name}
+                disabled={submitting}
+                onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+              />
+            </label>
+            <label>
+              <span>Amount (USD)</span>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="20.00"
+                value={form.amountUsd}
+                disabled={submitting}
+                onChange={(event) => setForm((prev) => ({ ...prev, amountUsd: event.target.value }))}
+              />
+            </label>
+            <label>
+              <span>Cadence</span>
+              <select
+                value={form.cadence}
+                disabled={submitting}
+                onChange={(event) => setForm((prev) => ({ ...prev, cadence: event.target.value as "monthly" | "annual" }))}
+              >
+                <option value="monthly">Monthly</option>
+                <option value="annual">Annual</option>
+              </select>
+            </label>
+            <label>
+              <span>Note (optional)</span>
+              <input
+                type="text"
+                maxLength={500}
+                placeholder="Pro plan"
+                value={form.note}
+                disabled={submitting}
+                onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))}
+              />
+            </label>
+            <button type="submit" className={styles.addButton} disabled={submitting}>
+              {submitting ? "Adding…" : "Add fixed cost"}
+            </button>
+          </form>
+
+          {costs.fixedCosts.length === 0 ? (
+            <p className={styles.empty}>No fixed costs entered yet.</p>
+          ) : (
+            <ul className={styles.fixedCostList}>
+              {costs.fixedCosts.map((cost) =>
+                editingId === cost.id ? (
+                  <li key={cost.id} className={styles.fixedCostItem}>
+                    <form className={styles.form} onSubmit={(event) => void submitFixedCost(event, "update")}>
+                      <label>
+                        <span>Name</span>
+                        <input
+                          type="text"
+                          maxLength={120}
+                          value={editForm.name}
+                          disabled={submitting}
+                          onChange={(event) => setEditForm((prev) => ({ ...prev, name: event.target.value }))}
+                        />
+                      </label>
+                      <label>
+                        <span>Amount (USD)</span>
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={editForm.amountUsd}
+                          disabled={submitting}
+                          onChange={(event) => setEditForm((prev) => ({ ...prev, amountUsd: event.target.value }))}
+                        />
+                      </label>
+                      <label>
+                        <span>Cadence</span>
+                        <select
+                          value={editForm.cadence}
+                          disabled={submitting}
+                          onChange={(event) => setEditForm((prev) => ({ ...prev, cadence: event.target.value as "monthly" | "annual" }))}
+                        >
+                          <option value="monthly">Monthly</option>
+                          <option value="annual">Annual</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Note (optional)</span>
+                        <input
+                          type="text"
+                          maxLength={500}
+                          value={editForm.note}
+                          disabled={submitting}
+                          onChange={(event) => setEditForm((prev) => ({ ...prev, note: event.target.value }))}
+                        />
+                      </label>
+                      <div className={styles.formActions}>
+                        <button type="submit" className={styles.confirmButton} disabled={submitting}>
+                          {submitting ? "Saving…" : "Save"}
+                        </button>
+                        <button type="button" className={styles.cancelButton} onClick={() => setEditingId(null)} disabled={submitting}>
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  </li>
+                ) : (
+                  <li key={cost.id} className={styles.fixedCostItem}>
+                    <div className={styles.walletTop}>
+                      <span className={styles.activityMessage}>{cost.name}</span>
+                      <span className={styles.cardValue}>{formatUsd(cost.amountUsd)}</span>
+                    </div>
+                    <p className={styles.cardDetail}>
+                      {cost.cadence === "annual" ? `Annual — ${formatUsd(cost.monthlyEquivalentUsd)}/month equivalent` : "Monthly"}
+                      {cost.note ? ` · ${cost.note}` : ""}
+                    </p>
+                    <div className={styles.formActions}>
+                      <button type="button" className={styles.isolateButton} onClick={() => startEdit(cost)}>
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.cancelButton}
+                        disabled={deletingId === cost.id}
+                        onClick={() => void deleteFixedCost(cost)}
+                      >
+                        {deletingId === cost.id ? "Deleting…" : "Delete"}
+                      </button>
+                    </div>
+                  </li>
+                ),
+              )}
+            </ul>
+          )}
+        </>
       )}
     </section>
   );

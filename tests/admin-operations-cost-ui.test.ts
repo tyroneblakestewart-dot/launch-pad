@@ -72,4 +72,28 @@ describe("admin operations cost section (issue #368)", () => {
     const dashboard = await source("components/admin-dashboard.tsx");
     expect(dashboard).toContain('{ id: "operations-cost", label: "Operations" }');
   });
+
+  it("never falls through to the zero-valued financial dashboard when cost data is unavailable (issue #368 correction pass)", async () => {
+    const section = await source("components/admin-operations-cost-section.tsx");
+    const unavailableCheckIndex = section.indexOf('costs.status === "unavailable"');
+    expect(unavailableCheckIndex).toBeGreaterThan(-1);
+
+    // The "available" branch of that ternary must be the one and only place
+    // the monetary cards, reconciliation, ledger and fixed-cost editor are
+    // rendered — never before the check, and never in the "unavailable" arm.
+    const availableBranchStart = section.indexOf(") : (", unavailableCheckIndex);
+    expect(availableBranchStart).toBeGreaterThan(unavailableCheckIndex);
+
+    for (const marker of [
+      "styles.periodGrid",
+      "styles.reconciliationGrid",
+      "Live activity ledger",
+      "Add fixed cost",
+    ]) {
+      const firstIndex = section.indexOf(marker);
+      expect(firstIndex, `expected "${marker}" to appear only after the unavailable check's available branch`).toBeGreaterThan(
+        availableBranchStart,
+      );
+    }
+  });
 });

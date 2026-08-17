@@ -305,17 +305,30 @@ describe("checkClientErrorsHealth", () => {
 });
 
 describe("checkOperationsCostHealth", () => {
-  it("is amber when the amber/red thresholds are misconfigured (red <= amber)", async () => {
+  it("is amber when the amber/red thresholds are misconfigured (red <= amber) but storage is reachable", async () => {
     const result = await checkOperationsCostHealth({
       env: { OPERATIONS_MONTHLY_COST_AMBER_USD: "250", OPERATIONS_MONTHLY_COST_RED_USD: "100" },
+      ping: async () => ({ totalCostUsd: 10 }),
     });
     expect(result).toMatchObject({ id: "operations-cost", status: "amber" });
     expect(result.message).toContain("must be greater than");
   });
 
-  it("is amber when DATABASE_URL is not configured", async () => {
-    const result = await checkOperationsCostHealth({ databaseUrl: "" });
-    expect(result).toMatchObject({ id: "operations-cost", status: "amber" });
+  it("is red — not amber — when DATABASE_URL is not configured, even with valid thresholds (issue #368 correction pass)", async () => {
+    const result = await checkOperationsCostHealth({
+      env: { OPERATIONS_MONTHLY_COST_AMBER_USD: "100", OPERATIONS_MONTHLY_COST_RED_USD: "250" },
+      databaseUrl: "",
+    });
+    expect(result).toMatchObject({ id: "operations-cost", status: "red" });
+  });
+
+  it("prefers red storage-unavailable over amber invalid-thresholds: red wins when both are wrong", async () => {
+    const result = await checkOperationsCostHealth({
+      env: { OPERATIONS_MONTHLY_COST_AMBER_USD: "250", OPERATIONS_MONTHLY_COST_RED_USD: "100" },
+      databaseUrl: "",
+    });
+    expect(result).toMatchObject({ id: "operations-cost", status: "red" });
+    expect(result.message).not.toContain("must be greater than");
   });
 
   it("is green when this month's estimated cost is below the amber threshold", async () => {

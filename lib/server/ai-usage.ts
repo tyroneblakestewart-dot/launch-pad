@@ -7,6 +7,11 @@ export type ExtractedOpenAIUsage = {
   totalTokens: number;
 };
 
+/** Clamps a raw provider-reported count to a non-negative integer. */
+function normaliseTokenCount(value: number): number {
+  return Math.max(0, Math.trunc(value));
+}
+
 /**
  * Returns null whenever the provider did not supply usable usage — a network
  * or HTTP failure, or a malformed payload — so callers never fabricate a
@@ -19,17 +24,26 @@ export function extractOpenAIUsage(response: OpenAIResponse | null | undefined):
   }
   if (!Number.isFinite(usage.input_tokens) || !Number.isFinite(usage.output_tokens)) return null;
 
+  const inputTokens = normaliseTokenCount(usage.input_tokens);
+  const outputTokens = normaliseTokenCount(usage.output_tokens);
+
+  // Clamped to inputTokens: a malformed compatible-provider payload could
+  // otherwise report more cached tokens than input tokens, which would make
+  // calculateUncachedInputTokens's "input minus cached" charge more cached
+  // tokens than were actually sent.
   const cached = usage.input_tokens_details?.cached_tokens;
-  const cachedInputTokens = typeof cached === "number" && Number.isFinite(cached) && cached >= 0 ? cached : 0;
+  const cachedInputTokens =
+    typeof cached === "number" && Number.isFinite(cached) ? Math.min(normaliseTokenCount(cached), inputTokens) : 0;
+
   const totalTokens =
     typeof usage.total_tokens === "number" && Number.isFinite(usage.total_tokens)
-      ? Math.max(0, usage.total_tokens)
-      : Math.max(0, usage.input_tokens) + Math.max(0, usage.output_tokens);
+      ? normaliseTokenCount(usage.total_tokens)
+      : inputTokens + outputTokens;
 
   return {
-    inputTokens: Math.max(0, usage.input_tokens),
+    inputTokens,
     cachedInputTokens,
-    outputTokens: Math.max(0, usage.output_tokens),
+    outputTokens,
     totalTokens,
   };
 }

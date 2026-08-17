@@ -487,13 +487,15 @@ export async function checkOperationsCostHealth(deps: {
   const label = "Operations cost";
   const env = deps.env ?? process.env;
   const thresholds = readOperationsCostThresholds(env);
-  if (!thresholds.valid) {
-    return { id, label, status: "amber", message: thresholds.message };
-  }
 
   const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
   if (!databaseUrl && !deps.ping) {
-    return { id, label, status: "amber", message: "DATABASE_URL is not configured." };
+    return {
+      id,
+      label,
+      status: "red",
+      message: "DATABASE_URL is not configured, so operations cost tables cannot be read.",
+    };
   }
 
   const ping =
@@ -520,16 +522,12 @@ export async function checkOperationsCostHealth(deps: {
       return { totalCostUsd: aiCostUsd + xCostUsd + fixedCostUsd };
     });
 
+  // Storage reachability is checked before threshold validity: a red "the
+  // tables can't be read" must never be masked by an amber "thresholds are
+  // misconfigured" message (issue #368 correction pass).
+  let totalCostUsd: number;
   try {
-    const { totalCostUsd } = await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, "Operations cost health check timed out.");
-    const status: SystemHealthStatus =
-      totalCostUsd >= thresholds.redUsd ? "red" : totalCostUsd >= thresholds.amberUsd ? "amber" : "green";
-    return {
-      id,
-      label,
-      status,
-      message: `This month's estimated operating cost so far is $${totalCostUsd.toFixed(2)} (amber at $${thresholds.amberUsd.toFixed(2)}, red at $${thresholds.redUsd.toFixed(2)}).`,
-    };
+    ({ totalCostUsd } = await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, "Operations cost health check timed out."));
   } catch {
     return {
       id,
@@ -538,6 +536,19 @@ export async function checkOperationsCostHealth(deps: {
       message: "Operations cost tables are not reachable. Apply migration 022_operations_costs.sql.",
     };
   }
+
+  if (!thresholds.valid) {
+    return { id, label, status: "amber", message: thresholds.message };
+  }
+
+  const status: SystemHealthStatus =
+    totalCostUsd >= thresholds.redUsd ? "red" : totalCostUsd >= thresholds.amberUsd ? "amber" : "green";
+  return {
+    id,
+    label,
+    status,
+    message: `This month's estimated operating cost so far is $${totalCostUsd.toFixed(2)} (amber at $${thresholds.amberUsd.toFixed(2)}, red at $${thresholds.redUsd.toFixed(2)}).`,
+  };
 }
 
 export type SystemHealthDeps = {

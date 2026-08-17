@@ -19,6 +19,7 @@ import {
   utcDayBounds,
   utcMonthBounds,
 } from "@/lib/operations-cost-math";
+import { subscriptionStatusAt } from "@/lib/subscription-lifecycle";
 import { getFixedOperatingCostsStore, type FixedOperatingCostsStore } from "@/lib/server/fixed-operating-costs-store";
 import { getPostgresPool } from "@/lib/server/postgres";
 import { withTimeout } from "@/lib/server/system-health";
@@ -282,22 +283,32 @@ export async function getOperationsCostSnapshot(deps: OperationsCostSnapshotDeps
     }));
     const topWalletAddresses = topWalletTotals.map((row) => row.walletAddress);
 
-    let tierByWallet = new Map<string, string>();
-    let accessSourceByWallet = new Map<string, AdminCostWalletRow["accessSource"]>();
+    // A top wallet's plan/test-access badge reflects today's sources of
+    // truth, read fresh on every poll — never the historical
+    // ai_operation_costs.access_source of its most recent row this month,
+    // which can be stale (an X-only tester has no AI row at all; a
+    // since-revoked allowlist wallet would still look allowlisted; an
+    // expired recurring tier would still look active). This mirrors the
+    // same active-test-access / current-subscription-status semantics
+    // lib/server/subscription-lifecycle.ts's getSubscriptionAccess already
+    // uses for real entitlement decisions.
+    let subscriptionByWallet = new Map<string, { tier: string; paidUntil: Date | string | null }>();
+    let activeTestWallets = new Set<string>();
     let revenueByWallet = new Map<string, number>();
     if (topWalletAddresses.length > 0) {
-      const [tierResult, accessSourceResult, walletRevenueResult] = await withTimeout(
+      const [subscriptionResult, testAccessResult, walletRevenueResult] = await withTimeout(
         Promise.all([
-          pool.query<{ wallet_address: string; tier: string }>(
-            `SELECT LOWER(wallet_address) AS wallet_address, tier FROM subscriptions WHERE LOWER(wallet_address) = ANY($1)`,
+          pool.query<{ wallet_address: string; tier: string; paid_until: Date | string | null; expires_at: Date | string | null }>(
+            `SELECT LOWER(wallet_address) AS wallet_address, tier, paid_until, expires_at
+               FROM subscriptions
+              WHERE LOWER(wallet_address) = ANY($1)`,
             [topWalletAddresses],
           ),
-          pool.query<{ wallet_address: string; access_source: AdminCostWalletRow["accessSource"] }>(
-            `SELECT wallet_address, (array_agg(access_source ORDER BY occurred_at DESC))[1] AS access_source
-               FROM ai_operation_costs
-              WHERE occurred_at >= $1 AND LOWER(wallet_address) = ANY($2)
-              GROUP BY wallet_address`,
-            [thisMonthBounds.start, topWalletAddresses],
+          pool.query<{ wallet_address: string }>(
+            `SELECT LOWER(wallet_address) AS wallet_address
+               FROM test_access_wallets
+              WHERE revoked_at IS NULL AND LOWER(wallet_address) = ANY($1)`,
+            [topWalletAddresses],
           ),
           pool.query<{ wallet_address: string; usd_cents: string }>(
             `SELECT LOWER(wallet_address) AS wallet_address, COALESCE(SUM(amount_usd_cents), 0)::text AS usd_cents
@@ -310,19 +321,33 @@ export async function getOperationsCostSnapshot(deps: OperationsCostSnapshotDeps
         OPERATIONS_COST_TIMEOUT_MS,
         "Operations cost wallet reconciliation timed out.",
       );
-      tierByWallet = new Map(tierResult.rows.map((row) => [row.wallet_address, row.tier]));
-      accessSourceByWallet = new Map(accessSourceResult.rows.map((row) => [row.wallet_address.toLowerCase(), row.access_source]));
+      subscriptionByWallet = new Map(
+        subscriptionResult.rows.map((row) => [row.wallet_address, { tier: row.tier, paidUntil: row.paid_until ?? row.expires_at }]),
+      );
+      activeTestWallets = new Set(testAccessResult.rows.map((row) => row.wallet_address));
       revenueByWallet = new Map(walletRevenueResult.rows.map((row) => [row.wallet_address, Number.parseInt(row.usd_cents, 10) || 0]));
     }
 
-    const topWallets: AdminCostWalletRow[] = topWalletTotals.map((row) => ({
-      walletAddress: row.walletAddress,
-      variableCostUsd: row.totalUsd,
-      operationCount: row.operationCount,
-      plan: planLabel(tierByWallet.get(row.walletAddress) ?? null),
-      accessSource: accessSourceByWallet.get(row.walletAddress) ?? "unknown",
-      revenueUsdCents: revenueByWallet.get(row.walletAddress) ?? 0,
-    }));
+    const topWallets: AdminCostWalletRow[] = topWalletTotals.map((row) => {
+      const subscription = subscriptionByWallet.get(row.walletAddress);
+      const subscriptionActive = subscription ? subscriptionStatusAt(subscription.paidUntil, now) !== "expired" : false;
+      const isTestActive = activeTestWallets.has(row.walletAddress);
+
+      let accessSource: AdminCostWalletRow["accessSource"] = "unknown";
+      if (isTestActive) accessSource = "test-allowlist";
+      else if (subscriptionActive) accessSource = "paid";
+
+      return {
+        walletAddress: row.walletAddress,
+        variableCostUsd: row.totalUsd,
+        operationCount: row.operationCount,
+        // Never presented as a current active plan once expired — an
+        // expired recurring tier is simply omitted here, not shown active.
+        plan: subscriptionActive ? planLabel(subscription!.tier) : null,
+        accessSource,
+        revenueUsdCents: revenueByWallet.get(row.walletAddress) ?? 0,
+      };
+    });
 
     const attribution = attributionResult.rows[0];
     // Unattributed spend is AI-only: every X send requires a connected wallet, so social_x_send_costs never has a null wallet.
