@@ -41,6 +41,12 @@ export async function requestMascotImage(
         model: imageModel,
         prompt,
         size: "1024x1024",
+        // Fixed owner decision (issue #368), not configurable — quality is a
+        // direct cost-per-image lever, so it is hardcoded here rather than
+        // read from env. Only the per-image *price* is configurable, via
+        // lib/server/ai-pricing.ts's OPENAI_IMAGE_COST_USD_PER_IMAGE
+        // (default $0.042/image at medium, 1024x1024).
+        quality: "medium",
         n: 1,
       }),
       signal: AbortSignal.timeout(45_000),

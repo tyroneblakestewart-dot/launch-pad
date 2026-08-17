@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CONNECTION_RECONNECT_FAILURE_THRESHOLD,
   LINK_POST_COMPOSER_REASON,
@@ -81,6 +81,34 @@ describe("runSocialPostingCron: X destination", () => {
     expect(post.status).toBe("sent");
     expect(post.destinations[0]).toMatchObject({ status: "sent", externalPostId: "999" });
     expect((await connectionsStore.get("0xabc", "x"))?.failureCount).toBe(0);
+  });
+
+  it("keeps the destination sent, without retry or duplicate send, when costStore.recordSend throws (issue #368)", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const postTweetForUser = vi.fn(async () => ({ status: "posted" as const, xPostId: "999" }));
+    const brokenCostStore = createMemorySocialXCostStore();
+    brokenCostStore.recordSend = async () => {
+      throw new Error("db exploded");
+    };
+
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      costStore: brokenCostStore,
+      postTweetForUser,
+    });
+
+    expect(result).toMatchObject({ processed: 1, sent: 1, retried: 0, failed: 0 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.status).toBe("sent");
+    expect(post.destinations[0]).toMatchObject({ status: "sent", externalPostId: "999" });
+    expect(postTweetForUser).toHaveBeenCalledTimes(1);
   });
 
   it("retries with exponential backoff on a transient API error, without exhausting attempts", async () => {

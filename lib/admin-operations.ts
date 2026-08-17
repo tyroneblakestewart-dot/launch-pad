@@ -123,6 +123,7 @@ export const SYSTEM_HEALTH_CHECK_IDS = [
   "social-studio-ai",
   "social-posting",
   "client-errors",
+  "operations-cost",
 ] as const;
 
 export type SystemHealthCheckId = (typeof SYSTEM_HEALTH_CHECK_IDS)[number];
@@ -198,6 +199,79 @@ export type AdminOperationsIssue = {
   serviceKey: AdminServiceKey | null;
 };
 
+// Operations cost/margin cockpit (issue #368). `costs` is optional on the
+// type only so pre-existing hand-authored AdminOperationsSnapshot fixtures in
+// tests that mock getAdminOperationsSnapshot wholesale keep compiling; the
+// real snapshot builder always populates it.
+export type AdminCostAccessSource = "paid" | "test-allowlist" | "free" | "unknown";
+
+export type AdminCostPeriodSnapshot = {
+  aiCostUsd: number;
+  xCostUsd: number;
+  variableCostUsd: number;
+  fixedCostUsd: number;
+  totalCostUsd: number;
+  revenueUsdCents: number;
+  marginUsd: number;
+  /** null when revenue is zero, so the UI never implies a margin percentage exists with no revenue. */
+  marginPercent: number | null;
+};
+
+export type AdminCostFeatureBreakdownRow = {
+  featureLabel: string;
+  costUsd: number;
+  operationCount: number;
+};
+
+export type AdminCostWalletRow = {
+  walletAddress: string;
+  variableCostUsd: number;
+  operationCount: number;
+  plan: string | null;
+  accessSource: AdminCostAccessSource;
+  revenueUsdCents: number;
+};
+
+export type AdminCostReconciliation = {
+  attributedCostUsd: number;
+  unattributedCostUsd: number;
+  topWallets: AdminCostWalletRow[];
+  topWalletsLimit: number;
+};
+
+export type AdminCostLedgerItem = {
+  id: string;
+  occurredAt: string;
+  featureLabel: string;
+  walletAddress: string | null;
+  costUsd: number;
+  model: string | null;
+  provider: string | null;
+};
+
+export type AdminFixedOperatingCost = {
+  id: string;
+  name: string;
+  amountUsd: number;
+  cadence: "monthly" | "annual";
+  monthlyEquivalentUsd: number;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminOperationsCostSnapshot = {
+  status: "ready" | "unavailable";
+  message: string;
+  today: AdminCostPeriodSnapshot;
+  thisMonth: AdminCostPeriodSnapshot;
+  lastMonth: AdminCostPeriodSnapshot;
+  featureBreakdown: AdminCostFeatureBreakdownRow[];
+  reconciliation: AdminCostReconciliation;
+  ledger: AdminCostLedgerItem[];
+  fixedCosts: AdminFixedOperatingCost[];
+};
+
 export type AdminOperationsSnapshot = {
   checkedAt: string;
   health: AdminHealthCheck[];
@@ -208,6 +282,7 @@ export type AdminOperationsSnapshot = {
   money: AdminMoneySnapshot;
   issues: AdminOperationsIssue[];
   sectionErrors: string[];
+  costs?: AdminOperationsCostSnapshot;
 };
 
 export const SUBSCRIBER_TIERS = [

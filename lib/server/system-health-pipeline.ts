@@ -9,7 +9,9 @@ import type {
 import { getBondingCurveAddress, HOODLUMS_BONDING_CURVE_READ_ABI } from "@/lib/bonding-curve-config";
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { getFactoryAddress, HOODLUMS_TOKEN_FACTORY_ABI } from "@/lib/factory-config";
+import { readAiPricingRates, readOperationsCostThresholds, validateAiPricingConfig } from "@/lib/server/ai-pricing";
 import { resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
+import { getOperationsCostSnapshot, type OperationsCostSnapshotDeps } from "@/lib/server/admin-operations-costs";
 import {
   GENERATE_SITE_STYLE_LIMIT,
   GENERATE_SITE_STYLE_WINDOW_MS,
@@ -1310,6 +1312,121 @@ export async function buildClientErrorsPipeline(deps: ClientErrorsPipelineDeps =
 }
 
 // ---------------------------------------------------------------------------
+// Operations cost/margin cockpit
+// ---------------------------------------------------------------------------
+
+export type OperationsCostPipelineDeps = {
+  databaseUrl?: string;
+  env?: Record<string, string | undefined>;
+  now?: Date;
+  getSnapshot?: (deps: OperationsCostSnapshotDeps) => ReturnType<typeof getOperationsCostSnapshot>;
+};
+
+export async function buildOperationsCostPipeline(deps: OperationsCostPipelineDeps = {}): Promise<AdminServicePipeline> {
+  const env = deps.env ?? process.env;
+  const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
+  const thresholds = readOperationsCostThresholds(env);
+  const rates = readAiPricingRates(env);
+
+  const pricingIssues = validateAiPricingConfig(env);
+  const pricingStage = stage(
+    "pricing-config",
+    "Pricing configuration (OPENAI_*_COST_USD_*)",
+    pricingIssues.length > 0 ? "amber" : "green",
+    pricingIssues.length > 0
+      ? `Invalid configured price(s), documented defaults used instead: ${pricingIssues.map((issue) => `${issue.variable}="${issue.rawValue}"`).join(", ")}.`
+      : `Input $${rates.inputCostUsdPerMillion}/M, cached $${rates.cachedInputCostUsdPerMillion}/M, output $${rates.outputCostUsdPerMillion}/M, search $${rates.webSearchCostUsdPerCall}/call, image $${rates.imageCostUsdPerImage}/image (medium, fixed).`,
+  );
+  const thresholdsStage = stage(
+    "thresholds",
+    "Monthly cost thresholds (OPERATIONS_MONTHLY_COST_AMBER_USD / _RED_USD)",
+    thresholds.valid ? "green" : "amber",
+    thresholds.valid
+      ? `Amber at $${thresholds.amberUsd.toFixed(2)}, red at $${thresholds.redUsd.toFixed(2)}.`
+      : thresholds.message,
+  );
+
+  if (!databaseUrl) {
+    const message = "DATABASE_URL is not configured, so operations cost tables cannot be read.";
+    return {
+      id: "operations-cost",
+      label: "Operations cost",
+      stages: [
+        stage("tables", "ai_operation_costs / fixed_operating_costs tables exist", "red", message),
+        pricingStage,
+        stage("monthly-cost", "This month's estimated operating cost", "amber", `Not probed; ${message}`),
+        thresholdsStage,
+      ],
+    };
+  }
+
+  const getSnapshot = deps.getSnapshot ?? getOperationsCostSnapshot;
+  let tablesStage: AdminPipelineStage;
+  let monthlyCostStage: AdminPipelineStage;
+  try {
+    const snapshot = await withTimeout(
+      getSnapshot({ databaseUrl, now: deps.now }),
+      HEALTH_CHECK_TIMEOUT_MS,
+      "timed out",
+    );
+    if (snapshot.status !== "ready") {
+      tablesStage = stage(
+        "tables",
+        "ai_operation_costs / fixed_operating_costs tables exist",
+        "red",
+        "Migration 022_operations_costs.sql has not been applied yet, or the tables could not be read.",
+      );
+      monthlyCostStage = stage(
+        "monthly-cost",
+        "This month's estimated operating cost",
+        "amber",
+        "Not probed; operations cost data is unavailable.",
+      );
+    } else {
+      tablesStage = stage(
+        "tables",
+        "ai_operation_costs / fixed_operating_costs tables exist",
+        "green",
+        "Both tables are reachable.",
+      );
+      const total = snapshot.thisMonth.totalCostUsd;
+      const status = !thresholds.valid
+        ? "amber"
+        : total >= thresholds.redUsd
+          ? "red"
+          : total >= thresholds.amberUsd
+            ? "amber"
+            : "green";
+      monthlyCostStage = stage(
+        "monthly-cost",
+        "This month's estimated operating cost",
+        status,
+        `$${total.toFixed(2)} so far (AI $${snapshot.thisMonth.aiCostUsd.toFixed(2)}, X $${snapshot.thisMonth.xCostUsd.toFixed(2)}, fixed $${snapshot.thisMonth.fixedCostUsd.toFixed(2)}).`,
+      );
+    }
+  } catch {
+    tablesStage = stage(
+      "tables",
+      "ai_operation_costs / fixed_operating_costs tables exist",
+      "red",
+      "Could not check whether the operations cost tables exist.",
+    );
+    monthlyCostStage = stage(
+      "monthly-cost",
+      "This month's estimated operating cost",
+      "red",
+      "Could not read this month's estimated operating cost.",
+    );
+  }
+
+  return {
+    id: "operations-cost",
+    label: "Operations cost",
+    stages: [tablesStage, pricingStage, monthlyCostStage, thresholdsStage],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
 
@@ -1326,6 +1443,7 @@ export type SystemHealthPipelineDeps = {
   socialStudioAi?: SocialStudioAiPipelineDeps;
   socialPosting?: SocialPostingPipelineDeps;
   clientErrors?: ClientErrorsPipelineDeps;
+  operationsCost?: OperationsCostPipelineDeps;
 };
 
 /** Builds a single service's pipeline on demand — used by the drill-down endpoint. */
@@ -1364,5 +1482,7 @@ export async function buildServicePipeline(
       return buildSocialPostingPipeline({ env: deps.env, ...deps.socialPosting });
     case "client-errors":
       return buildClientErrorsPipeline(deps.clientErrors);
+    case "operations-cost":
+      return buildOperationsCostPipeline({ env: deps.env, ...deps.operationsCost });
   }
 }

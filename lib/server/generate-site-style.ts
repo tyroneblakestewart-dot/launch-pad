@@ -14,7 +14,20 @@ export type NormalisedGenerateSiteStyleRequest = {
   inspirationUrl: string;
 };
 
+// Responses API usage shape (issue #368) — used to meter every paid provider
+// attempt from returned usage, never from prompt-length estimates. See
+// https://platform.openai.com/docs/api-reference/batch/object?api-mode=responses
+export type OpenAIUsageDetails = {
+  input_tokens?: number;
+  input_tokens_details?: { cached_tokens?: number };
+  output_tokens?: number;
+  output_tokens_details?: { reasoning_tokens?: number };
+  total_tokens?: number;
+};
+
 export type OpenAIResponse = {
+  model?: string;
+  usage?: OpenAIUsageDetails;
   output?: Array<{
     type?: string;
     status?: string;

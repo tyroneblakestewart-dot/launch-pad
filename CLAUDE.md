@@ -519,3 +519,64 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   of ever returning an unsafe or unchecked draft — a missing draft is
   recoverable, a fabricated market claim handed to a user ready to publish
   is not.
+- Live operating-cost and margin cockpit shipped in `/admin` as a new
+  Operations tab (issue #368), implemented for review. Every measurable paid
+  OpenAI provider attempt — not just the outer HTTP request, so parse
+  retries, corrective retries and layout retries each meter separately — is
+  recorded as its own row in `ai_operation_costs` (migration
+  `022_operations_costs.sql`, alongside a `fixed_operating_costs` table for
+  owner-entered recurring costs) from the Responses API's own returned
+  `usage` (`lib/server/ai-usage.ts`), never a prompt-length estimate, priced
+  via `lib/server/ai-pricing.ts`'s configurable
+  `OPENAI_*_COST_USD_PER_*`/`OPENAI_IMAGE_COST_USD_PER_IMAGE` env rates
+  (documented defaults matching gpt-5-mini and gpt-image-1's official
+  pricing at implementation time — see `.env.example`). Recording is
+  best-effort and never blocks or changes a route's response: every AI route
+  (`generate-site-page`, `generate-free-site`, `generate-site-style`, and
+  all four `/api/social/*` AI routes) calls it through a `runAfterResponse`
+  wrapper around Next's `after()` that falls back to an unawaited
+  fire-and-forget when `after()` throws outside a real request scope (e.g.
+  in tests), and a failed insert is caught and logged, never surfaced to the
+  caller. `mascot-image-request.ts` explicitly requests `quality: "medium"`
+  as a fixed owner decision, not a configurable setting — only the image's
+  per-unit **price** (`OPENAI_IMAGE_COST_USD_PER_IMAGE`) is configurable;
+  `gpt-image-1` itself is unchanged and is a known-deprecated follow-up, not
+  addressed here. The pre-existing X-cost bug where a DB failure in
+  `costStore.recordSend` after a successful post could flip that post's
+  status is now caught and logged the same way — the destination stays
+  `sent` either way; `social_x_send_costs` remains the sole X-cost source of
+  truth and is unioned/aggregated with `ai_operation_costs`, never
+  duplicated into it. `lib/server/admin-operations-costs.ts` aggregates
+  today/this-month/last-month variable (AI+X) and prorated-fixed cost against
+  verified `plan_payment_events` revenue (pure UTC boundary/proration math in
+  `lib/operations-cost-math.ts`), a this-month feature breakdown, an
+  attributed-vs-unattributed wallet reconciliation (free-site/site-style
+  requests carry no wallet by design, so their cost is genuinely
+  unattributed rather than hidden inside a wallet total) with a bounded
+  top-10 wallet table showing each wallet's plan and test-allowlist status,
+  and a bounded 30-item reverse-chronological ledger. A top wallet's current
+  plan/test-access badge is derived from today's sources of truth at read
+  time — active (non-revoked) `test_access_wallets` rows and current
+  (non-expired) recurring-subscription lifecycle state — never from
+  historical `ai_operation_costs.access_source`, which is retained only as
+  per-row historical metadata; verified revenue is read strictly from
+  `plan_payment_events`; a tester's row can therefore show `Test access`
+  with `$0` verified revenue. Fixed-cost CRUD lives behind a new
+  `app/api/admin/operations/fixed-costs` route with the same admin-session +
+  Origin protection as the existing operations route. A new
+  `operations-cost` System Health check/pipeline reports this month's
+  estimated spend against configurable
+  `OPERATIONS_MONTHLY_COST_AMBER_USD`/`_RED_USD` thresholds: it goes red when
+  the cost tables can't be read (missing `DATABASE_URL`, missing migration,
+  timeout, or query failure) or when spend reaches the red threshold, and
+  amber when configured pricing or thresholds are invalid while storage
+  itself remains reachable — never a silent miscalculation. Every dollar
+  figure in the UI is labelled an estimate, not the provider invoice, with
+  an explicit reconcile-weekly-then-monthly note; when the cost snapshot
+  itself is unavailable, the section stops rendering monetary cards,
+  reconciliation, the ledger and the fixed-cost editor rather than falling
+  back to zero-filled figures. Deliberately out of scope, per the issue:
+  Vercel billing integration (treated as a plain fixed-cost entry for now;
+  its `/v1/billing/charges` API is only daily-granularity and is worth a
+  dedicated future PR once overage materially affects margin), and any
+  pruning/rollup of the raw `ai_operation_costs` rows.

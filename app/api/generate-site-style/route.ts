@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { AI_FEATURE_KEYS } from "@/lib/ai-feature-keys";
+import { recordTextOperationCostBestEffort, runAfterResponse } from "@/lib/server/ai-operation-cost-store";
 import {
   getInspirationDomain,
   isValidImageDataUrl,
@@ -156,6 +158,21 @@ export async function POST(request: Request) {
   let artworkIdentity: ArtworkIdentity | undefined;
   let fusionBriefIds: FusionBriefIds | undefined;
 
+  // No wallet in this route's request contract (issue #368) — every attempt
+  // is genuinely unattributed spend, not silently credited to a guessed wallet.
+  function recordSiteStyleCost(featureKey: string, result: OpenAIRequestResult): void {
+    runAfterResponse(() =>
+      recordTextOperationCostBestEffort({
+        featureKey,
+        walletAddress: null,
+        accessSource: "free",
+        provider: "openai",
+        response: result.ok ? result.payload : undefined,
+        fallbackModel: model,
+      }),
+    );
+  }
+
   if (input.inspirationUrl) {
     const domain = getInspirationDomain(input.inspirationUrl);
     const inspirationBody = buildInspirationInspectionRequestBody(input, model);
@@ -171,6 +188,8 @@ export async function POST(request: Request) {
       requestOpenAI(apiKey, inspirationBody, 22_000, "inspiration-inspection"),
       requestOpenAI(apiKey, artworkBody, 20_000, "artwork-identity-analysis"),
     ]);
+    recordSiteStyleCost(AI_FEATURE_KEYS.SITE_STYLE_INSPIRATION_SEARCH, inspirationResult);
+    recordSiteStyleCost(AI_FEATURE_KEYS.SITE_STYLE_ARTWORK, artworkResult);
 
     if (!inspirationResult.ok) {
       return NextResponse.json(
@@ -226,6 +245,7 @@ export async function POST(request: Request) {
     28_000,
     "artwork-site-generation",
   );
+  recordSiteStyleCost(AI_FEATURE_KEYS.SITE_STYLE_FINAL, generation);
   if (!generation.ok) {
     if (generation.kind === "invalid") {
       return NextResponse.json(

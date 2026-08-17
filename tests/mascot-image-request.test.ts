@@ -34,6 +34,16 @@ describe("requestMascotImage", () => {
     expect(result).toEqual({ ok: true, imageDataUrl: "data:image/png;base64,AAAA" });
   });
 
+  it("regression: always requests explicit quality 'medium' at 1024x1024, n:1 (issue #368)", async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      expect(body).toMatchObject({ quality: "medium", size: "1024x1024", n: 1 });
+      return new Response(JSON.stringify({ data: [{ b64_json: "AAAA" }] }), { status: 200 });
+    });
+    await requestMascotImage(OPENAI_RUNTIME, "a prompt", fetchMock as unknown as typeof fetch);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("returns a network failure when the fetch itself throws", async () => {
     const fetchMock = vi.fn(async () => {
       throw new Error("network down");

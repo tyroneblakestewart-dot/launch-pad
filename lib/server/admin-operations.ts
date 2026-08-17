@@ -2,6 +2,7 @@ import { createPublicClient, formatEther, http } from "viem";
 import {
   type AdminHealthCheck,
   type AdminMoneySnapshot,
+  type AdminOperationsCostSnapshot,
   type AdminOperationsIssue,
   type AdminOperationsSnapshot,
   type AdminRevenueEvent,
@@ -17,10 +18,22 @@ import {
   HOODLUMS_TOKEN_FACTORY_ABI,
 } from "@/lib/factory-config";
 import { getAdminOperationsStore } from "@/lib/server/admin-operations-store";
+import { getOperationsCostSnapshot } from "@/lib/server/admin-operations-costs";
 import { getPostgresPool } from "@/lib/server/postgres";
 import { getSystemHealth } from "@/lib/server/system-health";
 
 const OPERATIONS_TIMEOUT_MS = 6_000;
+
+const EMPTY_COST_PERIOD = {
+  aiCostUsd: 0,
+  xCostUsd: 0,
+  variableCostUsd: 0,
+  fixedCostUsd: 0,
+  totalCostUsd: 0,
+  revenueUsdCents: 0,
+  marginUsd: 0,
+  marginPercent: null as number | null,
+};
 
 async function withTimeout<T>(
   promise: Promise<T>,
@@ -300,6 +313,7 @@ function buildIssues(input: {
   health: AdminHealthCheck[];
   services: AdminOperationsSnapshot["services"];
   money: AdminMoneySnapshot;
+  costs: AdminOperationsCostSnapshot;
   sectionErrors: string[];
 }): AdminOperationsIssue[] {
   const issues: AdminOperationsIssue[] = [];
@@ -350,6 +364,17 @@ function buildIssues(input: {
     });
   }
 
+  if (input.costs.status === "unavailable") {
+    issues.push({
+      id: "operations:costs",
+      severity: "amber",
+      title: "Operations cost data unavailable",
+      message: input.costs.message,
+      source: "operations",
+      serviceKey: null,
+    });
+  }
+
   input.sectionErrors.forEach((message, index) => {
     issues.push({
       id: `operations:${index}`,
@@ -379,6 +404,7 @@ export async function getAdminOperationsSnapshot(
     sitesResult,
     sessionsResult,
     moneyResult,
+    costsResult,
   ] = await Promise.allSettled([
     getSystemHealth({ requestOidcToken: deps.requestOidcToken }),
     store.listServiceControls(),
@@ -386,6 +412,7 @@ export async function getAdminOperationsSnapshot(
     getSiteStats(),
     getActiveAdminSessionCount(),
     getMoneySnapshot(),
+    getOperationsCostSnapshot(),
   ]);
 
   const sectionErrors: string[] = [];
@@ -442,8 +469,22 @@ export async function getAdminOperationsSnapshot(
           recentPlanPayments: [],
           planRevenueMessage: "Plan revenue data could not be loaded.",
         };
+  const costs: AdminOperationsCostSnapshot =
+    costsResult.status === "fulfilled"
+      ? costsResult.value
+      : {
+          status: "unavailable" as const,
+          message: "Operations cost data could not be loaded.",
+          today: EMPTY_COST_PERIOD,
+          thisMonth: EMPTY_COST_PERIOD,
+          lastMonth: EMPTY_COST_PERIOD,
+          featureBreakdown: [],
+          reconciliation: { attributedCostUsd: 0, unattributedCostUsd: 0, topWallets: [], topWalletsLimit: 0 },
+          ledger: [],
+          fixedCosts: [],
+        };
 
-  const issues = buildIssues({ health, services, money, sectionErrors });
+  const issues = buildIssues({ health, services, money, costs, sectionErrors });
 
   return {
     checkedAt: new Date().toISOString(),
@@ -453,6 +494,7 @@ export async function getAdminOperationsSnapshot(
     sites,
     activeAdminSessions,
     money,
+    costs,
     issues,
     sectionErrors,
   };

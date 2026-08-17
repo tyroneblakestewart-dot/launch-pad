@@ -81,7 +81,7 @@ describe("authoriseSocialStudioRequest", () => {
         },
       ]),
     });
-    expect(result).toEqual({ status: "allowed", walletAddress: ACTIVE_WALLET.toLowerCase() });
+    expect(result).toEqual({ status: "allowed", walletAddress: ACTIVE_WALLET.toLowerCase(), accessSource: "paid" });
   });
 
   it("returns allowed for a wallet with an active Pro Bundle subscription", async () => {

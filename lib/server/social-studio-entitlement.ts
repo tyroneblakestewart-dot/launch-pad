@@ -17,7 +17,12 @@ export const SOCIAL_STUDIO_UPSELL_MESSAGE =
   "AI Social Studio tools are included with Pro and Pro Bundle. Connect the wallet with an active subscription, or upgrade from your account.";
 
 export type SocialStudioAuthorisation =
-  | { status: "allowed"; walletAddress: string }
+  | {
+      status: "allowed";
+      walletAddress: string;
+      /** Real server authorisations include this (issue #368); optional keeps older injected test fixtures compatible. */
+      accessSource?: "paid" | "test-allowlist";
+    }
   | { status: "upsell"; message: string }
   | { status: "invalid-wallet"; message: string }
   | { status: "unavailable"; message: string };
@@ -92,5 +97,9 @@ export async function authoriseSocialStudioRequest(
     return { status: "upsell", message: SOCIAL_STUDIO_UPSELL_MESSAGE };
   }
 
-  return { status: "allowed", walletAddress: access.walletAddress };
+  return {
+    status: "allowed",
+    walletAddress: access.walletAddress,
+    accessSource: access.accessSource === "test-allowlist" ? "test-allowlist" : "paid",
+  };
 }

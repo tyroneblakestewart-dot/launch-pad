@@ -5,6 +5,7 @@ import {
   buildContractsPipeline,
   buildDatabasePipeline,
   buildDeploymentPipeline,
+  buildOperationsCostPipeline,
   buildOutreachPipeline,
   buildServicePipeline,
   buildSocialPostingPipeline,
@@ -793,5 +794,124 @@ describe("buildSocialStudioAiPipeline (issue #332)", () => {
     });
     expect(pipeline.id).toBe("social-studio-ai");
     expect(stageById(pipeline, "provider-configured")).toMatchObject({ status: "green" });
+  });
+});
+
+function emptyCostPeriod(overrides: Partial<{ aiCostUsd: number; xCostUsd: number; fixedCostUsd: number; totalCostUsd: number }> = {}) {
+  return {
+    aiCostUsd: 0,
+    xCostUsd: 0,
+    variableCostUsd: 0,
+    fixedCostUsd: 0,
+    totalCostUsd: 0,
+    revenueUsdCents: 0,
+    marginUsd: 0,
+    marginPercent: null,
+    ...overrides,
+  };
+}
+
+describe("buildOperationsCostPipeline (issue #368)", () => {
+  const env = { OPERATIONS_MONTHLY_COST_AMBER_USD: "100", OPERATIONS_MONTHLY_COST_RED_USD: "250" };
+
+  it("reports the tables stage red — not amber — when DATABASE_URL is not configured (issue #368 correction pass)", async () => {
+    const pipeline = await buildOperationsCostPipeline({ env, databaseUrl: "" });
+    expect(stageById(pipeline, "tables")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "monthly-cost")).toMatchObject({ status: "amber" });
+    expect(stageById(pipeline, "pricing-config")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "thresholds")).toMatchObject({ status: "green" });
+  });
+
+  it("reports the pricing-config stage amber, by exact variable name, when a configured price is invalid", async () => {
+    const pipeline = await buildOperationsCostPipeline({
+      env: { ...env, OPENAI_OUTPUT_COST_USD_PER_MILLION: "not-a-number" },
+      databaseUrl: "",
+    });
+    const pricingStage = stageById(pipeline, "pricing-config");
+    expect(pricingStage.status).toBe("amber");
+    expect(pricingStage.message).toContain("OPENAI_OUTPUT_COST_USD_PER_MILLION");
+  });
+
+  it("reports the pricing-config stage green when every configured price is valid", async () => {
+    const pipeline = await buildOperationsCostPipeline({
+      env: { ...env, OPENAI_INPUT_COST_USD_PER_MILLION: "1" },
+      databaseUrl: "",
+    });
+    expect(stageById(pipeline, "pricing-config")).toMatchObject({ status: "green" });
+  });
+
+  it("is amber on the thresholds stage when red <= amber, independent of the database", async () => {
+    const pipeline = await buildOperationsCostPipeline({
+      env: { OPERATIONS_MONTHLY_COST_AMBER_USD: "250", OPERATIONS_MONTHLY_COST_RED_USD: "100" },
+      databaseUrl: "",
+    });
+    expect(stageById(pipeline, "thresholds")).toMatchObject({ status: "amber" });
+  });
+
+  it("is green end to end when this month's total is below the amber threshold", async () => {
+    const pipeline = await buildOperationsCostPipeline({
+      env,
+      databaseUrl: "postgres://test",
+      getSnapshot: async () => ({
+        status: "ready",
+        message: "",
+        today: emptyCostPeriod(),
+        thisMonth: emptyCostPeriod({ aiCostUsd: 5, xCostUsd: 1, totalCostUsd: 6 }),
+        lastMonth: emptyCostPeriod(),
+        featureBreakdown: [],
+        reconciliation: { attributedCostUsd: 0, unattributedCostUsd: 0, topWallets: [], topWalletsLimit: 10 },
+        ledger: [],
+        fixedCosts: [],
+      }),
+    });
+    expect(stageById(pipeline, "tables")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "monthly-cost")).toMatchObject({ status: "green" });
+  });
+
+  it("escalates the monthly-cost stage from amber to red as spend crosses each threshold", async () => {
+    const snapshotWith = (totalCostUsd: number) =>
+      async () => ({
+        status: "ready" as const,
+        message: "",
+        today: emptyCostPeriod(),
+        thisMonth: emptyCostPeriod({ totalCostUsd }),
+        lastMonth: emptyCostPeriod(),
+        featureBreakdown: [],
+        reconciliation: { attributedCostUsd: 0, unattributedCostUsd: 0, topWallets: [], topWalletsLimit: 10 },
+        ledger: [],
+        fixedCosts: [],
+      });
+
+    const amber = await buildOperationsCostPipeline({ env, databaseUrl: "postgres://test", getSnapshot: snapshotWith(150) });
+    expect(stageById(amber, "monthly-cost")).toMatchObject({ status: "amber" });
+
+    const red = await buildOperationsCostPipeline({ env, databaseUrl: "postgres://test", getSnapshot: snapshotWith(300) });
+    expect(stageById(red, "monthly-cost")).toMatchObject({ status: "red" });
+  });
+
+  it("is red on tables and does not probe monthly cost when the migration has not been applied", async () => {
+    const pipeline = await buildOperationsCostPipeline({
+      env,
+      databaseUrl: "postgres://test",
+      getSnapshot: async () => ({
+        status: "unavailable",
+        message: "not applied",
+        today: emptyCostPeriod(),
+        thisMonth: emptyCostPeriod(),
+        lastMonth: emptyCostPeriod(),
+        featureBreakdown: [],
+        reconciliation: { attributedCostUsd: 0, unattributedCostUsd: 0, topWallets: [], topWalletsLimit: 10 },
+        ledger: [],
+        fixedCosts: [],
+      }),
+    });
+    expect(stageById(pipeline, "tables")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "monthly-cost")).toMatchObject({ status: "amber" });
+  });
+
+  it("is reachable through the buildServicePipeline dispatcher", async () => {
+    const pipeline = await buildServicePipeline("operations-cost", { env, operationsCost: { databaseUrl: "" } });
+    expect(pipeline.id).toBe("operations-cost");
+    expect(stageById(pipeline, "pricing-config")).toMatchObject({ status: "green" });
   });
 });

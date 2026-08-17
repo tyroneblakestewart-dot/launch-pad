@@ -5,6 +5,7 @@ import {
   checkDatabaseHealth,
   checkDeploymentHealth,
   checkHoodchatHealth,
+  checkOperationsCostHealth,
   checkOutreachHealth,
   checkSocialPostingHealth,
   checkSocialStudioAiHealth,
@@ -303,8 +304,68 @@ describe("checkClientErrorsHealth", () => {
   });
 });
 
+describe("checkOperationsCostHealth", () => {
+  it("is amber when the amber/red thresholds are misconfigured (red <= amber) but storage is reachable", async () => {
+    const result = await checkOperationsCostHealth({
+      env: { OPERATIONS_MONTHLY_COST_AMBER_USD: "250", OPERATIONS_MONTHLY_COST_RED_USD: "100" },
+      ping: async () => ({ totalCostUsd: 10 }),
+    });
+    expect(result).toMatchObject({ id: "operations-cost", status: "amber" });
+    expect(result.message).toContain("must be greater than");
+  });
+
+  it("is red — not amber — when DATABASE_URL is not configured, even with valid thresholds (issue #368 correction pass)", async () => {
+    const result = await checkOperationsCostHealth({
+      env: { OPERATIONS_MONTHLY_COST_AMBER_USD: "100", OPERATIONS_MONTHLY_COST_RED_USD: "250" },
+      databaseUrl: "",
+    });
+    expect(result).toMatchObject({ id: "operations-cost", status: "red" });
+  });
+
+  it("prefers red storage-unavailable over amber invalid-thresholds: red wins when both are wrong", async () => {
+    const result = await checkOperationsCostHealth({
+      env: { OPERATIONS_MONTHLY_COST_AMBER_USD: "250", OPERATIONS_MONTHLY_COST_RED_USD: "100" },
+      databaseUrl: "",
+    });
+    expect(result).toMatchObject({ id: "operations-cost", status: "red" });
+    expect(result.message).not.toContain("must be greater than");
+  });
+
+  it("is green when this month's estimated cost is below the amber threshold", async () => {
+    const result = await checkOperationsCostHealth({
+      env: { OPERATIONS_MONTHLY_COST_AMBER_USD: "100", OPERATIONS_MONTHLY_COST_RED_USD: "250" },
+      ping: async () => ({ totalCostUsd: 10 }),
+    });
+    expect(result).toMatchObject({ id: "operations-cost", status: "green" });
+  });
+
+  it("is amber at/above the amber threshold and below red", async () => {
+    const result = await checkOperationsCostHealth({
+      env: { OPERATIONS_MONTHLY_COST_AMBER_USD: "100", OPERATIONS_MONTHLY_COST_RED_USD: "250" },
+      ping: async () => ({ totalCostUsd: 150 }),
+    });
+    expect(result).toMatchObject({ id: "operations-cost", status: "amber" });
+  });
+
+  it("is red at/above the red threshold", async () => {
+    const result = await checkOperationsCostHealth({
+      env: { OPERATIONS_MONTHLY_COST_AMBER_USD: "100", OPERATIONS_MONTHLY_COST_RED_USD: "250" },
+      ping: async () => ({ totalCostUsd: 250 }),
+    });
+    expect(result).toMatchObject({ id: "operations-cost", status: "red" });
+  });
+
+  it("is red when the tables cannot be read", async () => {
+    const result = await checkOperationsCostHealth({
+      env: { OPERATIONS_MONTHLY_COST_AMBER_USD: "100", OPERATIONS_MONTHLY_COST_RED_USD: "250" },
+      ping: async () => Promise.reject(new Error(`relation "ai_operation_costs" does not exist`)),
+    });
+    expect(result).toMatchObject({ id: "operations-cost", status: "red" });
+  });
+});
+
 describe("getSystemHealth", () => {
-  it("returns all eleven checks, one per required area", async () => {
+  it("returns all twelve checks, one per required area", async () => {
     const checks = await getSystemHealth({
       env: { NODE_ENV: "development" },
       database: { databaseUrl: "" },
@@ -315,6 +376,7 @@ describe("getSystemHealth", () => {
       outreach: { databaseUrl: "" },
       socialPosting: { databaseUrl: "" },
       clientErrors: { databaseUrl: "" },
+      operationsCost: { databaseUrl: "" },
     });
     expect(checks.map((check) => check.id).sort()).toEqual(
       [
@@ -323,6 +385,7 @@ describe("getSystemHealth", () => {
         "database",
         "deployment",
         "hoodchat",
+        "operations-cost",
         "outreach",
         "social-posting",
         "social-studio-ai",

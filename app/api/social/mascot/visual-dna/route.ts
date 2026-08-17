@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { AI_FEATURE_KEYS } from "@/lib/ai-feature-keys";
 import {
   SOCIAL_MASCOT_DNA_LIMIT,
   consumeSocialMascotDnaRateLimit,
@@ -6,6 +7,7 @@ import {
   isGenerateSiteStyleRequestAuthorised,
 } from "@/lib/server/api-protection";
 import { getVercelOidcToken, resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
+import { recordTextOperationCostBestEffort, runAfterResponse, type AiOperationAccessSource } from "@/lib/server/ai-operation-cost-store";
 import type { OpenAIResponse } from "@/lib/server/generate-site-style";
 import {
   buildMascotVisualDnaRequestBody,
@@ -131,6 +133,19 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "The AI returned an invalid response." }, { status: 502, headers: noStoreHeaders(rateHeaders) });
   }
+
+  const walletAddress = authorisation.walletAddress;
+  const accessSource: AiOperationAccessSource = authorisation.accessSource ?? "unknown";
+  runAfterResponse(() =>
+    recordTextOperationCostBestEffort({
+      featureKey: AI_FEATURE_KEYS.SOCIAL_MASCOT_ANALYSIS,
+      walletAddress,
+      accessSource,
+      provider: ai.source,
+      response: payload,
+      fallbackModel: ai.model,
+    }),
+  );
 
   const mascotVisualDNA = parseMascotVisualDnaResponse(payload);
   if (!mascotVisualDNA) {

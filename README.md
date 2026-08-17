@@ -383,6 +383,25 @@ polled from `/api/admin/health` once signed in:
 Each check fails independently: a red database doesn't affect the contracts
 check or take down the page.
 
+**Operations (cost/margin cockpit, issue #368).** Answers "am I making
+money?" in one place: today/this-month/last-month cards (estimated AI + X
+variable cost, prorated fixed cost, verified plan revenue, estimated margin),
+a this-month feature breakdown, attributed-vs-unattributed spend
+reconciliation with a bounded top-wallets table, a live reverse-chronological
+activity ledger, and a fixed-operating-cost editor (add/edit/delete,
+monthly/annual cadence). Every paid AI provider attempt is metered from its
+own returned usage (never a prompt-length estimate) against configurable unit
+prices (`OPENAI_INPUT_COST_USD_PER_MILLION` and siblings — see
+`.env.example`) and stored in `ai_operation_costs`
+(migration `022_operations_costs.sql`); X send costs are read from the
+existing `social_x_send_costs` table rather than duplicated. Every figure is
+explicitly labelled as an estimate, not the provider invoice — reconcile
+against the real OpenAI/X bill weekly during launch/active testing and at
+least monthly once stable. A fifth System Health check, **Operations cost**,
+reports this month's estimated spend against configurable amber/red
+thresholds (`OPERATIONS_MONTHLY_COST_AMBER_USD` /
+`OPERATIONS_MONTHLY_COST_RED_USD`).
+
 **Pages (content CMS).** A lightweight, draft-first content editor for
 registered public-page chrome — headings, copy, button labels/links and
 section visibility toggles. Backed by the durable `page_content_entries`

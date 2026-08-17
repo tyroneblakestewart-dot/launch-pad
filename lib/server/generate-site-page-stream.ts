@@ -9,9 +9,19 @@ export const STREAMED_OUTPUT_TEXT_BUFFER_LIMIT = 220_000;
 
 export type StreamedFullPageFailureKind = "network" | "http" | "invalid" | "incomplete" | "failed";
 
+/** Just enough terminal metadata to meter a failed attempt (issue #368) — never the generated output, so the streaming buffer limits are unaffected. */
+export type StreamedFullPageUsageMetadata = Pick<OpenAIResponse, "model" | "usage">;
+
 export type StreamedFullPageOutcome =
   | { ok: true; payload: OpenAIResponse }
-  | { ok: false; kind: StreamedFullPageFailureKind; status?: number; detail?: string };
+  | {
+      ok: false;
+      kind: StreamedFullPageFailureKind;
+      status?: number;
+      detail?: string;
+      /** Present only for incomplete/failed terminal events where the provider supplied a response payload; never fabricated for network/HTTP failures. */
+      usageMetadata?: StreamedFullPageUsageMetadata;
+    };
 
 type SseEventPayload = {
   type?: unknown;
@@ -58,6 +68,14 @@ function failedMessage(response: unknown): string | undefined {
   if (!error || typeof error !== "object") return undefined;
   const message = (error as { message?: unknown }).message;
   return typeof message === "string" && message.trim() ? message.trim() : undefined;
+}
+
+/** Strips a terminal incomplete/failed response down to just model+usage, so a failed attempt can still be metered without buffering its generated output. */
+function usageMetadataFromResponse(response: unknown): StreamedFullPageUsageMetadata | undefined {
+  if (!response || typeof response !== "object") return undefined;
+  const candidate = response as OpenAIResponse;
+  if (candidate.model === undefined && candidate.usage === undefined) return undefined;
+  return { model: candidate.model, usage: candidate.usage };
 }
 
 function oversizedFailure(): StreamedFullPageOutcome {
@@ -182,6 +200,7 @@ export async function requestStreamedFullPageGeneration(
               ? `The full page generation stream was incomplete because ${reason}.`
               : "The full page generation stream was incomplete.",
           ),
+          usageMetadata: usageMetadataFromResponse(event.response),
         };
         break;
       }
@@ -191,6 +210,7 @@ export async function requestStreamedFullPageGeneration(
           ok: false,
           kind: "failed",
           detail: sanitiseProviderDetail(message || "The full page generation stream failed."),
+          usageMetadata: usageMetadataFromResponse(event.response),
         };
         break;
       }
