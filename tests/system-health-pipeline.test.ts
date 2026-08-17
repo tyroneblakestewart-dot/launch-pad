@@ -620,6 +620,9 @@ describe("buildSocialPostingPipeline (issue #335)", () => {
         overrides.query ??
         (async (text: string) => {
           if (text.includes("information_schema.tables")) return { rows: [{ table_name: "social_scheduled_posts" }] };
+          if (text.includes("scheduled_job_heartbeats")) {
+            return { rows: [{ last_succeeded_at: new Date().toISOString() }] };
+          }
           if (text.includes("GROUP BY status")) {
             return { rows: [{ status: "scheduled", count: 2 }, { status: "sent", count: 1 }] };
           }
@@ -636,6 +639,7 @@ describe("buildSocialPostingPipeline (issue #335)", () => {
     });
     expect(stageById(off, "destinations")).toMatchObject({ status: "amber" });
     expect(stageById(off, "encryption-key")).toMatchObject({ status: "red" });
+    expect(stageById(off, "cron-heartbeat")).toMatchObject({ status: "amber" });
 
     const on = await buildSocialPostingPipeline({
       databaseUrl: "",
@@ -668,6 +672,7 @@ describe("buildSocialPostingPipeline (issue #335)", () => {
       getServiceControl: async () => activeControl({ key: "social-posting" }),
     });
     expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "cron-heartbeat")).toMatchObject({ status: "green" });
     const counts = stageById(pipeline, "queue-counts");
     expect(counts.status).toBe("green");
     expect(counts.message).toContain("2 scheduled");
@@ -682,8 +687,94 @@ describe("buildSocialPostingPipeline (issue #335)", () => {
       getServiceControl: async () => activeControl({ key: "social-posting" }),
     });
     expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "cron-heartbeat")).toMatchObject({ status: "amber" });
     expect(stageById(pipeline, "queue-counts")).toMatchObject({ status: "amber" });
     expect(stageById(pipeline, "cost-cap")).toMatchObject({ status: "amber" });
+  });
+
+  it("reports a missing first heartbeat as amber", async () => {
+    const pipeline = await buildSocialPostingPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      now: new Date("2026-08-17T12:00:00Z"),
+      getPool: () =>
+        fakePool({
+          query: async (text: string) => {
+            if (text.includes("information_schema.tables")) return { rows: [{ table_name: "social_scheduled_posts" }] };
+            if (text.includes("scheduled_job_heartbeats")) return { rows: [] };
+            if (text.includes("GROUP BY status")) return { rows: [] };
+            return { rows: [] };
+          },
+        }),
+      getServiceControl: async () => activeControl({ key: "social-posting" }),
+    });
+    expect(stageById(pipeline, "cron-heartbeat")).toMatchObject({ status: "amber", observedAt: null });
+  });
+
+  it("escalates cron freshness from amber after three minutes to red after ten", async () => {
+    const now = new Date("2026-08-17T12:00:00Z");
+    const pipelineFor = (lastSucceededAt: string) =>
+      buildSocialPostingPipeline({
+        databaseUrl: "postgres://test",
+        env: {},
+        now,
+        getPool: () =>
+          fakePool({
+            query: async (text: string) => {
+              if (text.includes("information_schema.tables")) return { rows: [{ table_name: "social_scheduled_posts" }] };
+              if (text.includes("scheduled_job_heartbeats")) return { rows: [{ last_succeeded_at: lastSucceededAt }] };
+              if (text.includes("GROUP BY status")) return { rows: [] };
+              return { rows: [] };
+            },
+          }),
+        getServiceControl: async () => activeControl({ key: "social-posting" }),
+      });
+
+    const amber = await pipelineFor("2026-08-17T11:55:00Z");
+    expect(stageById(amber, "cron-heartbeat")).toMatchObject({ status: "amber" });
+
+    const red = await pipelineFor("2026-08-17T11:49:00Z");
+    expect(stageById(red, "cron-heartbeat")).toMatchObject({ status: "red" });
+  });
+
+  it("reports heartbeat storage failure as red and names migration 023", async () => {
+    const pipeline = await buildSocialPostingPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      getPool: () =>
+        fakePool({
+          query: async (text: string) => {
+            if (text.includes("information_schema.tables")) return { rows: [{ table_name: "social_scheduled_posts" }] };
+            if (text.includes("scheduled_job_heartbeats")) throw new Error("relation missing");
+            if (text.includes("GROUP BY status")) return { rows: [] };
+            return { rows: [] };
+          },
+        }),
+      getServiceControl: async () => activeControl({ key: "social-posting" }),
+    });
+    const heartbeat = stageById(pipeline, "cron-heartbeat");
+    expect(heartbeat.status).toBe("red");
+    expect(heartbeat.message).toContain("023_scheduled_job_heartbeats.sql");
+  });
+
+  it("downgrades a stale heartbeat to amber while the service is deliberately isolated", async () => {
+    const pipeline = await buildSocialPostingPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      now: new Date("2026-08-17T12:00:00Z"),
+      getPool: () =>
+        fakePool({
+          query: async (text: string) => {
+            if (text.includes("information_schema.tables")) return { rows: [{ table_name: "social_scheduled_posts" }] };
+            if (text.includes("scheduled_job_heartbeats")) return { rows: [{ last_succeeded_at: "2026-08-17T11:00:00Z" }] };
+            if (text.includes("GROUP BY status")) return { rows: [] };
+            return { rows: [] };
+          },
+        }),
+      getServiceControl: async () => activeControl({ key: "social-posting", isolated: true, reason: "maintenance" }),
+    });
+    expect(stageById(pipeline, "endpoint-reachable")).toMatchObject({ status: "amber" });
+    expect(stageById(pipeline, "cron-heartbeat")).toMatchObject({ status: "amber" });
   });
 
   it("reports this month's X posting spend and the configured cap (issue #342)", async () => {

@@ -239,37 +239,75 @@ describe("checkOutreachHealth", () => {
 });
 
 describe("checkSocialPostingHealth", () => {
-  it("is green when the table ping succeeds and at least one destination is configured", async () => {
+  const now = new Date("2026-08-17T12:00:00Z");
+
+  it("is green when the queue is reachable, a destination is configured, and the cron succeeded recently", async () => {
     const result = await checkSocialPostingHealth({
-      ping: async () => ({ rows: [] }),
+      ping: async () => ({ lastSucceededAt: new Date("2026-08-17T11:58:30Z") }),
       env: { X_SOCIAL_CONSUMER_KEY: "k", X_SOCIAL_CONSUMER_SECRET: "s" },
+      now,
     });
     expect(result).toMatchObject({ id: "social-posting", status: "green" });
     expect(result.message).toContain("Only X is configured");
+    expect(result.message).toContain("last completed successfully");
   });
 
-  it("is amber (not red) when the table is reachable but neither destination is configured — dormant, not broken", async () => {
-    const result = await checkSocialPostingHealth({ ping: async () => ({ rows: [] }), env: {} });
+  it("is amber when the table is reachable but neither destination is configured", async () => {
+    const result = await checkSocialPostingHealth({
+      ping: async () => ({ lastSucceededAt: new Date("2026-08-17T11:59:00Z") }),
+      env: {},
+      now,
+    });
     expect(result).toMatchObject({ id: "social-posting", status: "amber" });
     expect(result.message).toContain("Dormant");
   });
 
-  it("is red when the ping rejects (e.g. the migration has not been applied)", async () => {
+  it("is amber before the first successful cron completion", async () => {
     const result = await checkSocialPostingHealth({
-      ping: async () => Promise.reject(new Error(`relation "social_scheduled_posts" does not exist`)),
+      ping: async () => ({ lastSucceededAt: null }),
+      env: { TELEGRAM_BOT_TOKEN: "configured" },
+      now,
+    });
+    expect(result).toMatchObject({ id: "social-posting", status: "amber" });
+    expect(result.message).toContain("has not completed successfully yet");
+  });
+
+  it("is amber after three minutes and red after ten minutes without a successful run", async () => {
+    const amber = await checkSocialPostingHealth({
+      ping: async () => ({ lastSucceededAt: new Date("2026-08-17T11:55:00Z") }),
+      env: { TELEGRAM_BOT_TOKEN: "configured" },
+      now,
+    });
+    expect(amber).toMatchObject({ status: "amber" });
+
+    const red = await checkSocialPostingHealth({
+      ping: async () => ({ lastSucceededAt: new Date("2026-08-17T11:49:00Z") }),
+      env: { TELEGRAM_BOT_TOKEN: "configured" },
+      now,
+    });
+    expect(red).toMatchObject({ status: "red" });
+    expect(red.message).toContain("cron is stale");
+  });
+
+  it("is red when the posting queue or heartbeat read rejects", async () => {
+    const result = await checkSocialPostingHealth({
+      ping: async () => Promise.reject(new Error(`relation "scheduled_job_heartbeats" does not exist`)),
+      now,
     });
     expect(result).toMatchObject({ id: "social-posting", status: "red" });
+    expect(result.message).toContain("023_scheduled_job_heartbeats.sql");
   });
 
   it("is amber when DATABASE_URL is not configured", async () => {
-    const result = await checkSocialPostingHealth({ databaseUrl: "", env: {} });
+    const result = await checkSocialPostingHealth({ databaseUrl: "", env: {}, now });
     expect(result).toMatchObject({ id: "social-posting", status: "amber" });
   });
 
   it("never leaks credential values into the message", async () => {
     const result = await checkSocialPostingHealth({
-      ping: async () => ({ rows: [] }),
+      ping: async () => ({ lastSucceededAt: now }),
       env: { X_SOCIAL_CONSUMER_KEY: "super-secret-value", X_SOCIAL_CONSUMER_SECRET: "s" },
+      now,
     });
     expect(result.message).not.toContain("super-secret-value");
   });

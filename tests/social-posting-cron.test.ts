@@ -60,6 +60,82 @@ describe("runSocialPostingCron: no-op / fail-safe cases", () => {
   });
 });
 
+describe("runSocialPostingCron: durable heartbeat", () => {
+  it("records start and successful completion even when the queue is empty", async () => {
+    const started: Date[] = [];
+    const completed: Array<{ result: { error: string | null; processed: number }; at: Date }> = [];
+
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore: createMemorySocialScheduledPostsStore(),
+      connectionsStore: createMemorySocialConnectionsStore(),
+      heartbeatRecorder: {
+        markStarted: async (at) => {
+          started.push(at);
+        },
+        markCompleted: async (heartbeatResult, at) => {
+          completed.push({ result: heartbeatResult, at });
+        },
+      },
+    });
+
+    expect(result).toMatchObject({ processed: 0, error: null });
+    expect(started).toEqual([NOW]);
+    expect(completed).toHaveLength(1);
+    expect(completed[0]).toMatchObject({ result: { processed: 0, error: null }, at: NOW });
+  });
+
+  it("records a failed completion when queue storage rejects", async () => {
+    const brokenStore = createMemorySocialScheduledPostsStore();
+    brokenStore.listDueDestinations = async () => {
+      throw new Error("db exploded");
+    };
+    const completed: Array<{ error: string | null }> = [];
+
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore: brokenStore,
+      connectionsStore: createMemorySocialConnectionsStore(),
+      heartbeatRecorder: {
+        markStarted: async () => undefined,
+        markCompleted: async (heartbeatResult) => {
+          completed.push(heartbeatResult);
+        },
+      },
+    });
+
+    expect(result.error).toContain("db exploded");
+    expect(completed[0]?.error).toContain("db exploded");
+  });
+
+  it("never changes the cron result when heartbeat storage itself is unavailable", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const result = await runSocialPostingCron({
+        env: ENV,
+        now: NOW,
+        scheduledPostsStore: createMemorySocialScheduledPostsStore(),
+        connectionsStore: createMemorySocialConnectionsStore(),
+        heartbeatRecorder: {
+          markStarted: async () => {
+            throw new Error("heartbeat table unavailable");
+          },
+          markCompleted: async () => {
+            throw new Error("heartbeat table unavailable");
+          },
+        },
+      });
+
+      expect(result).toMatchObject({ processed: 0, error: null });
+      expect(consoleError).toHaveBeenCalledTimes(2);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+});
+
 describe("runSocialPostingCron: X destination", () => {
   it("marks a destination sent and resets the connection's failure count on success", async () => {
     const scheduledPostsStore = createMemorySocialScheduledPostsStore();

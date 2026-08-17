@@ -368,16 +368,86 @@ export function checkSocialStudioAiHealth(
   }
 }
 
-export type SocialPostingPing = () => Promise<unknown>;
+export type SocialPostingPing = () => Promise<{
+  lastSucceededAt: Date | string | null;
+}>;
+
+export const SOCIAL_POSTING_CRON_GREEN_MAX_AGE_MS = 3 * 60 * 1000;
+export const SOCIAL_POSTING_CRON_RED_AGE_MS = 10 * 60 * 1000;
+
+export type SocialPostingCronFreshness = {
+  status: SystemHealthStatus;
+  message: string;
+  observedAt: string | null;
+};
+
+export function evaluateSocialPostingCronFreshness(
+  lastSucceededAt: Date | string | null,
+  now = new Date(),
+): SocialPostingCronFreshness {
+  if (!lastSucceededAt) {
+    return {
+      status: "amber",
+      message: "The social-posting cron has not completed successfully yet.",
+      observedAt: null,
+    };
+  }
+
+  const observed = new Date(
+    lastSucceededAt instanceof Date ? lastSucceededAt.getTime() : lastSucceededAt,
+  );
+  if (Number.isNaN(observed.getTime())) {
+    return {
+      status: "red",
+      message: "The stored social-posting cron heartbeat is invalid.",
+      observedAt: null,
+    };
+  }
+
+  const observedAt = observed.toISOString();
+  const ageMs = now.getTime() - observed.getTime();
+  if (ageMs < -60_000) {
+    return {
+      status: "amber",
+      message: `The last successful cron heartbeat (${observedAt}) is in the future; check server clocks.`,
+      observedAt,
+    };
+  }
+
+  const ageMinutes = Math.max(0, Math.floor(ageMs / 60_000));
+  if (ageMs <= SOCIAL_POSTING_CRON_GREEN_MAX_AGE_MS) {
+    return {
+      status: "green",
+      message: `The cron last completed successfully ${ageMinutes} minute(s) ago (${observedAt}).`,
+      observedAt,
+    };
+  }
+  if (ageMs <= SOCIAL_POSTING_CRON_RED_AGE_MS) {
+    return {
+      status: "amber",
+      message: `The cron has not completed successfully for ${ageMinutes} minutes (last: ${observedAt}).`,
+      observedAt,
+    };
+  }
+  return {
+    status: "red",
+    message: `The cron is stale: no successful completion for ${ageMinutes} minutes (last: ${observedAt}).`,
+    observedAt,
+  };
+}
 
 /**
- * Reports whether the `social_scheduled_posts` table backing Social
- * Studio's review-and-release queue (issue #335) is reachable, and whether
- * at least one destination (X consumer app or Telegram bot) is configured —
- * never the credential values themselves, just "configured"/"not configured".
+ * Reports whether the Social Studio posting queue and the constant-size cron
+ * heartbeat are reachable, plus destination configuration. No external X or
+ * Telegram call is made.
  */
 export async function checkSocialPostingHealth(
-  deps: { databaseUrl?: string; ping?: SocialPostingPing; env?: Record<string, string | undefined> } = {},
+  deps: {
+    databaseUrl?: string;
+    ping?: SocialPostingPing;
+    env?: Record<string, string | undefined>;
+    now?: Date;
+  } = {},
 ): Promise<SystemHealthCheck> {
   const id = "social-posting" as const;
   const label = "Social Studio posting";
@@ -396,16 +466,41 @@ export async function checkSocialPostingHealth(
   if (!databaseUrl && !deps.ping) {
     return { id, label, status: "amber", message: `DATABASE_URL is not configured. ${destinationNote}` };
   }
-  const ping = deps.ping ?? (() => getPostgresPool(databaseUrl).query(`SELECT 1 FROM social_scheduled_posts LIMIT 1`));
+
+  const ping = deps.ping ?? (async () => {
+    const pool = getPostgresPool(databaseUrl);
+    await pool.query(`SELECT 1 FROM social_scheduled_posts LIMIT 1`);
+    const heartbeat = await pool.query<{ last_succeeded_at: Date | string | null }>(
+      `SELECT last_succeeded_at
+         FROM scheduled_job_heartbeats
+        WHERE job_key = $1`,
+      ["social-posting"],
+    );
+    return { lastSucceededAt: heartbeat.rows[0]?.last_succeeded_at ?? null };
+  });
+
   try {
-    await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, "Social posting health check timed out.");
-    return { id, label, status: xConfigured || telegramConfigured ? "green" : "amber", message: `The social_scheduled_posts table is reachable. ${destinationNote}` };
+    const { lastSucceededAt } = await withTimeout(
+      ping(),
+      HEALTH_CHECK_TIMEOUT_MS,
+      "Social posting health check timed out.",
+    );
+    const freshness = evaluateSocialPostingCronFreshness(lastSucceededAt, deps.now ?? new Date());
+    const status = freshness.status === "green" && !(xConfigured || telegramConfigured)
+      ? "amber"
+      : freshness.status;
+    return {
+      id,
+      label,
+      status,
+      message: `The posting queue and heartbeat are reachable. ${destinationNote} ${freshness.message}`,
+    };
   } catch {
     return {
       id,
       label,
       status: "red",
-      message: `The social_scheduled_posts table is not reachable. Apply migration 018_social_studio_connections.sql. ${destinationNote}`,
+      message: `The posting queue or cron heartbeat is not reachable. Apply migrations 018_social_studio_connections.sql and 023_scheduled_job_heartbeats.sql. ${destinationNote}`,
     };
   }
 }
