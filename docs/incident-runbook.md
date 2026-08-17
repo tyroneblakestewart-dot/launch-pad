@@ -4,7 +4,7 @@ Use this page on a phone when Hoodlums is behaving abnormally. Production is `ht
 
 ## Look here first
 
-Open `https://hoodlums.dev/api/health` in Safari. `{"status":"up"}` with HTTP 200 means the Vercel function and Postgres both answered. `{"status":"down"}` or any non-200 response means the database-aware health check failed or the public probe was rate-limited. It intentionally reveals no reason.
+Open `https://hoodlums.dev/api/health` in Safari. `{"status":"up"}` with HTTP 200 means the Vercel function and Postgres both answered. `{"status":"down"}` with HTTP 503 means the database-aware health check actually failed. An empty body with HTTP 429 means the public probe was rate-limited, not that the service is down — an uptime monitor should treat 429 separately from a real outage. It intentionally reveals no reason.
 
 Next open Vercel, tap **tyrone-launchpad**, tap **launch-pad-o2gl**, tap **Logs**, select **Production**, and search around the first failure time. Do not paste secrets from the logs into a public issue.
 

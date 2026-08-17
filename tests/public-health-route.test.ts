@@ -91,7 +91,7 @@ describe("GET /api/health", () => {
     expect(calls).toBe(2);
   });
 
-  it("rate-limits one IP without exposing anything beyond down", async () => {
+  it("rate-limits one IP without claiming the service is down", async () => {
     setPublicHealthPingForTests(async () => ({ rows: [{ ok: 1 }] }));
     for (let index = 0; index < PUBLIC_HEALTH_LIMIT; index += 1) {
       expect((await GET(request("198.51.100.44"))).status).toBe(200);
@@ -101,6 +101,9 @@ describe("GET /api/health", () => {
     expect(response.status).toBe(429);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(Number(response.headers.get("Retry-After"))).toBeGreaterThan(0);
-    expect(await response.json()).toEqual({ status: "down" });
+    // A 429 must never assert "down" — that would be a false statement about
+    // a healthy service and would page an uptime monitor for a rate limit,
+    // not an outage. The 429 status code alone tells the monitor what happened.
+    expect(await response.json()).toEqual({});
   });
 });

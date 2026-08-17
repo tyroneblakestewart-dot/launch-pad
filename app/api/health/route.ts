@@ -83,15 +83,23 @@ async function cachedDatabaseStatus(now = Date.now()): Promise<PublicHealthStatu
   }
 }
 
-function response(status: PublicHealthStatus, httpStatus: number, retryAfterSeconds?: number) {
-  const headers: Record<string, string> = { "Cache-Control": "no-store" };
-  if (retryAfterSeconds !== undefined) headers["Retry-After"] = String(retryAfterSeconds);
-  return NextResponse.json({ status }, { status: httpStatus, headers });
+function response(status: PublicHealthStatus, httpStatus: number) {
+  return NextResponse.json({ status }, { status: httpStatus, headers: { "Cache-Control": "no-store" } });
+}
+
+function rateLimitedResponse(retryAfterSeconds: number) {
+  return NextResponse.json(
+    {},
+    {
+      status: 429,
+      headers: { "Cache-Control": "no-store", "Retry-After": String(retryAfterSeconds) },
+    },
+  );
 }
 
 export async function GET(request: Request) {
   const rate = consumePublicHealthRateLimit(getClientIp(request));
-  if (!rate.allowed) return response("down", 429, rate.retryAfterSeconds);
+  if (!rate.allowed) return rateLimitedResponse(rate.retryAfterSeconds);
 
   const status = await cachedDatabaseStatus();
   return response(status, status === "up" ? 200 : 503);
