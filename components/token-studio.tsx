@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { TelegramMark, XMark } from "@/components/brand-icons";
 import {
   REOPEN_GENERATED_SITE_EVENT,
   type PublishableSitePayload,
@@ -675,19 +676,25 @@ export function TokenStudio() {
           <div className="two-column-fields">
             <label>
               <span className="field-label">X handle</span>
-              <input
-                value={project.xHandle}
-                onChange={(event) => updateProject("xHandle", event.target.value)}
-                placeholder="@hoodlums"
-              />
+              <div className="url-input">
+                <XMark aria-hidden="true" focusable="false" />
+                <input
+                  value={project.xHandle}
+                  onChange={(event) => updateProject("xHandle", event.target.value)}
+                  placeholder="@hoodlums"
+                />
+              </div>
             </label>
             <label>
               <span className="field-label">Telegram</span>
-              <input
-                value={project.telegram}
-                onChange={(event) => updateProject("telegram", event.target.value)}
-                placeholder="t.me/hoodlums"
-              />
+              <div className="url-input">
+                <TelegramMark aria-hidden="true" focusable="false" />
+                <input
+                  value={project.telegram}
+                  onChange={(event) => updateProject("telegram", event.target.value)}
+                  placeholder="t.me/hoodlums"
+                />
+              </div>
             </label>
           </div>
 
