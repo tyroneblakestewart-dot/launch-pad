@@ -24,7 +24,13 @@ import {
 import { getAdminOperationsStore } from "@/lib/server/admin-operations-store";
 import { getPostgresPool } from "@/lib/server/postgres";
 import { getSocialXCostStore, readXApiSendCostUsd, readXMonthlyCostCapUsd, type SocialXCostStore } from "@/lib/server/social-x-cost-store";
-import { CLIENT_ERRORS_RED_THRESHOLD, contractsClient, HEALTH_CHECK_TIMEOUT_MS, withTimeout } from "@/lib/server/system-health";
+import {
+  CLIENT_ERRORS_RED_THRESHOLD,
+  contractsClient,
+  evaluateSocialPostingCronFreshness,
+  HEALTH_CHECK_TIMEOUT_MS,
+  withTimeout,
+} from "@/lib/server/system-health";
 
 type PoolLike = {
   totalCount: number;
@@ -871,6 +877,7 @@ export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps
         destinationsStage,
         encryptionStage,
         stage("table-exists", "social_scheduled_posts table exists", "amber", message),
+        stage("cron-heartbeat", "Social-posting cron freshness", "amber", message),
         stage("queue-counts", "Post counts (scheduled/sent/partially_sent/failed/canceled)", "amber", message),
       ],
     };
@@ -939,6 +946,51 @@ export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps
     }
   }
 
+  const heartbeatLabel = "Social-posting cron freshness";
+  let heartbeatStage: AdminPipelineStage;
+  if (!tableExists) {
+    heartbeatStage = stage(
+      "cron-heartbeat",
+      heartbeatLabel,
+      "amber",
+      "Not probed; the social_scheduled_posts table does not exist yet.",
+    );
+  } else {
+    try {
+      const heartbeat = await withTimeout(
+        pool.query<{ last_succeeded_at: Date | string | null }>(
+          `SELECT last_succeeded_at
+             FROM scheduled_job_heartbeats
+            WHERE job_key = $1`,
+          ["social-posting"],
+        ),
+        HEALTH_CHECK_TIMEOUT_MS,
+        "timed out",
+      );
+      const freshness = evaluateSocialPostingCronFreshness(
+        heartbeat.rows[0]?.last_succeeded_at ?? null,
+        deps.now ?? new Date(),
+      );
+      const intentionallyIsolated = isolationStage.message.startsWith("Isolated by an administrator");
+      heartbeatStage = stage(
+        "cron-heartbeat",
+        heartbeatLabel,
+        intentionallyIsolated && freshness.status === "red" ? "amber" : freshness.status,
+        intentionallyIsolated
+          ? `The service is intentionally isolated. ${freshness.message}`
+          : freshness.message,
+        freshness.observedAt,
+      );
+    } catch {
+      heartbeatStage = stage(
+        "cron-heartbeat",
+        heartbeatLabel,
+        "red",
+        "Could not read the cron heartbeat. Apply migration 023_scheduled_job_heartbeats.sql.",
+      );
+    }
+  }
+
   const costCapLabel = "Monthly X posting cost cap (SOCIAL_X_API_SEND_COST_USD / SOCIAL_X_MONTHLY_COST_CAP_USD)";
   let costCapStage: AdminPipelineStage;
   if (!tableExists) {
@@ -966,7 +1018,15 @@ export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps
   return {
     id: "social-posting",
     label: "Social Studio posting",
-    stages: [isolationStage, destinationsStage, encryptionStage, tableExistsStage, queueCountsStage, costCapStage],
+    stages: [
+      isolationStage,
+      destinationsStage,
+      encryptionStage,
+      tableExistsStage,
+      heartbeatStage,
+      queueCountsStage,
+      costCapStage,
+    ],
   };
 }
 

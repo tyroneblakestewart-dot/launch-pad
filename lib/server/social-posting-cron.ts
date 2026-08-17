@@ -1,4 +1,5 @@
 import { bodyContainsLink } from "@/lib/server/social-link-detection";
+import { getPostgresPool } from "@/lib/server/postgres";
 import {
   getSocialConnectionsStore,
   type SocialConnectionsStore,
@@ -15,7 +16,7 @@ import { parseArtwork, publishTelegramPost } from "@/lib/server/telegram";
 // Shared posting engine for both destinations (issue #335), following the
 // same orchestration shape as lib/server/outreach-cron.ts: read due work,
 // attempt delivery, record outcomes, never throw. Runs from
-// app/api/cron/social-posting (secret-gated, every few minutes).
+// app/api/cron/social-posting (secret-gated, every minute).
 //
 // Every destination gets independent retry-with-backoff up to
 // MAX_DESTINATION_ATTEMPTS before it's marked permanently failed. Repeated
@@ -59,6 +60,119 @@ export type SocialPostingCronResult = {
   error: string | null;
 };
 
+export const SOCIAL_POSTING_JOB_KEY = "social-posting";
+export const SOCIAL_POSTING_HEARTBEAT_TIMEOUT_MS = 2_000;
+
+export type SocialPostingHeartbeatRecorder = {
+  markStarted(startedAt: Date): Promise<void>;
+  markCompleted(result: SocialPostingCronResult, completedAt: Date): Promise<void>;
+};
+
+type HeartbeatPool = {
+  query(text: string, params?: unknown[]): Promise<unknown>;
+};
+
+const NOOP_SOCIAL_POSTING_HEARTBEAT: SocialPostingHeartbeatRecorder = {
+  markStarted: async () => undefined,
+  markCompleted: async () => undefined,
+};
+
+/**
+ * Uses one overwrite-only row. Missing DATABASE_URL is a no-op so local
+ * tests and deliberately unconfigured deployments retain the cron's
+ * existing no-throw behaviour.
+ */
+export function createSocialPostingHeartbeatRecorder(
+  env: Record<string, string | undefined> = process.env,
+  getPool: (databaseUrl: string) => HeartbeatPool = getPostgresPool,
+): SocialPostingHeartbeatRecorder {
+  const databaseUrl = (env.DATABASE_URL || "").trim();
+  if (!databaseUrl) return NOOP_SOCIAL_POSTING_HEARTBEAT;
+
+  const pool = getPool(databaseUrl);
+  return {
+    async markStarted(startedAt) {
+      await pool.query(
+        `INSERT INTO scheduled_job_heartbeats (
+           job_key, last_started_at, last_status, updated_at
+         ) VALUES ($1, $2, 'running', $2)
+         ON CONFLICT (job_key) DO UPDATE SET
+           last_started_at = EXCLUDED.last_started_at,
+           last_status = 'running',
+           updated_at = EXCLUDED.updated_at`,
+        [SOCIAL_POSTING_JOB_KEY, startedAt],
+      );
+    },
+    async markCompleted(result, completedAt) {
+      const succeeded = result.error === null;
+      await pool.query(
+        `INSERT INTO scheduled_job_heartbeats (
+           job_key,
+           last_started_at,
+           last_completed_at,
+           last_succeeded_at,
+           last_status,
+           last_processed,
+           last_sent,
+           last_retried,
+           last_failed,
+           last_routed_to_composer,
+           updated_at
+         ) VALUES (
+           $1, $2, $3, CASE WHEN $4 THEN $3 ELSE NULL END,
+           CASE WHEN $4 THEN 'succeeded' ELSE 'failed' END,
+           $5, $6, $7, $8, $9, $3
+         )
+         ON CONFLICT (job_key) DO UPDATE SET
+           last_started_at = EXCLUDED.last_started_at,
+           last_completed_at = EXCLUDED.last_completed_at,
+           last_succeeded_at = CASE
+             WHEN EXCLUDED.last_status = 'succeeded' THEN EXCLUDED.last_succeeded_at
+             ELSE scheduled_job_heartbeats.last_succeeded_at
+           END,
+           last_status = EXCLUDED.last_status,
+           last_processed = EXCLUDED.last_processed,
+           last_sent = EXCLUDED.last_sent,
+           last_retried = EXCLUDED.last_retried,
+           last_failed = EXCLUDED.last_failed,
+           last_routed_to_composer = EXCLUDED.last_routed_to_composer,
+           updated_at = EXCLUDED.updated_at`,
+        [
+          SOCIAL_POSTING_JOB_KEY,
+          new Date(result.ranAt),
+          completedAt,
+          succeeded,
+          result.processed,
+          result.sent,
+          result.retried,
+          result.failed,
+          result.routedToComposer,
+        ],
+      );
+    },
+  };
+}
+
+async function recordHeartbeatBestEffort(
+  action: "start" | "completion",
+  operation: () => Promise<void>,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("heartbeat timed out")), SOCIAL_POSTING_HEARTBEAT_TIMEOUT_MS);
+  });
+  try {
+    await Promise.race([operation(), timeout]);
+  } catch (error) {
+    console.error(
+      `Social posting cron heartbeat ${action} could not be recorded.`,
+      error instanceof Error ? error.message : error,
+    );
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export type SocialPostingCronDeps = {
   env?: Record<string, string | undefined>;
   now?: Date;
@@ -69,6 +183,8 @@ export type SocialPostingCronDeps = {
   publishTelegramPost?: typeof publishTelegramPost;
   /** Overridable for tests; defaults to the real link detector. */
   bodyContainsLink?: typeof bodyContainsLink;
+  /** Overridable for tests; production writes one constant-size DB row. */
+  heartbeatRecorder?: SocialPostingHeartbeatRecorder;
 };
 
 function emptyResult(now: Date, overrides: Partial<SocialPostingCronResult> = {}): SocialPostingCronResult {
@@ -262,7 +378,11 @@ export async function runSocialPostingCron(deps: SocialPostingCronDeps = {}): Pr
   const postTweet = deps.postTweetForUser ?? postTweetForUser;
   const publishTelegram = deps.publishTelegramPost ?? publishTelegramPost;
   const linkDetector = deps.bodyContainsLink ?? bodyContainsLink;
+  const heartbeat = deps.heartbeatRecorder ?? createSocialPostingHeartbeatRecorder(env);
 
+  await recordHeartbeatBestEffort("start", () => heartbeat.markStarted(now));
+
+  let result: SocialPostingCronResult;
   try {
     const due = await scheduledPostsStore.listDueDestinations(now, DUE_DESTINATIONS_BATCH_LIMIT);
     let sent = 0;
@@ -284,8 +404,12 @@ export async function runSocialPostingCron(deps: SocialPostingCronDeps = {}): Pr
       await scheduledPostsStore.recomputePostStatus(postId);
     }
 
-    return emptyResult(now, { processed: due.length, sent, retried, failed, routedToComposer });
+    result = emptyResult(now, { processed: due.length, sent, retried, failed, routedToComposer });
   } catch (error) {
-    return emptyResult(now, { error: error instanceof Error ? error.message.slice(0, 500) : "Social posting cron run failed unexpectedly." });
+    result = emptyResult(now, { error: error instanceof Error ? error.message.slice(0, 500) : "Social posting cron run failed unexpectedly." });
   }
+
+  const completedAt = deps.now ?? new Date();
+  await recordHeartbeatBestEffort("completion", () => heartbeat.markCompleted(result, completedAt));
+  return result;
 }

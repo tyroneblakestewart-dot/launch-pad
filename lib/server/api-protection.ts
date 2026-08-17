@@ -12,6 +12,12 @@ export const ADMIN_CHALLENGE_LIMIT = 20;
 export const ADMIN_CHALLENGE_WINDOW_MS = 60 * 60 * 1000;
 export const ADMIN_LOGIN_LIMIT = 5;
 export const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000;
+// Public, unauthenticated database-aware health probe. UptimeRobot's free
+// five-minute cadence uses only 12 requests/hour; 120/hour leaves generous
+// headroom for a second monitor and manual checks without permitting a DB
+// hammer. A 15-second route cache independently collapses repeated queries.
+export const PUBLIC_HEALTH_LIMIT = 120;
+export const PUBLIC_HEALTH_WINDOW_MS = 60 * 60 * 1000;
 
 // IP-level flood protection for the Hoodchat features (issue #237). This is
 // deliberately looser than the per-wallet "5 messages per hour" business
@@ -305,6 +311,20 @@ export function resetPublishRateLimitsForTests() {
 export function resetAdminRateLimitsForTests() {
   adminChallengeRateStore().clear();
   adminLoginRateStore().clear();
+}
+
+export function consumePublicHealthRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(
+    namedRateStore("public-health"),
+    ip,
+    PUBLIC_HEALTH_LIMIT,
+    PUBLIC_HEALTH_WINDOW_MS,
+    now,
+  );
+}
+
+export function resetPublicHealthRateLimitForTests() {
+  namedRateStore("public-health").clear();
 }
 
 export function consumeHoodchatChallengeRateLimit(ip: string, now = Date.now()) {

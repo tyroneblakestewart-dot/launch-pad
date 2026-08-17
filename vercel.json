@@ -12,6 +12,9 @@
     },
     "app/api/cron/outreach/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/cron/social-posting/route.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [
@@ -22,6 +25,10 @@
     {
       "path": "/api/cron/outreach",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/social-posting",
+      "schedule": "* * * * *"
     }
   ]
 }

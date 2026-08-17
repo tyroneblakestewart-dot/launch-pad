@@ -57,7 +57,7 @@ describe("global subscription lifecycle wiring", () => {
 });
 
 describe("scheduled reminders and Telegram integration", () => {
-  it("schedules one authenticated daily Vercel cron run", async () => {
+  it("keeps the authenticated lifecycle, outreach, and social-posting cron schedules", async () => {
     const vercel = JSON.parse(await source("vercel.json")) as {
       crons?: Array<{ path: string; schedule: string }>;
       functions?: Record<string, { maxDuration?: number }>;
@@ -67,6 +67,7 @@ describe("scheduled reminders and Telegram integration", () => {
     expect(vercel.crons).toEqual([
       { path: "/api/cron/subscription-lifecycle", schedule: "0 9 * * *" },
       { path: "/api/cron/outreach", schedule: "*/30 * * * *" },
+      { path: "/api/cron/social-posting", schedule: "* * * * *" },
     ]);
     expect(vercel.functions?.["app/api/cron/subscription-lifecycle/route.ts"]?.maxDuration).toBe(60);
     expect(route).toContain("process.env.CRON_SECRET");
