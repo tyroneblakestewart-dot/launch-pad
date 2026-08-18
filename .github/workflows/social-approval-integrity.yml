@@ -9,6 +9,15 @@ on:
       - .github/issue379_patch.part2
       - .github/issue379_patch.part3
       - .github/workflows/social-approval-integrity.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/issue379_patch.part1
+      - .github/issue379_patch.part2
+      - .github/issue379_patch.part3
+      - .github/workflows/social-approval-integrity.yml
+  workflow_dispatch:
 
 permissions:
   contents: write
