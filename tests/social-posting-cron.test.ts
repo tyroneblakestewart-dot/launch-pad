@@ -555,6 +555,183 @@ describe("runSocialPostingCron: link posts never reach the X API (issue #342)", 
   });
 });
 
+describe("runSocialPostingCron: bookkeeping failures never re-trigger a send (issue #377)", () => {
+  it("keeps an X destination 'sent' with no retry or connection-failure bump when markDestinationSent throws after a successful post", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await connectionsStore.recordFailure("0xabc", "x", "earlier blip", 2);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const realMarkDestinationSent = scheduledPostsStore.markDestinationSent.bind(scheduledPostsStore);
+    scheduledPostsStore.markDestinationSent = async (...args) => {
+      // The write actually commits, but the client never sees the
+      // acknowledgment — exactly the ambiguous-outcome failure #375's
+      // single-connection pool made more likely.
+      await realMarkDestinationSent(...args);
+      throw new Error("connection terminated while acknowledging the write");
+    };
+
+    const postTweetForUser = vi.fn(async () => ({ status: "posted" as const, xPostId: "999" }));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const first = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore, postTweetForUser });
+    const second = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore, postTweetForUser });
+
+    consoleError.mockRestore();
+
+    expect(postTweetForUser).toHaveBeenCalledTimes(1);
+    expect(first).toMatchObject({ processed: 1, sent: 1, retried: 0, failed: 0 });
+    expect(second).toMatchObject({ processed: 0 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.destinations[0]).toMatchObject({ status: "sent", externalPostId: "999" });
+    expect((await connectionsStore.get("0xabc", "x"))?.failureCount).toBe(0);
+  });
+
+  it("keeps an X destination 'sent' with no retry or connection-failure bump when resetFailures throws after a successful post", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await connectionsStore.recordFailure("0xabc", "x", "earlier blip", 2);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const realResetFailures = connectionsStore.resetFailures.bind(connectionsStore);
+    connectionsStore.resetFailures = async (...args) => {
+      await realResetFailures(...args);
+      throw new Error("connection terminated while acknowledging the write");
+    };
+
+    const postTweetForUser = vi.fn(async () => ({ status: "posted" as const, xPostId: "999" }));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const first = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore, postTweetForUser });
+    const second = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore, postTweetForUser });
+
+    consoleError.mockRestore();
+
+    expect(postTweetForUser).toHaveBeenCalledTimes(1);
+    expect(first).toMatchObject({ processed: 1, sent: 1, retried: 0, failed: 0 });
+    expect(second).toMatchObject({ processed: 0 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.destinations[0]).toMatchObject({ status: "sent", externalPostId: "999" });
+    expect((await connectionsStore.get("0xabc", "x"))?.failureCount).toBe(0);
+  });
+
+  it("keeps a Telegram destination 'sent' with no retry or connection-failure bump when markDestinationSent throws after a successful publish", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedTelegram(connectionsStore);
+    await connectionsStore.recordFailure("0xabc", "telegram", "earlier blip", 2);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["telegram"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const realMarkDestinationSent = scheduledPostsStore.markDestinationSent.bind(scheduledPostsStore);
+    scheduledPostsStore.markDestinationSent = async (...args) => {
+      await realMarkDestinationSent(...args);
+      throw new Error("connection terminated while acknowledging the write");
+    };
+
+    const publishTelegramPost = vi.fn(async () => [42]);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const first = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore, publishTelegramPost });
+    const second = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore, publishTelegramPost });
+
+    consoleError.mockRestore();
+
+    expect(publishTelegramPost).toHaveBeenCalledTimes(1);
+    expect(first).toMatchObject({ processed: 1, sent: 1, retried: 0, failed: 0 });
+    expect(second).toMatchObject({ processed: 0 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.destinations[0]).toMatchObject({ status: "sent", externalPostId: "42" });
+    expect((await connectionsStore.get("0xabc", "telegram"))?.failureCount).toBe(0);
+  });
+
+  it("keeps a Telegram destination 'sent' with no retry or connection-failure bump when resetFailures throws after a successful publish", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedTelegram(connectionsStore);
+    await connectionsStore.recordFailure("0xabc", "telegram", "earlier blip", 2);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["telegram"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const realResetFailures = connectionsStore.resetFailures.bind(connectionsStore);
+    connectionsStore.resetFailures = async (...args) => {
+      await realResetFailures(...args);
+      throw new Error("connection terminated while acknowledging the write");
+    };
+
+    const publishTelegramPost = vi.fn(async () => [42]);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const first = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore, publishTelegramPost });
+    const second = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore, publishTelegramPost });
+
+    consoleError.mockRestore();
+
+    expect(publishTelegramPost).toHaveBeenCalledTimes(1);
+    expect(first).toMatchObject({ processed: 1, sent: 1, retried: 0, failed: 0 });
+    expect(second).toMatchObject({ processed: 0 });
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.destinations[0]).toMatchObject({ status: "sent", externalPostId: "42" });
+    expect((await connectionsStore.get("0xabc", "telegram"))?.failureCount).toBe(0);
+  });
+});
+
+describe("runSocialPostingCron: per-destination loop isolation (issue #377)", () => {
+  it("does not let one destination's unexpected throw block the rest of the batch or skip recomputePostStatus", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedTelegram(connectionsStore, "0xbroken");
+    await seedConnectedTelegram(connectionsStore, "0xok");
+    await scheduledPostsStore.create({ walletAddress: "0xbroken", body: "gm", artworkDataUrl: null, destinations: ["telegram"], scheduledAt: NOW, approvedByWallet: "0xbroken" });
+    await scheduledPostsStore.create({ walletAddress: "0xok", body: "gm", artworkDataUrl: null, destinations: ["telegram"], scheduledAt: NOW, approvedByWallet: "0xok" });
+
+    const realGet = connectionsStore.get.bind(connectionsStore);
+    connectionsStore.get = async (walletAddress, platform) => {
+      if (walletAddress === "0xbroken") throw new Error("unexpected connection lookup failure");
+      return realGet(walletAddress, platform);
+    };
+
+    const publishTelegramPost = vi.fn(async () => [1]);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const result = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore, publishTelegramPost });
+
+    consoleError.mockRestore();
+
+    expect(result).toMatchObject({ processed: 2, sent: 1, failed: 1 });
+    expect(publishTelegramPost).toHaveBeenCalledTimes(1);
+
+    // recomputePostStatus ran for the surviving post despite the other destination throwing.
+    const okPost = (await scheduledPostsStore.list("0xok"))[0];
+    expect(okPost.status).toBe("sent");
+    // The broken destination stays claimed rather than silently lost — a future run reclaims it once stale.
+    const brokenPost = (await scheduledPostsStore.list("0xbroken"))[0];
+    expect(brokenPost.destinations[0].status).toBe("sending");
+  });
+});
+
+describe("runSocialPostingCron: concurrent invocations claim each due row once (issue #377)", () => {
+  it("results in exactly one publish across two concurrent cron runs over the same due destination", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedTelegram(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["telegram"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const publishTelegramPost = vi.fn(async () => [1]);
+
+    const [first, second] = await Promise.all([
+      runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore, publishTelegramPost }),
+      runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore, publishTelegramPost }),
+    ]);
+
+    expect(publishTelegramPost).toHaveBeenCalledTimes(1);
+    expect(first.processed + second.processed).toBe(1);
+    expect(first.sent + second.sent).toBe(1);
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.destinations[0].status).toBe("sent");
+  });
+});
+
 describe("runSocialPostingCron: monthly X cost cap (issue #342)", () => {
   it("records an estimated cost for each successful X send", async () => {
     const scheduledPostsStore = createMemorySocialScheduledPostsStore();

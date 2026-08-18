@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   computeRolledUpPostStatus,
+  SENDING_CLAIM_STALE_MS,
   type DueDestination,
   type SocialPostDestination,
   type SocialScheduledPost,
@@ -13,6 +14,10 @@ import {
 
 export function createMemorySocialScheduledPostsStore(): SocialScheduledPostsStore {
   const posts = new Map<string, SocialScheduledPost>();
+  // Tracks when each destination was last claimed 'sending', mirroring the
+  // Postgres store's updated_at-based staleness check (issue #377) — not
+  // part of the exported SocialPostDestination shape.
+  const sendingSince = new Map<string, number>();
 
   return {
     async create(input) {
@@ -66,12 +71,25 @@ export function createMemorySocialScheduledPostsStore(): SocialScheduledPostsSto
     },
 
     async listDueDestinations(now, limit) {
+      // Claims each due row synchronously before returning it (issue
+      // #377), mirroring the Postgres store's single-statement
+      // FOR UPDATE SKIP LOCKED claim: a destination flips 'pending' ->
+      // 'sending' here, so any other caller — including one already
+      // in-flight — sees it as no longer due. A row stuck 'sending' past
+      // SENDING_CLAIM_STALE_MS is reclaimed, recovering a crashed run.
       const due: DueDestination[] = [];
       for (const post of posts.values()) {
+        if (due.length >= limit) break;
         if (post.status !== "scheduled") continue;
-        for (const destination of post.destinations) {
-          if (destination.status !== "pending") continue;
+        for (let index = 0; index < post.destinations.length; index++) {
+          if (due.length >= limit) break;
+          const destination = post.destinations[index];
+          const stale = destination.status === "sending" && now.getTime() - (sendingSince.get(destination.id) ?? 0) >= SENDING_CLAIM_STALE_MS;
+          if (destination.status !== "pending" && !stale) continue;
           if (new Date(destination.nextAttemptAt).getTime() > now.getTime()) continue;
+
+          post.destinations[index] = { ...destination, status: "sending" };
+          sendingSince.set(destination.id, now.getTime());
           due.push({
             destinationId: destination.id,
             scheduledPostId: post.id,
@@ -83,7 +101,7 @@ export function createMemorySocialScheduledPostsStore(): SocialScheduledPostsSto
           });
         }
       }
-      return due.slice(0, limit);
+      return due;
     },
 
     async markDestinationSent(destinationId, externalPostId, now) {
@@ -92,6 +110,7 @@ export function createMemorySocialScheduledPostsStore(): SocialScheduledPostsSto
         if (index === -1) continue;
         post.destinations[index] = { ...post.destinations[index], status: "sent", externalPostId, errorMessage: null, sentAt: now.toISOString() };
       }
+      sendingSince.delete(destinationId);
     },
 
     async markDestinationRetry(destinationId, errorMessage, nextAttemptAt) {
@@ -101,11 +120,13 @@ export function createMemorySocialScheduledPostsStore(): SocialScheduledPostsSto
         const destination = post.destinations[index];
         post.destinations[index] = {
           ...destination,
+          status: "pending",
           attemptCount: destination.attemptCount + 1,
           errorMessage,
           nextAttemptAt: nextAttemptAt.toISOString(),
         };
       }
+      sendingSince.delete(destinationId);
     },
 
     async markDestinationFailedFinal(destinationId, errorMessage) {
@@ -115,6 +136,7 @@ export function createMemorySocialScheduledPostsStore(): SocialScheduledPostsSto
         const destination = post.destinations[index];
         post.destinations[index] = { ...destination, status: "failed", attemptCount: destination.attemptCount + 1, errorMessage };
       }
+      sendingSince.delete(destinationId);
     },
 
     async markDestinationNeedsComposer(destinationId, reason) {
@@ -124,6 +146,7 @@ export function createMemorySocialScheduledPostsStore(): SocialScheduledPostsSto
         const destination = post.destinations[index];
         post.destinations[index] = { ...destination, status: "needs_composer", errorMessage: reason };
       }
+      sendingSince.delete(destinationId);
     },
 
     async recomputePostStatus(scheduledPostId) {

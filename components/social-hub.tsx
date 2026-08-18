@@ -73,7 +73,7 @@ type SocialConnectionSummary = {
 type ScheduledPostDestinationSummary = {
   id: string;
   platform: SocialPlatform;
-  status: "pending" | "sent" | "failed" | "needs_composer";
+  status: "pending" | "sending" | "sent" | "failed" | "needs_composer";
   errorMessage: string | null;
   sentAt: string | null;
 };
@@ -2371,7 +2371,7 @@ export function SocialHub() {
                                     ].join(" ")}
                                   >
                                     {destination.platform === "x" ? <XMark /> : <TelegramMark />} {platformLabel(destination.platform)} ·{" "}
-                                    {destination.status === "needs_composer" ? "Needs composer" : "Pending"}
+                                    {destination.status === "needs_composer" ? "Needs composer" : destination.status === "sending" ? "Sending…" : "Pending"}
                                   </span>
                                 ))}
                               </div>
