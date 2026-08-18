@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  computeRolledUpPostStatus,
   getSocialScheduledPostsStore,
   resetSocialScheduledPostsStoreForTests,
+  SENDING_CLAIM_STALE_MS,
   SocialScheduledPostsStoreUnavailableError,
 } from "@/lib/server/social-scheduled-posts-store";
 import { createMemorySocialScheduledPostsStore } from "./social-scheduled-posts-test-helpers";
@@ -104,5 +106,61 @@ describe("approval-is-creation state machine", () => {
     await store.markDestinationFailedFinal(failed.destinations[0].id, "x down");
     await store.recomputePostStatus(failed.id);
     expect((await store.get(failed.id))?.status).toBe("failed");
+  });
+});
+
+describe("claim-before-send locking (issue #377)", () => {
+  it("claims a due destination to 'sending' and excludes it from an immediate second call", async () => {
+    const store = createMemorySocialScheduledPostsStore();
+    const now = new Date("2026-01-01T00:00:00Z");
+    const post = await store.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: now, approvedByWallet: "0xabc" });
+
+    const firstClaim = await store.listDueDestinations(now, 10);
+    expect(firstClaim).toHaveLength(1);
+    expect(firstClaim[0].scheduledPostId).toBe(post.id);
+
+    const secondClaim = await store.listDueDestinations(now, 10);
+    expect(secondClaim).toHaveLength(0);
+
+    expect((await store.get(post.id))?.destinations[0].status).toBe("sending");
+  });
+
+  it("does not reclaim a 'sending' destination before SENDING_CLAIM_STALE_MS has passed", async () => {
+    const store = createMemorySocialScheduledPostsStore();
+    const now = new Date("2026-01-01T00:00:00Z");
+    await store.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: now, approvedByWallet: "0xabc" });
+
+    await store.listDueDestinations(now, 10);
+    const stillClaimed = await store.listDueDestinations(new Date(now.getTime() + SENDING_CLAIM_STALE_MS - 1000), 10);
+    expect(stillClaimed).toHaveLength(0);
+  });
+
+  it("reclaims a destination stuck in 'sending' once SENDING_CLAIM_STALE_MS has passed — recovery for a crashed run", async () => {
+    const store = createMemorySocialScheduledPostsStore();
+    const now = new Date("2026-01-01T00:00:00Z");
+    await store.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: now, approvedByWallet: "0xabc" });
+
+    await store.listDueDestinations(now, 10);
+    const reclaimed = await store.listDueDestinations(new Date(now.getTime() + SENDING_CLAIM_STALE_MS + 1000), 10);
+    expect(reclaimed).toHaveLength(1);
+  });
+
+  it("markDestinationRetry resets a claimed destination back to 'pending' so it becomes due again", async () => {
+    const store = createMemorySocialScheduledPostsStore();
+    const now = new Date("2026-01-01T00:00:00Z");
+    const post = await store.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: now, approvedByWallet: "0xabc" });
+
+    await store.listDueDestinations(now, 10);
+    await store.markDestinationRetry(post.destinations[0].id, "transient error", new Date(now.getTime() + 60_000));
+
+    expect((await store.get(post.id))?.destinations[0].status).toBe("pending");
+  });
+});
+
+describe("computeRolledUpPostStatus treats 'sending' as not-done (issue #377)", () => {
+  it("returns null while any destination is 'sending', the same as 'pending'", () => {
+    expect(computeRolledUpPostStatus(["sending"])).toBeNull();
+    expect(computeRolledUpPostStatus(["sent", "sending"])).toBeNull();
+    expect(computeRolledUpPostStatus(["sent", "sent"])).toBe("sent");
   });
 });

@@ -10,7 +10,16 @@ import { isSocialPlatform, type SocialPlatform } from "@/lib/server/social-conne
 // retry/fail independently.
 
 export type SocialPostStatus = "scheduled" | "sent" | "partially_sent" | "needs_composer" | "failed" | "canceled";
-export type SocialDestinationStatus = "pending" | "sent" | "failed" | "needs_composer";
+export type SocialDestinationStatus = "pending" | "sending" | "sent" | "failed" | "needs_composer";
+
+/**
+ * How long a destination can sit claimed ('sending') before it's treated as
+ * abandoned and reclaimed by listDueDestinations (issue #377 recovery rule).
+ * Comfortably longer than the social-posting cron's 60s Vercel maxDuration,
+ * so a crashed/killed run can't strand a row in 'sending' forever, while
+ * still being far longer than any single publish call should ever take.
+ */
+export const SENDING_CLAIM_STALE_MS = 5 * 60 * 1000;
 
 export type SocialPostDestination = {
   id: string;
@@ -177,7 +186,7 @@ function asDateOrNull(value: Date | string | null): string | null {
  * the existing "not fully done, not fully failed" catch-all.
  */
 export function computeRolledUpPostStatus(destinationStatuses: string[]): SocialPostStatus | null {
-  if (destinationStatuses.length === 0 || destinationStatuses.some((status) => status === "pending")) return null;
+  if (destinationStatuses.length === 0 || destinationStatuses.some((status) => status === "pending" || status === "sending")) return null;
 
   const allSent = destinationStatuses.every((status) => status === "sent");
   if (allSent) return "sent";
@@ -194,7 +203,7 @@ function isPostStatus(value: string): value is SocialPostStatus {
 }
 
 function isDestinationStatus(value: string): value is SocialDestinationStatus {
-  return value === "pending" || value === "sent" || value === "failed" || value === "needs_composer";
+  return value === "pending" || value === "sending" || value === "sent" || value === "failed" || value === "needs_composer";
 }
 
 function destinationFromRow(row: DestinationRow): SocialPostDestination | null {
@@ -337,6 +346,14 @@ export function createPostgresSocialScheduledPostsStore(databaseUrl: string): So
     },
 
     async listDueDestinations(now, limit) {
+      // Claims each due row atomically in the same statement it selects
+      // with (issue #377): FOR UPDATE SKIP LOCKED picks candidates without
+      // blocking on rows another overlapping cron invocation is already
+      // holding, and the UPDATE flips them 'pending' -> 'sending' before
+      // returning them, so a second overlapping invocation can never see
+      // the same row as still due. A row stuck in 'sending' past
+      // SENDING_CLAIM_STALE_MS (a crashed run) is reclaimed the same way.
+      const staleBefore = new Date(now.getTime() - SENDING_CLAIM_STALE_MS);
       const result = await pool.query<{
         destination_id: string;
         scheduled_post_id: string;
@@ -346,16 +363,24 @@ export function createPostgresSocialScheduledPostsStore(databaseUrl: string): So
         artwork_data_url: string | null;
         attempt_count: number;
       }>(
-        `SELECT d.id AS destination_id, d.scheduled_post_id, d.platform, p.wallet_address, p.body,
-                p.artwork_data_url, d.attempt_count
-           FROM social_post_destinations d
-           JOIN social_scheduled_posts p ON p.id = d.scheduled_post_id
-          WHERE d.status = 'pending'
-            AND d.next_attempt_at <= $1
-            AND p.status = 'scheduled'
-          ORDER BY d.next_attempt_at ASC
-          LIMIT $2`,
-        [now, limit],
+        `WITH candidates AS (
+           SELECT d.id
+             FROM social_post_destinations d
+             JOIN social_scheduled_posts p ON p.id = d.scheduled_post_id
+            WHERE (d.status = 'pending' OR (d.status = 'sending' AND d.updated_at <= $3))
+              AND d.next_attempt_at <= $1
+              AND p.status = 'scheduled'
+            ORDER BY d.next_attempt_at ASC
+            LIMIT $2
+            FOR UPDATE OF d SKIP LOCKED
+         )
+         UPDATE social_post_destinations d
+            SET status = 'sending', updated_at = NOW()
+           FROM social_scheduled_posts p, candidates c
+          WHERE d.id = c.id AND p.id = d.scheduled_post_id
+          RETURNING d.id AS destination_id, d.scheduled_post_id, d.platform, p.wallet_address, p.body,
+                    p.artwork_data_url, d.attempt_count`,
+        [now, limit, staleBefore],
       );
       return result.rows
         .filter((row) => isSocialPlatform(row.platform))
@@ -382,7 +407,7 @@ export function createPostgresSocialScheduledPostsStore(databaseUrl: string): So
     async markDestinationRetry(destinationId, errorMessage, nextAttemptAt) {
       await pool.query(
         `UPDATE social_post_destinations
-            SET attempt_count = attempt_count + 1, error_message = $2, next_attempt_at = $3, updated_at = NOW()
+            SET status = 'pending', attempt_count = attempt_count + 1, error_message = $2, next_attempt_at = $3, updated_at = NOW()
           WHERE id = $1`,
         [destinationId, errorMessage.slice(0, 1000), nextAttemptAt],
       );

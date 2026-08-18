@@ -238,6 +238,33 @@ async function recordFailureAndSchedule(
   return "retried";
 }
 
+/**
+ * A destination whose publish call has already succeeded is 'sent' — full
+ * stop (issue #377). A failure to record that here is a monitoring
+ * problem, never a delivery decision: it must never propagate into
+ * recordFailureAndSchedule or connectionsStore.recordFailure, or a lost
+ * status write would make the next cron run see the row as still due and
+ * republish an already-delivered message.
+ */
+async function markSentBestEffort(
+  scheduledPostsStore: SocialScheduledPostsStore,
+  connectionsStore: SocialConnectionsStore,
+  destination: DueDestination,
+  externalPostId: string,
+  now: Date,
+): Promise<void> {
+  try {
+    await scheduledPostsStore.markDestinationSent(destination.destinationId, externalPostId, now);
+  } catch (error) {
+    console.error("Marking a destination sent failed after a successful publish.", error instanceof Error ? error.message : error);
+  }
+  try {
+    await connectionsStore.resetFailures(destination.walletAddress, destination.platform);
+  } catch (error) {
+    console.error("Resetting connection failures failed after a successful publish.", error instanceof Error ? error.message : error);
+  }
+}
+
 async function sendOneDestination(
   destination: DueDestination,
   env: Record<string, string | undefined>,
@@ -305,8 +332,7 @@ async function sendOneDestination(
 
     const result = await postTweet(destination.body, parsed, env);
     if (result.status === "posted") {
-      await scheduledPostsStore.markDestinationSent(destination.destinationId, result.xPostId, now);
-      await connectionsStore.resetFailures(destination.walletAddress, "x");
+      await markSentBestEffort(scheduledPostsStore, connectionsStore, destination, result.xPostId, now);
       // Best-effort (issue #368): a DB failure here must never turn an
       // already-successful post into a cron failure or schedule a duplicate
       // retry — the destination stays "sent" either way.
@@ -351,22 +377,26 @@ async function sendOneDestination(
     });
   }
 
+  let messageIds: number[];
   try {
     const artwork = destination.artworkDataUrl ? parseArtwork(destination.artworkDataUrl) : null;
-    const messageIds = await publishTelegram({
+    messageIds = await publishTelegram({
       botToken,
       chatId: parsedTelegram.chatId,
       text: destination.body,
       artwork,
     });
-    await scheduledPostsStore.markDestinationSent(destination.destinationId, String(messageIds[0] ?? ""), now);
-    await connectionsStore.resetFailures(destination.walletAddress, "telegram");
-    return "sent";
   } catch (error) {
     const message = error instanceof Error ? error.message : "Telegram publishing failed.";
     const revoked = /chat not found|not enough rights|CHAT_ADMIN_REQUIRED|kicked|have no rights/i.test(message);
     return recordFailureAndSchedule(scheduledPostsStore, connectionsStore, destination, message, now, revoked ? { connectionBroken: true } : {});
   }
+
+  // Outside the publish try/catch on purpose (issue #377) — the message is
+  // already in the channel at this point, so nothing below this line may
+  // ever route into recordFailureAndSchedule.
+  await markSentBestEffort(scheduledPostsStore, connectionsStore, destination, String(messageIds[0] ?? ""), now);
+  return "sent";
 }
 
 export async function runSocialPostingCron(deps: SocialPostingCronDeps = {}): Promise<SocialPostingCronResult> {
@@ -392,12 +422,21 @@ export async function runSocialPostingCron(deps: SocialPostingCronDeps = {}): Pr
     const touchedPosts = new Set<string>();
 
     for (const destination of due) {
-      const outcome = await sendOneDestination(destination, env, scheduledPostsStore, connectionsStore, costStore, now, postTweet, publishTelegram, linkDetector);
-      if (outcome === "sent") sent += 1;
-      else if (outcome === "retried") retried += 1;
-      else if (outcome === "routed_to_composer") routedToComposer += 1;
-      else failed += 1;
-      touchedPosts.add(destination.scheduledPostId);
+      // Isolated per destination (issue #377) — one destination's
+      // unexpected throw must not abort the rest of the batch or skip
+      // recomputePostStatus for posts already processed this run.
+      try {
+        const outcome = await sendOneDestination(destination, env, scheduledPostsStore, connectionsStore, costStore, now, postTweet, publishTelegram, linkDetector);
+        if (outcome === "sent") sent += 1;
+        else if (outcome === "retried") retried += 1;
+        else if (outcome === "routed_to_composer") routedToComposer += 1;
+        else failed += 1;
+      } catch (error) {
+        console.error("Unexpected error while processing a social posting destination.", error instanceof Error ? error.message : error);
+        failed += 1;
+      } finally {
+        touchedPosts.add(destination.scheduledPostId);
+      }
     }
 
     for (const postId of touchedPosts) {
