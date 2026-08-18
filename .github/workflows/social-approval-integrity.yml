@@ -5,17 +5,13 @@ on:
     branches:
       - fix/social-approval-integrity
     paths:
-      - .github/issue379_patch.part1
-      - .github/issue379_patch.part2
-      - .github/issue379_patch.part3
+      - .github/issue379_patch_chunks/**
       - .github/workflows/social-approval-integrity.yml
   pull_request:
     branches:
       - main
     paths:
-      - .github/issue379_patch.part1
-      - .github/issue379_patch.part2
-      - .github/issue379_patch.part3
+      - .github/issue379_patch_chunks/**
       - .github/workflows/social-approval-integrity.yml
   workflow_dispatch:
 
@@ -39,10 +35,11 @@ jobs:
 
       - name: Decode the reviewed patch and reset to the requested base
         run: |
-          cat .github/issue379_patch.part1 .github/issue379_patch.part2 .github/issue379_patch.part3 \
+          cat .github/issue379_patch_chunks/* \
             | tr -d '\n' \
             | base64 -d \
             | gzip -d > /tmp/issue379_patch.py
+          test "$(sha256sum /tmp/issue379_patch.py | cut -d' ' -f1)" = "20cfe0d0d52986e36abdf266852bd8bab14bce42537944c77a34626a639d3ddf"
           python -m py_compile /tmp/issue379_patch.py
           git reset --hard 07fe2e2168e61a067cb75290c9537ad04198ed85
           git config user.name "github-actions[bot]"
