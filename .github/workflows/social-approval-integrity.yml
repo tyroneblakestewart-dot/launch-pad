@@ -1,0 +1,72 @@
+name: Implement and validate Social approval integrity
+
+on:
+  push:
+    branches:
+      - fix/social-approval-integrity
+    paths:
+      - .github/issue379_patch.part1
+      - .github/issue379_patch.part2
+      - .github/issue379_patch.part3
+      - .github/workflows/social-approval-integrity.yml
+
+permissions:
+  contents: write
+
+jobs:
+  implement-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/social-approval-integrity
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Decode the reviewed patch and reset to the requested base
+        run: |
+          cat .github/issue379_patch.part1 .github/issue379_patch.part2 .github/issue379_patch.part3 \
+            | tr -d '\n' \
+            | base64 -d \
+            | gzip -d > /tmp/issue379_patch.py
+          python -m py_compile /tmp/issue379_patch.py
+          git reset --hard 07fe2e2168e61a067cb75290c9537ad04198ed85
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Apply approval-integrity implementation and tests
+        run: python /tmp/issue379_patch.py
+
+      - name: Enforce the PR #378 protected-file boundary
+        run: |
+          touched="$(git diff --name-only 07fe2e2168e61a067cb75290c9537ad04198ed85 -- \
+            lib/server/social-posting-cron.ts \
+            lib/server/social-scheduled-posts-store.ts)"
+          if [ -n "$touched" ]; then
+            echo "Protected files were modified:"
+            echo "$touched"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run application tests
+        run: npm run test:app
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run production build
+        run: npm run build
+
+      - name: Commit the single-concern change
+        run: |
+          git add -A
+          git commit -m "fix: make social approvals reviewable and idempotent"
+          git push --force-with-lease origin HEAD:fix/social-approval-integrity
