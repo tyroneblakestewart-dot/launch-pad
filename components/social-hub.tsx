@@ -421,6 +421,13 @@ export function SocialHub() {
   // acknowledgement checkbox before it can be approved — never silently
   // blocked, just never sent by accident.
   const [templateAcknowledgedIds, setTemplateAcknowledgedIds] = useState<Record<string, boolean>>({});
+  // Quick-send confirmation (issue #382): the per-card "Post to X"/"Send to
+  // Telegram" quick actions bypassed the approval confirm-before-sign panel
+  // entirely, letting a user publish item.telegramText/xText they had never
+  // reviewed. Quick-send is now the same two-tap pattern as
+  // handleApproveClick — the first tap force-expands the card and records
+  // which destination is pending; only the second tap actually posts.
+  const [pendingQuickSendId, setPendingQuickSendId] = useState<{ itemId: string; platform: SocialPlatform } | null>(null);
   const [rescheduleValues, setRescheduleValues] = useState<Record<string, string>>({});
   const [reschedulingPostId, setReschedulingPostId] = useState<string | null>(null);
   // Tracks which Ready-to-review items have a user-picked schedule time
@@ -916,7 +923,13 @@ export function SocialHub() {
   }
 
   async function generateDraft(
-    options: { dayLabel?: string; theme?: string; replenish?: boolean; recentDraftsOverride?: string[] } = {},
+    options: {
+      dayLabel?: string;
+      theme?: string;
+      replenish?: boolean;
+      recentDraftsOverride?: string[];
+      recentTelegramDraftsOverride?: string[];
+    } = {},
     report: (next: PanelStatus) => void = () => {},
   ): Promise<{ xText: string; telegramText: string } | null> {
     const project = draftProjectPayload();
@@ -942,6 +955,7 @@ export function SocialHub() {
           directionBrief: directionBrief.trim() || null,
           voiceExamples: voiceExampleFilter.usable,
           recentDrafts: options.recentDraftsOverride ?? queue.map((item) => item.xText),
+          recentTelegramDrafts: options.recentTelegramDraftsOverride ?? queue.map((item) => item.telegramText),
           angleIndex,
         }),
       });
@@ -1024,12 +1038,18 @@ export function SocialHub() {
     replenishInFlightRef.current = true;
     let generated = 0;
     let rollingRecentDrafts = queue.map((item) => item.xText);
+    let rollingRecentTelegramDrafts = queue.map((item) => item.telegramText);
     try {
       for (let index = 0; index < shortfall; index += 1) {
         setReplenishStatus({ tone: "progress", message: `Generating draft ${index + 1} of ${shortfall} for Ready to review…` });
-        const draft = await generateDraft({ replenish: true, recentDraftsOverride: rollingRecentDrafts });
+        const draft = await generateDraft({
+          replenish: true,
+          recentDraftsOverride: rollingRecentDrafts,
+          recentTelegramDraftsOverride: rollingRecentTelegramDrafts,
+        });
         if (!draft) break;
         rollingRecentDrafts = advanceRollingRecentDrafts(rollingRecentDrafts, draft.xText);
+        rollingRecentTelegramDrafts = advanceRollingRecentDrafts(rollingRecentTelegramDrafts, draft.telegramText);
         generated += 1;
       }
     } finally {
@@ -1476,10 +1496,11 @@ export function SocialHub() {
     setMascotSceneStatus({ tone: "success", message: "Added to the Queue with its artwork." });
   }
 
-  /** Clears a stale approval confirmation (issue #380) — any edit to what will be sent must be re-reviewed before it can be approved. */
+  /** Clears a stale approval or quick-send confirmation (issue #380, extended #382) — any edit to what will be sent must be re-reviewed before it can be approved or quick-sent. */
   function clearApprovalConfirmation(id: string) {
     setPendingApprovalItemId((current) => (current === id ? null : current));
     setTemplateAcknowledgedIds((current) => (id in current ? { ...current, [id]: false } : current));
+    setPendingQuickSendId((current) => (current?.itemId === id ? null : current));
   }
 
   function updateQueueItem(id: string, patch: Partial<QueueItem>) {
@@ -1560,6 +1581,31 @@ export function SocialHub() {
       setStatus(error instanceof Error ? error.message : "Telegram publishing failed.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * Quick-send is a two-tap action (issue #382), mirroring
+   * handleApproveClick: the first tap never publishes anything — it force-
+   * expands the card (so the exact text about to go to that destination is
+   * visible) and records which item/platform is pending. Only the second
+   * tap, once the button is already labeled "Confirm & …", actually calls
+   * postQueueItemToX or sendQueueItemToTelegram. This closes the side door
+   * PR #381's confirm-before-sign panel left open: quick-send previously
+   * published item.xText/telegramText on a single, unreviewed tap.
+   */
+  function handleQuickSendClick(item: QueueItem, platform: SocialPlatform) {
+    const isPending = pendingQuickSendId?.itemId === item.id && pendingQuickSendId.platform === platform;
+    if (!isPending) {
+      setExpandedQueueItemIds((current) => ({ ...current, [item.id]: true }));
+      setPendingQuickSendId({ itemId: item.id, platform });
+      return;
+    }
+    setPendingQuickSendId(null);
+    if (platform === "x") {
+      postQueueItemToX(item);
+    } else {
+      void sendQueueItemToTelegram(item);
     }
   }
 
@@ -2333,6 +2379,9 @@ export function SocialHub() {
                           const selectedDestinations = itemDestinations[item.id] ?? [];
                           const isExpanded = Boolean(expandedQueueItemIds[item.id]);
                           const isPendingApproval = pendingApprovalItemId === item.id;
+                          const isPendingQuickSendX = pendingQuickSendId?.itemId === item.id && pendingQuickSendId.platform === "x";
+                          const isPendingQuickSendTelegram =
+                            pendingQuickSendId?.itemId === item.id && pendingQuickSendId.platform === "telegram";
                           const xIsTemplate = isUneditedTemplateText(item.xText, templateOutputs);
                           const telegramIsTemplate = isUneditedTemplateText(item.telegramText, templateOutputs);
                           const isTemplateItem = xIsTemplate || telegramIsTemplate;
@@ -2447,6 +2496,14 @@ export function SocialHub() {
                                     ) : null}
                                   </div>
                                 ) : null}
+                                {isPendingQuickSendX || isPendingQuickSendTelegram ? (
+                                  <div className={styles.confirmPanel}>
+                                    <p>
+                                      Sending to {isPendingQuickSendX ? "X" : "Telegram"} only. Review the{" "}
+                                      {isPendingQuickSendX ? "X" : "Telegram"} text above — this is exactly what will be sent.
+                                    </p>
+                                  </div>
+                                ) : null}
                                 <div className={styles.queueItemActions}>
                                   <button
                                     type="button"
@@ -2456,16 +2513,20 @@ export function SocialHub() {
                                   >
                                     {approvingItemId === item.id ? "Approving…" : isPendingApproval ? "Confirm & approve" : "Approve"}
                                   </button>
-                                  <button type="button" className={styles.queueActionSecondary} onClick={() => postQueueItemToX(item)}>
-                                    <XMark /> Post to X
+                                  <button
+                                    type="button"
+                                    className={styles.queueActionSecondary}
+                                    onClick={() => handleQuickSendClick(item, "x")}
+                                  >
+                                    <XMark /> {isPendingQuickSendX ? "Confirm & post to X" : "Post to X"}
                                   </button>
                                   <button
                                     type="button"
                                     className={styles.queueActionSecondary}
-                                    onClick={() => sendQueueItemToTelegram(item)}
+                                    onClick={() => handleQuickSendClick(item, "telegram")}
                                     disabled={busy}
                                   >
-                                    <TelegramMark /> Send to Telegram
+                                    <TelegramMark /> {isPendingQuickSendTelegram ? "Confirm & send to Telegram" : "Send to Telegram"}
                                   </button>
                                   <button type="button" className={styles.queueActionDelete} onClick={() => removeQueueItem(item.id)}>
                                     Delete

@@ -244,6 +244,36 @@ function identityOpenerWarningInstruction(project: DraftProject, recentDrafts: s
   return `A recent post already opened with "${project.name}" or "${project.ticker}". This post's X draft must NOT begin with the project name or ticker, with or without a "$", punctuation, or an emoji before it — open from a different human perspective (a holder's voice, an observation, a moment, a question) instead of moving the project name later in the same sentence.`;
 }
 
+/**
+ * Telegram counterpart of identityOpenerWarningInstruction above (issue
+ * #382): the X-side draft pipeline already caught repeated identity
+ * openers, but the rolling context feeding that check was built from
+ * xText only, so the Telegram variant could — and in production did —
+ * open with the project name every single time without ever tripping it.
+ */
+function telegramIdentityOpenerWarningInstruction(project: DraftProject, recentTelegramDrafts: string[]): string {
+  if (!recentTelegramDrafts.some((draft) => textStartsWithIdentity(draft, project))) return "";
+  return `A recent Telegram post already opened with "${project.name}" or "${project.ticker}". This post's Telegram draft must NOT begin with the project name or ticker, with or without a "$", punctuation, or an emoji before it — open from a different human perspective instead of moving the project name later in the same sentence.`;
+}
+
+/** Telegram counterpart of the X-only opening-words avoid-context above (issue #382) — same shape, Telegram history only. */
+function telegramOpeningsInstruction(recentTelegramDrafts: string[]): string {
+  if (recentTelegramDrafts.length === 0) return "";
+  const openings = recentTelegramDrafts.map((draft, index) => `${index + 1}. "${openingWords(draft)}…"`);
+  return [
+    "Recent Telegram post openings already sitting in Ready to review (do not reuse or closely echo any of these):",
+    ...openings,
+  ].join("\n");
+}
+
+/**
+ * Standing rule (issue #382): the Telegram variant was converging on a
+ * generic project-summary opening regardless of what angle the X draft
+ * took, since nothing told the model the two drafts should share a subject.
+ */
+const TELEGRAM_ANGLE_MATCH_RULE =
+  "The Telegram draft must follow the same angle, subject and moment as the X draft for this post — it may be longer and more conversational, but it must not fall back to a generic project summary while the X draft takes a specific angle.";
+
 /** Static rules guarding against the formulaic pattern this issue was filed about — same construction, same phrase, hashtags every time. */
 const ANTI_FORMULA_RULES = [
   "Avoid falling into a formula across posts: do not always open with the project name, ticker, or a 'X is not ... it's ...' construction — vary how each post opens.",
@@ -528,6 +558,8 @@ export function buildDraftRequestBody(
     directionBrief?: string | null;
     voiceExamples?: string[];
     recentDrafts?: string[];
+    /** Telegram-history counterpart of recentDrafts above (issue #382) — without it, the Telegram variant's opening-repetition and phrase-reuse checks have nothing to compare against. */
+    recentTelegramDrafts?: string[];
     angleIndex?: number;
     /** Named violation feedback for the single automatic retry (issue #362). */
     correctiveFeedback?: string | null;
@@ -541,6 +573,13 @@ export function buildDraftRequestBody(
     (input.angleIndex ?? 0) * VOICE_EXAMPLES_PER_DRAFT,
   );
   const recentDrafts = (input.recentDrafts ?? []).slice(0, MAX_RECENT_DRAFTS_CONTEXT);
+  const recentTelegramDrafts = (input.recentTelegramDrafts ?? []).slice(0, MAX_RECENT_DRAFTS_CONTEXT);
+  // Phrase reuse is checked against both channels combined (issue #382) —
+  // checkDraftRepetition's banned-phrase match already runs against the
+  // combined X+Telegram draft text, so the phrases fed into the prompt must
+  // be drawn from the same combined history or the prompt and the mechanical
+  // check would disagree about what's already been said.
+  const allRecentDraftsForPhraseExtraction = [...recentDrafts, ...recentTelegramDrafts];
   const chain = resolveChainLabel(input.project.chain);
   const angle = resolveDraftAngle(input.theme, input.angleIndex, Boolean(input.directionBrief?.trim()));
   const themeLine = input.theme?.trim() ? `Theme for this post: ${input.theme.trim()}.` : "";
@@ -575,8 +614,13 @@ export function buildDraftRequestBody(
               allowedFactsLedgerInstruction(input.project, chain, input.directionBrief),
               recentDraftsInstruction(recentDrafts),
               identityOpenerWarningInstruction(input.project, recentDrafts),
-              bannedPhrasesInstruction(extractRepeatedPhrases(recentDrafts)),
-              immediateSignaturePhrasesInstruction(extractImmediateSignaturePhrases(recentDrafts, input.project, chain)),
+              telegramOpeningsInstruction(recentTelegramDrafts),
+              telegramIdentityOpenerWarningInstruction(input.project, recentTelegramDrafts),
+              TELEGRAM_ANGLE_MATCH_RULE,
+              bannedPhrasesInstruction(extractRepeatedPhrases(allRecentDraftsForPhraseExtraction)),
+              immediateSignaturePhrasesInstruction(
+                extractImmediateSignaturePhrases(allRecentDraftsForPhraseExtraction, input.project, chain),
+              ),
               watchedFillerTermsInstruction(recentDrafts),
               ANTI_FORMULA_RULES,
               input.correctiveFeedback?.trim() ? `IMPORTANT CORRECTION (this is a regenerated attempt): ${input.correctiveFeedback.trim()}` : "",
@@ -825,17 +869,21 @@ function longestSharedDistinctivePhrase(candidateXText: string, recentXText: str
 }
 
 /**
- * Mechanical guard, run after parsing (issue #364, extended #366): checks
- * the parsed draft for the banned "isn't just X, it's Y" construction, reuse
- * of any phrase already flagged by extractRepeatedPhrases (recurring across
- * 2+ recent posts), and — new for #366 — a close 4+ word shared phrase
- * against any *single* recent draft, since waiting for a phrase to recur
- * twice let the second occurrence straight into the queue.
+ * Mechanical guard, run after parsing (issue #364, extended #366, #382):
+ * checks the parsed draft for the banned "isn't just X, it's Y"
+ * construction, reuse of any phrase already flagged by extractRepeatedPhrases
+ * (recurring across 2+ recent posts, X and Telegram combined), a close 4+
+ * word shared phrase against any *single* recent X draft (#366), and — new
+ * for #382 — the same close-phrase-reuse check for the Telegram draft
+ * against recent Telegram history, since the original check only ever
+ * compared xText against recentDrafts and let Telegram phrasing repeat
+ * freely.
  */
 export function checkDraftRepetition(
   draft: SocialDraft,
   bannedPhrases: string[],
   recentDrafts: string[] = [],
+  recentTelegramDrafts: string[] = [],
 ): DraftAngleComplianceResult {
   const combined = `${draft.xText} ${draft.telegramText}`;
   if (NOT_JUST_CONSTRUCTION_PATTERN.test(combined)) {
@@ -862,26 +910,42 @@ export function checkDraftRepetition(
       };
     }
   }
+  for (const recentTelegramDraft of recentTelegramDrafts) {
+    const shared = longestSharedDistinctivePhrase(draft.telegramText, recentTelegramDraft);
+    if (shared) {
+      return {
+        violated: true,
+        feedback: `The previous draft's Telegram post shares the phrase "${shared}" almost word-for-word with a recent Telegram post. Rewrite that part with different wording — this is about copied phrasing, not the taught voice's tone or cadence.`,
+      };
+    }
+  }
   return { violated: false };
 }
 
 /**
- * Mechanical guard, run after parsing (issue #366): prompt wording alone did
- * not stop nearly every post in a real batch from opening with the project
- * name/ticker. This is a rolling-window rule, not a permanent ban — a draft
- * opening with the project identity only violates when a recent draft in the
- * window already did the same, so one identity-led opener is always allowed.
+ * Mechanical guard, run after parsing (issue #366, extended #382 with a
+ * `field` parameter): prompt wording alone did not stop nearly every post in
+ * a real batch from opening with the project name/ticker. This is a
+ * rolling-window rule, not a permanent ban — a draft opening with the
+ * project identity only violates when a recent draft in the window already
+ * did the same, so one identity-led opener is always allowed. `field`
+ * defaults to "X" to stay backward compatible with existing callers; the
+ * route also calls this with `field: "Telegram"` and `recentDrafts` set to
+ * the Telegram-only history so the corrective-retry feedback names the
+ * Telegram text specifically instead of the generic "this post".
  */
 export function checkDraftIdentityOpener(
-  xText: string,
+  text: string,
   project: { name: string; ticker: string },
   recentDrafts: string[],
+  field: "X" | "Telegram" = "X",
 ): DraftAngleComplianceResult {
   if (!recentDrafts.some((draft) => textStartsWithIdentity(draft, project))) return { violated: false };
-  if (!textStartsWithIdentity(xText, project)) return { violated: false };
+  if (!textStartsWithIdentity(text, project)) return { violated: false };
+  const contextLabel = field === "Telegram" ? "A recent Telegram post" : "A recent post";
   return {
     violated: true,
-    feedback: `A recent post already opened with "${project.name}" or "${project.ticker}". Rewrite this post's opening line so it does not start with the project name or ticker (with or without "$", punctuation, or an emoji before it) — open from a different human perspective instead of simply moving the project name later in the sentence.`,
+    feedback: `${contextLabel} already opened with "${project.name}" or "${project.ticker}". Rewrite this draft's ${field} opening line so it does not start with the project name or ticker (with or without "$", punctuation, or an emoji before it) — open from a different human perspective instead of simply moving the project name later in the sentence.`,
   };
 }
 
@@ -894,14 +958,17 @@ export type DraftComplianceCheckInput = {
   /** Only needed to protect the chain label from the immediate-signature-phrase check below when a project is also supplied. */
   chainLabel?: string;
   recentDrafts?: string[];
+  /** Telegram-history counterpart of recentDrafts above (issue #382) — feeds the Telegram-specific identity-opener and phrase-overlap checks below. */
+  recentTelegramDrafts?: string[];
 };
 
 /**
  * Runs every mechanical safety check — angle form, then factual risk, then
- * the project-identity opener, then the watched-filler-term rolling window,
- * then repetition/phrase-overlap (which also folds in the immediate
- * short-signature-phrase ban whenever a project is supplied, issue #366
- * follow-up) — short-circuiting on the first violation. The route calls this
+ * the project-identity opener (X, then Telegram — issue #382), then the
+ * watched-filler-term rolling window, then repetition/phrase-overlap (which
+ * also folds in the immediate short-signature-phrase ban whenever a project
+ * is supplied, issue #366 follow-up, drawn from X and Telegram history
+ * combined) — short-circuiting on the first violation. The route calls this
  * identically on the first response and, after a corrective retry, on the
  * retry's response too, so a second bad draft can never slip through
  * unchecked the way the first response's compliance check alone did (issue
@@ -913,14 +980,23 @@ export function checkDraftCompliance(draft: SocialDraft, input: DraftComplianceC
   const factualResult = checkDraftFactualRisk(draft);
   if (factualResult.violated) return factualResult;
   const recentDrafts = input.recentDrafts ?? [];
+  const recentTelegramDrafts = input.recentTelegramDrafts ?? [];
   if (input.project) {
-    const identityResult = checkDraftIdentityOpener(draft.xText, input.project, recentDrafts);
+    const identityResult = checkDraftIdentityOpener(draft.xText, input.project, recentDrafts, "X");
     if (identityResult.violated) return identityResult;
+    const telegramIdentityResult = checkDraftIdentityOpener(draft.telegramText, input.project, recentTelegramDrafts, "Telegram");
+    if (telegramIdentityResult.violated) return telegramIdentityResult;
   }
   const fillerResult = checkDraftWatchedFillerTerms(draft.xText, recentDrafts);
   if (fillerResult.violated) return fillerResult;
+  const allRecentDraftsForPhrases = [...recentDrafts, ...recentTelegramDrafts];
   const immediatePhrases = input.project
-    ? extractImmediateSignaturePhrases(recentDrafts, input.project, input.chainLabel ?? "")
+    ? extractImmediateSignaturePhrases(allRecentDraftsForPhrases, input.project, input.chainLabel ?? "")
     : [];
-  return checkDraftRepetition(draft, [...(input.bannedPhrases ?? []), ...immediatePhrases], recentDrafts);
+  return checkDraftRepetition(
+    draft,
+    [...(input.bannedPhrases ?? []), ...immediatePhrases],
+    recentDrafts,
+    recentTelegramDrafts,
+  );
 }

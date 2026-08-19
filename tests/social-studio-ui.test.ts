@@ -247,11 +247,12 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain("className={styles.scheduleCompact}");
     expect(social).toContain("className={styles.scheduleCompactInput}");
 
-    // Post to X/Send to Telegram/Delete are untouched (issue #356's action row).
+    // Delete is untouched (issue #356's action row).
     // Approve now goes through handleApproveClick's two-tap confirm step (issue #380).
+    // Post to X/Send to Telegram are also two-tap now, through handleQuickSendClick (issue #382).
     expect(social).toContain("onClick={() => handleApproveClick(item)}");
-    expect(social).toContain("onClick={() => postQueueItemToX(item)}");
-    expect(social).toContain("onClick={() => sendQueueItemToTelegram(item)}");
+    expect(social).toContain('onClick={() => handleQuickSendClick(item, "x")}');
+    expect(social).toContain('onClick={() => handleQuickSendClick(item, "telegram")}');
     expect(social).toContain("onClick={() => removeQueueItem(item.id)}");
   });
 
