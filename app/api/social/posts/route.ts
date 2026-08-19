@@ -9,6 +9,7 @@ import {
   isSocialStudioRequestOriginAllowed,
 } from "@/lib/server/api-protection";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
+import { findDuplicateScheduledPost } from "@/lib/server/social-post-duplicate-detection";
 import { X_DRAFT_CHARACTER_LIMIT } from "@/lib/server/social-draft-pipeline";
 import { getSocialConnectionsStore, isSocialPlatform, type SocialPlatform } from "@/lib/server/social-connections-store";
 import {
@@ -142,7 +143,26 @@ export async function POST(request: Request) {
   }
 
   try {
-    const post = await getSocialScheduledPostsStore().create({
+    const store = getSocialScheduledPostsStore();
+    // Idempotent approval (issue #380): a retried or double-tapped approval
+    // of the same still-pending draft must not create a second post that
+    // sends independently — that was the direct cause of a production
+    // duplicate-send incident. Rather than a DB constraint (which would
+    // require a schema change to the locked social-scheduled-posts-store.ts
+    // file, since the client already creates one row per destination), this
+    // looks for an identical, still-`scheduled` post created in the last few
+    // minutes and replaces it instead of adding another — see
+    // lib/server/social-post-duplicate-detection.ts.
+    const recentPosts = await store.list(authorisation.walletAddress, 50);
+    const duplicate = findDuplicateScheduledPost(
+      recentPosts,
+      { body: postBody, destinations: typedDestinations },
+      Date.now(),
+    );
+    if (duplicate) {
+      await store.cancel(duplicate.id, authorisation.walletAddress);
+    }
+    const post = await store.create({
       walletAddress: authorisation.walletAddress,
       body: postBody,
       artworkDataUrl: artworkDataUrlRaw || null,
@@ -150,7 +170,7 @@ export async function POST(request: Request) {
       scheduledAt,
       approvedByWallet: authorisation.walletAddress,
     });
-    return NextResponse.json({ post }, { status: 201, headers });
+    return NextResponse.json({ post, replacedPostId: duplicate?.id ?? null }, { status: duplicate ? 200 : 201, headers });
   } catch (error) {
     const unavailable = error instanceof SocialScheduledPostsStoreUnavailableError;
     return NextResponse.json(

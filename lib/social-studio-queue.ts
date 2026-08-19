@@ -54,6 +54,17 @@ export function clampQueueTarget(value: number): number {
   return Math.min(MAX_QUEUE_TARGET, Math.max(1, Math.round(value)));
 }
 
+/**
+ * Whether a post still anchors the schedule-spread default (issue #380) —
+ * `needs_composer` is terminal (it never sends automatically, the user must
+ * tap through the free X composer themselves), so it must not permanently
+ * push every later default further out. Only genuinely still-pending
+ * `scheduled` posts should do that.
+ */
+export function isPendingSendStatus(status: string): boolean {
+  return status === "scheduled";
+}
+
 const AWAITING_SEND_STATUSES = new Set(["scheduled", "needs_composer"]);
 const HISTORY_STATUSES = new Set(["sent", "partially_sent", "failed", "canceled"]);
 
@@ -107,4 +118,17 @@ export function cadenceQueueTarget(cadence: PostingCadence): number {
 /** Default schedule-time spread for a cadence: waking hours divided evenly across its daily posting ceiling, so approvals fan out across the day instead of clustering at "now". */
 export function cadenceSpreadHoursMs(cadence: PostingCadence): number {
   return Math.round(WAKING_HOURS_MS / cadenceQueueTarget(cadence));
+}
+
+/**
+ * Whether `text` is still exactly one of the canned `buildTemplate()`
+ * outputs, unedited (issue #380). A single edited character makes this
+ * false — the caller supplies the current project's template outputs (one
+ * per non-custom TemplateId) since this module has no access to the
+ * component's TokenProject/buildTemplate types.
+ */
+export function isUneditedTemplateText(text: string, templateOutputs: string[]): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return templateOutputs.some((output) => output.trim() === trimmed);
 }

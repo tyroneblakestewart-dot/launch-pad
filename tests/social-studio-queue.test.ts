@@ -11,6 +11,8 @@ import {
   connectedPlatforms,
   isAwaitingSend,
   isHistoryStatus,
+  isPendingSendStatus,
+  isUneditedTemplateText,
   normalisePostingCadence,
   replenishShortfall,
 } from "@/lib/social-studio-queue";
@@ -152,5 +154,42 @@ describe("posting cadence (issue #358)", () => {
     expect(normalisePostingCadence("aggressive")).toBe("active");
     expect(normalisePostingCadence(undefined)).toBe("active");
     expect(normalisePostingCadence(null)).toBe("active");
+  });
+});
+
+describe("isPendingSendStatus (issue #380)", () => {
+  it("only a still-scheduled post anchors the schedule-spread default", () => {
+    expect(isPendingSendStatus("scheduled")).toBe(true);
+  });
+
+  it("needs_composer is terminal and must not anchor the spread — it never sends automatically", () => {
+    expect(isPendingSendStatus("needs_composer")).toBe(false);
+  });
+
+  it("sent/failed/partially_sent/canceled are all not pending", () => {
+    for (const status of ["sent", "partially_sent", "failed", "canceled"]) {
+      expect(isPendingSendStatus(status)).toBe(false);
+    }
+  });
+});
+
+describe("isUneditedTemplateText (issue #380)", () => {
+  const TEMPLATE_OUTPUTS = ["🚨 Introducing Test Coin ($TEST) on Solana.\n\nA new community token is preparing for launch.", "The Test Coin community is assembling.\n\nJoin the official $TEST channels."];
+
+  it("flags text that exactly matches one of the current project's template outputs", () => {
+    expect(isUneditedTemplateText(TEMPLATE_OUTPUTS[0], TEMPLATE_OUTPUTS)).toBe(true);
+  });
+
+  it("ignores surrounding whitespace differences", () => {
+    expect(isUneditedTemplateText(`  ${TEMPLATE_OUTPUTS[1]}  `, TEMPLATE_OUTPUTS)).toBe(true);
+  });
+
+  it("is false the moment a single character is edited", () => {
+    expect(isUneditedTemplateText(`${TEMPLATE_OUTPUTS[0]}!`, TEMPLATE_OUTPUTS)).toBe(false);
+  });
+
+  it("is false for empty text and for text matching no template", () => {
+    expect(isUneditedTemplateText("", TEMPLATE_OUTPUTS)).toBe(false);
+    expect(isUneditedTemplateText("something the user wrote themselves", TEMPLATE_OUTPUTS)).toBe(false);
   });
 });

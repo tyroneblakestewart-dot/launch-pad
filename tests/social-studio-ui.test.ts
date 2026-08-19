@@ -232,7 +232,12 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain("const isExpanded = Boolean(expandedQueueItemIds[item.id]);");
     expect(social).toContain("className={styles.queuePreview}");
     expect(social).toContain("className={styles.queuePreviewText}");
-    expect(social).toContain("Telegram hidden — tap to edit both");
+    // issue #380: the collapsed preview now carries a Telegram length/sameness
+    // indicator instead of "Telegram hidden" — a compact hint, not a full
+    // preview, since the mandatory confirm-before-sign step (below) is what
+    // actually guarantees the full text is seen before every approval.
+    expect(social).toContain("X {item.xText.length}/280 · Telegram {item.telegramText.length} chars");
+    expect(social).toContain("tap to edit both");
 
     // Expanding still reveals the same editable X/Telegram fields, wired to the same update handler.
     expect(social).toContain('onChange={(event) => updateQueueItem(item.id, { xText: event.target.value })}');
@@ -242,8 +247,9 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain("className={styles.scheduleCompact}");
     expect(social).toContain("className={styles.scheduleCompactInput}");
 
-    // Approve/Post to X/Send to Telegram/Delete are untouched (issue #356's action row).
-    expect(social).toContain("onClick={() => approveQueueItem(item)}");
+    // Post to X/Send to Telegram/Delete are untouched (issue #356's action row).
+    // Approve now goes through handleApproveClick's two-tap confirm step (issue #380).
+    expect(social).toContain("onClick={() => handleApproveClick(item)}");
     expect(social).toContain("onClick={() => postQueueItemToX(item)}");
     expect(social).toContain("onClick={() => sendQueueItemToTelegram(item)}");
     expect(social).toContain("onClick={() => removeQueueItem(item.id)}");
