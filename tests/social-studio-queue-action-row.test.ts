@@ -48,9 +48,14 @@ describe("Queue tab draft-card action row (issue #356)", () => {
     expect(actionsBlock).toContain("className={styles.queueActionSecondary}");
     expect(actionsBlock).toContain("className={styles.queueActionDelete}");
 
-    // Approve is still primary and still disabled with no destination selected or mid-request.
-    expect(actionsBlock).toContain("disabled={approvingItemId === item.id || selectedDestinations.length === 0}");
-    expect(actionsBlock).toContain('{approvingItemId === item.id ? "Approving…" : "Approve"}');
+    // Approve is still primary and still disabled with no destination selected, mid-request, or
+    // (issue #380) pending an unedited-template acknowledgement.
+    expect(actionsBlock).toContain(
+      "disabled={approvingItemId === item.id || selectedDestinations.length === 0 || requiresTemplateAck}",
+    );
+    expect(actionsBlock).toContain(
+      '{approvingItemId === item.id ? "Approving…" : isPendingApproval ? "Confirm & approve" : "Approve"}',
+    );
 
     // Post to X / Send to Telegram keep their brand marks inline beside the label.
     expect(actionsBlock).toContain("<XMark /> Post to X");

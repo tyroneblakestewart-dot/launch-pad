@@ -977,6 +977,45 @@
 }
 .queuePreviewMeta { color: #6f746e; font: 600 10px "IBM Plex Mono", monospace; }
 
+/* Unedited-template marker (issue #380): visible even on a collapsed card,
+   not just inside the confirm step, so canned copy is never mistaken for an
+   AI draft or hand-written post. */
+.templateBadge {
+  margin-left: 7px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(230, 178, 60, 0.4);
+  color: #e6b23c;
+  background: rgba(230, 178, 60, 0.1);
+  font: 700 9px "IBM Plex Mono", monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+/* Approve-confirmation panel (issue #380): shown between the first
+   ("Approve") and second ("Confirm & approve") tap, once the card is
+   force-expanded so both destination bodies are visible above it. */
+.confirmPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(198, 245, 62, 0.22);
+  border-radius: 10px;
+  background: rgba(198, 245, 62, 0.045);
+}
+.confirmPanel > p { margin: 0; color: #c3c9c4; font-size: 11.5px; line-height: 1.45; }
+.confirmTemplateCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #e6b23c;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.confirmTemplateCheckbox input { width: 16px; height: 16px; flex: none; }
+
 /* Compact inline schedule control (issue #358), replacing the old
    full-width labeled datetime row. */
 .scheduleCompact { display: inline-flex; align-items: center; gap: 8px; width: fit-content; }

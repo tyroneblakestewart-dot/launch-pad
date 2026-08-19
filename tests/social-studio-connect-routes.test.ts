@@ -4,6 +4,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { GET as connectionsRoute } from "@/app/api/social/connections/route";
 import { POST as socialChallenge } from "@/app/api/social/challenge/route";
 import { POST as postsCancel } from "@/app/api/social/posts/cancel/route";
+import { POST as postsReschedule } from "@/app/api/social/posts/reschedule/route";
 import { GET as listPosts, POST as createPost } from "@/app/api/social/posts/route";
 import { POST as telegramConnect } from "@/app/api/social/telegram/connect/route";
 import { POST as telegramDisconnect } from "@/app/api/social/telegram/disconnect/route";
@@ -258,5 +259,133 @@ describe("POST /api/social/posts (approval is creation)", () => {
     const auth = await signedAction("social:post-create", { body: longBody, destinations: "x", scheduledAt });
     const response = await createPost(postRequest("/api/social/posts", { body: longBody, destinations: ["x"], scheduledAt, ...auth }));
     expect(response.status).toBe(400);
+  });
+
+  it("replaces rather than duplicates a repeated approval of the same body and destination (issue #380)", async () => {
+    await getSocialConnectionsStore().upsert({ walletAddress: ACCOUNT.address, platform: "telegram", displayName: "@chan", externalId: "1", credentials: JSON.stringify({ chatId: "-100" }) });
+
+    const scheduledAt = new Date().toISOString();
+    const firstAuth = await signedAction("social:post-create", { body: "gm hoodlums", destinations: "telegram", scheduledAt });
+    const first = await createPost(postRequest("/api/social/posts", { body: "gm hoodlums", destinations: ["telegram"], scheduledAt, ...firstAuth }));
+    expect(first.status).toBe(201);
+    const firstPost = (await first.json()) as { post: { id: string } };
+
+    // A second, freshly wallet-signed approval of the identical text — the
+    // production incident: the owner pressed Approve more than once.
+    const secondScheduledAt = new Date(Date.now() + 60_000).toISOString();
+    const secondAuth = await signedAction("social:post-create", { body: "gm hoodlums", destinations: "telegram", scheduledAt: secondScheduledAt });
+    const second = await createPost(
+      postRequest("/api/social/posts", { body: "gm hoodlums", destinations: ["telegram"], scheduledAt: secondScheduledAt, ...secondAuth }),
+    );
+    expect(second.status).toBe(200);
+    const secondPost = (await second.json()) as { post: { id: string; status: string }; replacedPostId: string };
+    expect(secondPost.replacedPostId).toBe(firstPost.post.id);
+    expect(secondPost.post.id).not.toBe(firstPost.post.id);
+
+    const list = (await (await listPosts(getRequest(`/api/social/posts?walletAddress=${ACCOUNT.address}`))).json()) as {
+      posts: Array<{ id: string; status: string }>;
+    };
+    const scheduledCount = list.posts.filter((entry) => entry.status === "scheduled").length;
+    expect(scheduledCount).toBe(1);
+    expect(list.posts.find((entry) => entry.id === firstPost.post.id)?.status).toBe("canceled");
+  });
+
+  it("does not replace when the body differs — a genuinely different post is not a duplicate", async () => {
+    await getSocialConnectionsStore().upsert({ walletAddress: ACCOUNT.address, platform: "telegram", displayName: "@chan", externalId: "1", credentials: JSON.stringify({ chatId: "-100" }) });
+    const scheduledAt = new Date().toISOString();
+    const firstAuth = await signedAction("social:post-create", { body: "gm hoodlums", destinations: "telegram", scheduledAt });
+    await createPost(postRequest("/api/social/posts", { body: "gm hoodlums", destinations: ["telegram"], scheduledAt, ...firstAuth }));
+
+    const secondAuth = await signedAction("social:post-create", { body: "a different message", destinations: "telegram", scheduledAt });
+    const second = await createPost(postRequest("/api/social/posts", { body: "a different message", destinations: ["telegram"], scheduledAt, ...secondAuth }));
+    expect(second.status).toBe(201);
+
+    const list = (await (await listPosts(getRequest(`/api/social/posts?walletAddress=${ACCOUNT.address}`))).json()) as {
+      posts: Array<{ status: string }>;
+    };
+    expect(list.posts.filter((entry) => entry.status === "scheduled").length).toBe(2);
+  });
+});
+
+describe("POST /api/social/posts/reschedule (issue #380)", () => {
+  async function approveOne() {
+    await getSocialConnectionsStore().upsert({ walletAddress: ACCOUNT.address, platform: "x", displayName: "@x", externalId: "1", credentials: JSON.stringify({ accessToken: "a", accessSecret: "b" }) });
+    const scheduledAt = new Date().toISOString();
+    const auth = await signedAction("social:post-create", { body: "gm hoodlums", destinations: "x", scheduledAt });
+    const response = await createPost(postRequest("/api/social/posts", { body: "gm hoodlums", destinations: ["x"], scheduledAt, ...auth }));
+    const created = (await response.json()) as { post: { id: string } };
+    return created.post.id;
+  }
+
+  it("moves a scheduled post to a new time by replacing it, leaving the old row canceled", async () => {
+    const postId = await approveOne();
+    const newScheduledAt = new Date(Date.now() + 3600_000).toISOString();
+    const auth = await signedAction("social:post-reschedule", { postId, scheduledAt: newScheduledAt });
+    const response = await postsReschedule(postRequest("/api/social/posts/reschedule", { postId, scheduledAt: newScheduledAt, ...auth }));
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { post: { id: string; scheduledAt: string }; replacedPostId: string };
+    expect(payload.replacedPostId).toBe(postId);
+    expect(payload.post.id).not.toBe(postId);
+    expect(new Date(payload.post.scheduledAt).toISOString()).toBe(newScheduledAt);
+
+    const list = (await (await listPosts(getRequest(`/api/social/posts?walletAddress=${ACCOUNT.address}`))).json()) as {
+      posts: Array<{ id: string; status: string }>;
+    };
+    expect(list.posts.find((entry) => entry.id === postId)?.status).toBe("canceled");
+    expect(list.posts.find((entry) => entry.id === payload.post.id)?.status).toBe("scheduled");
+  });
+
+  it("404s for a post belonging to a different wallet", async () => {
+    const postId = await approveOne();
+    const otherAccount = privateKeyToAccount(
+      "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff81" as `0x${string}`,
+    );
+    const scheduledAt = new Date().toISOString();
+    const challengeResponse = await socialChallenge(
+      postRequest("/api/social/challenge", {
+        walletAddress: otherAccount.address,
+        walletChainId: 46630,
+        purpose: "social:post-reschedule",
+        payload: { postId, scheduledAt },
+      }),
+    );
+    const challenge = (await challengeResponse.json()) as { challengeId: string; nonce: string; message: string };
+    const signature = await otherAccount.signMessage({ message: challenge.message });
+    const response = await postsReschedule(
+      postRequest("/api/social/posts/reschedule", {
+        postId,
+        scheduledAt,
+        challengeId: challenge.challengeId,
+        nonce: challenge.nonce,
+        signature,
+      }),
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("409s when the post has already been canceled", async () => {
+    const postId = await approveOne();
+    const cancelAuth = await signedAction("social:post-cancel", { postId });
+    await postsCancel(postRequest("/api/social/posts/cancel", { postId, ...cancelAuth }));
+
+    const scheduledAt = new Date().toISOString();
+    const auth = await signedAction("social:post-reschedule", { postId, scheduledAt });
+    const response = await postsReschedule(postRequest("/api/social/posts/reschedule", { postId, scheduledAt, ...auth }));
+    expect(response.status).toBe(409);
+  });
+
+  it("400s for an invalid scheduled time", async () => {
+    const postId = await approveOne();
+    const auth = await signedAction("social:post-reschedule", { postId, scheduledAt: "not-a-date" });
+    const response = await postsReschedule(postRequest("/api/social/posts/reschedule", { postId, scheduledAt: "not-a-date", ...auth }));
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects a post-create challenge replayed against reschedule — purposes are bound, not interchangeable", async () => {
+    const postId = await approveOne();
+    const scheduledAt = new Date().toISOString();
+    const auth = await signedAction("social:post-create", { body: "gm hoodlums", destinations: "x", scheduledAt });
+    const response = await postsReschedule(postRequest("/api/social/posts/reschedule", { postId, scheduledAt, ...auth }));
+    expect(response.status).toBe(401);
   });
 });

@@ -15,6 +15,7 @@ export const SOCIAL_STUDIO_ACTION_PURPOSES = [
   "social:telegram-disconnect",
   "social:post-create",
   "social:post-cancel",
+  "social:post-reschedule",
 ] as const;
 
 export type SocialStudioActionPurpose = (typeof SOCIAL_STUDIO_ACTION_PURPOSES)[number];

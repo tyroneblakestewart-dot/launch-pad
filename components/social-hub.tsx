@@ -19,6 +19,8 @@ import {
   connectedPlatforms,
   isAwaitingSend,
   isHistoryStatus,
+  isPendingSendStatus,
+  isUneditedTemplateText,
   replenishShortfall,
 } from "@/lib/social-studio-queue";
 import type {
@@ -92,6 +94,7 @@ type ScheduledPostSummary = {
 const SOCIAL_STUDIO_ACTION_PURPOSES = {
   postCreate: "social:post-create",
   postCancel: "social:post-cancel",
+  postReschedule: "social:post-reschedule",
 } as const;
 
 function platformLabel(platform: SocialPlatform): string {
@@ -408,6 +411,23 @@ export function SocialHub() {
   // expanded into their full editable X/Telegram fields. Ephemeral UI state,
   // never persisted.
   const [expandedQueueItemIds, setExpandedQueueItemIds] = useState<Record<string, boolean>>({});
+  // Approval confirmation (issue #380): Approve is a two-tap action — the
+  // first tap force-expands the card so both destination bodies are visible,
+  // the second (now labeled "Confirm & approve") actually signs and sends.
+  // Any edit to the item's text/destinations clears this so a stale
+  // confirmation can never survive a change to what will be sent.
+  const [pendingApprovalItemId, setPendingApprovalItemId] = useState<string | null>(null);
+  // Unedited canned template copy (issue #380) requires an extra explicit
+  // acknowledgement checkbox before it can be approved — never silently
+  // blocked, just never sent by accident.
+  const [templateAcknowledgedIds, setTemplateAcknowledgedIds] = useState<Record<string, boolean>>({});
+  const [rescheduleValues, setRescheduleValues] = useState<Record<string, string>>({});
+  const [reschedulingPostId, setReschedulingPostId] = useState<string | null>(null);
+  // Tracks which Ready-to-review items have a user-picked schedule time
+  // (issue #380) — everything else keeps getting a fresh auto-computed
+  // default recomputed at approve time rather than frozen at item-creation
+  // time, so it reflects what's actually pending right now.
+  const [scheduleManuallySet, setScheduleManuallySet] = useState<Record<string, boolean>>({});
   const replenishInFlightRef = useRef(false);
   /** Rotates the example-post window and fallback angle across successive draft requests (issue #360) — never reset, so repeated Setup/Calendar clicks vary too, not just a batch loop. */
   const draftAngleCounterRef = useRef(0);
@@ -576,6 +596,12 @@ export function SocialHub() {
     [monthGrid],
   );
   const selectedDayLabel = `${selectedDay.day} ${MONTH_NAMES[selectedDay.month]} ${selectedDay.year}`;
+
+  /** The current project's canned template outputs (issue #380), used to detect an unedited-template Ready-to-review draft — "custom" is excluded since it's always empty. */
+  const templateOutputs = useMemo(
+    () => (selectedProject ? TEMPLATES.filter((template) => template.id !== "custom").map((template) => buildTemplate(selectedProject, template.id)) : []),
+    [selectedProject],
+  );
 
   const myConnectedPlatforms = useMemo(() => connectedPlatforms(connections), [connections]);
   const awaitingSendPosts = useMemo(
@@ -1063,10 +1089,38 @@ export function SocialHub() {
       const next = selected.includes(platform) ? selected.filter((entry) => entry !== platform) : [...selected, platform];
       return { ...current, [itemId]: next };
     });
+    clearApprovalConfirmation(itemId);
   }
 
   function setItemScheduledAtValue(itemId: string, value: string) {
     setItemScheduledAt((current) => ({ ...current, [itemId]: value }));
+    setScheduleManuallySet((current) => ({ ...current, [itemId]: true }));
+  }
+
+  /**
+   * Approve is a two-tap action (issue #380): the first tap never signs
+   * anything. It force-expands the card (so both the X and Telegram bodies
+   * that are about to be sent are actually visible — previously a collapsed
+   * card could approve Telegram text the user had never seen) and, unless
+   * the user already picked their own time, refreshes the default schedule
+   * from what's pending *right now* rather than trusting a value computed
+   * whenever this draft first appeared. Only the second tap — now labeled
+   * "Confirm & approve" — actually calls approveQueueItem.
+   */
+  function handleApproveClick(item: QueueItem) {
+    if (pendingApprovalItemId !== item.id) {
+      if (!scheduleManuallySet[item.id]) {
+        const awaitingIso = scheduledPosts.filter((post) => isPendingSendStatus(post.status)).map((post) => post.scheduledAt);
+        setItemScheduledAt((current) => ({
+          ...current,
+          [item.id]: toDateTimeLocalValue(computeDefaultScheduledAt(awaitingIso, new Date(), cadenceSpreadHoursMs(postingCadence))),
+        }));
+      }
+      setExpandedQueueItemIds((current) => ({ ...current, [item.id]: true }));
+      setPendingApprovalItemId(item.id);
+      return;
+    }
+    void approveQueueItem(item);
   }
 
   /**
@@ -1076,6 +1130,7 @@ export function SocialHub() {
    * each selected destination becomes its own wallet-signed approval call
    * with that platform's own text — one X-only post and/or one
    * Telegram-only post, both carrying the same schedule time and artwork.
+   * Only reachable via handleApproveClick's second tap.
    */
   async function approveQueueItem(item: QueueItem) {
     const destinations = (itemDestinations[item.id] ?? []).filter((platform) => myConnectedPlatforms.includes(platform));
@@ -1089,6 +1144,7 @@ export function SocialHub() {
     setApprovingItemId(item.id);
     setPostsStatus({ tone: "progress", message: "Approving…" });
     let approvedAny = false;
+    let replacedAny = false;
     let failureMessage = "";
     try {
       for (const platform of destinations) {
@@ -1120,7 +1176,11 @@ export function SocialHub() {
               signature: auth.signature,
             }),
           });
-          await readJsonResponse<{ post?: unknown }>(response, `${platformLabel(platform)} approval failed.`);
+          const payload = await readJsonResponse<{ post?: unknown; replacedPostId?: string | null }>(
+            response,
+            `${platformLabel(platform)} approval failed.`,
+          );
+          if (payload.replacedPostId) replacedAny = true;
           approvedAny = true;
         } catch (error) {
           failureMessage = error instanceof Error ? error.message : `${platformLabel(platform)} approval failed.`;
@@ -1136,9 +1196,12 @@ export function SocialHub() {
       await loadScheduledPosts();
       void replenishQueue();
     }
+    const approvedMessage = replacedAny
+      ? "Approved — replaced an already-pending duplicate of this exact draft instead of sending twice."
+      : "Approved and scheduled.";
     setPostsStatus(
       approvedAny
-        ? { tone: "success", message: failureMessage ? `Approved, but ${failureMessage.charAt(0).toLowerCase()}${failureMessage.slice(1)}` : "Approved and scheduled." }
+        ? { tone: "success", message: failureMessage ? `Approved, but ${failureMessage.charAt(0).toLowerCase()}${failureMessage.slice(1)}` : approvedMessage }
         : { tone: "error", message: failureMessage || "Approval failed." },
     );
   }
@@ -1168,6 +1231,48 @@ export function SocialHub() {
     setStatus("X composer opened with the approved post filled in.");
   }
 
+  function setReschedulePostValue(postId: string, value: string) {
+    setRescheduleValues((current) => ({ ...current, [postId]: value }));
+  }
+
+  /**
+   * Moves an already-approved, not-yet-sent post to a new time (issue #380
+   * — previously the datetime picker here had nothing to submit to).
+   * POST /api/social/posts/reschedule cancels the old row and creates a
+   * fresh one at the new time, so the change shows up in History as
+   * canceled -> new rather than silently rewriting what was approved.
+   */
+  async function reschedulePost(post: ScheduledPostSummary) {
+    const value = rescheduleValues[post.id];
+    if (!value) {
+      setPostsStatus({ tone: "error", message: "Pick a new time before rescheduling." });
+      return;
+    }
+    const scheduledAtIso = new Date(value).toISOString();
+    setReschedulingPostId(post.id);
+    setPostsStatus({ tone: "progress", message: "Rescheduling…" });
+    try {
+      const auth = await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.postReschedule, { postId: post.id, scheduledAt: scheduledAtIso });
+      const response = await fetch("/api/social/posts/reschedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId: post.id, scheduledAt: scheduledAtIso, challengeId: auth.challengeId, nonce: auth.nonce, signature: auth.signature }),
+      });
+      await readJsonResponse<{ post?: unknown }>(response, "Could not reschedule that post.");
+      setPostsStatus({ tone: "success", message: "Rescheduled." });
+      setRescheduleValues((current) => {
+        const next = { ...current };
+        delete next[post.id];
+        return next;
+      });
+      await loadScheduledPosts();
+    } catch (error) {
+      setPostsStatus({ tone: "error", message: error instanceof Error ? error.message : "Could not reschedule that post." });
+    } finally {
+      setReschedulingPostId(null);
+    }
+  }
+
   /**
    * Posting cadence is single-select (issue #358) and drives two things at
    * once: the Ready-to-review replenish target, and (via the effect below)
@@ -1182,6 +1287,7 @@ export function SocialHub() {
 
   function toggleQueueItemExpanded(id: string) {
     setExpandedQueueItemIds((current) => ({ ...current, [id]: !current[id] }));
+    clearApprovalConfirmation(id);
   }
 
   // Fills in a default destination selection and schedule time for any
@@ -1189,7 +1295,7 @@ export function SocialHub() {
   // Setup/Calendar/replenish, or connections that just finished loading) —
   // never overwrites a selection the user already made.
   useEffect(() => {
-    const awaitingIso = awaitingSendPosts.map((post) => post.scheduledAt);
+    const awaitingIso = scheduledPosts.filter((post) => isPendingSendStatus(post.status)).map((post) => post.scheduledAt);
     setItemDestinations((current) => {
       let changed = false;
       const next = { ...current };
@@ -1214,7 +1320,7 @@ export function SocialHub() {
       }
       return changed ? next : current;
     });
-  }, [queue, myConnectedPlatforms, awaitingSendPosts, postingCadence]);
+  }, [queue, myConnectedPlatforms, scheduledPosts, postingCadence]);
 
   // Queue tab data is fetched client-side only (never in the background) on
   // tab open, on window/tab focus while the tab is active, and after
@@ -1370,12 +1476,19 @@ export function SocialHub() {
     setMascotSceneStatus({ tone: "success", message: "Added to the Queue with its artwork." });
   }
 
+  /** Clears a stale approval confirmation (issue #380) — any edit to what will be sent must be re-reviewed before it can be approved. */
+  function clearApprovalConfirmation(id: string) {
+    setPendingApprovalItemId((current) => (current === id ? null : current));
+    setTemplateAcknowledgedIds((current) => (id in current ? { ...current, [id]: false } : current));
+  }
+
   function updateQueueItem(id: string, patch: Partial<QueueItem>) {
     setQueue((current) => {
       const next = current.map((item) => (item.id === id ? { ...item, ...patch } : item));
       persistSocialStudio({ queue: next });
       return next;
     });
+    clearApprovalConfirmation(id);
   }
 
   function removeQueueItem(id: string, options: { silent?: boolean } = {}) {
@@ -2219,6 +2332,16 @@ export function SocialHub() {
                         {queue.map((item) => {
                           const selectedDestinations = itemDestinations[item.id] ?? [];
                           const isExpanded = Boolean(expandedQueueItemIds[item.id]);
+                          const isPendingApproval = pendingApprovalItemId === item.id;
+                          const xIsTemplate = isUneditedTemplateText(item.xText, templateOutputs);
+                          const telegramIsTemplate = isUneditedTemplateText(item.telegramText, templateOutputs);
+                          const isTemplateItem = xIsTemplate || telegramIsTemplate;
+                          const selectedTextIsTemplate = selectedDestinations.some(
+                            (platform) => (platform === "x" ? xIsTemplate : telegramIsTemplate),
+                          );
+                          const templateAcknowledged = Boolean(templateAcknowledgedIds[item.id]);
+                          const requiresTemplateAck = isPendingApproval && selectedTextIsTemplate && !templateAcknowledged;
+                          const telegramSameAsX = item.telegramText.trim() === item.xText.trim();
                           return (
                             <article className={styles.queueItem} key={item.id}>
                               {item.artwork ? (
@@ -2235,6 +2358,7 @@ export function SocialHub() {
                                         : item.source === "auto-replenish"
                                           ? "Auto-generated"
                                           : "Manual"}
+                                    {isTemplateItem ? <span className={styles.templateBadge}>Template</span> : null}
                                   </span>
                                   <button
                                     type="button"
@@ -2248,7 +2372,7 @@ export function SocialHub() {
                                 {isExpanded ? (
                                   <>
                                     <label className={styles.connectionField}>
-                                      <span>X ({item.xText.length}/280)</span>
+                                      <span>X ({item.xText.length}/280){xIsTemplate ? " · unedited template" : ""}</span>
                                       <textarea
                                         value={item.xText}
                                         onChange={(event) => updateQueueItem(item.id, { xText: event.target.value })}
@@ -2256,7 +2380,7 @@ export function SocialHub() {
                                       />
                                     </label>
                                     <label className={styles.connectionField}>
-                                      <span>Telegram</span>
+                                      <span>Telegram{telegramIsTemplate ? " · unedited template" : ""}</span>
                                       <textarea
                                         value={item.telegramText}
                                         onChange={(event) => updateQueueItem(item.id, { telegramText: event.target.value })}
@@ -2272,7 +2396,8 @@ export function SocialHub() {
                                   >
                                     <span className={styles.queuePreviewText}>{item.xText || "No X text yet — tap to write one."}</span>
                                     <span className={styles.queuePreviewMeta}>
-                                      X {item.xText.length}/280 · Telegram hidden — tap to edit both
+                                      X {item.xText.length}/280 · Telegram {item.telegramText.length} chars
+                                      {item.telegramText ? (telegramSameAsX ? " (same as X)" : " (different)") : " (empty)"} — tap to edit both
                                     </span>
                                   </button>
                                 )}
@@ -2305,14 +2430,31 @@ export function SocialHub() {
                                     onChange={(event) => setItemScheduledAtValue(item.id, event.target.value)}
                                   />
                                 </label>
+                                {isPendingApproval ? (
+                                  <div className={styles.confirmPanel}>
+                                    <p>
+                                      Sending: {selectedDestinations.length === 0 ? "nothing selected" : selectedDestinations.map((platform) => platformLabel(platform)).join(" + ")}. Review the text above — this is exactly what each destination will receive.
+                                    </p>
+                                    {selectedTextIsTemplate ? (
+                                      <label className={styles.confirmTemplateCheckbox}>
+                                        <input
+                                          type="checkbox"
+                                          checked={templateAcknowledged}
+                                          onChange={(event) => setTemplateAcknowledgedIds((current) => ({ ...current, [item.id]: event.target.checked }))}
+                                        />
+                                        This is unedited template text — I want to send it as-is.
+                                      </label>
+                                    ) : null}
+                                  </div>
+                                ) : null}
                                 <div className={styles.queueItemActions}>
                                   <button
                                     type="button"
                                     className={styles.queueActionApprove}
-                                    onClick={() => approveQueueItem(item)}
-                                    disabled={approvingItemId === item.id || selectedDestinations.length === 0}
+                                    onClick={() => handleApproveClick(item)}
+                                    disabled={approvingItemId === item.id || selectedDestinations.length === 0 || requiresTemplateAck}
                                   >
-                                    {approvingItemId === item.id ? "Approving…" : "Approve"}
+                                    {approvingItemId === item.id ? "Approving…" : isPendingApproval ? "Confirm & approve" : "Approve"}
                                   </button>
                                   <button type="button" className={styles.queueActionSecondary} onClick={() => postQueueItemToX(item)}>
                                     <XMark /> Post to X
@@ -2383,11 +2525,25 @@ export function SocialHub() {
                                 </div>
                               ) : null}
                               {post.status === "scheduled" ? (
-                                <div className={styles.composerActions}>
-                                  <button type="button" onClick={() => cancelScheduledPost(post.id)} disabled={cancelingPostId === post.id}>
-                                    {cancelingPostId === post.id ? "Canceling…" : "Cancel"}
-                                  </button>
-                                </div>
+                                <>
+                                  <label className={styles.scheduleCompact}>
+                                    <span>Reschedule</span>
+                                    <input
+                                      type="datetime-local"
+                                      className={styles.scheduleCompactInput}
+                                      value={rescheduleValues[post.id] ?? toDateTimeLocalValue(new Date(post.scheduledAt))}
+                                      onChange={(event) => setReschedulePostValue(post.id, event.target.value)}
+                                    />
+                                  </label>
+                                  <div className={styles.composerActions}>
+                                    <button type="button" onClick={() => reschedulePost(post)} disabled={reschedulingPostId === post.id}>
+                                      {reschedulingPostId === post.id ? "Rescheduling…" : "Save new time"}
+                                    </button>
+                                    <button type="button" onClick={() => cancelScheduledPost(post.id)} disabled={cancelingPostId === post.id}>
+                                      {cancelingPostId === post.id ? "Canceling…" : "Cancel"}
+                                    </button>
+                                  </div>
+                                </>
                               ) : null}
                             </div>
                           </article>
