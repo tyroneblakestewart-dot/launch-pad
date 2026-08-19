@@ -362,6 +362,71 @@ describe("buildDraftRequestBody", () => {
     expect(developerText).not.toContain("short signature phrases already appeared");
     expect(developerText).not.toContain("already appeared in a recent post in this batch");
   });
+
+  it("always instructs the Telegram draft to follow the X draft's angle instead of falling back to a generic summary (issue #382)", () => {
+    const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini");
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("The Telegram draft must follow the same angle, subject and moment as the X draft");
+    expect(developerText).toContain("must not fall back to a generic project summary");
+  });
+
+  it("passes recent Telegram post openings as Telegram-specific avoid-context, separate from the X openings (issue #382)", () => {
+    const body = buildDraftRequestBody(
+      {
+        project: PROJECT,
+        voiceProfile: null,
+        recentDrafts: ["Test Coin is picking up steam this week."],
+        recentTelegramDrafts: ["Test Coin fam, huge week ahead for the whole crew."],
+      },
+      "gpt-5-mini",
+    );
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("Recent Telegram post openings already sitting in Ready to review");
+    // openingWords caps at 6 words, matching the X-side opening-context format.
+    expect(developerText).toContain("Test Coin fam, huge week ahead");
+  });
+
+  it("omits the Telegram-openings avoid-context when no recent Telegram drafts are supplied", () => {
+    const body = buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini");
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).not.toContain("Recent Telegram post openings");
+  });
+
+  it("bans a Telegram identity opener once the rolling Telegram-only context shows a recent one, independent of the X history (issue #382)", () => {
+    const doomProject: DraftProject = { name: "Doom", ticker: "DOOM", description: "A meme token.", chain: "solana", contractAddress: "" };
+    const body = buildDraftRequestBody(
+      {
+        project: doomProject,
+        voiceProfile: null,
+        recentDrafts: ["Community energy has been building fast."],
+        recentTelegramDrafts: ["$DOOM crew, big things are coming this week."],
+      },
+      "gpt-5-mini",
+    );
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    // The X-side warning must not fire — no X draft opened with the identity.
+    expect(developerText).not.toContain("This post's X draft must NOT begin with the project name or ticker");
+    // The Telegram-side warning must fire — a recent Telegram draft did.
+    expect(developerText).toContain("A recent Telegram post already opened with");
+    expect(developerText).toContain("This post's Telegram draft must NOT begin with the project name or ticker");
+  });
+
+  it("bans a phrase that recurred only across Telegram history in both drafts, since phrase reuse is checked across channels combined (issue #382)", () => {
+    const body = buildDraftRequestBody(
+      {
+        project: PROJECT,
+        voiceProfile: null,
+        recentTelegramDrafts: [
+          "the crew brings bold humor to every single update",
+          "nothing beats bold humor from this crew",
+        ],
+      },
+      "gpt-5-mini",
+    );
+    const developerText = body.input[0]?.content[0]?.text ?? "";
+    expect(developerText).toContain("short signature phrases already appeared");
+    expect(developerText.toLowerCase()).toContain("bold humor");
+  });
 });
 
 describe("checkDraftAngleCompliance", () => {
@@ -677,6 +742,45 @@ describe("checkDraftIdentityOpener (issue #366)", () => {
   it("returns no violation for empty recent drafts", () => {
     expect(checkDraftIdentityOpener("DOOM is picking up steam.", DOOM_PROJECT, [])).toEqual({ violated: false });
   });
+
+  it("defaults to the X field label in feedback when no field is supplied (backward compatible)", () => {
+    const result = checkDraftIdentityOpener("Doom is picking up serious momentum today.", DOOM_PROJECT, [
+      "$DOOM just keeps building, no signs of slowing down.",
+    ]);
+    expect(result.violated).toBe(true);
+    if (result.violated) {
+      expect(result.feedback).toContain("A recent post already opened with");
+      expect(result.feedback).toContain("X opening line");
+    }
+  });
+
+  it("names the Telegram field in feedback when field is 'Telegram', checked against Telegram-only history (issue #382)", () => {
+    const result = checkDraftIdentityOpener(
+      "Doom fam, big week ahead.",
+      DOOM_PROJECT,
+      ["$DOOM crew, huge things coming."],
+      "Telegram",
+    );
+    expect(result.violated).toBe(true);
+    if (result.violated) {
+      expect(result.feedback).toContain("A recent Telegram post already opened with");
+      expect(result.feedback).toContain("Telegram opening line");
+    }
+  });
+
+  it("checks the X and Telegram windows independently — a Telegram-history opener does not flag an X-field check and vice versa", () => {
+    // Recent history only shows a Telegram opener; checking the X field against it should not violate.
+    const xCheck = checkDraftIdentityOpener("Doom is picking up serious momentum today.", DOOM_PROJECT, [], "X");
+    expect(xCheck).toEqual({ violated: false });
+
+    const telegramCheck = checkDraftIdentityOpener(
+      "Doom fam, big week ahead.",
+      DOOM_PROJECT,
+      ["$DOOM crew, huge things coming."],
+      "Telegram",
+    );
+    expect(telegramCheck.violated).toBe(true);
+  });
 });
 
 describe("checkDraftRepetition close phrase reuse against a single recent draft (issue #366)", () => {
@@ -710,6 +814,51 @@ describe("checkDraftRepetition close phrase reuse against a single recent draft 
   it("still rejects with only the phrase list when no recentDrafts are passed (backward compatible default)", () => {
     const draft: SocialDraft = { xText: "the doom crew brings bold humor every time", telegramText: "clean" };
     expect(checkDraftRepetition(draft, ["bold humor"]).violated).toBe(true);
+  });
+
+  it("rejects a distinctive 4+ word phrase shared with a recent Telegram draft, naming it as the Telegram post (issue #382)", () => {
+    const draft: SocialDraft = {
+      xText: "clean",
+      telegramText: "the doom community keeps building something special together every single day",
+    };
+    const result = checkDraftRepetition(
+      draft,
+      [],
+      [],
+      ["nothing stops the doom community keeps building something special today"],
+    );
+    expect(result.violated).toBe(true);
+    if (result.violated) {
+      expect(result.feedback).toContain("Telegram post shares the phrase");
+      expect(result.feedback).toContain("doom community keeps building something special");
+    }
+  });
+
+  it("does not flag the Telegram overlap when the shared words are all short/generic", () => {
+    const draft: SocialDraft = { xText: "clean", telegramText: "this is the way we do it here and now" };
+    const result = checkDraftRepetition(draft, [], [], ["this is the way we always do it"]);
+    expect(result).toEqual({ violated: false });
+  });
+
+  it("an X-only shared phrase does not trigger a false positive against unrelated Telegram history, and vice versa", () => {
+    const draft: SocialDraft = {
+      xText: "the doom community keeps building something special together every single day",
+      telegramText: "A completely unrelated telegram sentence about something else.",
+    };
+    // recentTelegramDrafts has nothing in common with the Telegram body, so only the X-history match should fire.
+    const result = checkDraftRepetition(
+      draft,
+      [],
+      ["nothing stops the doom community keeps building something special today"],
+      ["A totally different unrelated recent telegram post about nothing in particular."],
+    );
+    expect(result.violated).toBe(true);
+    if (result.violated) expect(result.feedback).toContain("X post shares the phrase");
+  });
+
+  it("stays backward compatible when recentTelegramDrafts is omitted entirely", () => {
+    const draft: SocialDraft = { xText: "clean", telegramText: "the doom crew brings bold humor every time" };
+    expect(checkDraftRepetition(draft, [], []).violated).toBe(false);
   });
 });
 
@@ -839,6 +988,72 @@ describe("checkDraftCompliance immediate signature phrases and watched filler te
       chainLabel: "Robinhood Chain",
       recentDrafts: [],
     });
+    expect(result).toEqual({ violated: false });
+  });
+});
+
+describe("checkDraftCompliance Telegram variety enforcement (issue #382)", () => {
+  it("rejects a Telegram draft that opens with the project identity when recent Telegram history already did, naming the Telegram text", () => {
+    const draft: SocialDraft = { xText: "The crew is heads down building this week.", telegramText: "Doom fam, big week ahead for all of us." };
+    const result = checkDraftCompliance(draft, {
+      angleIndex: 1,
+      project: DOOM_PROJECT,
+      chainLabel: "Robinhood Chain",
+      recentDrafts: [],
+      recentTelegramDrafts: ["$DOOM crew, huge things coming this week."],
+    });
+    expect(result.violated).toBe(true);
+    if (result.violated) {
+      expect(result.feedback).toContain("A recent Telegram post already opened with");
+      expect(result.feedback).toContain("Telegram opening line");
+    }
+  });
+
+  it("does not reject an X draft opening with the identity purely because Telegram history opened with it (the two windows are independent)", () => {
+    const draft: SocialDraft = { xText: "Doom keeps building steadily, no gimmicks.", telegramText: "A completely different Telegram post." };
+    const result = checkDraftCompliance(draft, {
+      angleIndex: 1,
+      project: DOOM_PROJECT,
+      chainLabel: "Robinhood Chain",
+      recentDrafts: [],
+      recentTelegramDrafts: ["$DOOM crew, huge things coming this week."],
+    });
+    expect(result).toEqual({ violated: false });
+  });
+
+  it("rejects a Telegram draft that closely echoes a recent Telegram draft's phrasing, naming it as the Telegram post", () => {
+    // No project supplied here so the immediate-signature-phrase pre-check (which would otherwise
+    // catch "keeps building" first and report the more generic reused-phrase message) is skipped,
+    // isolating the close-phrase-overlap check this test targets.
+    const draft: SocialDraft = {
+      xText: "clean",
+      telegramText: "the doom community keeps building something special together every single day",
+    };
+    const result = checkDraftCompliance(draft, {
+      angleIndex: 1,
+      recentDrafts: [],
+      recentTelegramDrafts: ["nothing stops the doom community keeps building something special today"],
+    });
+    expect(result.violated).toBe(true);
+    if (result.violated) expect(result.feedback).toContain("Telegram post shares the phrase");
+  });
+
+  it("bans a signature phrase in the X draft that only recently appeared in Telegram history, since phrase reuse is checked across both channels", () => {
+    const draft: SocialDraft = { xText: "This crew never runs out of bold humor.", telegramText: "clean" };
+    const result = checkDraftCompliance(draft, {
+      angleIndex: 1,
+      project: DOOM_PROJECT,
+      chainLabel: "Robinhood Chain",
+      recentDrafts: [],
+      recentTelegramDrafts: ["The doom crew brings bold humor to everything we build."],
+    });
+    expect(result.violated).toBe(true);
+    if (result.violated) expect(result.feedback).toContain("bold humor");
+  });
+
+  it("stays backward compatible when recentTelegramDrafts is omitted (no Telegram checks run, X-only behaviour unchanged)", () => {
+    const draft: SocialDraft = { xText: "DOOM keeps building steadily.", telegramText: "Doom fam, checking in with the crew today." };
+    const result = checkDraftCompliance(draft, { angleIndex: 1, project: DOOM_PROJECT, chainLabel: "Robinhood Chain", recentDrafts: [] });
     expect(result).toEqual({ violated: false });
   });
 });

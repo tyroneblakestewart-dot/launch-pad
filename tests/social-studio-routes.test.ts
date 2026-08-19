@@ -352,6 +352,87 @@ describe("POST /api/social/draft", () => {
     expect(payload.draft).toBeUndefined();
     expect(payload.error).toBeTruthy();
   });
+
+  it("threads recentTelegramDrafts into the compliance check and retries with Telegram-specific corrective feedback when only the Telegram variant repeats a recent identity opener (issue #382)", async () => {
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        // The X text is fine on its own — only the Telegram variant repeats the identity opener.
+        jsonResponse(textPayload({ xText: "The community keeps showing up.", telegramText: "Test Coin fam, big week ahead." })),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(textPayload({ xText: "The community keeps showing up.", telegramText: "Big week ahead for the whole crew." })),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await postDraft(
+      request("/api/social/draft", {
+        walletAddress: WALLET,
+        project: PROJECT,
+        angleIndex: 1,
+        recentDrafts: [],
+        recentTelegramDrafts: ["$TEST just keeps building, no signs of slowing down at all."],
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const payload = (await response.json()) as { draft?: { telegramText: string } };
+    expect(payload.draft?.telegramText).toBe("Big week ahead for the whole crew.");
+
+    const [, retryInit] = fetchMock.mock.calls[1] as [string, { body?: string }];
+    const retryBody = JSON.parse(retryInit.body ?? "{}") as { input?: Array<{ content?: Array<{ text?: string }> }> };
+    const retryDeveloperText = retryBody.input?.[0]?.content?.[0]?.text ?? "";
+    expect(retryDeveloperText).toContain("IMPORTANT CORRECTION");
+    expect(retryDeveloperText).toContain("Telegram opening line");
+  });
+
+  it("fails closed when the retry's Telegram variant still opens with the project identity after a recent Telegram-only identity opener (issue #382)", async () => {
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(textPayload({ xText: "The community keeps showing up.", telegramText: "Test Coin fam, big week ahead." })),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(textPayload({ xText: "The community keeps showing up.", telegramText: "$TEST is having an incredible week." })),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await postDraft(
+      request("/api/social/draft", {
+        walletAddress: WALLET,
+        project: PROJECT,
+        angleIndex: 1,
+        recentDrafts: [],
+        recentTelegramDrafts: ["$TEST just keeps building, no signs of slowing down at all."],
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(502);
+    const payload = (await response.json()) as { draft?: unknown; error?: string };
+    expect(payload.draft).toBeUndefined();
+    expect(payload.error).toBeTruthy();
+  });
+
+  it("forwards recentTelegramDrafts into the AI request body's developer prompt (issue #382)", async () => {
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET }));
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(textPayload({ xText: "A fine X post.", telegramText: "A fine telegram post about Test Coin." })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await postDraft(
+      request("/api/social/draft", {
+        walletAddress: WALLET,
+        project: PROJECT,
+        recentTelegramDrafts: ["Test Coin fam, huge week ahead for the whole crew."],
+      }),
+    );
+    expect(response.status).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] as [string, { body?: string }];
+    const sentBody = JSON.parse(init.body ?? "{}") as { input?: Array<{ content?: Array<{ text?: string }> }> };
+    const developerText = sentBody.input?.[0]?.content?.[0]?.text ?? "";
+    // openingWords caps at 6 words, matching the X-side opening-context format.
+    expect(developerText).toContain("Test Coin fam, huge week ahead");
+  });
 });
 
 describe("POST /api/social/mascot/visual-dna", () => {

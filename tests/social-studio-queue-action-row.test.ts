@@ -41,7 +41,7 @@ describe("Queue tab draft-card action row (issue #356)", () => {
   it("gives each Queue tab draft-card action its own hierarchy class instead of four equal-weight tiles", async () => {
     const social = await source("components", "social-hub.tsx");
 
-    const actionsBlock = social.slice(social.indexOf("styles.queueItemActions"), social.indexOf("styles.queueItemActions") + 1600);
+    const actionsBlock = social.slice(social.indexOf("styles.queueItemActions"), social.indexOf("styles.queueItemActions") + 2200);
 
     expect(social).toContain("className={styles.queueItemActions}");
     expect(actionsBlock).toContain("className={styles.queueActionApprove}");
@@ -57,9 +57,14 @@ describe("Queue tab draft-card action row (issue #356)", () => {
       '{approvingItemId === item.id ? "Approving…" : isPendingApproval ? "Confirm & approve" : "Approve"}',
     );
 
-    // Post to X / Send to Telegram keep their brand marks inline beside the label.
-    expect(actionsBlock).toContain("<XMark /> Post to X");
-    expect(actionsBlock).toContain("<TelegramMark /> Send to Telegram");
+    // Post to X / Send to Telegram keep their brand marks inline beside the label, but are now a
+    // two-tap quick-send confirm step through handleQuickSendClick, same pattern as Approve (issue #382).
+    expect(actionsBlock).toContain('onClick={() => handleQuickSendClick(item, "x")}');
+    expect(actionsBlock).toContain('onClick={() => handleQuickSendClick(item, "telegram")}');
+    expect(actionsBlock).toContain('<XMark /> {isPendingQuickSendX ? "Confirm & post to X" : "Post to X"}');
+    expect(actionsBlock).toContain(
+      '<TelegramMark /> {isPendingQuickSendTelegram ? "Confirm & send to Telegram" : "Send to Telegram"}',
+    );
 
     // Delete is unchanged behaviourally.
     expect(actionsBlock).toContain("onClick={() => removeQueueItem(item.id)}");

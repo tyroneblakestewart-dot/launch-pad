@@ -41,6 +41,7 @@ type DraftRequestBody = {
   directionBrief?: unknown;
   voiceExamples?: unknown;
   recentDrafts?: unknown;
+  recentTelegramDrafts?: unknown;
   angleIndex?: unknown;
 };
 
@@ -149,6 +150,7 @@ export async function POST(request: Request) {
   const directionBrief = typeof body.directionBrief === "string" ? body.directionBrief.slice(0, 500) : null;
   const voiceExamples = stringArray(body.voiceExamples, MAX_VOICE_EXAMPLES_ACCEPTED, 2_000);
   const recentDrafts = stringArray(body.recentDrafts, MAX_RECENT_DRAFTS_ACCEPTED, 2_000);
+  const recentTelegramDrafts = stringArray(body.recentTelegramDrafts, MAX_RECENT_DRAFTS_ACCEPTED, 2_000);
   const angleIndex = typeof body.angleIndex === "number" && Number.isFinite(body.angleIndex) ? body.angleIndex : 0;
 
   const ai = resolveAIResponsesRuntime(process.env, getVercelOidcToken(request));
@@ -185,6 +187,7 @@ export async function POST(request: Request) {
               directionBrief,
               voiceExamples,
               recentDrafts,
+              recentTelegramDrafts,
               angleIndex,
               correctiveFeedback,
             },
@@ -254,7 +257,11 @@ export async function POST(request: Request) {
   // market claim is not something we can afford to fail open on, so this
   // returns a safe error instead of the unsafe draft. A missing draft is
   // recoverable; a false claim handed to the user ready to publish is not.
-  const bannedPhrases = extractRepeatedPhrases(recentDrafts);
+  // Banned phrases are drawn from X and Telegram history combined (issue
+  // #382) — checkDraftCompliance/checkDraftRepetition check reused phrases
+  // against the combined draft text regardless of which channel they
+  // originally appeared in.
+  const bannedPhrases = extractRepeatedPhrases([...recentDrafts, ...recentTelegramDrafts]);
   const complianceInput = {
     theme,
     angleIndex,
@@ -263,6 +270,7 @@ export async function POST(request: Request) {
     project: { name: project.name, ticker: project.ticker },
     chainLabel: resolveChainLabel(project.chain),
     recentDrafts,
+    recentTelegramDrafts,
   };
   const compliance = checkDraftCompliance(result.draft, complianceInput);
   if (!compliance.violated) {
