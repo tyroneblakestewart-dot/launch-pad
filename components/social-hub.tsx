@@ -387,8 +387,9 @@ export function SocialHub() {
   // Real Telegram connect flow (issue #340): reconciles the Setup card with
   // the wallet-signed connect/disconnect routes instead of a bare, unverified
   // chat-ID text field. `telegramConfigured` is null while loading.
+  // `telegramConnection` itself is derived from `connections` below (issue
+  // #384) rather than kept as separate state.
   const [telegramConfigured, setTelegramConfigured] = useState<boolean | null>(null);
-  const [telegramConnection, setTelegramConnection] = useState<TelegramConnectionState | null>(null);
   const [telegramConnectInput, setTelegramConnectInput] = useState("");
   const [telegramConnectBusy, setTelegramConnectBusy] = useState(false);
 
@@ -397,7 +398,15 @@ export function SocialHub() {
   // /api/social/posts, and the per-project auto-replenish target. Ready
   // to review stays the existing local `queue` array/IndexedDB field;
   // approved/history posts are fetched, never persisted locally.
+  // `connections` is the single source of truth for both the Setup
+  // Telegram card and the Queue's destination toggles (issue #384) —
+  // `telegramConnection` below is derived from it, never separate state.
+  // `connectionsStatus` distinguishes "confirmed nothing connected" from
+  // "we don't actually know yet": a failed fetch leaves `connections`
+  // untouched (stale-but-present beats wrongly-empty) and flips this to
+  // "error" instead.
   const [connections, setConnections] = useState<SocialConnectionSummary[]>([]);
+  const [connectionsStatus, setConnectionsStatus] = useState<"loading" | "loaded" | "error">("loading");
   const [queueTarget, setQueueTarget] = useState(DEFAULT_QUEUE_TARGET);
   const [scheduledPosts, setScheduledPosts] = useState<ScheduledPostSummary[]>([]);
   const [postsStatus, setPostsStatus] = useState<PanelStatus>(null);
@@ -474,42 +483,57 @@ export function SocialHub() {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadConnections() {
-      if (!walletAddress) {
-        setTelegramConnection(null);
-        setConnections([]);
-        return;
-      }
-      try {
-        const response = await fetch(`/api/social/connections?walletAddress=${encodeURIComponent(walletAddress)}`, { cache: "no-store" });
-        const payload = await readJsonResponse<{ connections?: SocialConnectionSummary[] }>(response, "Could not load your connections.");
-        if (cancelled) return;
-        const loaded = Array.isArray(payload.connections) ? payload.connections : [];
-        setConnections(loaded);
-        const telegram = loaded.find((connection) => connection.platform === "telegram");
-        setTelegramConnection(
-          telegram && (telegram.status === "connected" || telegram.status === "reconnect_needed")
-            ? {
-                status: telegram.status,
-                displayName: telegram.displayName,
-                externalId: telegram.externalId,
-                reconnectReason: telegram.reconnectReason,
-              }
-            : null,
-        );
-      } catch {
-        if (!cancelled) {
-          setTelegramConnection(null);
-          setConnections([]);
-        }
-      }
+  /**
+   * Single source of truth for connections (issue #384): both the Setup
+   * Telegram card and the Queue's destination toggles read from this same
+   * `connections` list (telegramConnection is derived from it below), so a
+   * connect/disconnect updating this one place keeps both in sync without a
+   * reload. On failure the previous list is kept rather than cleared to
+   * `[]` — a transient 500 must not make the Queue believe nothing is
+   * connected — and connectionsStatus flips to "error" so callers can
+   * render a retry state instead of the "nothing connected" fallback.
+   * Exposed as a plain function (not only inside an effect) so the window-
+   * focus healer below, the Queue-tab-activation effect, and a manual
+   * retry button can all call it directly.
+   */
+  async function loadConnections() {
+    if (!walletAddress) {
+      setConnections([]);
+      setConnectionsStatus("loaded");
+      return;
     }
+    try {
+      const response = await fetch(`/api/social/connections?walletAddress=${encodeURIComponent(walletAddress)}`, { cache: "no-store" });
+      const payload = await readJsonResponse<{ connections?: SocialConnectionSummary[] }>(response, "Could not load your connections.");
+      setConnections(Array.isArray(payload.connections) ? payload.connections : []);
+      setConnectionsStatus("loaded");
+    } catch {
+      setConnectionsStatus("error");
+    }
+  }
+
+  useEffect(() => {
     void loadConnections();
+    // loadConnections closes over the latest walletAddress on every render already.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAddress]);
+
+  // Heals a transient connections-fetch failure without a reload (issue
+  // #384) by re-fetching on window/tab focus — mirrors the Queue data
+  // effect's own focus/visibility pattern below, but runs regardless of
+  // which tab is active since Setup's connect state depends on it too.
+  useEffect(() => {
+    function handleFocusOrVisible() {
+      if (document.visibilityState === "hidden") return;
+      void loadConnections();
+    }
+    window.addEventListener("focus", handleFocusOrVisible);
+    document.addEventListener("visibilitychange", handleFocusOrVisible);
     return () => {
-      cancelled = true;
+      window.removeEventListener("focus", handleFocusOrVisible);
+      document.removeEventListener("visibilitychange", handleFocusOrVisible);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletAddress]);
 
   useEffect(() => {
@@ -580,6 +604,19 @@ export function SocialHub() {
     () => projects.find((item) => item.id === selectedProjectId) || null,
     [projects, selectedProjectId],
   );
+
+  /** Derived from `connections`, never separate state (issue #384) — the single source of truth shared by the Setup card and the Queue's destination toggles. */
+  const telegramConnection = useMemo<TelegramConnectionState | null>(() => {
+    const telegram = connections.find((connection) => connection.platform === "telegram");
+    return telegram && (telegram.status === "connected" || telegram.status === "reconnect_needed")
+      ? {
+          status: telegram.status,
+          displayName: telegram.displayName,
+          externalId: telegram.externalId,
+          reconnectReason: telegram.reconnectReason,
+        }
+      : null;
+  }, [connections]);
 
   const xCharacterCount = message.length;
   const xReady = xCharacterCount > 0 && xCharacterCount <= 280;
@@ -745,7 +782,14 @@ export function SocialHub() {
         connectResponse,
         "Telegram could not verify that channel.",
       );
-      setTelegramConnection(payload.connection);
+      // Updates `connections` directly from the returned payload — no extra
+      // fetch needed (issue #384) — so the Queue's destination toggles pick
+      // this connection up in the same render as the Setup card does.
+      setConnections((current) => [
+        ...current.filter((connection) => connection.platform !== "telegram"),
+        { platform: "telegram", ...payload.connection },
+      ]);
+      setConnectionsStatus("loaded");
       setTelegramConnectInput("");
       setTelegramStatus({
         tone: "success",
@@ -793,7 +837,10 @@ export function SocialHub() {
         body: JSON.stringify({ challengeId: challenge.challengeId, nonce: challenge.nonce, signature }),
       });
       await readJsonResponse<{ ok?: boolean }>(disconnectResponse, "Telegram could not be disconnected.");
-      setTelegramConnection(null);
+      // Same immediate update as connect, in reverse (issue #384) — removes
+      // Telegram from `connections` directly rather than a separate
+      // telegramConnection state the Queue toggles never saw.
+      setConnections((current) => current.filter((connection) => connection.platform !== "telegram"));
       setTelegramStatus({ tone: "success", message: "Telegram disconnected." });
     } catch (error) {
       setTelegramStatus({
@@ -1349,11 +1396,16 @@ export function SocialHub() {
   useEffect(() => {
     if (activeTab !== "queue") return;
     void loadScheduledPosts();
+    // Re-fetches connections on Queue-tab activation too (issue #384), on
+    // top of the always-on window-focus healer above — so switching into
+    // Queue right after connecting in Setup never shows a stale toggle set.
+    void loadConnections();
     void replenishQueue();
 
     function handleFocusOrVisible() {
       if (document.visibilityState === "hidden") return;
       void loadScheduledPosts();
+      void loadConnections();
       void replenishQueue();
     }
     window.addEventListener("focus", handleFocusOrVisible);
@@ -1362,7 +1414,7 @@ export function SocialHub() {
       window.removeEventListener("focus", handleFocusOrVisible);
       document.removeEventListener("visibilitychange", handleFocusOrVisible);
     };
-    // Re-runs only when the Queue tab is opened or the active project/wallet changes — loadScheduledPosts/replenishQueue close over the latest state on every render already.
+    // Re-runs only when the Queue tab is opened or the active project/wallet changes — loadScheduledPosts/loadConnections/replenishQueue close over the latest state on every render already.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, selectedProjectId, walletAddress]);
 
@@ -2467,6 +2519,19 @@ export function SocialHub() {
                                       );
                                     })}
                                   </div>
+                                ) : connectionsStatus === "error" ? (
+                                  // Distinguishes "we could not load your connections" from
+                                  // "you have none" (issue #384) — showing the wrong one made a
+                                  // connected Telegram look permanently disconnected after a
+                                  // single transient fetch failure.
+                                  <p className={styles.connectionHelper}>
+                                    Could not load your connections.{" "}
+                                    <button type="button" onClick={() => void loadConnections()}>
+                                      Retry
+                                    </button>
+                                  </p>
+                                ) : connectionsStatus === "loading" ? (
+                                  <p className={styles.connectionHelper}>Checking your connections…</p>
                                 ) : (
                                   <p className={styles.connectionHelper}>Connect X or Telegram in Setup before approving a post.</p>
                                 )}
