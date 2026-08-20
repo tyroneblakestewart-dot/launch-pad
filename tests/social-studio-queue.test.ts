@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { truncateAccountAddress } from "@/lib/account-wallet-state";
 import { MAX_POSTS_PER_DAY, MAX_QUEUE_TARGET, POSTING_CADENCE_OPTIONS } from "@/lib/social-studio-types";
 import {
   MAX_ROLLING_RECENT_DRAFTS,
@@ -9,6 +10,7 @@ import {
   clampQueueTarget,
   computeDefaultScheduledAt,
   connectedPlatforms,
+  describeWalletMismatch,
   isAwaitingSend,
   isHistoryStatus,
   isPendingSendStatus,
@@ -191,5 +193,35 @@ describe("isUneditedTemplateText (issue #380)", () => {
   it("is false for empty text and for text matching no template", () => {
     expect(isUneditedTemplateText("", TEMPLATE_OUTPUTS)).toBe(false);
     expect(isUneditedTemplateText("something the user wrote themselves", TEMPLATE_OUTPUTS)).toBe(false);
+  });
+});
+
+describe("describeWalletMismatch (issue #388)", () => {
+  const CONFIRMED = "0x1111111111111111111111111111111111111111";
+  const OTHER = "0x2222222222222222222222222222222222222222";
+
+  it("returns null when the wallet app's active account matches the confirmed wallet", () => {
+    expect(describeWalletMismatch(CONFIRMED, CONFIRMED)).toBeNull();
+  });
+
+  it("is case-insensitive when comparing addresses", () => {
+    expect(describeWalletMismatch(CONFIRMED.toUpperCase(), CONFIRMED.toLowerCase())).toBeNull();
+  });
+
+  it("returns null when there is no confirmed wallet to compare against yet", () => {
+    expect(describeWalletMismatch(OTHER, "")).toBeNull();
+  });
+
+  it("returns null when the active account is somehow empty", () => {
+    expect(describeWalletMismatch("", CONFIRMED)).toBeNull();
+  });
+
+  it("flags a mismatch with a message naming both truncated addresses", () => {
+    const message = describeWalletMismatch(OTHER, CONFIRMED);
+    expect(message).not.toBeNull();
+    expect(message).toContain("Your wallet app is on a different account");
+    expect(message).toContain(truncateAccountAddress(OTHER));
+    expect(message).toContain(truncateAccountAddress(CONFIRMED));
+    expect(message).toContain("Switch accounts in your wallet app, or re-confirm your wallet from the Account panel.");
   });
 });

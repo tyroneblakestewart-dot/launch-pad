@@ -5,6 +5,7 @@
 // Kept dependency-free of components/social-hub.tsx so it can be tested
 // directly instead of only through source-string assertions.
 
+import { truncateAccountAddress } from "@/lib/account-wallet-state";
 import {
   DEFAULT_POSTING_CADENCE,
   DEFAULT_QUEUE_TARGET,
@@ -131,4 +132,22 @@ export function isUneditedTemplateText(text: string, templateOutputs: string[]):
   const trimmed = text.trim();
   if (!trimmed) return false;
   return templateOutputs.some((output) => output.trim() === trimmed);
+}
+
+/**
+ * Guards every wallet-signed Studio action against the wallet identity
+ * split behind issue #388: connect/approve/cancel/reschedule sign with
+ * whatever account the wallet app currently has active, but every read
+ * (connections, posts) is keyed off the wallet confirmed in the Account
+ * panel. Signing under a different account than the one reads use makes
+ * the server store the row where the Studio will never look for it again.
+ * Returns null when there's nothing to compare (no confirmed wallet yet,
+ * i.e. before the Account panel has been used) or the accounts already
+ * match; otherwise a ready-to-display error naming both addresses, so the
+ * caller can bail out before ever requesting a challenge to sign.
+ */
+export function describeWalletMismatch(activeAccount: string, confirmedAddress: string): string | null {
+  if (!confirmedAddress || !activeAccount) return null;
+  if (activeAccount.toLowerCase() === confirmedAddress.toLowerCase()) return null;
+  return `Your wallet app is on a different account (${truncateAccountAddress(activeAccount)}) than the one confirmed on Hoodlums (${truncateAccountAddress(confirmedAddress)}). Switch accounts in your wallet app, or re-confirm your wallet from the Account panel.`;
 }
