@@ -300,4 +300,51 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain("usable / ${voiceExampleFilter.pastedLineCount} pasted");
     expect(social).toContain("skipped as short, page furniture, or duplicates");
   });
+
+  it("guards every wallet-signed action against signing with a different account than the one confirmed on Hoodlums (issue #388)", async () => {
+    const social = await source("components", "social-hub.tsx");
+    const queueLib = await source("lib", "social-studio-queue.ts");
+
+    // The mismatch check is a pure, dependency-free helper (unit-tested directly), imported into the component rather than reimplemented inline.
+    expect(queueLib).toContain("export function describeWalletMismatch(activeAccount: string, confirmedAddress: string): string | null {");
+    expect(social).toContain("describeWalletMismatch,");
+    expect(social).toContain('from "@/lib/social-studio-queue";');
+
+    // Every getAddresses() call site checks the mismatch before proceeding to a challenge/sign, never after.
+    const sites = [
+      "if (!account) throw new Error(\"Connect an EVM wallet before linking Telegram.\");",
+      "if (!account) throw new Error(\"Connect an EVM wallet before disconnecting Telegram.\");",
+      "if (!account) throw new Error(\"Connect an EVM wallet first.\");",
+    ];
+    for (const guardLine of sites) {
+      const guardIndex = social.indexOf(guardLine);
+      expect(guardIndex).toBeGreaterThan(-1);
+      const nextLines = social.slice(guardIndex, guardIndex + 400);
+      expect(nextLines).toContain("const mismatch = describeWalletMismatch(account, walletAddress);");
+      expect(nextLines).toContain("if (mismatch) throw new Error(mismatch);");
+      // The guard must run before any challenge is requested or signature collected.
+      const challengeIndex = nextLines.indexOf('fetch("/api/social/challenge"');
+      const mismatchIndex = nextLines.indexOf("if (mismatch) throw new Error(mismatch);");
+      expect(mismatchIndex).toBeLessThan(challengeIndex === -1 ? Infinity : challengeIndex);
+    }
+
+    // Exactly three call sites are guarded — Telegram connect, Telegram disconnect, and the shared approve/cancel/reschedule challenge helper.
+    expect(social.split("const mismatch = describeWalletMismatch(account, walletAddress);").length - 1).toBe(3);
+  });
+
+  it("refreshes walletAddress from localStorage on window focus so re-confirming in another tab propagates (issue #388)", async () => {
+    const social = await source("components", "social-hub.tsx");
+
+    expect(social).toContain("function refreshWalletAddress() {");
+    expect(social).toContain('window.addEventListener("focus", refreshWalletAddress);');
+    expect(social).toContain('document.addEventListener("visibilitychange", refreshWalletAddress);');
+    expect(social).toContain("const next = storedWalletAddress();");
+    expect(social).toContain("return next === current ? current : next;");
+
+    // The refresh effect sits right after the mount effect that first reads walletAddress, not buried elsewhere.
+    const mountReadIndex = social.indexOf("setWalletAddress(storedWalletAddress());");
+    const refreshEffectIndex = social.indexOf("function refreshWalletAddress() {");
+    expect(refreshEffectIndex).toBeGreaterThan(mountReadIndex);
+    expect(refreshEffectIndex - mountReadIndex).toBeLessThan(800);
+  });
 });

@@ -17,6 +17,7 @@ import {
   cadenceSpreadHoursMs,
   computeDefaultScheduledAt,
   connectedPlatforms,
+  describeWalletMismatch,
   isAwaitingSend,
   isHistoryStatus,
   isPendingSendStatus,
@@ -466,6 +467,28 @@ export function SocialHub() {
     }
   }, []);
 
+  // Re-confirming the wallet from the Account panel in another tab only
+  // updates localStorage there (issue #388) — walletAddress was otherwise
+  // read once on mount and never refreshed, so it could silently diverge
+  // from the wallet app's active account for the rest of the session.
+  // Refreshing on focus (mirroring the loadConnections/Queue focus
+  // healers above/below) keeps it current when the user returns to this tab.
+  useEffect(() => {
+    function refreshWalletAddress() {
+      if (document.visibilityState === "hidden") return;
+      setWalletAddress((current) => {
+        const next = storedWalletAddress();
+        return next === current ? current : next;
+      });
+    }
+    window.addEventListener("focus", refreshWalletAddress);
+    document.addEventListener("visibilitychange", refreshWalletAddress);
+    return () => {
+      window.removeEventListener("focus", refreshWalletAddress);
+      document.removeEventListener("visibilitychange", refreshWalletAddress);
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function loadTelegramConfigured() {
@@ -760,6 +783,8 @@ export function SocialHub() {
       const walletClient = createWalletClient({ transport: custom(provider) });
       const [account] = await walletClient.getAddresses();
       if (!account) throw new Error("Connect an EVM wallet before linking Telegram.");
+      const mismatch = describeWalletMismatch(account, walletAddress);
+      if (mismatch) throw new Error(mismatch);
       const walletChainId = await walletClient.getChainId();
 
       const challengeResponse = await fetch("/api/social/challenge", {
@@ -818,6 +843,8 @@ export function SocialHub() {
       const walletClient = createWalletClient({ transport: custom(provider) });
       const [account] = await walletClient.getAddresses();
       if (!account) throw new Error("Connect an EVM wallet before disconnecting Telegram.");
+      const mismatch = describeWalletMismatch(account, walletAddress);
+      if (mismatch) throw new Error(mismatch);
       const walletChainId = await walletClient.getChainId();
 
       const challengeResponse = await fetch("/api/social/challenge", {
@@ -1135,6 +1162,8 @@ export function SocialHub() {
     const walletClient = createWalletClient({ transport: custom(provider) });
     const [account] = await walletClient.getAddresses();
     if (!account) throw new Error("Connect an EVM wallet first.");
+    const mismatch = describeWalletMismatch(account, walletAddress);
+    if (mismatch) throw new Error(mismatch);
     const walletChainId = await walletClient.getChainId();
 
     const challengeResponse = await fetch("/api/social/challenge", {
