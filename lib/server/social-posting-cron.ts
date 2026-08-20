@@ -92,10 +92,16 @@ export function createSocialPostingHeartbeatRecorder(
   const pool = getPool(databaseUrl);
   return {
     async markStarted(startedAt) {
+      // $2 is reused for both last_started_at and updated_at. Postgres infers
+      // a bare parameter's type from the single expression it first appears
+      // in, not from every column it's later assigned to — an explicit cast
+      // on every occurrence keeps that inference unambiguous even though
+      // both targets happen to be timestamptz today. Do not remove these
+      // casts as "redundant"; see issue #386.
       await pool.query(
         `INSERT INTO scheduled_job_heartbeats (
            job_key, last_started_at, last_status, updated_at
-         ) VALUES ($1, $2, 'running', $2)
+         ) VALUES ($1, $2::timestamptz, 'running', $2::timestamptz)
          ON CONFLICT (job_key) DO UPDATE SET
            last_started_at = EXCLUDED.last_started_at,
            last_status = 'running',
@@ -105,6 +111,17 @@ export function createSocialPostingHeartbeatRecorder(
     },
     async markCompleted(result, completedAt) {
       const succeeded = result.error === null;
+      // $3 (completedAt) is reused across last_completed_at, the CASE
+      // producing last_succeeded_at, and updated_at; $4 (succeeded) is
+      // reused across two CASE conditions. Postgres deduces a parameter's
+      // type from the specific expression it's evaluated in — inside
+      // `CASE WHEN $4 THEN $3 ELSE NULL END` it cannot fall back to the
+      // target column's type, and NULL gives it nothing to unify against —
+      // so reused, uncast parameters here previously raised "inconsistent
+      // types deduced for parameter $3" and silently dropped every
+      // heartbeat write. An explicit cast at every occurrence removes the
+      // ambiguity; do not "clean up" these casts as redundant. See issue
+      // #386.
       await pool.query(
         `INSERT INTO scheduled_job_heartbeats (
            job_key,
@@ -119,9 +136,10 @@ export function createSocialPostingHeartbeatRecorder(
            last_routed_to_composer,
            updated_at
          ) VALUES (
-           $1, $2, $3, CASE WHEN $4 THEN $3 ELSE NULL END,
-           CASE WHEN $4 THEN 'succeeded' ELSE 'failed' END,
-           $5, $6, $7, $8, $9, $3
+           $1, $2::timestamptz, $3::timestamptz,
+           CASE WHEN $4::boolean THEN $3::timestamptz ELSE NULL END,
+           CASE WHEN $4::boolean THEN 'succeeded' ELSE 'failed' END,
+           $5, $6, $7, $8, $9, $3::timestamptz
          )
          ON CONFLICT (job_key) DO UPDATE SET
            last_started_at = EXCLUDED.last_started_at,
