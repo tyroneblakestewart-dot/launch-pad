@@ -22,6 +22,7 @@ describe("isSupportActionPurpose", () => {
   it("accepts only the known purposes", () => {
     expect(isSupportActionPurpose("support:ticket-create")).toBe(true);
     expect(isSupportActionPurpose("support:ticket-reply")).toBe(true);
+    expect(isSupportActionPurpose("support:ticket-close")).toBe(true);
     expect(isSupportActionPurpose("social:x-connect")).toBe(false);
     expect(isSupportActionPurpose("something-else")).toBe(false);
   });
@@ -44,7 +45,7 @@ describe("hashSupportAction", () => {
 });
 
 async function issueSignedChallenge(
-  purpose: "support:ticket-create" | "support:ticket-reply",
+  purpose: "support:ticket-create" | "support:ticket-reply" | "support:ticket-close",
   payload: Record<string, string>,
   ttlMs = 60_000,
 ) {
@@ -96,6 +97,34 @@ describe("authoriseSupportAction", () => {
       signature,
     });
     expect(result).toEqual({ status: "ok", walletAddress: account.address });
+  });
+
+  it("authorises a correctly signed ticket-close challenge, bound to the ticket id (issue #401)", async () => {
+    const { challengeId, nonce, signature } = await issueSignedChallenge("support:ticket-close", {
+      ticketId: "11111111-1111-1111-1111-111111111111",
+    });
+    const result = await authoriseSupportAction({
+      purpose: "support:ticket-close",
+      payload: { ticketId: "11111111-1111-1111-1111-111111111111" },
+      challengeId,
+      nonce,
+      signature,
+    });
+    expect(result).toEqual({ status: "ok", walletAddress: account.address });
+  });
+
+  it("rejects a ticket-close challenge replayed against a different ticket id (issue #401)", async () => {
+    const { challengeId, nonce, signature } = await issueSignedChallenge("support:ticket-close", {
+      ticketId: "11111111-1111-1111-1111-111111111111",
+    });
+    const result = await authoriseSupportAction({
+      purpose: "support:ticket-close",
+      payload: { ticketId: "22222222-2222-2222-2222-222222222222" },
+      challengeId,
+      nonce,
+      signature,
+    });
+    expect(result).toEqual({ status: "invalid_challenge" });
   });
 
   it("rejects when the payload doesn't match what was signed (contentHash mismatch)", async () => {

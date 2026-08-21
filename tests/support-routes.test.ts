@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 import { POST as supportChallenge } from "@/app/api/support/challenge/route";
+import { POST as closeTicket } from "@/app/api/support/tickets/[id]/close/route";
 import { POST as replyTicket } from "@/app/api/support/tickets/[id]/reply/route";
 import { GET as listTickets, POST as createTicket } from "@/app/api/support/tickets/route";
 import {
@@ -56,7 +57,7 @@ function sha256Hex(value: string): string {
 
 async function signedAction(
   account: typeof ACCOUNT,
-  purpose: "support:ticket-create" | "support:ticket-reply",
+  purpose: "support:ticket-create" | "support:ticket-reply" | "support:ticket-close",
   payload: Record<string, string>,
 ) {
   const challengeResponse = await supportChallenge(
@@ -619,6 +620,167 @@ describe("POST /api/support/tickets/[id]/reply", () => {
         method: "POST",
         headers: { "Content-Type": "application/json", Origin: "https://evil.example" },
         body: JSON.stringify({ body: "hi", challengeId: "x", nonce: "y", signature: "0x00" }),
+      }),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(response.status).toBe(403);
+  });
+});
+
+describe("POST /api/support/tickets/[id]/close (issue #401)", () => {
+  async function createOpenTicket() {
+    const response = await createSignedTicket(ACCOUNT);
+    const payload = (await response.json()) as { ticket: { id: string } };
+    return payload.ticket.id;
+  }
+
+  it("lets the owning wallet close its own open ticket", async () => {
+    const ticketId = await createOpenTicket();
+    const auth = await signedAction(ACCOUNT, "support:ticket-close", { ticketId });
+    const response = await closeTicket(
+      postRequest(`/api/support/tickets/${ticketId}/close`, auth),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { ticket: { status: string } };
+    expect(payload.ticket.status).toBe("closed");
+  });
+
+  it("never echoes diagnostics or the raw walletAddress in the public close response", async () => {
+    const ticketId = await createOpenTicket();
+    const auth = await signedAction(ACCOUNT, "support:ticket-close", { ticketId });
+    const response = await closeTicket(
+      postRequest(`/api/support/tickets/${ticketId}/close`, auth),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { ticket: Record<string, unknown> };
+    expect(payload.ticket.diagnostics).toBeUndefined();
+    expect(payload.ticket.walletAddress).toBeUndefined();
+  });
+
+  it("logs ticket-closed-by-user admin activity with the ticket id and wallet only, never body text", async () => {
+    const ticketId = await createOpenTicket();
+    const auth = await signedAction(ACCOUNT, "support:ticket-close", { ticketId });
+    const response = await closeTicket(
+      postRequest(`/api/support/tickets/${ticketId}/close`, auth),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(response.status).toBe(200);
+    await flushBackgroundWork();
+    const activity = await getAdminOperationsStore().listActivity(10);
+    expect(activity[0]).toMatchObject({ kind: "ticket-closed-by-user", serviceKey: "support" });
+    expect(activity[0].message).toContain(ticketId);
+    expect(activity[0].message).toContain(ACCOUNT.address);
+    expect(activity[0].message).not.toContain("Payment stuck");
+    expect(activity[0].message).not.toContain("My payment has not confirmed");
+  });
+
+  it("rejects a malformed (non-UUID) ticket id with 400", async () => {
+    const response = await closeTicket(
+      postRequest("/api/support/tickets/not-a-uuid/close", { challengeId: "x", nonce: "y", signature: "0x00" }),
+      { params: Promise.resolve({ id: "not-a-uuid" }) },
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects an unsigned request (missing challenge fields)", async () => {
+    const ticketId = await createOpenTicket();
+    const response = await closeTicket(
+      postRequest(`/api/support/tickets/${ticketId}/close`, {}),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects an invalid signature", async () => {
+    const ticketId = await createOpenTicket();
+    const challengeResponse = await supportChallenge(
+      postRequest("/api/support/challenge", {
+        walletAddress: ACCOUNT.address,
+        walletChainId: 46630,
+        purpose: "support:ticket-close",
+        payload: { ticketId },
+      }),
+    );
+    const challenge = (await challengeResponse.json()) as { challengeId: string; nonce: string };
+    const response = await closeTicket(
+      postRequest(`/api/support/tickets/${ticketId}/close`, {
+        challengeId: challenge.challengeId,
+        nonce: challenge.nonce,
+        signature: "0x" + "00".repeat(65),
+      }),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects a replayed challenge", async () => {
+    const ticketId = await createOpenTicket();
+    const auth = await signedAction(ACCOUNT, "support:ticket-close", { ticketId });
+    const first = await closeTicket(
+      postRequest(`/api/support/tickets/${ticketId}/close`, auth),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(first.status).toBe(200);
+    const replay = await closeTicket(
+      postRequest(`/api/support/tickets/${ticketId}/close`, auth),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(replay.status).toBe(409);
+  });
+
+  it("returns 429 once the per-IP action limit is exceeded", async () => {
+    const ticketId = await createOpenTicket();
+    let lastStatus = 0;
+    for (let i = 0; i < SUPPORT_ACTION_LIMIT + 1; i += 1) {
+      const response = await closeTicket(
+        postRequest(`/api/support/tickets/${ticketId}/close`, { challengeId: "x", nonce: "y", signature: "0x00" }),
+        { params: Promise.resolve({ id: ticketId }) },
+      );
+      lastStatus = response.status;
+    }
+    expect(lastStatus).toBe(429);
+  });
+
+  it("rejects an attempt against another wallet's ticket with 403", async () => {
+    const ticketId = await createOpenTicket();
+    const auth = await signedAction(OTHER_ACCOUNT, "support:ticket-close", { ticketId });
+    const response = await closeTicket(
+      postRequest(`/api/support/tickets/${ticketId}/close`, auth),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it("rejects closing an already solved/closed ticket with 409", async () => {
+    const ticketId = await createOpenTicket();
+    await getSupportTicketsStore().setStatus(ticketId, "solved");
+    const auth = await signedAction(ACCOUNT, "support:ticket-close", { ticketId });
+    const response = await closeTicket(
+      postRequest(`/api/support/tickets/${ticketId}/close`, auth),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(response.status).toBe(409);
+  });
+
+  it("404s for an unknown ticket id", async () => {
+    const unknownId = "00000000-0000-0000-0000-000000000000";
+    const auth = await signedAction(ACCOUNT, "support:ticket-close", { ticketId: unknownId });
+    const response = await closeTicket(
+      postRequest(`/api/support/tickets/${unknownId}/close`, auth),
+      { params: Promise.resolve({ id: unknownId }) },
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("rejects a disallowed origin", async () => {
+    const ticketId = await createOpenTicket();
+    const response = await closeTicket(
+      new Request(`${ORIGIN}/api/support/tickets/${ticketId}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: "https://evil.example" },
+        body: JSON.stringify({ challengeId: "x", nonce: "y", signature: "0x00" }),
       }),
       { params: Promise.resolve({ id: ticketId }) },
     );

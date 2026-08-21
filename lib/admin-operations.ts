@@ -65,7 +65,7 @@ export const ADMIN_SERVICE_DEFINITIONS = [
     description:
       "Wallet-signed support-ticket reporting, the admin reply/status queue, and the best-effort Telegram owner alert.",
     affectedRoutes:
-      "/api/support/challenge, /api/support/tickets, /api/support/tickets/[id]/reply, /api/admin/support, /api/admin/support/actions",
+      "/api/support/challenge, /api/support/tickets, /api/support/tickets/[id]/reply, /api/support/tickets/[id]/close, /api/admin/support, /api/admin/support/actions",
   },
   {
     key: "test-access",
@@ -110,7 +110,8 @@ export type AdminActivityKind =
   | "client-error-group-resolved"
   | "content-filter-rejected"
   | "ticket-created"
-  | "ticket-replied";
+  | "ticket-replied"
+  | "ticket-closed-by-user";
 
 export type AdminActivityItem = {
   id: string;

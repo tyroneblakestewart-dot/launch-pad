@@ -9,7 +9,7 @@ import { hashChatMessageContent, hashChatNonce, tryConsumeChatChallenge, verifyC
 // social-studio-action-auth.ts, so isolating Social Studio posting can
 // never accidentally block support ticket submission, and vice versa.
 
-export const SUPPORT_ACTION_PURPOSES = ["support:ticket-create", "support:ticket-reply"] as const;
+export const SUPPORT_ACTION_PURPOSES = ["support:ticket-create", "support:ticket-reply", "support:ticket-close"] as const;
 
 export type SupportActionPurpose = (typeof SUPPORT_ACTION_PURPOSES)[number];
 

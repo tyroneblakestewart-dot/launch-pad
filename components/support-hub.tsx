@@ -158,7 +158,10 @@ async function sha256Hex(value: string): Promise<string> {
     .join("");
 }
 
-async function signSupportChallenge(purpose: "support:ticket-create" | "support:ticket-reply", payload: Record<string, string>) {
+async function signSupportChallenge(
+  purpose: "support:ticket-create" | "support:ticket-reply" | "support:ticket-close",
+  payload: Record<string, string>,
+) {
   const provider = getInjectedEvmProvider();
   if (!provider) throw new Error("Connect an EVM wallet first.");
   const walletClient = createWalletClient({ transport: custom(provider) });
@@ -214,6 +217,10 @@ export function SupportHub({
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [replyingId, setReplyingId] = useState<string | null>(null);
   const [replyError, setReplyError] = useState<string | null>(null);
+  const [closeConfirmId, setCloseConfirmId] = useState<string | null>(null);
+  const [closingId, setClosingId] = useState<string | null>(null);
+  const [closeError, setCloseError] = useState<string | null>(null);
+  const historyRef = useRef<HTMLElement | null>(null);
 
   const loadTickets = useCallback(async (wallet: string) => {
     try {
@@ -354,6 +361,41 @@ export function SupportHub({
     }
   }
 
+  // Dismisses the post-submit success state (issue #401) — resets the form
+  // to a fresh, empty New report and scrolls to the reports list below,
+  // where the just-created ticket now shows.
+  function handleDone() {
+    setSubmitted(false);
+    setSubmitError(null);
+    setCategory("other");
+    setSubject("");
+    setBody("");
+    setAttachmentDataUrl(null);
+    setAttachmentError(null);
+    historyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function handleClose(ticketId: string) {
+    if (closingId) return;
+    setClosingId(ticketId);
+    setCloseError(null);
+    try {
+      const auth = await signSupportChallenge("support:ticket-close", { ticketId });
+      const response = await fetch(`/api/support/tickets/${encodeURIComponent(ticketId)}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId: auth.challengeId, nonce: auth.nonce, signature: auth.signature }),
+      });
+      await readJsonResponse<{ ticket: SupportTicket }>(response, "Your report could not be closed.");
+      setCloseConfirmId(null);
+      await loadTickets(auth.account);
+    } catch (error) {
+      setCloseError(error instanceof Error ? error.message : "Your report could not be closed.");
+    } finally {
+      setClosingId(null);
+    }
+  }
+
   async function handleReply(ticketId: string) {
     const draft = (replyDrafts[ticketId] || "").trim();
     if (!draft || replyingId) return;
@@ -483,7 +525,14 @@ export function SupportHub({
                 {submitError}
               </p>
             ) : null}
-            {submitted ? <p className={styles.successBanner}>Report sent. We&apos;ll reply here.</p> : null}
+            {submitted ? (
+              <div className={styles.successBanner} role="status">
+                <p className={styles.successText}>Report sent. We&apos;ll reply here.</p>
+                <button type="button" className={styles.doneButton} onClick={handleDone}>
+                  Done
+                </button>
+              </div>
+            ) : null}
 
             <button
               type="button"
@@ -497,7 +546,7 @@ export function SupportHub({
         )}
 
         {walletAddress ? (
-          <section className={styles.panel} aria-labelledby="support-history-title">
+          <section ref={historyRef} className={styles.panel} aria-labelledby="support-history-title">
             <h2 id="support-history-title" className={styles.panelTitle}>
               Your reports
             </h2>
@@ -573,6 +622,53 @@ export function SupportHub({
                           <p className={styles.errorBanner} role="alert">
                             {replyError}
                           </p>
+                        ) : null}
+
+                        {REPLYABLE_STATUSES.has(ticket.status) ? (
+                          <div className={styles.closeRow}>
+                            {closeConfirmId === ticket.id ? (
+                              <>
+                                <p className={styles.closeConfirmText}>
+                                  Close this report? You can&apos;t reopen it — file a new report if the problem comes
+                                  back.
+                                </p>
+                                <div className={styles.closeConfirmActions}>
+                                  <button
+                                    type="button"
+                                    className={styles.closeConfirmButton}
+                                    disabled={closingId === ticket.id}
+                                    onClick={() => void handleClose(ticket.id)}
+                                  >
+                                    {closingId === ticket.id ? "Closing…" : "Confirm close"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={styles.closeCancelButton}
+                                    disabled={closingId === ticket.id}
+                                    onClick={() => setCloseConfirmId(null)}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                className={styles.closeRequestButton}
+                                onClick={() => {
+                                  setCloseError(null);
+                                  setCloseConfirmId(ticket.id);
+                                }}
+                              >
+                                Close this report
+                              </button>
+                            )}
+                            {closeError && closeConfirmId === ticket.id ? (
+                              <p className={styles.errorBanner} role="alert">
+                                {closeError}
+                              </p>
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
                     ) : null}

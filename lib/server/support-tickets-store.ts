@@ -121,11 +121,19 @@ export type SetSupportTicketStatusResult =
   | { status: "ok"; ticket: SupportTicket }
   | { status: "not_found" };
 
+export type CloseSupportTicketByUserResult =
+  | { status: "ok"; ticket: SupportTicket }
+  | { status: "not_found" }
+  | { status: "forbidden" }
+  | { status: "closed" };
+
 export interface SupportTicketsStore {
   create(input: CreateSupportTicketInput): Promise<SupportTicket>;
   listForWallet(walletAddress: string): Promise<SupportTicketWithMessages[]>;
   /** Rejects with "forbidden" when the ticket belongs to a different wallet, "closed" when solved/closed. */
   addUserMessage(ticketId: string, walletAddress: string, body: string): Promise<AddSupportTicketMessageResult>;
+  /** A user closing their own open/needs_user ticket. Rejects with "forbidden" for a different wallet's ticket, "closed" when already solved/closed — a terminal ticket can't be re-closed. */
+  closeTicketByUser(ticketId: string, walletAddress: string): Promise<CloseSupportTicketByUserResult>;
   listForAdmin(status: SupportTicketStatus | "all"): Promise<SupportTicketWithMessages[]>;
   /** Also flips the ticket's status to 'needs_user'. Rejects with "closed" for a solved/closed ticket rather than implicitly reopening it. */
   addOwnerMessage(ticketId: string, body: string): Promise<AddSupportTicketOwnerMessageResult>;
@@ -150,6 +158,9 @@ const unconfiguredStore: SupportTicketsStore = {
     throw new SupportTicketsStoreUnavailableError();
   },
   async addUserMessage() {
+    throw new SupportTicketsStoreUnavailableError();
+  },
+  async closeTicketByUser() {
     throw new SupportTicketsStoreUnavailableError();
   },
   async listForAdmin() {
@@ -372,6 +383,47 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
         if (!updatedTicket) throw new Error("The support ticket could not be updated.");
         await client.query("COMMIT");
         return { status: "ok", ticket: updatedTicket, message };
+      } catch (error) {
+        await rollback(client);
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async closeTicketByUser(ticketId, walletAddress) {
+      // Same locked read-check-write shape as addUserMessage, minus the
+      // message insert — a user close is a pure status transition.
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const ticketResult = await client.query<TicketRow>(
+          `SELECT ${TICKET_COLUMNS} FROM support_tickets WHERE id = $1 FOR UPDATE`,
+          [ticketId],
+        );
+        const row = ticketResult.rows[0];
+        const ticket = row ? ticketFromRow(row) : null;
+        if (!ticket) {
+          await rollback(client);
+          return { status: "not_found" };
+        }
+        if (ticket.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+          await rollback(client);
+          return { status: "forbidden" };
+        }
+        if (!isReplyableSupportTicketStatus(ticket.status)) {
+          await rollback(client);
+          return { status: "closed" };
+        }
+
+        const updatedResult = await client.query<TicketRow>(
+          `UPDATE support_tickets SET status = 'closed', updated_at = NOW() WHERE id = $1 RETURNING ${TICKET_COLUMNS}`,
+          [ticketId],
+        );
+        const updatedTicket = updatedResult.rows[0] ? ticketFromRow(updatedResult.rows[0]) : null;
+        if (!updatedTicket) throw new Error("The support ticket could not be closed.");
+        await client.query("COMMIT");
+        return { status: "ok", ticket: updatedTicket };
       } catch (error) {
         await rollback(client);
         throw error;
