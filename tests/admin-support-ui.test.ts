@@ -32,6 +32,17 @@ describe("Admin Support UI", () => {
     expect(component).toContain("ticket.messages");
   });
 
+  it("renders a ticket's screenshot attachment as an <img>, constrained, with a tap-to-open full-size view (issue #398)", async () => {
+    const component = await source("components", "admin-support-section.tsx");
+    expect(component).toContain("ticket.attachmentDataUrl");
+    expect(component).toContain("setLightboxDataUrl");
+    expect(component).toContain("<img");
+
+    const css = await source("components", "admin-support-section.module.css");
+    expect(css).toContain(".attachmentThumb");
+    expect(css).toMatch(/\.attachmentThumb\s*\{[^}]*max-width:\s*100%/s);
+  });
+
   it("provides an owner reply box that creates an owner message", async () => {
     const component = await source("components", "admin-support-section.tsx");
     expect(component).toContain('action: "reply"');

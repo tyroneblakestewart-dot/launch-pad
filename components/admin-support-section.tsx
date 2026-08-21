@@ -21,6 +21,7 @@ type SupportTicket = {
   body: string;
   status: SupportTicketStatus;
   diagnostics: Record<string, unknown>;
+  attachmentDataUrl: string | null;
   createdAt: string;
   updatedAt: string;
   messages: SupportTicketMessage[];
@@ -72,6 +73,7 @@ export function AdminSupportSection() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [lightboxDataUrl, setLightboxDataUrl] = useState<string | null>(null);
 
   const loadTickets = useCallback(async () => {
     setLoading(true);
@@ -202,6 +204,17 @@ export function AdminSupportSection() {
                 <div className={styles.itemDetail}>
                   <p className={styles.body}>{ticket.body}</p>
 
+                  {ticket.attachmentDataUrl ? (
+                    <button
+                      type="button"
+                      className={styles.attachmentButton}
+                      onClick={() => setLightboxDataUrl(ticket.attachmentDataUrl)}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img className={styles.attachmentThumb} src={ticket.attachmentDataUrl} alt="Screenshot attached to this ticket" />
+                    </button>
+                  ) : null}
+
                   <details className={styles.diagnostics}>
                     <summary>Diagnostics</summary>
                     <pre>{JSON.stringify(ticket.diagnostics, null, 2)}</pre>
@@ -267,6 +280,16 @@ export function AdminSupportSection() {
           );
         })}
       </ul>
+
+      {lightboxDataUrl ? (
+        <div className={styles.lightbox} role="dialog" aria-modal="true" onClick={() => setLightboxDataUrl(null)}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className={styles.lightboxImage} src={lightboxDataUrl} alt="Full-size screenshot attached to this ticket" />
+          <button type="button" className={styles.lightboxClose} onClick={() => setLightboxDataUrl(null)}>
+            Close
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

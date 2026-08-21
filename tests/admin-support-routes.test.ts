@@ -97,6 +97,18 @@ describe("GET /api/admin/support", () => {
     expect(payload.tickets[0].messages).toHaveLength(1);
   });
 
+  it("includes the ticket's screenshot attachment, and null when there isn't one (issue #398)", async () => {
+    const store = getSupportTicketsStore();
+    const dataUrl = "data:image/png;base64,aGVsbG8gd29ybGQ=";
+    await store.create({ walletAddress: WALLET, category: "other", subject: "with screenshot", body: "b", diagnostics: {}, attachmentDataUrl: dataUrl });
+    await store.create({ walletAddress: WALLET, category: "other", subject: "no screenshot", body: "b", diagnostics: {} });
+
+    const response = await getAdminSupport(request("GET", "/api/admin/support?status=all"));
+    const payload = (await response.json()) as { tickets: Array<{ subject: string; attachmentDataUrl: string | null }> };
+    expect(payload.tickets.find((t) => t.subject === "with screenshot")?.attachmentDataUrl).toBe(dataUrl);
+    expect(payload.tickets.find((t) => t.subject === "no screenshot")?.attachmentDataUrl).toBeNull();
+  });
+
   it("rejects an invalid status filter with 400 rather than silently widening it to 'all' (issue #393 review)", async () => {
     const response = await getAdminSupport(request("GET", "/api/admin/support?status=not-a-status"));
     expect(response.status).toBe(400);

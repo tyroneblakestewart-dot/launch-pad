@@ -63,6 +63,8 @@ export type SupportTicket = {
   body: string;
   status: SupportTicketStatus;
   diagnostics: Record<string, unknown>;
+  /** A single optional screenshot data URL attached at creation (issue #398). Never set on follow-up messages — those stay text-only. */
+  attachmentDataUrl: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -99,6 +101,8 @@ export type CreateSupportTicketInput = {
   subject: string;
   body: string;
   diagnostics: Record<string, unknown>;
+  /** Already validated (mime allowlist + byte cap) by the caller — see lib/server/support-ticket-attachment.ts. Optional/omittable for "no attachment", same as null. */
+  attachmentDataUrl?: string | null;
 };
 
 export type AddSupportTicketMessageResult =
@@ -197,6 +201,7 @@ type TicketRow = {
   body: string;
   status: string;
   diagnostics: unknown;
+  attachment_data_url: string | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -228,6 +233,7 @@ function ticketFromRow(row: TicketRow): SupportTicket | null {
     body: row.body,
     status: row.status,
     diagnostics: diagnosticsFromValue(row.diagnostics),
+    attachmentDataUrl: row.attachment_data_url ?? null,
     createdAt: asDate(row.created_at).toISOString(),
     updatedAt: asDate(row.updated_at).toISOString(),
   };
@@ -244,7 +250,7 @@ function messageFromRow(row: MessageRow): SupportTicketMessage | null {
   };
 }
 
-const TICKET_COLUMNS = `id, wallet_address, category, subject, body, status, diagnostics, created_at, updated_at`;
+const TICKET_COLUMNS = `id, wallet_address, category, subject, body, status, diagnostics, attachment_data_url, created_at, updated_at`;
 const MESSAGE_COLUMNS = `id, ticket_id, author, body, created_at`;
 
 async function rollback(client: PoolClient): Promise<void> {
@@ -295,10 +301,10 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
   return {
     async create(input) {
       const result = await pool.query<TicketRow>(
-        `INSERT INTO support_tickets (wallet_address, category, subject, body, diagnostics)
-         VALUES ($1, $2, $3, $4, $5::jsonb)
+        `INSERT INTO support_tickets (wallet_address, category, subject, body, diagnostics, attachment_data_url)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6)
          RETURNING ${TICKET_COLUMNS}`,
-        [input.walletAddress, input.category, input.subject, input.body, JSON.stringify(input.diagnostics)],
+        [input.walletAddress, input.category, input.subject, input.body, JSON.stringify(input.diagnostics), input.attachmentDataUrl ?? null],
       );
       const row = result.rows[0];
       const ticket = row ? ticketFromRow(row) : null;

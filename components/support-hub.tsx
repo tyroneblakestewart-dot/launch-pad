@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { createWalletClient, custom } from "viem";
+import {
+  ARTWORK_COMPRESSION_STEPS,
+  MAX_ARTWORK_SOURCE_BYTES,
+  MAX_COMPRESSED_ARTWORK_BYTES,
+  TARGET_COMPRESSED_ARTWORK_BYTES,
+  estimateDataUrlLength,
+  fitArtworkDimensions,
+} from "@/lib/artwork-compression";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./support-hub.module.css";
 
@@ -52,6 +60,7 @@ type SupportTicket = {
   subject: string;
   body: string;
   status: SupportTicketStatus;
+  attachmentDataUrl: string | null;
   createdAt: string;
   updatedAt: string;
   messages: SupportTicketMessage[];
@@ -67,6 +76,86 @@ function formatTimestamp(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+// Optional screenshot attachment on a new ticket (issue #398). Client-side
+// downscale/re-encode follows components/artwork-upload-controller.tsx's
+// "large files auto-optimised" pattern, targeting the same
+// MAX_COMPRESSED_ARTWORK_BYTES ceiling — but only PNG/JPEG/WEBP are
+// accepted here (no GIF/AVIF/HEIC), matching the server's mime allowlist in
+// lib/server/support-ticket-attachment.ts, which is the authoritative check.
+const ALLOWED_SCREENSHOT_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+function formatMegabytes(bytes: number): string {
+  return `${(bytes / 1_000_000).toFixed(bytes >= 10_000_000 ? 0 : 1)} MB`;
+}
+
+function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("This image could not be opened by the browser. Try a PNG, JPG or WEBP screenshot."));
+    };
+    image.src = objectUrl;
+  });
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error ?? new Error("The file could not be read."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function optimiseScreenshotToDataUrl(file: File): Promise<string> {
+  const image = await loadImageFromFile(file);
+  if (!image.naturalWidth || !image.naturalHeight) {
+    throw new Error("The selected image has no readable dimensions.");
+  }
+
+  let smallest: string | null = null;
+
+  for (const type of ["image/webp", "image/jpeg"] as const) {
+    for (const step of ARTWORK_COMPRESSION_STEPS) {
+      const { width, height } = fitArtworkDimensions(image.naturalWidth, image.naturalHeight, step.maxDimension);
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", { alpha: type !== "image/jpeg" });
+      if (!context) throw new Error("The browser could not prepare the image canvas.");
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      if (type === "image/jpeg") {
+        context.fillStyle = "#050706";
+        context.fillRect(0, 0, width, height);
+      }
+      context.drawImage(image, 0, 0, width, height);
+
+      const dataUrl = canvas.toDataURL(type, step.quality);
+      if (!smallest || dataUrl.length < smallest.length) smallest = dataUrl;
+      if (dataUrl.length <= estimateDataUrlLength(TARGET_COMPRESSED_ARTWORK_BYTES)) return dataUrl;
+    }
+  }
+
+  if (smallest && smallest.length <= estimateDataUrlLength(MAX_COMPRESSED_ARTWORK_BYTES)) return smallest;
+
+  throw new Error("This browser could not shrink the screenshot enough. Try a smaller image.");
+}
+
+/** Matches lib/server/chat-auth.ts's hashChatMessageContent (SHA-256 over the UTF-8 bytes, hex-encoded) so the client and server compute the identical hash. */
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 async function signSupportChallenge(purpose: "support:ticket-create" | "support:ticket-reply", payload: Record<string, string>) {
@@ -113,6 +202,11 @@ export function SupportHub({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+
+  const [attachmentDataUrl, setAttachmentDataUrl] = useState<string | null>(null);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
   const [tickets, setTickets] = useState<SupportTicket[] | null>(null);
   const [ticketsError, setTicketsError] = useState<string | null>(null);
@@ -181,6 +275,37 @@ export function SupportHub({
     }
   }, []);
 
+  async function handleScreenshotChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setAttachmentError(null);
+    if (!ALLOWED_SCREENSHOT_TYPES.has(file.type)) {
+      setAttachmentError("That file type isn't supported. Choose a PNG, JPG or WEBP image.");
+      return;
+    }
+    if (file.size > MAX_ARTWORK_SOURCE_BYTES) {
+      setAttachmentError(`That file is ${formatMegabytes(file.size)}. Choose an image below ${formatMegabytes(MAX_ARTWORK_SOURCE_BYTES)}.`);
+      return;
+    }
+
+    setAttachmentBusy(true);
+    try {
+      const dataUrl = file.size <= MAX_COMPRESSED_ARTWORK_BYTES ? await readFileAsDataUrl(file) : await optimiseScreenshotToDataUrl(file);
+      setAttachmentDataUrl(dataUrl);
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : "The screenshot could not be attached.");
+    } finally {
+      setAttachmentBusy(false);
+    }
+  }
+
+  function removeAttachment() {
+    setAttachmentDataUrl(null);
+    setAttachmentError(null);
+  }
+
   async function handleSubmit() {
     const trimmedSubject = subject.trim();
     const trimmedBody = body.trim();
@@ -190,7 +315,19 @@ export function SupportHub({
     setSubmitError(null);
     setSubmitted(false);
     try {
-      const auth = await signSupportChallenge("support:ticket-create", { category, subject: trimmedSubject, body: trimmedBody });
+      // The image hash binds the screenshot to this exact signature (issue
+      // #398) — an empty string when there's no attachment, otherwise the
+      // SHA-256 of the exact data URL that will be sent below. The server
+      // recomputes this same hash from its own validated bytes rather than
+      // trusting a client-declared value, so a request can't be replayed
+      // against a swapped image.
+      const imageHash = attachmentDataUrl ? await sha256Hex(attachmentDataUrl) : "";
+      const auth = await signSupportChallenge("support:ticket-create", {
+        category,
+        subject: trimmedSubject,
+        body: trimmedBody,
+        imageHash,
+      });
       const response = await fetch("/api/support/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -198,6 +335,7 @@ export function SupportHub({
           category,
           subject: trimmedSubject,
           body: trimmedBody,
+          attachmentDataUrl,
           challengeId: auth.challengeId,
           nonce: auth.nonce,
           signature: auth.signature,
@@ -206,6 +344,7 @@ export function SupportHub({
       await readJsonResponse<{ ticket: SupportTicket }>(response, "Your report could not be submitted.");
       setSubject("");
       setBody("");
+      setAttachmentDataUrl(null);
       setSubmitted(true);
       await loadTickets(auth.account);
     } catch (error) {
@@ -297,6 +436,48 @@ export function SupportHub({
               />
             </label>
 
+            <div className={styles.field}>
+              <span className={styles.fieldLabel}>Add a screenshot (optional)</span>
+              {attachmentDataUrl ? (
+                <div className={styles.attachmentPreview}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img className={styles.attachmentThumb} src={attachmentDataUrl} alt="Screenshot preview" />
+                  <button
+                    type="button"
+                    className={styles.attachmentRemove}
+                    disabled={submitting}
+                    onClick={removeAttachment}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <input
+                    ref={attachmentInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className={styles.srOnly}
+                    disabled={submitting || attachmentBusy}
+                    onChange={(event) => void handleScreenshotChange(event)}
+                  />
+                  <button
+                    type="button"
+                    className={styles.attachmentButton}
+                    disabled={submitting || attachmentBusy}
+                    onClick={() => attachmentInputRef.current?.click()}
+                  >
+                    {attachmentBusy ? "Optimising…" : "Choose screenshot"}
+                  </button>
+                </>
+              )}
+              {attachmentError ? (
+                <p className={styles.errorBanner} role="alert">
+                  {attachmentError}
+                </p>
+              ) : null}
+            </div>
+
             {submitError ? (
               <p className={styles.errorBanner} role="alert">
                 {submitError}
@@ -307,7 +488,7 @@ export function SupportHub({
             <button
               type="button"
               className={styles.submitButton}
-              disabled={submitting || !subject.trim() || !body.trim()}
+              disabled={submitting || attachmentBusy || !subject.trim() || !body.trim()}
               onClick={() => void handleSubmit()}
             >
               {submitting ? "Sending…" : "Send report"}
@@ -347,6 +528,10 @@ export function SupportHub({
                     {expanded ? (
                       <div className={styles.ticketBody}>
                         <p className={styles.ticketDescription}>{ticket.body}</p>
+                        {ticket.attachmentDataUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img className={styles.attachmentThumb} src={ticket.attachmentDataUrl} alt="Screenshot you attached" />
+                        ) : null}
                         <div className={styles.messageList}>
                           {ticket.messages.map((message) => (
                             <div
