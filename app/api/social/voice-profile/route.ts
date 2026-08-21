@@ -8,6 +8,8 @@ import {
 } from "@/lib/server/api-protection";
 import { getVercelOidcToken, resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
 import { recordTextOperationCostBestEffort, runAfterResponse, type AiOperationAccessSource } from "@/lib/server/ai-operation-cost-store";
+import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
+import { contentFilterRejectionMessage, runContentFilterFailOpen } from "@/lib/server/content-filter";
 import type { OpenAIResponse } from "@/lib/server/generate-site-style";
 import { normaliseLikedSampleLines } from "@/lib/server/social-reinforcement";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
@@ -100,6 +102,23 @@ export async function POST(request: Request) {
   }
   const likedSampleLines = normaliseLikedSampleLines(body.likedSampleLines);
 
+  const inputContentFilter = runContentFilterFailOpen({
+    name,
+    ticker,
+    examples: normalisedExamples.examples.join("\n"),
+  });
+  if (inputContentFilter.blocked) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "social-studio-ai",
+      message: `Content filter rejected a voice-profile input (field: ${inputContentFilter.field}, wallet: ${authorisation.walletAddress}).`,
+    });
+    return NextResponse.json(
+      { error: contentFilterRejectionMessage(inputContentFilter.field) },
+      { status: 400, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
   const ai = resolveAIResponsesRuntime(process.env, getVercelOidcToken(request));
   if (!ai) {
     return NextResponse.json(
@@ -165,6 +184,25 @@ export async function POST(request: Request) {
           ? "The AI response was incomplete. Try again."
           : "The AI response didn't match the expected format. Try again.",
       },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  const outputContentFilter = runContentFilterFailOpen({
+    tone: parsed.profile.tone,
+    vocabulary: parsed.profile.vocabulary,
+    cadence: parsed.profile.cadence,
+    emojiHabits: parsed.profile.emojiHabits,
+    sampleLines: parsed.profile.sampleLines.join("\n"),
+  });
+  if (outputContentFilter.blocked) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "social-studio-ai",
+      message: `Content filter rejected generated voice-profile output before it reached the client (wallet: ${authorisation.walletAddress}).`,
+    });
+    return NextResponse.json(
+      { error: "The generated voice profile could not be delivered because it failed our content safety filter. Try again." },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }

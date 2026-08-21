@@ -8,6 +8,8 @@ import {
 } from "@/lib/server/api-protection";
 import { getVercelOidcToken, resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
 import { recordTextOperationCostBestEffort, runAfterResponse, type AiOperationAccessSource } from "@/lib/server/ai-operation-cost-store";
+import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
+import { contentFilterRejectionMessage, runContentFilterFailOpen } from "@/lib/server/content-filter";
 import type { OpenAIResponse } from "@/lib/server/generate-site-style";
 import {
   buildMascotVisualDnaRequestBody,
@@ -94,6 +96,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Upload a valid mascot reference image." }, { status: 400, headers: noStoreHeaders(rateHeaders) });
   }
 
+  const inputContentFilter = runContentFilterFailOpen({ name, ticker });
+  if (inputContentFilter.blocked) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "social-studio-ai",
+      message: `Content filter rejected a mascot visual-DNA input (field: ${inputContentFilter.field}, wallet: ${authorisation.walletAddress}).`,
+    });
+    return NextResponse.json(
+      { error: contentFilterRejectionMessage(inputContentFilter.field) },
+      { status: 400, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
   const ai = resolveAIResponsesRuntime(process.env, getVercelOidcToken(request));
   if (!ai) {
     return NextResponse.json(
@@ -151,6 +166,24 @@ export async function POST(request: Request) {
   if (!mascotVisualDNA) {
     return NextResponse.json(
       { error: "The AI could not extract a mascot identity from that image. Try a clearer image." },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  const outputContentFilter = runContentFilterFailOpen({
+    characterDescription: mascotVisualDNA.characterDescription,
+    colourPalette: mascotVisualDNA.colourPalette,
+    signatureProps: mascotVisualDNA.signatureProps,
+    artStyle: mascotVisualDNA.artStyle,
+  });
+  if (outputContentFilter.blocked) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "social-studio-ai",
+      message: `Content filter rejected generated mascot visual-DNA output before it reached the client (wallet: ${authorisation.walletAddress}).`,
+    });
+    return NextResponse.json(
+      { error: "The mascot identity could not be delivered because it failed our content safety filter. Try again." },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }

@@ -204,6 +204,7 @@ describe("backend test inventory", () => {
       "lib/server/chat-auth.ts",
       "lib/server/chat-moderation.ts",
       "lib/server/client-errors-store.ts",
+      "lib/server/content-filter.ts",
       "lib/server/dexscreener.ts",
       "lib/server/fixed-operating-costs-store.ts",
       "lib/server/generate-site-page-stream.ts",

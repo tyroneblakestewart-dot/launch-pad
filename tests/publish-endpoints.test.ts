@@ -310,3 +310,62 @@ describe("signed public publishing", () => {
     expect(frame.props.html).not.toContain(ARTWORK_PLACEHOLDER);
   });
 });
+
+describe("publishing content filter (issue #392)", () => {
+  it("rejects a publish challenge whose description contains a slur, naming the field", async () => {
+    const store = new MemoryPublishStore();
+    setPublishStoreForTests(store);
+
+    const response = await createChallenge(
+      postRequest("/api/publish/challenge", {
+        walletAddress: ACCOUNT.address,
+        walletChainId: 46630,
+        site: { ...sitePayload("filtered-token"), description: "A nigger coin for the community, buy now." },
+      }),
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("description") });
+    expect(store.challenges.size).toBe(0);
+  });
+
+  it("rejects a publish whose generated site HTML contains hateful content, and never stores the site", async () => {
+    const store = new MemoryPublishStore();
+    setPublishStoreForTests(store);
+    const slug = "filtered-html-token";
+    const cleanSite = sitePayload(slug);
+    const poisonedHtml = cleanSite.generatedSiteHtml.replace(
+      "Original public token campaign content.",
+      "Original public token campaign content about kike coins.",
+    );
+    const poisonedSite = { ...cleanSite, generatedSiteHtml: poisonedHtml };
+
+    // The challenge is created against the clean site (so challenge
+    // creation itself succeeds); the publish call swaps in the poisoned
+    // HTML. The publish route's content filter runs before the
+    // payload-hash comparison, so this is caught as a content rejection
+    // (400), not a signature/hash mismatch (401).
+    const { response } = await signedPublish(store, {
+      slug,
+      challengeSite: cleanSite,
+      publishSite: poisonedSite,
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("generatedSiteHtml") });
+    expect(store.sites.size).toBe(0);
+  });
+
+  it("passes crude but allowed content", async () => {
+    const store = new MemoryPublishStore();
+    setPublishStoreForTests(store);
+
+    const { response } = await signedPublish(store, {
+      slug: "crude-but-allowed",
+      challengeSite: {
+        ...sitePayload("crude-but-allowed"),
+        description: "This degenerate ape coin is for adults only, fuck the bear market.",
+      },
+    });
+    expect(response.status).toBe(201);
+  });
+});

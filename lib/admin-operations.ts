@@ -108,6 +108,7 @@ export type AdminActivityKind =
   | "social-telegram-connected"
   | "social-telegram-disconnected"
   | "client-error-group-resolved"
+  | "content-filter-rejected"
   | "ticket-created"
   | "ticket-replied";
 
@@ -134,6 +135,7 @@ export const SYSTEM_HEALTH_CHECK_IDS = [
   "social-posting",
   "client-errors",
   "operations-cost",
+  "content-filter",
   "support",
 ] as const;
 

@@ -12,6 +12,7 @@ import { getFactoryAddress, HOODLUMS_TOKEN_FACTORY_ABI } from "@/lib/factory-con
 import { readAiPricingRates, readOperationsCostThresholds, validateAiPricingConfig } from "@/lib/server/ai-pricing";
 import { resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
 import { getOperationsCostSnapshot, type OperationsCostSnapshotDeps } from "@/lib/server/admin-operations-costs";
+import { CONTENT_FILTER_CATEGORY_COUNT, CONTENT_FILTER_TERM_COUNT } from "@/lib/server/content-filter";
 import {
   GENERATE_SITE_STYLE_LIMIT,
   GENERATE_SITE_STYLE_WINDOW_MS,
@@ -1487,6 +1488,65 @@ export async function buildOperationsCostPipeline(deps: OperationsCostPipelineDe
 }
 
 // ---------------------------------------------------------------------------
+// Content filter (issue #392)
+// ---------------------------------------------------------------------------
+
+export type ContentFilterPipelineDeps = {
+  databaseUrl?: string;
+  getPool?: (databaseUrl: string) => PoolLike;
+  now?: Date;
+};
+
+export async function buildContentFilterPipeline(deps: ContentFilterPipelineDeps = {}): Promise<AdminServicePipeline> {
+  const databaseUrl = deps.databaseUrl ?? process.env.DATABASE_URL?.trim() ?? "";
+  const loadedStage = stage(
+    "filter-loaded",
+    "Filter loaded",
+    "green",
+    `${CONTENT_FILTER_TERM_COUNT} terms across ${CONTENT_FILTER_CATEGORY_COUNT} categories (race/ethnicity/national-origin and religious slurs, sexualisation of minors). Owner-maintained; see lib/server/content-filter.ts.`,
+  );
+
+  if (!databaseUrl) {
+    const message = "DATABASE_URL is not configured.";
+    return {
+      id: "content-filter",
+      label: "Content filter",
+      stages: [loadedStage, stage("rejections-24h", "Rejections (last 24h)", "amber", message)],
+    };
+  }
+
+  const pool = (deps.getPool ?? ((url: string) => getPostgresPool(url) as unknown as PoolLike))(databaseUrl);
+  const since = new Date((deps.now ?? new Date()).getTime() - 24 * 60 * 60 * 1000);
+
+  let rejectionsStage: AdminPipelineStage;
+  try {
+    const result = await withTimeout(
+      pool.query<{ count: number | string }>(
+        `SELECT COUNT(*)::int AS count FROM admin_activity_log WHERE event_kind = $1 AND created_at >= $2`,
+        ["content-filter-rejected", since],
+      ),
+      HEALTH_CHECK_TIMEOUT_MS,
+      "timed out",
+    );
+    const count = Number(result.rows[0]?.count ?? 0);
+    rejectionsStage = stage(
+      "rejections-24h",
+      "Rejections (last 24h)",
+      "green",
+      count === 0 ? "0 rejections in the last 24 hours." : `${count} rejection(s) in the last 24 hours.`,
+    );
+  } catch {
+    rejectionsStage = stage("rejections-24h", "Rejections (last 24h)", "red", "Could not read the rejection count from admin_activity_log.");
+  }
+
+  return {
+    id: "content-filter",
+    label: "Content filter",
+    stages: [loadedStage, rejectionsStage],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Support tickets, Phase A (issue #393)
 // ---------------------------------------------------------------------------
 
@@ -1636,6 +1696,7 @@ export type SystemHealthPipelineDeps = {
   socialPosting?: SocialPostingPipelineDeps;
   clientErrors?: ClientErrorsPipelineDeps;
   operationsCost?: OperationsCostPipelineDeps;
+  contentFilter?: ContentFilterPipelineDeps;
   support?: SupportPipelineDeps;
 };
 
@@ -1677,6 +1738,8 @@ export async function buildServicePipeline(
       return buildClientErrorsPipeline(deps.clientErrors);
     case "operations-cost":
       return buildOperationsCostPipeline({ env: deps.env, ...deps.operationsCost });
+    case "content-filter":
+      return buildContentFilterPipeline(deps.contentFilter);
     case "support":
       return buildSupportPipeline({ env: deps.env, ...deps.support });
   }

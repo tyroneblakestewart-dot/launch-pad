@@ -422,6 +422,94 @@ describe("runSocialPostingCron: Telegram destination", () => {
   });
 });
 
+describe("runSocialPostingCron: content filter final check (issue #392)", () => {
+  it("marks a poisoned pre-existing X destination permanently failed on the first attempt, never sending and never retrying", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    // Simulates a body approved before the filter existed.
+    await scheduledPostsStore.create({
+      walletAddress: "0xabc",
+      body: "This nigger coin is pumping right now.",
+      artworkDataUrl: null,
+      destinations: ["x"],
+      scheduledAt: NOW,
+      approvedByWallet: "0xabc",
+    });
+
+    const postTweetForUser = vi.fn(async () => ({ status: "posted" as const, xPostId: "999" }));
+    const result = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore, postTweetForUser });
+
+    expect(result).toMatchObject({ processed: 1, sent: 0, retried: 0, failed: 1 });
+    expect(postTweetForUser).not.toHaveBeenCalled();
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.status).toBe("failed");
+    expect(post.destinations[0]).toMatchObject({ status: "failed" });
+    expect(post.destinations[0].errorMessage).toContain("content safety filter");
+  });
+
+  it("marks a poisoned pre-existing Telegram destination permanently failed without calling the Telegram client", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedTelegram(connectionsStore);
+    await scheduledPostsStore.create({
+      walletAddress: "0xabc",
+      body: "Come hang with the kike crew.",
+      artworkDataUrl: null,
+      destinations: ["telegram"],
+      scheduledAt: NOW,
+      approvedByWallet: "0xabc",
+    });
+
+    const publishTelegramPost = vi.fn(async () => [1]);
+    const result = await runSocialPostingCron({ env: ENV, now: NOW, scheduledPostsStore, connectionsStore, publishTelegramPost });
+
+    expect(result).toMatchObject({ processed: 1, sent: 0, retried: 0, failed: 1 });
+    expect(publishTelegramPost).not.toHaveBeenCalled();
+    const post = (await scheduledPostsStore.list("0xabc"))[0];
+    expect(post.destinations[0]).toMatchObject({ status: "failed" });
+  });
+
+  it("passes a clean body straight through to send", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm degenerates, fuck the bear market", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      postTweetForUser: async () => ({ status: "posted", xPostId: "999" }),
+    });
+
+    expect(result).toMatchObject({ sent: 1, failed: 0 });
+  });
+
+  it("fails closed and treats the destination as filtered when the content-filter dependency itself throws", async () => {
+    const scheduledPostsStore = createMemorySocialScheduledPostsStore();
+    const connectionsStore = createMemorySocialConnectionsStore();
+    await seedConnectedX(connectionsStore);
+    await scheduledPostsStore.create({ walletAddress: "0xabc", body: "gm", artworkDataUrl: null, destinations: ["x"], scheduledAt: NOW, approvedByWallet: "0xabc" });
+
+    const postTweetForUser = vi.fn(async () => ({ status: "posted" as const, xPostId: "999" }));
+    const result = await runSocialPostingCron({
+      env: ENV,
+      now: NOW,
+      scheduledPostsStore,
+      connectionsStore,
+      postTweetForUser,
+      contentFilterCheck: () => {
+        throw new Error("filter boom");
+      },
+    });
+
+    expect(postTweetForUser).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ failed: 1, sent: 0 });
+  });
+});
+
 describe("runSocialPostingCron: multi-destination independence", () => {
   it("sends X and lets Telegram fail independently, rolling the post up to partially_sent", async () => {
     const scheduledPostsStore = createMemorySocialScheduledPostsStore();

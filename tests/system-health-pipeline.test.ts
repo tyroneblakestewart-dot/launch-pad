@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AdminServiceControl } from "@/lib/admin-operations";
 import {
   buildClientErrorsPipeline,
+  buildContentFilterPipeline,
   buildContractsPipeline,
   buildDatabasePipeline,
   buildDeploymentPipeline,
@@ -488,6 +489,47 @@ describe("buildClientErrorsPipeline", () => {
   it("is reachable through the buildServicePipeline dispatcher", async () => {
     const pipeline = await buildServicePipeline("client-errors", { clientErrors: { databaseUrl: "" } });
     expect(pipeline.id).toBe("client-errors");
+  });
+});
+
+describe("buildContentFilterPipeline", () => {
+  function fakePool(overrides: {
+    query?: (text: string, params?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>;
+  } = {}) {
+    return {
+      totalCount: 1,
+      idleCount: 1,
+      waitingCount: 0,
+      query: overrides.query ?? (async () => ({ rows: [{ count: 0 }] })),
+    };
+  }
+
+  it("reports the filter as loaded (green) even with no database configured", async () => {
+    const pipeline = await buildContentFilterPipeline({ databaseUrl: "" });
+    expect(stageById(pipeline, "filter-loaded")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "filter-loaded").message).toMatch(/\d+ terms across \d+ categories/);
+    expect(stageById(pipeline, "rejections-24h")).toMatchObject({ status: "amber" });
+  });
+
+  it("is green end to end when the rejection count query succeeds", async () => {
+    const pipeline = await buildContentFilterPipeline({
+      databaseUrl: "postgres://test",
+      getPool: () => fakePool({ query: async () => ({ rows: [{ count: 2 }] }) }),
+    });
+    expect(stageById(pipeline, "rejections-24h")).toMatchObject({ status: "green", message: expect.stringContaining("2 rejection(s)") });
+  });
+
+  it("is red on rejections-24h when the query fails", async () => {
+    const pipeline = await buildContentFilterPipeline({
+      databaseUrl: "postgres://test",
+      getPool: () => fakePool({ query: async () => Promise.reject(new Error("boom")) }),
+    });
+    expect(stageById(pipeline, "rejections-24h")).toMatchObject({ status: "red" });
+  });
+
+  it("is reachable through the buildServicePipeline dispatcher", async () => {
+    const pipeline = await buildServicePipeline("content-filter", { contentFilter: { databaseUrl: "" } });
+    expect(pipeline.id).toBe("content-filter");
   });
 });
 

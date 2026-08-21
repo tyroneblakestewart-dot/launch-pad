@@ -122,6 +122,7 @@ async function expectWorkingSessionAndHealth(loginResponse: Response): Promise<v
   expect(payload.checks.map((check) => check.id).sort()).toEqual(
     [
       "client-errors",
+      "content-filter",
       "contracts",
       "database",
       "deployment",

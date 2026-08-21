@@ -227,6 +227,37 @@ describe("POST /api/generate-free-site protection", () => {
   });
 });
 
+describe("POST /api/generate-free-site content filter (issue #392)", () => {
+  it("rejects a slur in the description input before calling the provider", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request({ ...input(), description: "This is a nigger coin, buy now" }));
+    const body = await responseJson<{ error: string }>(response);
+
+    expect(response.status).toBe(400);
+    expect(body.error).toContain("description");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a slur in the generated copy output", async () => {
+    const poisoned = { ...DESIGN, copy: { ...DESIGN.copy, tagline: "the chink of victory coins" } };
+    vi.stubGlobal("fetch", providerMock(poisoned));
+
+    const response = await POST(request(input()));
+    expect(response.status).toBe(502);
+  });
+
+  it("passes crude but allowed content", async () => {
+    vi.stubGlobal("fetch", providerMock(DESIGN));
+
+    const response = await POST(
+      request({ ...input(), description: "This degenerate ape coin is for adults only, fuck the bear market" }),
+    );
+    expect(response.status).toBe(200);
+  });
+});
+
 describe("POST /api/generate-free-site model validation", () => {
   it("rejects an invalid enum instead of coercing it", async () => {
     const invalid = {

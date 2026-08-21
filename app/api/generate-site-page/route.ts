@@ -33,7 +33,9 @@ import {
   type AIResponsesRuntime,
 } from "@/lib/server/ai-responses-runtime";
 import { recordTextOperationCostBestEffort, runAfterResponse, type AiOperationAccessSource } from "@/lib/server/ai-operation-cost-store";
+import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
 import { authoriseBespokeSiteGeneration } from "@/lib/server/bespoke-site-entitlement";
+import { contentFilterRejectionMessage, runContentFilterFailOpen } from "@/lib/server/content-filter";
 import { sanitiseProviderDetail } from "@/lib/server/sanitise-provider-detail";
 import { requestArtworkIdentity } from "@/lib/server/artwork-identity-request";
 import {
@@ -224,6 +226,23 @@ export async function POST(request: Request) {
   if (!isValidInspirationUrl(input.inspirationUrl)) {
     return NextResponse.json(
       { error: "Enter a valid public http or https inspiration website URL." },
+      { status: 400, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  const inputContentFilter = runContentFilterFailOpen({
+    name: input.name,
+    ticker: input.ticker,
+    description: input.description,
+  });
+  if (inputContentFilter.blocked) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "website-generation",
+      message: `Content filter rejected a generate-site-page input (field: ${inputContentFilter.field}).`,
+    });
+    return NextResponse.json(
+      { error: contentFilterRejectionMessage(inputContentFilter.field) },
       { status: 400, headers: noStoreHeaders(rateHeaders) },
     );
   }
@@ -468,6 +487,21 @@ export async function POST(request: Request) {
               status: null,
               detail: "The generated document failed the server-side completeness, safety, evidence, or inspiration acceptance checks.",
             },
+          });
+          close();
+          return;
+        }
+
+        const outputContentFilter = runContentFilterFailOpen({ html: page.html });
+        if (outputContentFilter.blocked) {
+          void recordAdminActivityBestEffort({
+            kind: "content-filter-rejected",
+            serviceKey: "website-generation",
+            message: "Content filter rejected generated site-page output before it reached the client.",
+          });
+          send({
+            type: "error",
+            error: "The generated website could not be delivered because it failed our content safety filter. Try again.",
           });
           close();
           return;

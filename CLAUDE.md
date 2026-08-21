@@ -580,6 +580,41 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   its `/v1/billing/charges` API is only daily-granularity and is worth a
   dedicated future PR once overage materially affects margin), and any
   pruning/rollup of the raw `ai_operation_costs` rows.
+- The go-live content filter (issue #392) is implemented as one shared,
+  deterministic, owner-maintained module, `lib/server/content-filter.ts`
+  (server-only, never imported by client code), blocking only slurs/hateful
+  content targeting race, ethnicity, national origin or religion, and
+  content sexualising minors — profanity, crude humour, adult innuendo,
+  violence, drugs and other edgy content are deliberately NOT filtered, per
+  the issue's own narrow-scope decision. Matching is word-boundary aware
+  (never bare substring) with leetspeak/separator evasion handling for the
+  highest-severity terms, so it never fires on a slur embedded inside an
+  unrelated legitimate word. It is wired into every point where
+  user-supplied or AI-generated text becomes public or costs money to
+  generate: `/api/publish` and `/api/publish/challenge` screen name,
+  ticker, description, slug and generated HTML and fail closed (a filter
+  runtime error is treated as a rejection); `generate-site-page`,
+  `generate-free-site`, `generate-site-style`, `social/voice-profile`,
+  `social/mascot/visual-dna` and `social/mascot/image` screen inputs before
+  any paid provider call and screen the generated output before it reaches
+  the client, failing open (logged, never blocking generation) on an
+  unexpected filter crash; `/api/social/draft` gained a new
+  `checkDraftContentFilter` function in `lib/server/social-draft-pipeline.ts`
+  that the route calls alongside the existing `checkDraftCompliance` chain
+  on both the first response and the corrective retry, so a slur can never
+  slip through the same #364 fail-open retry gap; and
+  `lib/server/social-posting-cron.ts` runs one final fail-closed check
+  immediately before every X/Telegram send, routing a match straight to the
+  existing terminal `markDestinationFailedFinal` path (bypassing the
+  retry/backoff funnel entirely, since a filter violation is never a
+  transient or auth problem worth retrying) so a body approved before the
+  filter existed can never go out. `/admin` gained a `content-filter`
+  System Health check/pipeline (filter-loaded status, term-list size and
+  category count, rejections in the last 24 hours read from
+  `admin_activity_log`) and a new `content-filter-rejected` Activity log
+  kind recording the rejecting route/field and wallet when known — the
+  matched term itself is never logged or echoed back to the user, only a
+  plain-English message naming the rejected field.
 - Support tickets, Phase A — the pipe (issue #393) is implemented for
   review: wallet-signed problem reporting, an admin reply/status queue, and
   a best-effort Telegram owner alert. Migration `db/migrations/025_support_tickets.sql`
@@ -611,14 +646,28 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   best-effort Telegram alert (category/subject/truncated wallet/ticket id,
   never the body) through the existing `lib/server/telegram.ts` client and
   new server-only `TELEGRAM_ADMIN_CHAT_ID`; a Telegram failure is caught
-  and logged and never affects ticket creation. `/admin` gained a top-level
-  Support section (newest-first list, status filter, full diagnostics,
-  full message history, an owner reply box that also flips the ticket to
+  and logged and never affects ticket creation, and the send itself runs
+  after the HTTP response via the repository's `after()`/`runAfterResponse`
+  pattern so a slow or hanging Telegram call can never delay ticket
+  creation. Existing security middleware and protections were not weakened
+  — `lib/server/api-protection.ts` gained new Support-specific rate/origin
+  helpers alongside the existing ones. `/admin` gained a top-level Support
+  section (newest-first list, status filter, full diagnostics, full
+  message history, an owner reply box that also flips the ticket to
   `needs_user`, and status controls limited to `solved`/`closed`) and a
-  `support` System Health pipeline (table reachable, `TELEGRAM_ADMIN_CHAT_ID`
-  configured yes/no, open ticket count, oldest-open-ticket age), plus two
-  new admin activity kinds (`ticket-created`, `ticket-replied`) that log
-  bounded identifiers/status only — never ticket subject/body/message
-  body/diagnostics. Deliberately out of scope, per the issue: any AI
-  assistant, auto-answer layer, autopilot, or unattended support action —
-  every reply in this PR is a human (user or owner) typing into a box.
+  `support` System Health pipeline (both support tables reachable,
+  `TELEGRAM_ADMIN_CHAT_ID` configured yes/no, open ticket count,
+  oldest-open-ticket age), plus two new admin activity kinds
+  (`ticket-created`, `ticket-replied`) that log bounded identifiers/status
+  only — never ticket subject/body/message body/diagnostics. Public
+  create/list/reply responses use a dedicated projection that omits
+  `diagnostics` and `walletAddress`; full diagnostics remain admin-only.
+  Message writes and status transitions run inside a single locked
+  Postgres transaction (ticket row `FOR UPDATE`), a user reply clears
+  `needs_user` back to `open`, and an owner reply rejects rather than
+  reopening a solved/closed ticket. Ticket-message reads are capped per
+  ticket. Deliberately out of scope, per the issue: any AI assistant,
+  auto-answer layer, autopilot, or unattended support action — every reply
+  in this PR is a human (user or owner) typing into a box. The per-ticket
+  200-message response cap and the lack of physical Mobile Safari
+  verification remain open trade-offs for this phase.

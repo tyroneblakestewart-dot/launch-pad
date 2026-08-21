@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkClientErrorsHealth,
+  checkContentFilterHealth,
   checkContractsHealth,
   checkDatabaseHealth,
   checkDeploymentHealth,
@@ -343,6 +344,25 @@ describe("checkClientErrorsHealth", () => {
   });
 });
 
+describe("checkContentFilterHealth", () => {
+  it("is green and reports a positive term-list size even with no database configured", async () => {
+    const result = await checkContentFilterHealth({ databaseUrl: "" });
+    expect(result).toMatchObject({ id: "content-filter", status: "green" });
+    expect(result.message).toMatch(/\d+ terms across \d+ categories/);
+  });
+
+  it("is green and reports the rejection count when the ping succeeds", async () => {
+    const result = await checkContentFilterHealth({ ping: async () => ({ rejections24h: 4 }) });
+    expect(result).toMatchObject({ id: "content-filter", status: "green" });
+    expect(result.message).toContain("4 rejection(s) in the last 24 hours");
+  });
+
+  it("is amber when the rejection-count ping fails", async () => {
+    const result = await checkContentFilterHealth({ ping: async () => Promise.reject(new Error("boom")) });
+    expect(result).toMatchObject({ id: "content-filter", status: "amber" });
+  });
+});
+
 describe("checkSupportHealth", () => {
   it("is green when the table ping succeeds, and reports whether the Telegram alert is configured", async () => {
     const unconfigured = await checkSupportHealth({
@@ -434,7 +454,7 @@ describe("checkOperationsCostHealth", () => {
 });
 
 describe("getSystemHealth", () => {
-  it("returns all thirteen checks, one per required area", async () => {
+  it("returns all fourteen checks, one per required area", async () => {
     const checks = await getSystemHealth({
       env: { NODE_ENV: "development" },
       database: { databaseUrl: "" },
@@ -446,11 +466,13 @@ describe("getSystemHealth", () => {
       socialPosting: { databaseUrl: "" },
       clientErrors: { databaseUrl: "" },
       operationsCost: { databaseUrl: "" },
+      contentFilter: { databaseUrl: "" },
       support: { databaseUrl: "" },
     });
     expect(checks.map((check) => check.id).sort()).toEqual(
       [
         "client-errors",
+        "content-filter",
         "contracts",
         "database",
         "deployment",
