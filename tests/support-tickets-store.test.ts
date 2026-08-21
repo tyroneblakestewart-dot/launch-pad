@@ -169,6 +169,53 @@ describe("SupportTicketsStore contract (via in-memory double)", () => {
     expect((await store.addOwnerMessage(ticket.id, "still here?")).status).toBe("closed");
   });
 
+  it("lets the owning wallet close its own open ticket (issue #401)", async () => {
+    const store = createMemorySupportTicketsStore();
+    const ticket = await store.create({ walletAddress: WALLET, category: "other", subject: "s", body: "b", diagnostics: {} });
+
+    const result = await store.closeTicketByUser(ticket.id, WALLET);
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") expect(result.ticket.status).toBe("closed");
+
+    const stored = (await store.listForWallet(WALLET))[0];
+    expect(stored.status).toBe("closed");
+  });
+
+  it("lets the owning wallet close a needs_user ticket (issue #401)", async () => {
+    const store = createMemorySupportTicketsStore();
+    const ticket = await store.create({ walletAddress: WALLET, category: "other", subject: "s", body: "b", diagnostics: {} });
+    await store.addOwnerMessage(ticket.id, "Can you share more detail?");
+
+    const result = await store.closeTicketByUser(ticket.id, WALLET);
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") expect(result.ticket.status).toBe("closed");
+  });
+
+  it("rejects a close attempt from a different wallet (issue #401)", async () => {
+    const store = createMemorySupportTicketsStore();
+    const ticket = await store.create({ walletAddress: WALLET, category: "other", subject: "s", body: "b", diagnostics: {} });
+
+    const result = await store.closeTicketByUser(ticket.id, OTHER_WALLET);
+    expect(result.status).toBe("forbidden");
+    expect((await store.listForWallet(WALLET))[0].status).toBe("open");
+  });
+
+  it("rejects closing an unknown ticket (issue #401)", async () => {
+    const store = createMemorySupportTicketsStore();
+    const result = await store.closeTicketByUser("00000000-0000-0000-0000-000000000000", WALLET);
+    expect(result.status).toBe("not_found");
+  });
+
+  it("rejects re-closing an already solved/closed ticket — a terminal ticket can't be re-closed (issue #401)", async () => {
+    const store = createMemorySupportTicketsStore();
+    const ticket = await store.create({ walletAddress: WALLET, category: "other", subject: "s", body: "b", diagnostics: {} });
+    await store.setStatus(ticket.id, "solved");
+    expect((await store.closeTicketByUser(ticket.id, WALLET)).status).toBe("closed");
+
+    await store.setStatus(ticket.id, "closed");
+    expect((await store.closeTicketByUser(ticket.id, WALLET)).status).toBe("closed");
+  });
+
   it("filters the admin listing by status, and 'all' returns everything", async () => {
     const store = createMemorySupportTicketsStore();
     const open = await store.create({ walletAddress: WALLET, category: "other", subject: "open one", body: "b", diagnostics: {} });
@@ -226,6 +273,9 @@ describe("getSupportTicketsStore", () => {
     expect(await store.countOpen()).toBe(0);
     expect(await store.oldestOpenTicketAgeSeconds()).toBeNull();
     await expect(store.create({ walletAddress: WALLET, category: "other", subject: "s", body: "b", diagnostics: {} })).rejects.toThrow(
+      SupportTicketsStoreUnavailableError,
+    );
+    await expect(store.closeTicketByUser("00000000-0000-0000-0000-000000000000", WALLET)).rejects.toThrow(
       SupportTicketsStoreUnavailableError,
     );
   });

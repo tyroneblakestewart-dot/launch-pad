@@ -671,3 +671,26 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   in this PR is a human (user or owner) typing into a box. The per-ticket
   200-message response cap and the lack of physical Mobile Safari
   verification remain open trade-offs for this phase.
+- Support ticket UX follow-ups (issue #401): the `/support` success state
+  now has a "Done" control (`components/support-hub.tsx`) that resets the
+  New report form and scrolls to Your reports, where the new ticket already
+  shows. Users can also close their own open/needs_user ticket from "Your
+  reports" via a new "Close this report" action gated behind a one-tap
+  request → one-tap confirm step, so a mis-tap can't kill a live ticket;
+  reopening is deliberately not offered — the owner can already see
+  everything from `/admin`, and a user can always file a fresh report. It's
+  wallet-signed with a new purpose, `support:ticket-close`
+  (`lib/server/support-ticket-auth.ts`), bound to the ticket id and reusing
+  the existing challenge/signature primitives exactly like
+  `support:ticket-reply`. The new `POST /api/support/tickets/[id]/close`
+  route follows the reply route's shape (origin check, rate limit, service
+  isolation, UUID validation, auth) and calls a new
+  `SupportTicketsStore.closeTicketByUser`, which mirrors `addUserMessage`'s
+  locked-transaction shape (`BEGIN` → `SELECT ... FOR UPDATE` → ownership
+  check → terminal-status rejection → `UPDATE status = 'closed'` →
+  `COMMIT`, rollback on any rejection or error) rather than reusing the
+  admin-only `setStatus`, since a user close needs the same
+  ownership/terminal-state guarding a reply gets. The admin queue shows a
+  user-closed ticket exactly like any other closed ticket — no admin-side
+  behaviour changed — and a new `ticket-closed-by-user` admin activity kind
+  logs the ticket id and wallet only, never body text.

@@ -246,6 +246,106 @@ describe("createPostgresSupportTicketsStore — addOwnerMessage transaction shap
   });
 });
 
+describe("createPostgresSupportTicketsStore — closeTicketByUser transaction shape (issue #401)", () => {
+  it("BEGINs, locks the ticket row FOR UPDATE, flips status to closed, then COMMITs, releasing the client", async () => {
+    const { client, calls, releaseSpy } = createFakeClient((text) => {
+      if (text === "BEGIN" || text === "COMMIT") return { rows: [] };
+      if (text.includes("FOR UPDATE")) return { rows: [ticketRow()] };
+      if (text.includes("UPDATE support_tickets")) return { rows: [ticketRow({ status: "closed" })] };
+      return { rows: [] };
+    });
+    installPool(client);
+
+    const store = createPostgresSupportTicketsStore("postgres://test");
+    const result = await store.closeTicketByUser(TICKET_ID, WALLET);
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") expect(result.ticket.status).toBe("closed");
+    const texts = calls.map((call) => call.text);
+    expect(texts[0]).toBe("BEGIN");
+    expect(texts.some((text) => text.includes("SELECT") && text.includes("FOR UPDATE"))).toBe(true);
+    expect(texts.some((text) => text.includes("UPDATE support_tickets") && text.includes("status = 'closed'"))).toBe(true);
+    expect(texts[texts.length - 1]).toBe("COMMIT");
+    expect(releaseSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back and never updates when the ticket does not exist", async () => {
+    const { client, calls, releaseSpy } = createFakeClient((text) => {
+      if (text.includes("FOR UPDATE")) return { rows: [] };
+      return { rows: [] };
+    });
+    installPool(client);
+
+    const store = createPostgresSupportTicketsStore("postgres://test");
+    const result = await store.closeTicketByUser(TICKET_ID, WALLET);
+
+    expect(result.status).toBe("not_found");
+    expect(calls.map((call) => call.text)).toEqual(["BEGIN", expect.stringContaining("FOR UPDATE"), "ROLLBACK"]);
+    expect(releaseSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back and never updates when the ticket belongs to a different wallet", async () => {
+    const { client, calls } = createFakeClient((text) => {
+      if (text.includes("FOR UPDATE")) return { rows: [ticketRow({ wallet_address: OTHER_WALLET })] };
+      return { rows: [] };
+    });
+    installPool(client);
+
+    const store = createPostgresSupportTicketsStore("postgres://test");
+    const result = await store.closeTicketByUser(TICKET_ID, WALLET);
+
+    expect(result.status).toBe("forbidden");
+    expect(calls.some((call) => call.text.includes("UPDATE support_tickets"))).toBe(false);
+    expect(calls[calls.length - 1].text).toBe("ROLLBACK");
+  });
+
+  it("rolls back and rejects re-closing an already solved/closed ticket (terminal status)", async () => {
+    const { client, calls } = createFakeClient((text) => {
+      if (text.includes("FOR UPDATE")) return { rows: [ticketRow({ status: "closed" })] };
+      return { rows: [] };
+    });
+    installPool(client);
+
+    const store = createPostgresSupportTicketsStore("postgres://test");
+    const result = await store.closeTicketByUser(TICKET_ID, WALLET);
+
+    expect(result.status).toBe("closed");
+    expect(calls.some((call) => call.text.includes("UPDATE support_tickets"))).toBe(false);
+    expect(calls[calls.length - 1].text).toBe("ROLLBACK");
+  });
+
+  it("rolls back, releases the client, and rethrows when the UPDATE fails unexpectedly", async () => {
+    const { client, calls, releaseSpy } = createFakeClient((text) => {
+      if (text.includes("FOR UPDATE")) return { rows: [ticketRow()] };
+      if (text.includes("UPDATE support_tickets")) throw new Error("connection reset");
+      return { rows: [] };
+    });
+    installPool(client);
+
+    const store = createPostgresSupportTicketsStore("postgres://test");
+    await expect(store.closeTicketByUser(TICKET_ID, WALLET)).rejects.toThrow("connection reset");
+    expect(calls[calls.length - 1].text).toBe("ROLLBACK");
+    expect(releaseSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back, releases the client, and rethrows when the UPDATE returns no row", async () => {
+    const { client, calls, releaseSpy } = createFakeClient((text) => {
+      if (text === "BEGIN" || text === "COMMIT") return { rows: [] };
+      if (text.includes("FOR UPDATE")) return { rows: [ticketRow()] };
+      if (text.includes("UPDATE support_tickets")) return { rows: [] };
+      return { rows: [] };
+    });
+    installPool(client);
+
+    const store = createPostgresSupportTicketsStore("postgres://test");
+    await expect(store.closeTicketByUser(TICKET_ID, WALLET)).rejects.toThrow(
+      "The support ticket could not be closed.",
+    );
+    expect(calls[calls.length - 1].text).toBe("ROLLBACK");
+    expect(releaseSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("createPostgresSupportTicketsStore — bounded message reads", () => {
   it("caps messages per ticket via a ROW_NUMBER window function, not an unbounded read", async () => {
     let capturedText = "";

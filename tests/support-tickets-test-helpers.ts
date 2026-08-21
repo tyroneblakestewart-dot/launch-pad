@@ -3,6 +3,7 @@ import {
   isReplyableSupportTicketStatus,
   type AddSupportTicketMessageResult,
   type AddSupportTicketOwnerMessageResult,
+  type CloseSupportTicketByUserResult,
   type CreateSupportTicketInput,
   type SetSupportTicketStatusResult,
   type SupportTicket,
@@ -66,6 +67,17 @@ export function createMemorySupportTicketsStore(): SupportTicketsStore {
       };
       tickets.set(ticketId, updated);
       return { status: "ok", ticket: updated, message };
+    },
+
+    async closeTicketByUser(ticketId: string, walletAddress: string): Promise<CloseSupportTicketByUserResult> {
+      const ticket = tickets.get(ticketId);
+      if (!ticket) return { status: "not_found" };
+      if (ticket.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) return { status: "forbidden" };
+      if (!isReplyableSupportTicketStatus(ticket.status)) return { status: "closed" };
+
+      const updated: SupportTicket = { ...ticket, status: "closed", updatedAt: new Date().toISOString() };
+      tickets.set(ticketId, updated);
+      return { status: "ok", ticket: updated };
     },
 
     async listForAdmin(status: SupportTicketStatus | "all") {

@@ -93,4 +93,49 @@ describe("Support hub UI (issue #393)", () => {
     expect(overlayCss).toContain(".supportLink");
     expect(overlayCss).toMatch(/\.supportLink\s*\{[^}]*min-height:\s*44px/s);
   });
+
+  it("offers a Done control on the success state that resets the form and scrolls to Your reports (issue #401)", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("function handleDone()");
+    expect(component).toContain("historyRef.current?.scrollIntoView");
+    // Resets every field the New report form tracks, not just subject/body.
+    expect(component).toMatch(/function handleDone\(\)[\s\S]*?setSubmitted\(false\)/);
+    expect(component).toMatch(/function handleDone\(\)[\s\S]*?setCategory\("other"\)/);
+    expect(component).toMatch(/function handleDone\(\)[\s\S]*?setSubject\(""\)/);
+    expect(component).toMatch(/function handleDone\(\)[\s\S]*?setBody\(""\)/);
+    expect(component).toMatch(/function handleDone\(\)[\s\S]*?setAttachmentDataUrl\(null\)/);
+    expect(component).toContain('<button type="button" className={styles.doneButton} onClick={handleDone}>');
+
+    const css = await source("components", "support-hub.module.css");
+    expect(css).toContain(".doneButton");
+    expect(css).toMatch(/\.doneButton\s*\{[^}]*min-height:\s*44px/s);
+  });
+
+  it("lets a user close their own open/needs_user ticket with a wallet-signed support:ticket-close action, gated behind a two-tap confirm (issue #401)", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain('"support:ticket-close"');
+    expect(component).toContain("/api/support/tickets/${encodeURIComponent(ticketId)}/close");
+    expect(component).toContain("async function handleClose(ticketId: string)");
+
+    // One tap to request, a second, separate tap to confirm — a mis-tap on
+    // "Close this report" alone must not close the ticket.
+    expect(component).toContain("closeConfirmId");
+    expect(component).toContain("setCloseConfirmId(ticket.id)");
+    expect(component).toContain("Close this report");
+    expect(component).toContain("Confirm close");
+    expect(component).toContain("Cancel");
+    expect(component).toContain("void handleClose(ticket.id)");
+
+    // Gated to REPLYABLE_STATUSES — a solved/closed ticket never offers a
+    // close action, and the reply composer already hides for the same set.
+    expect(component).toContain("styles.closeRow");
+    const replyableGateCount = (component.match(/REPLYABLE_STATUSES\.has\(ticket\.status\)/g) || []).length;
+    expect(replyableGateCount).toBeGreaterThanOrEqual(2);
+
+    const css = await source("components", "support-hub.module.css");
+    expect(css).toContain(".closeRequestButton");
+    expect(css).toContain(".closeConfirmButton");
+    expect(css).toMatch(/\.closeRequestButton\s*\{[^}]*min-height:\s*44px/s);
+    expect(css).toMatch(/\.closeConfirmButton\s*\{[^}]*min-height:\s*44px/s);
+  });
 });

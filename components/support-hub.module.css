@@ -144,13 +144,38 @@
 }
 
 .successBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
   margin: 0;
   padding: 10px 14px;
   border: 1px solid rgba(198, 245, 62, 0.35);
   border-radius: 12px;
   background: rgba(198, 245, 62, 0.08);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.successText {
+  margin: 0;
   color: #c6f53e;
   font-size: 12px;
+}
+
+.doneButton {
+  flex: none;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 8px 18px;
+  border: 1px solid #c6f53e;
+  border-radius: 10px;
+  background: #c6f53e;
+  color: #071008;
+  font: 800 11px "IBM Plex Mono", monospace;
+  cursor: pointer;
 }
 
 .srOnly {
@@ -380,6 +405,70 @@
   margin: 0;
   color: #6b706a;
   font-size: 12px;
+}
+
+.closeRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.closeConfirmText {
+  margin: 0;
+  color: #d4d7d3;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.closeConfirmActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.closeRequestButton {
+  align-self: flex-start;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 138, 128, 0.35);
+  border-radius: 10px;
+  background: transparent;
+  color: #ff8a80;
+  font: 700 11px "IBM Plex Mono", monospace;
+  cursor: pointer;
+}
+
+.closeConfirmButton {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid #ff8a80;
+  border-radius: 10px;
+  background: #ff8a80;
+  color: #2a1215;
+  font: 800 11px "IBM Plex Mono", monospace;
+  cursor: pointer;
+}
+
+.closeConfirmButton:disabled,
+.closeCancelButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.closeCancelButton {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: transparent;
+  color: #f4f7f1;
+  font: 700 11px "IBM Plex Mono", monospace;
+  cursor: pointer;
 }
 
 @media (max-width: 390px) {
