@@ -21,6 +21,10 @@ const NAV_ITEMS = [
   { href: "/allocations", label: "Allocations", icon: "allocate", step: "3", description: "Plan token distribution", hidden: true },
   { href: "/liquidity-lab", label: "Liquidity Lab", icon: "liquidity", step: "4", description: "Test the token pool", testnetOnly: true },
   { href: "/bonding-curve", label: "Bonding Curve", icon: "curve", step: "5", description: "Track token graduation", testnetOnly: true },
+  // Support is a utility destination, not a workflow step (issue #396) — no
+  // step number, rendered in its own bottom-pinned group on desktop and
+  // appended last on the mobile pill via the `utility` flag below.
+  { href: "/support", label: "Support", icon: "support", step: "", description: "Report a problem, get help", utility: true },
 ] as const;
 
 // Testnet-only workflow steps (Liquidity Lab, Bonding Curve) stay reachable at
@@ -32,6 +36,13 @@ const NAV_ITEMS_AFTER_TESTNET_FILTER = SHOW_TESTNET_TOOLS
   : NAV_ITEMS.filter((item) => !("testnetOnly" in item && item.testnetOnly));
 
 const VISIBLE_NAV_ITEMS = NAV_ITEMS_AFTER_TESTNET_FILTER.filter((item) => !("hidden" in item && item.hidden));
+
+// Utility items (Support) are not workflow steps: the desktop sidebar renders
+// them in their own bottom-pinned group, separate from the numbered
+// workflow list. The mobile pill keeps VISIBLE_NAV_ITEMS as-is since utility
+// items are already declared last in NAV_ITEMS, so they land last in the pill.
+const WORKFLOW_NAV_ITEMS = VISIBLE_NAV_ITEMS.filter((item) => !("utility" in item && item.utility));
+const UTILITY_NAV_ITEMS = VISIBLE_NAV_ITEMS.filter((item) => "utility" in item && item.utility);
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -54,6 +65,9 @@ function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
   if (name === "hoodchat") {
     return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 4v-4H5.5A1.5 1.5 0 0 1 4 14.5Z M8 9h8M8 12h5" /></svg>;
   }
+  if (name === "support") {
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4" /><path d="M5.5 5.5l3 3M15.5 5.5l-3 3M5.5 18.5l3-3M15.5 18.5l-3-3" /></svg>;
+  }
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h16M5 16l4-5 3 2 5-7 2 2M17 6h2v2" /></svg>;
 }
 
@@ -68,11 +82,22 @@ export function AppNavigation() {
         </Link>
         <p className={styles.eyebrow}>LAUNCH FLOW</p>
         <nav className={styles.sideNav}>
-          {VISIBLE_NAV_ITEMS.map((item) => {
+          {WORKFLOW_NAV_ITEMS.map((item) => {
             const active = isActive(pathname, item.href);
             return (
               <Link key={item.href} href={item.href} className={active ? styles.active : ""}>
                 <span className={styles.step}>{item.step}</span>
+                <span><b>{item.label}</b><small>{item.description}</small></span>
+              </Link>
+            );
+          })}
+        </nav>
+        <nav className={styles.sidebarUtility} aria-label="Support">
+          {UTILITY_NAV_ITEMS.map((item) => {
+            const active = isActive(pathname, item.href);
+            return (
+              <Link key={item.href} href={item.href} className={active ? styles.active : ""}>
+                <span className={styles.step}><NavIcon name={item.icon} /></span>
                 <span><b>{item.label}</b><small>{item.description}</small></span>
               </Link>
             );
