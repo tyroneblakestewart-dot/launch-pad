@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { AccountOverlayContent } from "@/lib/account-overlay-content";
 import {
   ACCOUNT_WALLET_CHANGE_EVENT,
@@ -221,6 +222,9 @@ export function AccountOverlay({ initialContent }: { initialContent: AccountOver
             </section>
 
             <AccountWalletBridge embedded />
+            <Link href="/support" className={styles.supportLink} onClick={closeOverlay}>
+              Report a problem
+            </Link>
             <footer className={styles.footer}>{content.footer_copy}</footer>
           </section>
         </div>

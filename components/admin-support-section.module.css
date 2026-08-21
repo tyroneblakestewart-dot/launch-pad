@@ -1,0 +1,356 @@
+.panel {
+  border: 1px solid rgba(188, 231, 89, 0.15);
+  border-radius: 16px;
+  background: rgba(10, 13, 11, 0.88);
+  padding: 18px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 1.05rem;
+}
+
+.sectionIntro {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: rgba(238, 243, 234, 0.62);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.refreshButton {
+  flex: none;
+  border-radius: 9px;
+  border: 1px solid rgba(188, 231, 89, 0.3);
+  background: transparent;
+  color: #bce759;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.refreshButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.error {
+  margin: 0 0 12px;
+  border: 1px solid rgba(255, 119, 119, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 119, 119, 0.08);
+  color: #ff9a9a;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+}
+
+.empty {
+  margin: 12px 0 0;
+  color: rgba(238, 243, 234, 0.62);
+  font-size: 0.78rem;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.filter,
+.filterActive {
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.76rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.filter {
+  color: rgba(238, 243, 234, 0.65);
+  background: transparent;
+  border: 1px solid rgba(238, 243, 234, 0.16);
+}
+
+.filterActive {
+  color: #10150d;
+  background: #bce759;
+  border: 1px solid #bce759;
+}
+
+.itemList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  border: 1px solid rgba(238, 243, 234, 0.09);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.018);
+  overflow: hidden;
+}
+
+.itemSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 14px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.itemMeta {
+  flex: 1;
+  min-width: 0;
+}
+
+.itemTitle {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 0.9rem;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.category {
+  color: #bce759;
+  font-weight: 700;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+.itemSub {
+  margin: 4px 0 0;
+  color: rgba(238, 243, 234, 0.55);
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+
+.badgeOpen,
+.badgeNeedsUser,
+.badgeSolved,
+.badgeClosed {
+  flex: none;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badgeOpen {
+  color: #f0bf4e;
+  background: rgba(240, 191, 78, 0.1);
+  border: 1px solid rgba(240, 191, 78, 0.25);
+}
+
+.badgeNeedsUser {
+  color: #72c9e8;
+  background: rgba(114, 201, 232, 0.1);
+  border: 1px solid rgba(114, 201, 232, 0.25);
+}
+
+.badgeSolved {
+  color: #72e88d;
+  background: rgba(114, 232, 141, 0.1);
+  border: 1px solid rgba(114, 232, 141, 0.25);
+}
+
+.badgeClosed {
+  color: rgba(238, 243, 234, 0.6);
+  background: rgba(238, 243, 234, 0.06);
+  border: 1px solid rgba(238, 243, 234, 0.14);
+}
+
+.itemDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.body {
+  margin: 0;
+  color: rgba(238, 243, 234, 0.85);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.diagnostics {
+  border: 1px solid rgba(238, 243, 234, 0.1);
+  border-radius: 9px;
+  padding: 8px 10px;
+  color: rgba(238, 243, 234, 0.75);
+  font-size: 0.78rem;
+}
+
+.diagnostics summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.diagnostics pre {
+  margin: 8px 0 0;
+  overflow-x: auto;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.messageList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.messageUser,
+.messageOwner {
+  padding: 8px 10px;
+  border-radius: 9px;
+}
+
+.messageUser {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.messageOwner {
+  background: rgba(188, 231, 89, 0.08);
+}
+
+.messageAuthor {
+  display: block;
+  color: rgba(238, 243, 234, 0.55);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.messageText {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.messageTime {
+  display: block;
+  margin-top: 3px;
+  color: rgba(238, 243, 234, 0.45);
+  font-size: 0.68rem;
+}
+
+.replyRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.replyInput {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 72px;
+  resize: vertical;
+  border-radius: 9px;
+  border: 1px solid rgba(188, 231, 89, 0.2);
+  background: rgba(0, 0, 0, 0.28);
+  color: #eef3ea;
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.replyInput:focus {
+  outline: 2px solid rgba(188, 231, 89, 0.22);
+  outline-offset: 1px;
+}
+
+.itemActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.replyButton,
+.solveButton,
+.closeButton {
+  border-radius: 9px;
+  padding: 7px 11px;
+  font-size: 0.74rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.replyButton {
+  color: #10150d;
+  background: #bce759;
+  border: 1px solid #bce759;
+}
+
+.solveButton {
+  color: #72e88d;
+  background: transparent;
+  border: 1px solid rgba(114, 232, 141, 0.3);
+}
+
+.closeButton {
+  color: rgba(238, 243, 234, 0.7);
+  background: transparent;
+  border: 1px solid rgba(238, 243, 234, 0.16);
+}
+
+.replyButton:disabled,
+.solveButton:disabled,
+.closeButton:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* Mobile Safari is the primary UI target (CLAUDE.md rule 7) — verified at
+   the 390px iPhone viewport width. */
+@media (max-width: 520px) {
+  .panel {
+    padding: 14px;
+  }
+
+  .sectionHeader {
+    flex-direction: column;
+  }
+
+  .refreshButton {
+    align-self: flex-start;
+  }
+
+  .itemActions button {
+    flex: 1;
+    min-width: 0;
+  }
+}

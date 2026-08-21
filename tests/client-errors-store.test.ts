@@ -109,4 +109,23 @@ describe("client-error grouping", () => {
     const count = await store.countNewGroupsSince(since);
     expect(count).toBe(1);
   });
+
+  it("counts only one wallet's occurrences within the window, case-insensitively (issue #393)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const store = new MemoryClientErrorStore();
+    await store.recordError(input({ walletAddress: "0xAAAA111111111111111111111111111111111111" }));
+    await store.recordError(input({ walletAddress: "0xbbbb222222222222222222222222222222222222" }));
+
+    vi.setSystemTime(new Date("2026-01-02T00:00:00.000Z"));
+    await store.recordError(input({ walletAddress: "0xaaaa111111111111111111111111111111111111" }));
+
+    const since = new Date("2025-12-01T00:00:00.000Z");
+    expect(await store.countRecentForWallet("0xAAAA111111111111111111111111111111111111", since)).toBe(2);
+    expect(await store.countRecentForWallet("0xbbbb222222222222222222222222222222222222", since)).toBe(1);
+    expect(await store.countRecentForWallet("0xcccc333333333333333333333333333333333333", since)).toBe(0);
+
+    const recentOnly = new Date("2026-01-01T12:00:00.000Z");
+    expect(await store.countRecentForWallet("0xAAAA111111111111111111111111111111111111", recentOnly)).toBe(1);
+  });
 });

@@ -15,6 +15,7 @@ import { AdminPagesSection } from "@/components/admin-pages-section";
 import { AdminSiteDomainsSection } from "@/components/admin-site-domains-section";
 import { AdminStreetTeamSection } from "@/components/admin-street-team-section";
 import { AdminSubscribersSection } from "@/components/admin-subscribers-section";
+import { AdminSupportSection } from "@/components/admin-support-section";
 import { AdminSystemHealth } from "@/components/admin-system-health";
 import { AdminTestAccessSection } from "@/components/admin-test-access-section";
 import type {
@@ -36,6 +37,7 @@ type SectionId =
   | "outreach"
   | "street-team"
   | "client-errors"
+  | "support"
   | "system-health";
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
@@ -51,6 +53,7 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "outreach", label: "Outreach" },
   { id: "street-team", label: "Street Team" },
   { id: "client-errors", label: "Errors" },
+  { id: "support", label: "Support" },
   { id: "system-health", label: "System Health" },
 ];
 
@@ -178,7 +181,8 @@ export function AdminDashboard() {
     activeSection === "accounts" ||
     activeSection === "outreach" ||
     activeSection === "street-team" ||
-    activeSection === "client-errors";
+    activeSection === "client-errors" ||
+    activeSection === "support";
 
   return (
     <main className={styles.dashboard}>
@@ -270,6 +274,7 @@ export function AdminDashboard() {
         {activeSection === "outreach" ? <AdminOutreachSection /> : null}
         {activeSection === "street-team" ? <AdminStreetTeamSection /> : null}
         {activeSection === "client-errors" ? <AdminClientErrorsSection /> : null}
+        {activeSection === "support" ? <AdminSupportSection /> : null}
         {activeSection === "system-health" ? <AdminSystemHealth /> : null}
       </section>
     </main>

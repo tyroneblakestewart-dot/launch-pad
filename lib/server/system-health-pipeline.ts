@@ -1487,6 +1487,128 @@ export async function buildOperationsCostPipeline(deps: OperationsCostPipelineDe
 }
 
 // ---------------------------------------------------------------------------
+// Support tickets, Phase A (issue #393)
+// ---------------------------------------------------------------------------
+
+export type SupportPipelineDeps = {
+  databaseUrl?: string;
+  getPool?: (databaseUrl: string) => PoolLike;
+  getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
+  env?: Record<string, string | undefined>;
+  now?: Date;
+};
+
+function supportTelegramAlertStage(env: Record<string, string | undefined>): AdminPipelineStage {
+  const configured = Boolean((env.TELEGRAM_ADMIN_CHAT_ID || "").trim());
+  return stage(
+    "telegram-alert",
+    "TELEGRAM_ADMIN_CHAT_ID configured",
+    configured ? "green" : "amber",
+    configured
+      ? "The owner Telegram alert is configured."
+      : "Not set — tickets still save; the best-effort owner alert is skipped.",
+  );
+}
+
+export async function buildSupportPipeline(deps: SupportPipelineDeps = {}): Promise<AdminServicePipeline> {
+  const env = deps.env ?? process.env;
+  const getServiceControl =
+    deps.getServiceControl ?? ((key: AdminServiceKey) => getAdminOperationsStore().getServiceControl(key));
+  const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
+
+  const isolationStage = await chatIsolationStage("support", getServiceControl);
+  const telegramStage = supportTelegramAlertStage(env);
+
+  if (!databaseUrl) {
+    const message = "DATABASE_URL is not configured.";
+    return {
+      id: "support",
+      label: "Support tickets",
+      stages: [
+        isolationStage,
+        telegramStage,
+        stage("table-exists", "support_tickets table exists", "amber", message),
+        stage("open-count", "Open ticket count", "amber", message),
+        stage("oldest-open-age", "Age of oldest open ticket", "amber", message),
+      ],
+    };
+  }
+
+  const pool = (deps.getPool ?? ((url: string) => getPostgresPool(url) as unknown as PoolLike))(databaseUrl);
+
+  let tableExists = false;
+  let tableExistsStage: AdminPipelineStage;
+  try {
+    const result = await withTimeout(
+      pool.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'support_tickets'`,
+      ),
+      HEALTH_CHECK_TIMEOUT_MS,
+      "timed out",
+    );
+    tableExists = result.rows.length > 0;
+    tableExistsStage = tableExists
+      ? stage("table-exists", "support_tickets table exists", "green", "The support_tickets table is present.")
+      : stage("table-exists", "support_tickets table exists", "red", "Migration 025_support_tickets.sql has not been applied yet.");
+  } catch {
+    tableExistsStage = stage("table-exists", "support_tickets table exists", "red", "Could not check whether the support_tickets table exists.");
+  }
+
+  let openCountStage: AdminPipelineStage;
+  let oldestAgeStage: AdminPipelineStage;
+  if (!tableExists) {
+    openCountStage = stage("open-count", "Open ticket count", "amber", "Not probed; the support_tickets table does not exist yet.");
+    oldestAgeStage = stage("oldest-open-age", "Age of oldest open ticket", "amber", "Not probed; the support_tickets table does not exist yet.");
+  } else {
+    try {
+      const result = await withTimeout(
+        pool.query<{ count: number | string }>(
+          `SELECT COUNT(*)::int AS count FROM support_tickets WHERE status IN ('open', 'needs_user')`,
+        ),
+        HEALTH_CHECK_TIMEOUT_MS,
+        "timed out",
+      );
+      const count = Number(result.rows[0]?.count ?? 0);
+      openCountStage = stage("open-count", "Open ticket count", "green", `${count} open ticket(s).`);
+    } catch {
+      openCountStage = stage("open-count", "Open ticket count", "red", "Could not count open support tickets.");
+    }
+
+    try {
+      const result = await withTimeout(
+        pool.query<{ created_at: Date | string | null }>(
+          `SELECT created_at FROM support_tickets WHERE status IN ('open', 'needs_user') ORDER BY created_at ASC LIMIT 1`,
+        ),
+        HEALTH_CHECK_TIMEOUT_MS,
+        "timed out",
+      );
+      const createdAt = result.rows[0]?.created_at ?? null;
+      if (!createdAt) {
+        oldestAgeStage = stage("oldest-open-age", "Age of oldest open ticket", "green", "No open tickets.");
+      } else {
+        const now = deps.now ?? new Date();
+        const ageSeconds = Math.max(0, Math.floor((now.getTime() - new Date(createdAt).getTime()) / 1000));
+        const ageHours = Math.floor(ageSeconds / 3600);
+        oldestAgeStage = stage(
+          "oldest-open-age",
+          "Age of oldest open ticket",
+          ageHours >= 48 ? "amber" : "green",
+          `Oldest open ticket is ${ageHours}h old.`,
+        );
+      }
+    } catch {
+      oldestAgeStage = stage("oldest-open-age", "Age of oldest open ticket", "red", "Could not read the oldest open support ticket.");
+    }
+  }
+
+  return {
+    id: "support",
+    label: "Support tickets",
+    stages: [isolationStage, telegramStage, tableExistsStage, openCountStage, oldestAgeStage],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
 
@@ -1504,6 +1626,7 @@ export type SystemHealthPipelineDeps = {
   socialPosting?: SocialPostingPipelineDeps;
   clientErrors?: ClientErrorsPipelineDeps;
   operationsCost?: OperationsCostPipelineDeps;
+  support?: SupportPipelineDeps;
 };
 
 /** Builds a single service's pipeline on demand — used by the drill-down endpoint. */
@@ -1544,5 +1667,7 @@ export async function buildServicePipeline(
       return buildClientErrorsPipeline(deps.clientErrors);
     case "operations-cost":
       return buildOperationsCostPipeline({ env: deps.env, ...deps.operationsCost });
+    case "support":
+      return buildSupportPipeline({ env: deps.env, ...deps.support });
   }
 }

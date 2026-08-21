@@ -80,6 +80,14 @@ export class MemoryClientErrorStore implements ClientErrorStore {
     }
     return [...firstSeenByGroup.values()].filter((firstSeen) => firstSeen.getTime() >= since.getTime()).length;
   }
+
+  async countRecentForWallet(walletAddress: string, since: Date): Promise<number> {
+    return this.occurrences.filter(
+      (occurrence) =>
+        (occurrence.walletAddress || "").toLowerCase() === walletAddress.toLowerCase() &&
+        occurrence.createdAt.getTime() >= since.getTime(),
+    ).length;
+  }
 }
 
 export class UnavailableClientErrorStore implements ClientErrorStore {
@@ -93,6 +101,9 @@ export class UnavailableClientErrorStore implements ClientErrorStore {
     throw new ClientErrorStoreUnavailableError();
   }
   async countNewGroupsSince(): Promise<number> {
+    return 0;
+  }
+  async countRecentForWallet(): Promise<number> {
     return 0;
   }
 }

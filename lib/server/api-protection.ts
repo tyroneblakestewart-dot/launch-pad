@@ -454,3 +454,39 @@ export function isSocialStudioRequestOriginAllowed(request: Request): boolean {
     new URL(request.url).origin;
   return Boolean(origin && origin === configured);
 }
+
+// Support tickets, Phase A (issue #393): wallet-signed reporting. "Action"
+// covers the challenge issuance, ticket creation and follow-up-reply
+// endpoints; "read" covers the plain GET listing the /support page polls —
+// same challenge/action/read split as Social Studio.
+export const SUPPORT_ACTION_LIMIT = 20;
+export const SUPPORT_READ_LIMIT = 60;
+export const SUPPORT_WINDOW_MS = 60 * 60 * 1000;
+
+export function consumeSupportActionRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("support-action"), ip, SUPPORT_ACTION_LIMIT, SUPPORT_WINDOW_MS, now);
+}
+
+export function consumeSupportReadRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("support-read"), ip, SUPPORT_READ_LIMIT, SUPPORT_WINDOW_MS, now);
+}
+
+export function resetSupportRateLimitsForTests() {
+  ["support-action", "support-read"].forEach((name) => namedRateStore(name).clear());
+}
+
+/**
+ * Same-origin check for support-ticket endpoints, mirroring
+ * isSocialStudioRequestOriginAllowed's fallback chain (a dedicated
+ * SUPPORT_ALLOWED_ORIGIN is only needed if it diverges from the shared
+ * publish/generate-site origin config).
+ */
+export function isSupportRequestOriginAllowed(request: Request): boolean {
+  const origin = request.headers.get("origin") || "";
+  const configured =
+    process.env.SUPPORT_ALLOWED_ORIGIN?.trim() ||
+    process.env.PUBLISH_ALLOWED_ORIGIN?.trim() ||
+    process.env.GENERATE_SITE_STYLE_ALLOWED_ORIGIN?.trim() ||
+    new URL(request.url).origin;
+  return Boolean(origin && origin === configured);
+}

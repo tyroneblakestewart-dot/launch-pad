@@ -23,7 +23,8 @@ export type SystemHealthCheck = {
     | "social-studio-ai"
     | "social-posting"
     | "client-errors"
-    | "operations-cost";
+    | "operations-cost"
+    | "support";
   label: string;
   status: SystemHealthStatus;
   message: string;
@@ -646,6 +647,65 @@ export async function checkOperationsCostHealth(deps: {
   };
 }
 
+export type SupportHealthPing = () => Promise<{ openCount: number; oldestOpenAgeSeconds: number | null }>;
+
+/**
+ * Reports whether the `support_tickets` table is reachable, whether the
+ * best-effort owner Telegram alert is configured, and the current open
+ * queue size/age (issue #393). Makes no paid external call.
+ */
+export async function checkSupportHealth(deps: {
+  databaseUrl?: string;
+  ping?: SupportHealthPing;
+  env?: Record<string, string | undefined>;
+  now?: Date;
+} = {}): Promise<SystemHealthCheck> {
+  const id = "support" as const;
+  const label = "Support tickets";
+  const env = deps.env ?? process.env;
+  const alertConfigured = Boolean((env.TELEGRAM_ADMIN_CHAT_ID || "").trim());
+  const alertNote = alertConfigured
+    ? "Owner Telegram alert is configured."
+    : "Owner Telegram alert is not configured (TELEGRAM_ADMIN_CHAT_ID unset) — tickets still save, alerts are just skipped.";
+
+  const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl && !deps.ping) {
+    return { id, label, status: "red", message: `DATABASE_URL is not configured. ${alertNote}` };
+  }
+
+  const ping =
+    deps.ping ??
+    (async () => {
+      const pool = getPostgresPool(databaseUrl);
+      const [openResult, oldestResult] = await Promise.all([
+        pool.query<{ count: number | string }>(
+          `SELECT COUNT(*)::int AS count FROM support_tickets WHERE status IN ('open', 'needs_user')`,
+        ),
+        pool.query<{ created_at: Date | string | null }>(
+          `SELECT created_at FROM support_tickets WHERE status IN ('open', 'needs_user') ORDER BY created_at ASC LIMIT 1`,
+        ),
+      ]);
+      const openCount = Number(openResult.rows[0]?.count ?? 0);
+      const createdAt = oldestResult.rows[0]?.created_at ?? null;
+      const now = deps.now ?? new Date();
+      const oldestOpenAgeSeconds = createdAt ? Math.max(0, Math.floor((now.getTime() - new Date(createdAt).getTime()) / 1000)) : null;
+      return { openCount, oldestOpenAgeSeconds };
+    });
+
+  try {
+    const { openCount, oldestOpenAgeSeconds } = await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, "Support health check timed out.");
+    const ageNote = oldestOpenAgeSeconds === null ? "No open tickets." : `Oldest open ticket is ${Math.floor(oldestOpenAgeSeconds / 3600)}h old.`;
+    return { id, label, status: "green", message: `${openCount} open ticket(s). ${ageNote} ${alertNote}` };
+  } catch {
+    return {
+      id,
+      label,
+      status: "red",
+      message: `The support_tickets table is not reachable. Apply migration 025_support_tickets.sql. ${alertNote}`,
+    };
+  }
+}
+
 export type SystemHealthDeps = {
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
@@ -658,6 +718,7 @@ export type SystemHealthDeps = {
   socialPosting?: Parameters<typeof checkSocialPostingHealth>[0];
   clientErrors?: Parameters<typeof checkClientErrorsHealth>[0];
   operationsCost?: Parameters<typeof checkOperationsCostHealth>[0];
+  support?: Parameters<typeof checkSupportHealth>[0];
 };
 
 /**
@@ -679,6 +740,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     socialPosting,
     clientErrors,
     operationsCost,
+    support,
   ] = await Promise.all([
     checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
     checkDatabaseHealth(deps.database),
@@ -692,6 +754,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     checkSocialPostingHealth({ env: deps.env, ...deps.socialPosting }),
     checkClientErrorsHealth(deps.clientErrors),
     checkOperationsCostHealth({ env: deps.env, ...deps.operationsCost }),
+    checkSupportHealth({ env: deps.env, ...deps.support }),
   ]);
   return [
     websiteGeneration,
@@ -706,5 +769,6 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     socialPosting,
     clientErrors,
     operationsCost,
+    support,
   ];
 }

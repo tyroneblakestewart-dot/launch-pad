@@ -1,0 +1,327 @@
+/* Mobile-first per AGENTS.md rule 7: every control is fluid width with
+   min-width: 0 so nothing forces horizontal scroll at 390px iPhone Safari.
+   Visual language matches components/hoodchat-hub.module.css. */
+
+.page {
+  min-height: 100vh;
+  padding: 14px 16px 32px;
+  background: #0a0b09;
+  background-image: radial-gradient(90% 55% at 50% -8%, rgba(198, 245, 62, 0.1), transparent 62%);
+  color: #f4f7f1;
+  font-family: Archivo, system-ui, sans-serif;
+}
+
+.shell {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+}
+
+.hero {
+  padding: 4px 4px 6px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: #c6f53e;
+  font: 700 11px "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0 0 6px;
+  font-size: clamp(22px, 6vw, 28px);
+  line-height: 1.2;
+}
+
+.intro {
+  margin: 0;
+  color: #a8aaa9;
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 60ch;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 18px;
+  background: rgba(18, 21, 19, 0.99);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.panelTitle {
+  margin: 0 0 2px;
+  font-size: 15px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.fieldLabel {
+  color: #c3c9c4;
+  font: 600 11px "IBM Plex Mono", monospace;
+  letter-spacing: 0.03em;
+}
+
+.select,
+.input,
+.textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: #0a0b09;
+  color: #f4f7f1;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.select:focus,
+.input:focus,
+.textarea:focus {
+  outline: none;
+  border-color: rgba(198, 245, 62, 0.5);
+}
+
+.select:disabled,
+.input:disabled,
+.textarea:disabled {
+  opacity: 0.5;
+}
+
+.connectButton,
+.submitButton {
+  width: 100%;
+  padding: 13px;
+  border: 1px solid #c6f53e;
+  border-radius: 12px;
+  background: #c6f53e;
+  color: #071008;
+  font: 800 12px "IBM Plex Mono", monospace;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.submitButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.errorBanner {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 138, 128, 0.35);
+  border-radius: 12px;
+  background: rgba(42, 18, 21, 0.6);
+  color: #ff8a80;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.successBanner {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(198, 245, 62, 0.35);
+  border-radius: 12px;
+  background: rgba(198, 245, 62, 0.08);
+  color: #c6f53e;
+  font-size: 12px;
+}
+
+.emptyState {
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+  color: #6b706a;
+  font-size: 13px;
+}
+
+.ticketList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ticket {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.ticketSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  border: none;
+  background: rgba(255, 255, 255, 0.02);
+  color: #f4f7f1;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.ticketSubject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.ticketStatus {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(198, 245, 62, 0.1);
+  color: #c6f53e;
+  font: 600 9px "IBM Plex Mono", monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ticketBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.ticketDescription {
+  margin: 0;
+  color: #d4d7d3;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.messageList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.messageUser,
+.messageOwner {
+  padding: 8px 10px;
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.messageUser {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.messageOwner {
+  background: rgba(198, 245, 62, 0.08);
+}
+
+.messageAuthor {
+  display: block;
+  color: #929693;
+  font: 700 10px "IBM Plex Mono", monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.messageText {
+  margin: 0;
+  color: #f4f7f1;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.messageTime {
+  display: block;
+  margin-top: 3px;
+  color: #5f645e;
+  font: 500 10px "IBM Plex Mono", monospace;
+}
+
+.replyRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.replyInput {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 70px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  background: #0a0b09;
+  color: #f4f7f1;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.replyButton {
+  align-self: flex-end;
+  padding: 10px 16px;
+  border: 1px solid #c6f53e;
+  border-radius: 10px;
+  background: #c6f53e;
+  color: #071008;
+  font: 800 11px "IBM Plex Mono", monospace;
+  cursor: pointer;
+}
+
+.replyButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.closedNote {
+  margin: 0;
+  color: #6b706a;
+  font-size: 12px;
+}
+
+@media (max-width: 390px) {
+  .page {
+    padding: 12px 12px 28px;
+  }
+
+  .panel {
+    padding: 12px;
+  }
+}
