@@ -209,6 +209,71 @@ describe("POST /api/generate-site-style", () => {
     }
   });
 
+  describe("content filter (issue #392)", () => {
+    it("rejects a slur in the description before calling the provider", async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(
+        makeRequest({
+          name: "Hoodlums",
+          ticker: "HOOD",
+          description: "A nigger coin for the community, buy now.",
+          imageDataUrl: VALID_IMAGE,
+        }),
+      );
+      const body = await responseJson<{ error: string }>(response);
+
+      expect(response.status).toBe(400);
+      expect(body.error).toContain("description");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects generated copy that fails the content safety filter", async () => {
+      const poisoned = { ...VALID_STYLE, heroBody: "This chink of a coin is going to the moon" };
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ output: [{ content: [{ type: "output_text", text: JSON.stringify(poisoned) }] }] }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(
+        makeRequest({
+          name: "Hoodlums",
+          ticker: "HOOD",
+          description: "A community token launch.",
+          imageDataUrl: VALID_IMAGE,
+        }),
+      );
+      const body = await responseJson<{ error: string }>(response);
+
+      expect(response.status).toBe(502);
+      expect(body.error).toContain("content safety filter");
+    });
+
+    it("passes crude but allowed content", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ output: [{ content: [{ type: "output_text", text: JSON.stringify(VALID_STYLE) }] }] }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(
+        makeRequest({
+          name: "Hoodlums",
+          ticker: "HOOD",
+          description: "This degenerate ape coin is for adults only, fuck the bear market.",
+          imageDataUrl: VALID_IMAGE,
+        }),
+      );
+      expect(response.status).toBe(200);
+    });
+  });
+
   it("returns a full validated artwork-only style and accurate inspiration metadata", async () => {
     process.env.OPENAI_VISION_MODEL = "vision-test-model";
     const fetchMock = vi.fn().mockResolvedValue(

@@ -24,6 +24,8 @@ import {
   isGenerateSiteStyleRequestAuthorised,
 } from "@/lib/server/api-protection";
 import { recordTextOperationCostBestEffort, runAfterResponse } from "@/lib/server/ai-operation-cost-store";
+import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
+import { contentFilterRejectionMessage, runContentFilterFailOpen } from "@/lib/server/content-filter";
 import { sanitiseProviderDetail } from "@/lib/server/sanitise-provider-detail";
 import {
   isValidImageDataUrl,
@@ -257,6 +259,23 @@ export async function POST(request: Request) {
     );
   }
 
+  const inputContentFilter = runContentFilterFailOpen({
+    name: input.name,
+    ticker: input.ticker,
+    description: input.description,
+  });
+  if (inputContentFilter.blocked) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "website-generation",
+      message: `Content filter rejected a generate-free-site input (field: ${inputContentFilter.field}).`,
+    });
+    return NextResponse.json(
+      { error: contentFilterRejectionMessage(inputContentFilter.field) },
+      { status: 400, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
   // No wallet in this route's request contract (issue #368) — every attempt
   // is genuinely unattributed spend, not silently credited to a guessed wallet.
   // A const arrow function (not a hoisted function declaration) keeps `ai`'s
@@ -364,6 +383,19 @@ export async function POST(request: Request) {
   if (!isCompleteGeneratedPageHtml(templateHtml, acceptance)) {
     return NextResponse.json(
       { error: "The generated free-site document failed server-side validation." },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  const outputContentFilter = runContentFilterFailOpen({ html: templateHtml });
+  if (outputContentFilter.blocked) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "website-generation",
+      message: "Content filter rejected generated free-site output before it reached the client.",
+    });
+    return NextResponse.json(
+      { error: "The generated website could not be delivered because it failed our content safety filter. Try again." },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }

@@ -1,3 +1,4 @@
+import { runContentFilterFailOpen } from "@/lib/server/content-filter";
 import { extractOutputText, type OpenAIResponse } from "@/lib/server/generate-site-style";
 import { MAX_REINFORCEMENT_SAMPLE_LINES } from "@/lib/social-voice-feedback";
 import type { SocialDraft, VoiceProfile } from "@/lib/social-studio-types";
@@ -961,6 +962,24 @@ export type DraftComplianceCheckInput = {
   /** Telegram-history counterpart of recentDrafts above (issue #382) — feeds the Telegram-specific identity-opener and phrase-overlap checks below. */
   recentTelegramDrafts?: string[];
 };
+
+/**
+ * Content-filter floor (issue #392): hateful slurs (race/ethnicity/national
+ * origin/religion) and sexualisation of minors are never allowed in either
+ * channel's text, regardless of angle/factual/repetition compliance. Runs
+ * alongside `checkDraftCompliance` at both call sites (first response and
+ * corrective retry) so a violation on the retry can never slip through
+ * unchecked, mirroring the #364 fix for the other compliance checks.
+ */
+export function checkDraftContentFilter(draft: SocialDraft): DraftAngleComplianceResult {
+  const outcome = runContentFilterFailOpen({ xText: draft.xText, telegramText: draft.telegramText });
+  if (!outcome.blocked) return { violated: false };
+  return {
+    violated: true,
+    feedback:
+      "The previous draft included content blocked by our safety filter (hateful slurs and sexualisation of minors are never allowed). Write a completely different draft focused only on the project and its community.",
+  };
+}
 
 /**
  * Runs every mechanical safety check — angle form, then factual risk, then

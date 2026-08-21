@@ -5,6 +5,7 @@ import { getFactoryAddress, HOODLUMS_TOKEN_FACTORY_ABI } from "@/lib/factory-con
 import { monthlyEquivalentUsd, proratedFixedCostForThisMonthSoFar, utcMonthBounds } from "@/lib/operations-cost-math";
 import { readOperationsCostThresholds } from "@/lib/server/ai-pricing";
 import { resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
+import { CONTENT_FILTER_CATEGORY_COUNT, CONTENT_FILTER_TERM_COUNT } from "@/lib/server/content-filter";
 import { getFixedOperatingCostsStore } from "@/lib/server/fixed-operating-costs-store";
 import { getPostgresPool } from "@/lib/server/postgres";
 
@@ -23,7 +24,8 @@ export type SystemHealthCheck = {
     | "social-studio-ai"
     | "social-posting"
     | "client-errors"
-    | "operations-cost";
+    | "operations-cost"
+    | "content-filter";
   label: string;
   status: SystemHealthStatus;
   message: string;
@@ -646,6 +648,49 @@ export async function checkOperationsCostHealth(deps: {
   };
 }
 
+export type ContentFilterPing = () => Promise<{ rejections24h: number }>;
+
+/**
+ * Reports that the content filter (issue #392) is loaded, its term-list
+ * size/category count, and how many rejections it has recorded in the last
+ * 24 hours (read from `admin_activity_log`, the same "kind" every
+ * enforcement point writes to). The filter itself is an in-process module
+ * with no external dependency, so this check is green even without a
+ * database — only the rejection-count portion of the message degrades.
+ */
+export async function checkContentFilterHealth(deps: {
+  databaseUrl?: string;
+  ping?: ContentFilterPing;
+  now?: Date;
+} = {}): Promise<SystemHealthCheck> {
+  const id = "content-filter" as const;
+  const label = "Content filter";
+  const loadedNote = `Filter loaded: ${CONTENT_FILTER_TERM_COUNT} terms across ${CONTENT_FILTER_CATEGORY_COUNT} categories.`;
+
+  const databaseUrl = deps.databaseUrl ?? process.env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl && !deps.ping) {
+    return { id, label, status: "green", message: `${loadedNote} Rejection counts unavailable (DATABASE_URL not configured).` };
+  }
+
+  const since = new Date((deps.now ?? new Date()).getTime() - 24 * 60 * 60 * 1000);
+  const ping =
+    deps.ping ??
+    (async () => {
+      const result = await getPostgresPool(databaseUrl).query<{ count: number | string }>(
+        `SELECT COUNT(*)::int AS count FROM admin_activity_log WHERE event_kind = $1 AND created_at >= $2`,
+        ["content-filter-rejected", since],
+      );
+      return { rejections24h: Number(result.rows[0]?.count ?? 0) };
+    });
+
+  try {
+    const { rejections24h } = await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, "Content filter health check timed out.");
+    return { id, label, status: "green", message: `${loadedNote} ${rejections24h} rejection(s) in the last 24 hours.` };
+  } catch {
+    return { id, label, status: "amber", message: `${loadedNote} The rejection count could not be read.` };
+  }
+}
+
 export type SystemHealthDeps = {
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
@@ -658,6 +703,7 @@ export type SystemHealthDeps = {
   socialPosting?: Parameters<typeof checkSocialPostingHealth>[0];
   clientErrors?: Parameters<typeof checkClientErrorsHealth>[0];
   operationsCost?: Parameters<typeof checkOperationsCostHealth>[0];
+  contentFilter?: Parameters<typeof checkContentFilterHealth>[0];
 };
 
 /**
@@ -679,6 +725,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     socialPosting,
     clientErrors,
     operationsCost,
+    contentFilter,
   ] = await Promise.all([
     checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
     checkDatabaseHealth(deps.database),
@@ -692,6 +739,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     checkSocialPostingHealth({ env: deps.env, ...deps.socialPosting }),
     checkClientErrorsHealth(deps.clientErrors),
     checkOperationsCostHealth({ env: deps.env, ...deps.operationsCost }),
+    checkContentFilterHealth(deps.contentFilter),
   ]);
   return [
     websiteGeneration,
@@ -706,5 +754,6 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     socialPosting,
     clientErrors,
     operationsCost,
+    contentFilter,
   ];
 }
