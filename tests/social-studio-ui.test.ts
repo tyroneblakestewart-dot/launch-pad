@@ -122,6 +122,35 @@ describe("Hoodlums AI Social Studio", () => {
     expect(socialCss).toContain("z-index: 80");
   });
 
+  it("keeps the open project menu above the sticky tab bar (issue #390)", async () => {
+    const socialCss = await source("components", "social-hub.module.css");
+
+    const projectMenuBlock = socialCss.match(/\.projectMenu\s*\{[^}]*\}/);
+    const tabBarStickyBlock = socialCss.match(/\.tabBar\s*\{\s*position:\s*sticky[^}]*\}/);
+    expect(projectMenuBlock).not.toBeNull();
+    expect(tabBarStickyBlock).not.toBeNull();
+
+    const projectMenuZ = Number(projectMenuBlock![0].match(/z-index:\s*(\d+)/)?.[1]);
+    const tabBarZ = Number(tabBarStickyBlock![0].match(/z-index:\s*(\d+)/)?.[1]);
+    expect(Number.isNaN(projectMenuZ)).toBe(false);
+    expect(Number.isNaN(tabBarZ)).toBe(false);
+
+    // The dropdown must paint over the sticky tab bar (and the live-tools /
+    // status pills inside it), never the other way around.
+    expect(projectMenuZ).toBeGreaterThan(tabBarZ);
+    expect(tabBarZ).toBe(80);
+
+    // No ancestor of the dropdown creates its own positioning/stacking
+    // context (position: relative is fine and expected; transform/filter/
+    // isolation on .projectPicker or .heroActions would cap the menu's
+    // z-index below the tab bar regardless of the value above).
+    const projectPickerBlock = socialCss.match(/\.projectPicker\s*\{[^}]*\}/)![0];
+    const heroActionsBlock = socialCss.match(/\.heroActions\s*\{[^}]*\}/)![0];
+    for (const block of [projectPickerBlock, heroActionsBlock]) {
+      expect(block).not.toMatch(/transform:|filter:|isolation:|will-change:/);
+    }
+  });
+
   it("surfaces each AI handler's own status inline next to its control instead of only the far-below statusBar (issue #340)", async () => {
     const social = await source("components", "social-hub.tsx");
 
