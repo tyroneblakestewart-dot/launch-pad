@@ -538,7 +538,9 @@ describe("buildSupportPipeline", () => {
       query:
         overrides.query ??
         (async (text: string) => {
-          if (text.includes("information_schema.tables")) return { rows: [{ table_name: "support_tickets" }] };
+          if (text.includes("information_schema.tables")) {
+            return { rows: [{ table_name: "support_tickets" }, { table_name: "support_ticket_messages" }] };
+          }
           if (text.includes("COUNT(*)::int AS count")) return { rows: [{ count: 0 }] };
           if (text.includes("created_at")) return { rows: [] };
           return { rows: [] };
@@ -585,7 +587,7 @@ describe("buildSupportPipeline", () => {
     expect(stageById(pipeline, "oldest-open-age")).toMatchObject({ status: "green" });
   });
 
-  it("is red on table-exists and does not probe the count stages when the migration has not been applied", async () => {
+  it("is red on table-exists and does not probe the count stages when neither support table has been created", async () => {
     const pipeline = await buildSupportPipeline({
       databaseUrl: "postgres://test",
       env: {},
@@ -595,6 +597,24 @@ describe("buildSupportPipeline", () => {
     expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "red" });
     expect(stageById(pipeline, "open-count")).toMatchObject({ status: "amber" });
     expect(stageById(pipeline, "oldest-open-age")).toMatchObject({ status: "amber" });
+  });
+
+  it("is red on table-exists when support_tickets exists but support_ticket_messages is missing (issue #393 review)", async () => {
+    const pipeline = await buildSupportPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      getServiceControl: async () => activeControl({ key: "support" }),
+      getPool: () =>
+        fakePool({
+          query: async (text: string) => {
+            if (text.includes("information_schema.tables")) return { rows: [{ table_name: "support_tickets" }] };
+            if (text.includes("COUNT(*)::int AS count")) return { rows: [{ count: 0 }] };
+            return { rows: [] };
+          },
+        }),
+    });
+    expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "table-exists").message).toContain("support_ticket_messages");
   });
 
   it("flags a stale oldest-open ticket (48h+) as amber", async () => {

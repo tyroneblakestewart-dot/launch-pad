@@ -7,6 +7,7 @@ import {
   MAX_SUPPORT_TICKET_MESSAGE_BODY_LENGTH,
   SupportTicketsStoreUnavailableError,
   getSupportTicketsStore,
+  isValidSupportTicketId,
 } from "@/lib/server/support-tickets-store";
 
 // Owner reply + status controls for the /admin Support section (issue
@@ -62,6 +63,9 @@ export async function POST(request: Request) {
     if (!id || !isAction(action)) {
       return NextResponse.json({ error: "A valid ticket id and action are required." }, { status: 400, headers: NO_STORE_HEADERS });
     }
+    if (!isValidSupportTicketId(id)) {
+      return NextResponse.json({ error: "A valid ticket id is required." }, { status: 400, headers: NO_STORE_HEADERS });
+    }
 
     if (action === "reply") {
       const replyBody = typeof body?.body === "string" ? body.body.trim() : "";
@@ -74,6 +78,12 @@ export async function POST(request: Request) {
       const result = await getSupportTicketsStore().addOwnerMessage(id, replyBody);
       if (result.status === "not_found") {
         return NextResponse.json({ error: "That support ticket could not be found." }, { status: 404, headers: NO_STORE_HEADERS });
+      }
+      if (result.status === "closed") {
+        return NextResponse.json(
+          { error: "This ticket is solved or closed and can no longer be replied to." },
+          { status: 409, headers: NO_STORE_HEADERS },
+        );
       }
       await recordAdminActivityBestEffort({
         kind: "ticket-replied",

@@ -5,12 +5,15 @@ import {
   getClientIp,
   isSupportRequestOriginAllowed,
 } from "@/lib/server/api-protection";
+import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
+import { runAfterResponse } from "@/lib/server/ai-operation-cost-store";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import { authoriseSupportAction, type AuthoriseSupportActionResult } from "@/lib/server/support-ticket-auth";
 import {
   MAX_SUPPORT_TICKET_MESSAGE_BODY_LENGTH,
   SupportTicketsStoreUnavailableError,
   getSupportTicketsStore,
+  isValidSupportTicketId,
 } from "@/lib/server/support-tickets-store";
 
 // A user's follow-up reply on their own open/needs_user support ticket
@@ -50,7 +53,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (isolationResponse) return isolationResponse;
 
   const ticketId = (await params).id?.trim() || "";
-  if (!ticketId) {
+  if (!isValidSupportTicketId(ticketId)) {
     return NextResponse.json({ error: "A valid ticket id is required." }, { status: 400, headers: responseHeaders });
   }
 
@@ -87,6 +90,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (result.status === "closed") {
       return NextResponse.json({ error: "This ticket is solved or closed and can no longer be replied to." }, { status: 409, headers: responseHeaders });
     }
+
+    // Best-effort and scheduled for after the response, matching the create
+    // route (issue #393 review) — a user follow-up is as much a "ticket
+    // replied" event as an owner reply, so it gets the same bounded activity
+    // kind. Never the reply text.
+    runAfterResponse(() =>
+      recordAdminActivityBestEffort({
+        kind: "ticket-replied",
+        serviceKey: "support",
+        message: `Wallet ${result.ticket.walletAddress} replied on ticket ${result.ticket.id}.`,
+      }),
+    );
+
     return NextResponse.json({ ticket: result.ticket, message: result.message }, { status: 201, headers: responseHeaders });
   } catch (error) {
     if (error instanceof SupportTicketsStoreUnavailableError) {

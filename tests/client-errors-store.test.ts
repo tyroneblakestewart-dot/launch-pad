@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  ClientErrorStoreUnavailableError,
+  getClientErrorStore,
+  resetClientErrorStoreForTests,
+} from "@/lib/server/client-errors-store";
 import { MemoryClientErrorStore } from "./client-errors-test-helpers";
 
 function input(overrides: Partial<Parameters<MemoryClientErrorStore["recordError"]>[0]> = {}) {
@@ -127,5 +132,24 @@ describe("client-error grouping", () => {
 
     const recentOnly = new Date("2026-01-01T12:00:00.000Z");
     expect(await store.countRecentForWallet("0xAAAA111111111111111111111111111111111111", recentOnly)).toBe(1);
+  });
+});
+
+describe("getClientErrorStore (unconfigured fallback)", () => {
+  const originalDatabaseUrl = process.env.DATABASE_URL;
+
+  afterEach(() => {
+    if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalDatabaseUrl;
+    resetClientErrorStoreForTests();
+  });
+
+  it("rejects countRecentForWallet with ClientErrorStoreUnavailableError rather than a false 0 (issue #393 review)", async () => {
+    delete process.env.DATABASE_URL;
+    resetClientErrorStoreForTests();
+    const store = getClientErrorStore();
+    await expect(store.countRecentForWallet("0x1111111111111111111111111111111111111111", new Date())).rejects.toThrow(
+      ClientErrorStoreUnavailableError,
+    );
   });
 });

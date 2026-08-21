@@ -67,7 +67,11 @@ const unconfiguredStore: ClientErrorStore = {
     return 0;
   },
   async countRecentForWallet() {
-    return 0;
+    // Unlike countNewGroupsSince (an at-a-glance System Health count where 0
+    // is an acceptable "nothing to report"), this feeds support-ticket
+    // diagnostics (issue #393), where a real 0 and "couldn't check" must be
+    // distinguishable — a false 0 here would read as "definitely no crashes".
+    throw new ClientErrorStoreUnavailableError();
   },
 };
 

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   isReplyableSupportTicketStatus,
   type AddSupportTicketMessageResult,
+  type AddSupportTicketOwnerMessageResult,
   type CreateSupportTicketInput,
   type SetSupportTicketStatusResult,
   type SupportTicket,
@@ -69,15 +70,16 @@ export function createMemorySupportTicketsStore(): SupportTicketsStore {
         .map(withMessages);
     },
 
-    async addOwnerMessage(ticketId: string, body: string) {
+    async addOwnerMessage(ticketId: string, body: string): Promise<AddSupportTicketOwnerMessageResult> {
       const ticket = tickets.get(ticketId);
-      if (!ticket) return { status: "not_found" as const };
+      if (!ticket) return { status: "not_found" };
+      if (!isReplyableSupportTicketStatus(ticket.status)) return { status: "closed" };
 
       const message: SupportTicketMessage = { id: randomUUID(), ticketId, author: "owner", body, createdAt: new Date().toISOString() };
       messages.set(ticketId, [...(messages.get(ticketId) ?? []), message]);
       const updated: SupportTicket = { ...ticket, status: "needs_user", updatedAt: new Date().toISOString() };
       tickets.set(ticketId, updated);
-      return { status: "ok" as const, ticket: updated, message };
+      return { status: "ok", ticket: updated, message };
     },
 
     async setStatus(ticketId: string, status: SupportTicketStatus): Promise<SetSupportTicketStatusResult> {

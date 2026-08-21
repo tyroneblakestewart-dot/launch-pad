@@ -293,6 +293,13 @@
   outline-offset: 1px;
 }
 
+.terminalNote {
+  margin: 0;
+  color: rgba(238, 243, 234, 0.55);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
 .itemActions {
   display: flex;
   flex-wrap: wrap;
@@ -334,8 +341,9 @@
   opacity: 0.45;
 }
 
-/* Mobile Safari is the primary UI target (CLAUDE.md rule 7) — verified at
-   the 390px iPhone viewport width. */
+/* Mobile Safari is the primary UI target (CLAUDE.md rule 7) — designed and
+   source-checked against the 390px iPhone viewport width, not yet verified
+   on a physical device. */
 @media (max-width: 520px) {
   .panel {
     padding: 14px;

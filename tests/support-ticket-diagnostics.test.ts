@@ -136,6 +136,18 @@ describe("buildSupportTicketDiagnostics", () => {
     expect(diagnostics.recentClientErrorCount).toBe(3);
   });
 
+  it("reports null (not a false 0) through the real unconfigured client-error store singleton (issue #393 review)", async () => {
+    resetClientErrorStoreForTests();
+    const originalDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+    try {
+      const diagnostics = await buildSupportTicketDiagnostics(WALLET, { query: fakeQuery([]) });
+      expect(diagnostics.recentClientErrorCount).toBeNull();
+    } finally {
+      if (originalDatabaseUrl !== undefined) process.env.DATABASE_URL = originalDatabaseUrl;
+    }
+  });
+
   it("degrades safely to null when the crash-report store cannot be queried", async () => {
     setClientErrorStoreForTests({
       async recordError() {},

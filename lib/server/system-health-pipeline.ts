@@ -1536,22 +1536,32 @@ export async function buildSupportPipeline(deps: SupportPipelineDeps = {}): Prom
 
   const pool = (deps.getPool ?? ((url: string) => getPostgresPool(url) as unknown as PoolLike))(databaseUrl);
 
+  const SUPPORT_REQUIRED_TABLES = ["support_tickets", "support_ticket_messages"];
+  const tableExistsLabel = "support_tickets / support_ticket_messages tables exist";
   let tableExists = false;
   let tableExistsStage: AdminPipelineStage;
   try {
     const result = await withTimeout(
       pool.query<{ table_name: string }>(
-        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'support_tickets'`,
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ANY($1)`,
+        [SUPPORT_REQUIRED_TABLES],
       ),
       HEALTH_CHECK_TIMEOUT_MS,
       "timed out",
     );
-    tableExists = result.rows.length > 0;
+    const present = new Set(result.rows.map((row) => row.table_name));
+    const missing = SUPPORT_REQUIRED_TABLES.filter((name) => !present.has(name));
+    tableExists = missing.length === 0;
     tableExistsStage = tableExists
-      ? stage("table-exists", "support_tickets table exists", "green", "The support_tickets table is present.")
-      : stage("table-exists", "support_tickets table exists", "red", "Migration 025_support_tickets.sql has not been applied yet.");
+      ? stage("table-exists", tableExistsLabel, "green", "Both support tables are present.")
+      : stage(
+          "table-exists",
+          tableExistsLabel,
+          "red",
+          `Migration 025_support_tickets.sql has not been fully applied. Missing: ${missing.join(", ")}.`,
+        );
   } catch {
-    tableExistsStage = stage("table-exists", "support_tickets table exists", "red", "Could not check whether the support_tickets table exists.");
+    tableExistsStage = stage("table-exists", tableExistsLabel, "red", "Could not check whether the support tables exist.");
   }
 
   let openCountStage: AdminPipelineStage;

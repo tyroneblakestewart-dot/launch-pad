@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import { getPostgresPool } from "@/lib/server/postgres";
 
 // Support tickets, Phase A (issue #393). Mirrors
@@ -44,6 +45,15 @@ export const MAX_SUPPORT_TICKET_MESSAGE_BODY_LENGTH = 4000;
 export const MAX_SUPPORT_TICKETS_PER_WALLET = 50;
 /** Server-side cap on the admin queue listing. */
 export const MAX_ADMIN_SUPPORT_TICKETS = 200;
+/** Server-side cap on how many of a single ticket's messages are ever returned in one response. */
+export const MAX_SUPPORT_TICKET_MESSAGES_PER_TICKET = 200;
+
+const SUPPORT_TICKET_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Strict UUID shape check shared by every route that takes a ticket id from a URL/body, so a malformed id 400s before it ever reaches an auth check or a Postgres uuid-column comparison. */
+export function isValidSupportTicketId(value: unknown): value is string {
+  return typeof value === "string" && SUPPORT_TICKET_ID_PATTERN.test(value);
+}
 
 export type SupportTicket = {
   id: string;
@@ -81,6 +91,12 @@ export type AddSupportTicketMessageResult =
   | { status: "forbidden" }
   | { status: "closed" };
 
+/** No "forbidden" case — the owner isn't scoped to a single wallet's ticket. */
+export type AddSupportTicketOwnerMessageResult =
+  | { status: "ok"; ticket: SupportTicket; message: SupportTicketMessage }
+  | { status: "not_found" }
+  | { status: "closed" };
+
 export type SetSupportTicketStatusResult =
   | { status: "ok"; ticket: SupportTicket }
   | { status: "not_found" };
@@ -91,8 +107,8 @@ export interface SupportTicketsStore {
   /** Rejects with "forbidden" when the ticket belongs to a different wallet, "closed" when solved/closed. */
   addUserMessage(ticketId: string, walletAddress: string, body: string): Promise<AddSupportTicketMessageResult>;
   listForAdmin(status: SupportTicketStatus | "all"): Promise<SupportTicketWithMessages[]>;
-  /** Also flips the ticket's status to 'needs_user'. */
-  addOwnerMessage(ticketId: string, body: string): Promise<{ status: "ok"; ticket: SupportTicket; message: SupportTicketMessage } | { status: "not_found" }>;
+  /** Also flips the ticket's status to 'needs_user'. Rejects with "closed" for a solved/closed ticket rather than implicitly reopening it. */
+  addOwnerMessage(ticketId: string, body: string): Promise<AddSupportTicketOwnerMessageResult>;
   setStatus(ticketId: string, status: SupportTicketStatus): Promise<SetSupportTicketStatusResult>;
   countOpen(): Promise<number>;
   /** Age in seconds of the oldest open-or-needs_user ticket, or null when there are none. */
@@ -215,15 +231,34 @@ function messageFromRow(row: MessageRow): SupportTicketMessage | null {
 const TICKET_COLUMNS = `id, wallet_address, category, subject, body, status, diagnostics, created_at, updated_at`;
 const MESSAGE_COLUMNS = `id, ticket_id, author, body, created_at`;
 
+async function rollback(client: PoolClient): Promise<void> {
+  try {
+    await client.query("ROLLBACK");
+  } catch {
+    // Preserve the original error/result from the caller.
+  }
+}
+
 export function createPostgresSupportTicketsStore(databaseUrl: string): SupportTicketsStore {
   const pool = getPostgresPool(databaseUrl);
 
   async function messagesForTickets(ticketIds: string[]): Promise<Map<string, SupportTicketMessage[]>> {
     const byTicket = new Map<string, SupportTicketMessage[]>();
     if (ticketIds.length === 0) return byTicket;
+    // Bounded per ticket via ROW_NUMBER rather than a flat LIMIT, so a single
+    // noisy thread can't crowd out every other ticket's messages in this
+    // batch read; the final ORDER BY keeps each ticket's retained messages
+    // in chronological (oldest-first) display order.
     const result = await pool.query<MessageRow>(
-      `SELECT ${MESSAGE_COLUMNS} FROM support_ticket_messages WHERE ticket_id = ANY($1::uuid[]) ORDER BY created_at ASC`,
-      [ticketIds],
+      `SELECT ${MESSAGE_COLUMNS} FROM (
+         SELECT ${MESSAGE_COLUMNS},
+                ROW_NUMBER() OVER (PARTITION BY ticket_id ORDER BY created_at DESC) AS rn
+           FROM support_ticket_messages
+          WHERE ticket_id = ANY($1::uuid[])
+       ) ranked
+       WHERE rn <= $2
+       ORDER BY ticket_id, created_at ASC`,
+      [ticketIds, MAX_SUPPORT_TICKET_MESSAGES_PER_TICKET],
     );
     for (const row of result.rows) {
       const message = messageFromRow(row);
@@ -267,29 +302,52 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
     },
 
     async addUserMessage(ticketId, walletAddress, body) {
-      const ticketResult = await pool.query<TicketRow>(
-        `SELECT ${TICKET_COLUMNS} FROM support_tickets WHERE id = $1`,
-        [ticketId],
-      );
-      const row = ticketResult.rows[0];
-      const ticket = row ? ticketFromRow(row) : null;
-      if (!ticket) return { status: "not_found" };
-      if (ticket.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) return { status: "forbidden" };
-      if (!isReplyableSupportTicketStatus(ticket.status)) return { status: "closed" };
+      // Locks the ticket row for the whole read-check-write so a concurrent
+      // owner reply or status change can't land between the status check and
+      // the insert (issue #393 review) — the transaction either commits the
+      // message + updated_at together or rolls back and nothing is persisted.
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const ticketResult = await client.query<TicketRow>(
+          `SELECT ${TICKET_COLUMNS} FROM support_tickets WHERE id = $1 FOR UPDATE`,
+          [ticketId],
+        );
+        const row = ticketResult.rows[0];
+        const ticket = row ? ticketFromRow(row) : null;
+        if (!ticket) {
+          await rollback(client);
+          return { status: "not_found" };
+        }
+        if (ticket.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+          await rollback(client);
+          return { status: "forbidden" };
+        }
+        if (!isReplyableSupportTicketStatus(ticket.status)) {
+          await rollback(client);
+          return { status: "closed" };
+        }
 
-      const messageResult = await pool.query<MessageRow>(
-        `INSERT INTO support_ticket_messages (ticket_id, author, body) VALUES ($1, 'user', $2) RETURNING ${MESSAGE_COLUMNS}`,
-        [ticketId, body],
-      );
-      const message = messageFromRow(messageResult.rows[0]);
-      if (!message) throw new Error("The support ticket reply could not be saved.");
+        const messageResult = await client.query<MessageRow>(
+          `INSERT INTO support_ticket_messages (ticket_id, author, body) VALUES ($1, 'user', $2) RETURNING ${MESSAGE_COLUMNS}`,
+          [ticketId, body],
+        );
+        const message = messageFromRow(messageResult.rows[0]);
+        if (!message) throw new Error("The support ticket reply could not be saved.");
 
-      const updatedResult = await pool.query<TicketRow>(
-        `UPDATE support_tickets SET updated_at = NOW() WHERE id = $1 RETURNING ${TICKET_COLUMNS}`,
-        [ticketId],
-      );
-      const updatedTicket = ticketFromRow(updatedResult.rows[0]) ?? ticket;
-      return { status: "ok", ticket: updatedTicket, message };
+        const updatedResult = await client.query<TicketRow>(
+          `UPDATE support_tickets SET updated_at = NOW() WHERE id = $1 RETURNING ${TICKET_COLUMNS}`,
+          [ticketId],
+        );
+        const updatedTicket = ticketFromRow(updatedResult.rows[0]) ?? ticket;
+        await client.query("COMMIT");
+        return { status: "ok", ticket: updatedTicket, message };
+      } catch (error) {
+        await rollback(client);
+        throw error;
+      } finally {
+        client.release();
+      }
     },
 
     async listForAdmin(status) {
@@ -307,23 +365,49 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
     },
 
     async addOwnerMessage(ticketId, body) {
-      const ticketResult = await pool.query<TicketRow>(`SELECT ${TICKET_COLUMNS} FROM support_tickets WHERE id = $1`, [ticketId]);
-      if (!ticketResult.rows[0]) return { status: "not_found" };
+      // Same locked read-check-write shape as addUserMessage. A solved/closed
+      // ticket is rejected rather than silently reopened by an owner reply —
+      // the admin route/UI surface that as a 409, matching a user's own
+      // reply being rejected on a terminal ticket.
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const ticketResult = await client.query<TicketRow>(
+          `SELECT ${TICKET_COLUMNS} FROM support_tickets WHERE id = $1 FOR UPDATE`,
+          [ticketId],
+        );
+        const row = ticketResult.rows[0];
+        const ticket = row ? ticketFromRow(row) : null;
+        if (!ticket) {
+          await rollback(client);
+          return { status: "not_found" };
+        }
+        if (!isReplyableSupportTicketStatus(ticket.status)) {
+          await rollback(client);
+          return { status: "closed" };
+        }
 
-      const messageResult = await pool.query<MessageRow>(
-        `INSERT INTO support_ticket_messages (ticket_id, author, body) VALUES ($1, 'owner', $2) RETURNING ${MESSAGE_COLUMNS}`,
-        [ticketId, body],
-      );
-      const message = messageFromRow(messageResult.rows[0]);
-      if (!message) throw new Error("The support ticket reply could not be saved.");
+        const messageResult = await client.query<MessageRow>(
+          `INSERT INTO support_ticket_messages (ticket_id, author, body) VALUES ($1, 'owner', $2) RETURNING ${MESSAGE_COLUMNS}`,
+          [ticketId, body],
+        );
+        const message = messageFromRow(messageResult.rows[0]);
+        if (!message) throw new Error("The support ticket reply could not be saved.");
 
-      const updatedResult = await pool.query<TicketRow>(
-        `UPDATE support_tickets SET status = 'needs_user', updated_at = NOW() WHERE id = $1 RETURNING ${TICKET_COLUMNS}`,
-        [ticketId],
-      );
-      const ticket = ticketFromRow(updatedResult.rows[0]);
-      if (!ticket) throw new Error("The support ticket could not be updated.");
-      return { status: "ok", ticket, message };
+        const updatedResult = await client.query<TicketRow>(
+          `UPDATE support_tickets SET status = 'needs_user', updated_at = NOW() WHERE id = $1 RETURNING ${TICKET_COLUMNS}`,
+          [ticketId],
+        );
+        const updatedTicket = ticketFromRow(updatedResult.rows[0]);
+        if (!updatedTicket) throw new Error("The support ticket could not be updated.");
+        await client.query("COMMIT");
+        return { status: "ok", ticket: updatedTicket, message };
+      } catch (error) {
+        await rollback(client);
+        throw error;
+      } finally {
+        client.release();
+      }
     },
 
     async setStatus(ticketId, status) {

@@ -46,6 +46,18 @@ describe("Admin Support UI", () => {
     expect(component).toContain("Close");
   });
 
+  it("hides the reply composer for solved/closed tickets so an owner reply can't implicitly reopen one (issue #393 review)", async () => {
+    const component = await source("components", "admin-support-section.tsx");
+    expect(component).toContain("isTerminalSupportTicketStatus");
+    expect(component).toContain("can no longer be replied to");
+  });
+
+  it("only clears the reply draft after the save actually succeeded (issue #393 review)", async () => {
+    const component = await source("components", "admin-support-section.tsx");
+    expect(component).toContain("Promise<boolean>");
+    expect(component).toContain("if (succeeded)");
+  });
+
   it("mirrors the existing admin section CSS module's mobile breakpoint for the 390px iPhone viewport (CLAUDE.md rule 7)", async () => {
     const pagesCss = await source("components", "admin-pages-section.module.css");
     const supportCss = await source("components", "admin-support-section.module.css");

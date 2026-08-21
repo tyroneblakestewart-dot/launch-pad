@@ -4,7 +4,14 @@ import { POST as supportChallenge } from "@/app/api/support/challenge/route";
 import { POST as replyTicket } from "@/app/api/support/tickets/[id]/reply/route";
 import { GET as listTickets, POST as createTicket } from "@/app/api/support/tickets/route";
 import {
+  createMemoryAdminOperationsStore,
+  getAdminOperationsStore,
+  resetAdminOperationsStoreForTests,
+  setAdminOperationsStoreForTests,
+} from "@/lib/server/admin-operations-store";
+import {
   SUPPORT_ACTION_LIMIT,
+  SUPPORT_READ_LIMIT,
   resetSupportRateLimitsForTests,
 } from "@/lib/server/api-protection";
 import { resetChatChallengesForTests } from "@/lib/server/chat-auth";
@@ -22,6 +29,12 @@ const ACCOUNT = privateKeyToAccount(
 const OTHER_ACCOUNT = privateKeyToAccount(
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff81" as `0x${string}`,
 );
+
+/** after() falls back to a fire-and-forget task outside a real request scope (see runAfterResponse) — flush it before asserting. */
+async function flushBackgroundWork(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 function postRequest(path: string, body: unknown, headers: Record<string, string> = {}) {
   return new Request(`${ORIGIN}${path}`, {
@@ -62,6 +75,7 @@ beforeEach(() => {
   resetSupportRateLimitsForTests();
   resetChatChallengesForTests();
   setSupportTicketsStoreForTests(createMemorySupportTicketsStore());
+  setAdminOperationsStoreForTests(createMemoryAdminOperationsStore());
 });
 
 afterEach(() => {
@@ -69,6 +83,7 @@ afterEach(() => {
   delete process.env.TELEGRAM_BOT_TOKEN;
   delete process.env.TELEGRAM_ADMIN_CHAT_ID;
   resetSupportTicketsStoreForTests();
+  resetAdminOperationsStoreForTests();
 });
 
 describe("POST /api/support/challenge", () => {
@@ -129,6 +144,64 @@ describe("POST /api/support/challenge", () => {
 });
 
 describe("POST /api/support/tickets (create)", () => {
+  it("rejects a disallowed origin", async () => {
+    const auth = await signedAction(ACCOUNT, "support:ticket-create", { category: "other", subject: "s", body: "b" });
+    const response = await createTicket(
+      new Request(`${ORIGIN}/api/support/tickets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: "https://evil.example" },
+        body: JSON.stringify({ category: "other", subject: "s", body: "b", ...auth }),
+      }),
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it("returns 429 once the per-IP action limit is exceeded", async () => {
+    let lastStatus = 0;
+    for (let i = 0; i < SUPPORT_ACTION_LIMIT + 1; i += 1) {
+      const response = await createTicket(
+        postRequest("/api/support/tickets", { category: "other", subject: "s", body: "b" }),
+      );
+      lastStatus = response.status;
+    }
+    expect(lastStatus).toBe(429);
+  });
+
+  it("does not delay the response on the Telegram alert — resolves before a still-pending Telegram fetch settles (issue #393 review)", async () => {
+    process.env.TELEGRAM_BOT_TOKEN = "12345:test-token-aaaaaaaaaaaaaaaaaaaa";
+    process.env.TELEGRAM_ADMIN_CHAT_ID = "-100123";
+    let releaseFetch: (() => void) | null = null;
+    const pendingFetch = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      await pendingFetch;
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }));
+    }) as typeof fetch;
+    try {
+      const response = await createSignedTicket(ACCOUNT);
+      // The route already resolved with 201 even though the Telegram fetch
+      // it kicked off is still pending — proves Telegram is off the
+      // response's critical path, not merely that a thrown/rejected fetch
+      // doesn't fail the route (which resolves synchronously and wouldn't
+      // catch a route that incorrectly awaited a pending promise).
+      expect(response.status).toBe(201);
+    } finally {
+      releaseFetch?.();
+      globalThis.fetch = originalFetch;
+      await flushBackgroundWork();
+    }
+  });
+
+  it("logs ticket-created admin activity as best-effort background work, without blocking the response", async () => {
+    const response = await createSignedTicket(ACCOUNT);
+    expect(response.status).toBe(201);
+    await flushBackgroundWork();
+    const activity = await getAdminOperationsStore().listActivity(10);
+    expect(activity[0]).toMatchObject({ kind: "ticket-created", serviceKey: "support" });
+  });
+
   it("rejects malformed input (invalid category)", async () => {
     const auth = await signedAction(ACCOUNT, "support:ticket-create", { category: "not-a-category", subject: "s", body: "b" });
     const response = await createTicket(
@@ -221,6 +294,15 @@ describe("GET /api/support/tickets (list)", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 429 once the per-IP read limit is exceeded", async () => {
+    let lastStatus = 0;
+    for (let i = 0; i < SUPPORT_READ_LIMIT + 1; i += 1) {
+      const response = await listTickets(getRequest(`/api/support/tickets?walletAddress=${ACCOUNT.address}`));
+      lastStatus = response.status;
+    }
+    expect(lastStatus).toBe(429);
+  });
+
   it("returns only the requesting wallet's tickets", async () => {
     await createSignedTicket(ACCOUNT, { subject: "mine" });
     await createSignedTicket(OTHER_ACCOUNT, { subject: "not mine" });
@@ -257,6 +339,79 @@ describe("POST /api/support/tickets/[id]/reply", () => {
       { params: Promise.resolve({ id: ticketId }) },
     );
     expect(response.status).toBe(201);
+  });
+
+  it("logs ticket-replied admin activity for a user's own reply, without the reply text (issue #393 review)", async () => {
+    const ticketId = await createOpenTicket();
+    const auth = await signedAction(ACCOUNT, "support:ticket-reply", { ticketId, body: "a very specific detail" });
+    const response = await replyTicket(
+      postRequest(`/api/support/tickets/${ticketId}/reply`, { body: "a very specific detail", ...auth }),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(response.status).toBe(201);
+    await flushBackgroundWork();
+    const activity = await getAdminOperationsStore().listActivity(10);
+    expect(activity[0]).toMatchObject({ kind: "ticket-replied", serviceKey: "support" });
+    expect(activity[0].message).not.toContain("a very specific detail");
+  });
+
+  it("rejects a malformed (non-UUID) ticket id with 400, not a 500 from a raw Postgres uuid comparison (issue #393 review)", async () => {
+    const response = await replyTicket(
+      postRequest("/api/support/tickets/not-a-uuid/reply", { body: "hi", challengeId: "x", nonce: "y", signature: "0x00" }),
+      { params: Promise.resolve({ id: "not-a-uuid" }) },
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects an invalid signature", async () => {
+    const ticketId = await createOpenTicket();
+    const challengeResponse = await supportChallenge(
+      postRequest("/api/support/challenge", {
+        walletAddress: ACCOUNT.address,
+        walletChainId: 46630,
+        purpose: "support:ticket-reply",
+        payload: { ticketId, body: "more detail" },
+      }),
+    );
+    const challenge = (await challengeResponse.json()) as { challengeId: string; nonce: string };
+    const response = await replyTicket(
+      postRequest(`/api/support/tickets/${ticketId}/reply`, {
+        body: "more detail",
+        challengeId: challenge.challengeId,
+        nonce: challenge.nonce,
+        signature: "0x" + "00".repeat(65),
+      }),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects a replayed challenge", async () => {
+    const ticketId = await createOpenTicket();
+    const auth = await signedAction(ACCOUNT, "support:ticket-reply", { ticketId, body: "more detail" });
+    const first = await replyTicket(
+      postRequest(`/api/support/tickets/${ticketId}/reply`, { body: "more detail", ...auth }),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(first.status).toBe(201);
+    const replay = await replyTicket(
+      postRequest(`/api/support/tickets/${ticketId}/reply`, { body: "more detail", ...auth }),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(replay.status).toBe(409);
+  });
+
+  it("returns 429 once the per-IP action limit is exceeded", async () => {
+    const ticketId = await createOpenTicket();
+    let lastStatus = 0;
+    for (let i = 0; i < SUPPORT_ACTION_LIMIT + 1; i += 1) {
+      const response = await replyTicket(
+        postRequest(`/api/support/tickets/${ticketId}/reply`, { body: "hi", challengeId: "x", nonce: "y", signature: "0x00" }),
+        { params: Promise.resolve({ id: ticketId }) },
+      );
+      lastStatus = response.status;
+    }
+    expect(lastStatus).toBe(429);
   });
 
   it("rejects an attempt against another wallet's ticket", async () => {

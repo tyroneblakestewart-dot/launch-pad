@@ -96,6 +96,29 @@ describe("GET /api/admin/support", () => {
     expect(payload.tickets[0].diagnostics).toEqual({ plan: { status: "checked", plan: "pro" } });
     expect(payload.tickets[0].messages).toHaveLength(1);
   });
+
+  it("rejects an invalid status filter with 400 rather than silently widening it to 'all' (issue #393 review)", async () => {
+    const response = await getAdminSupport(request("GET", "/api/admin/support?status=not-a-status"));
+    expect(response.status).toBe(400);
+  });
+
+  it("treats a missing status query param as 'all'", async () => {
+    const store = getSupportTicketsStore();
+    await store.create({ walletAddress: WALLET, category: "other", subject: "s", body: "b", diagnostics: {} });
+    const response = await getAdminSupport(request("GET", "/api/admin/support"));
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { tickets: unknown[] };
+    expect(payload.tickets).toHaveLength(1);
+  });
+
+  it("degrades to 200 with an empty list when storage is unavailable, matching the store's read-tolerant unconfigured fallback", async () => {
+    resetSupportTicketsStoreForTests();
+    delete process.env.DATABASE_URL;
+    const response = await getAdminSupport(request("GET", "/api/admin/support?status=all"));
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { tickets: unknown[] };
+    expect(payload.tickets).toEqual([]);
+  });
 });
 
 describe("POST /api/admin/support/actions", () => {
@@ -127,6 +150,31 @@ describe("POST /api/admin/support/actions", () => {
     const activity = await getAdminOperationsStore().listActivity(10);
     expect(activity[0]).toMatchObject({ kind: "ticket-replied", serviceKey: "support" });
     expect(activity[0].message).not.toContain("We are looking into it.");
+  });
+
+  it("rejects a malformed (non-UUID) ticket id on a status action with 400, not a 500 from a raw Postgres uuid comparison (issue #393 review)", async () => {
+    const response = await postAdminSupportAction(
+      request("POST", "/api/admin/support/actions", { id: "not-a-uuid", action: "status", status: "closed" }),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects a malformed (non-UUID) ticket id on a reply action with 400 (issue #393 review)", async () => {
+    const response = await postAdminSupportAction(
+      request("POST", "/api/admin/support/actions", { id: "not-a-uuid", action: "reply", body: "hi" }),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects replying to a solved/closed ticket rather than implicitly reopening it (issue #393 review)", async () => {
+    const store = getSupportTicketsStore();
+    const ticket = await store.create({ walletAddress: WALLET, category: "other", subject: "s", body: "b", diagnostics: {} });
+    await store.setStatus(ticket.id, "closed");
+
+    const response = await postAdminSupportAction(
+      request("POST", "/api/admin/support/actions", { id: ticket.id, action: "reply", body: "still here?" }),
+    );
+    expect(response.status).toBe(409);
   });
 
   it("rejects a reply with an empty body", async () => {
@@ -192,7 +240,11 @@ describe("POST /api/admin/support/actions", () => {
     resetSupportTicketsStoreForTests();
     delete process.env.DATABASE_URL;
     const response = await postAdminSupportAction(
-      request("POST", "/api/admin/support/actions", { id: "x", action: "status", status: "closed" }),
+      request("POST", "/api/admin/support/actions", {
+        id: "00000000-0000-0000-0000-000000000000",
+        action: "status",
+        status: "closed",
+      }),
     );
     expect(response.status).toBe(503);
   });

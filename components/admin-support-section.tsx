@@ -46,6 +46,11 @@ async function readError(response: Response, fallback: string): Promise<string> 
   return payload.error || fallback;
 }
 
+/** Solved/closed tickets are read-only from the admin side too — an owner reply must never implicitly reopen one (issue #393 review). */
+function isTerminalSupportTicketStatus(status: SupportTicketStatus): boolean {
+  return status === "solved" || status === "closed";
+}
+
 function badgeClassName(status: SupportTicketStatus): string {
   if (status === "solved") return styles.badgeSolved;
   if (status === "closed") return styles.badgeClosed;
@@ -96,7 +101,7 @@ export function AdminSupportSection() {
     queueMicrotask(() => void loadTickets());
   }, [loadTickets]);
 
-  async function runAction(body: Record<string, unknown>): Promise<void> {
+  async function runAction(body: Record<string, unknown>): Promise<boolean> {
     const id = body.id as string;
     setBusyId(id);
     setActionError(null);
@@ -111,8 +116,10 @@ export function AdminSupportSection() {
         throw new Error(await readError(response, "The action could not be completed."));
       }
       await loadTickets();
+      return true;
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "The action could not be completed.");
+      return false;
     } finally {
       setBusyId(null);
     }
@@ -121,8 +128,13 @@ export function AdminSupportSection() {
   async function sendReply(id: string): Promise<void> {
     const replyBody = (replyDrafts[id] || "").trim();
     if (!replyBody) return;
-    await runAction({ id, action: "reply", body: replyBody });
-    setReplyDrafts((current) => ({ ...current, [id]: "" }));
+    // Only clear the draft once the reply actually saved — otherwise a
+    // failed request (e.g. the ticket was solved/closed concurrently) would
+    // silently discard what the owner typed (issue #393 review).
+    const succeeded = await runAction({ id, action: "reply", body: replyBody });
+    if (succeeded) {
+      setReplyDrafts((current) => ({ ...current, [id]: "" }));
+    }
   }
 
   return (
@@ -206,23 +218,31 @@ export function AdminSupportSection() {
                   </div>
 
                   <div className={styles.replyRow}>
-                    <textarea
-                      className={styles.replyInput}
-                      value={replyDrafts[ticket.id] || ""}
-                      maxLength={4000}
-                      disabled={busy}
-                      placeholder="Reply to the reporting wallet…"
-                      onChange={(event) => setReplyDrafts((current) => ({ ...current, [ticket.id]: event.target.value }))}
-                    />
+                    {isTerminalSupportTicketStatus(ticket.status) ? (
+                      <p className={styles.terminalNote}>
+                        This ticket is {STATUS_BADGE_LABEL[ticket.status].toLowerCase()} and can no longer be replied to.
+                      </p>
+                    ) : (
+                      <textarea
+                        className={styles.replyInput}
+                        value={replyDrafts[ticket.id] || ""}
+                        maxLength={4000}
+                        disabled={busy}
+                        placeholder="Reply to the reporting wallet…"
+                        onChange={(event) => setReplyDrafts((current) => ({ ...current, [ticket.id]: event.target.value }))}
+                      />
+                    )}
                     <div className={styles.itemActions}>
-                      <button
-                        type="button"
-                        className={styles.replyButton}
-                        disabled={busy || !(replyDrafts[ticket.id] || "").trim()}
-                        onClick={() => void sendReply(ticket.id)}
-                      >
-                        {busy ? "Working…" : "Send reply"}
-                      </button>
+                      {isTerminalSupportTicketStatus(ticket.status) ? null : (
+                        <button
+                          type="button"
+                          className={styles.replyButton}
+                          disabled={busy || !(replyDrafts[ticket.id] || "").trim()}
+                          onClick={() => void sendReply(ticket.id)}
+                        >
+                          {busy ? "Working…" : "Send reply"}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className={styles.solveButton}

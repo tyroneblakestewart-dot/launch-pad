@@ -9,6 +9,7 @@ import {
   isSupportRequestOriginAllowed,
 } from "@/lib/server/api-protection";
 import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
+import { runAfterResponse } from "@/lib/server/ai-operation-cost-store";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import { sendSupportTicketTelegramAlertBestEffort } from "@/lib/server/support-ticket-alert";
 import { buildSupportTicketDiagnostics } from "@/lib/server/support-ticket-diagnostics";
@@ -139,14 +140,20 @@ export async function POST(request: Request) {
       diagnostics,
     });
 
-    await recordAdminActivityBestEffort({
-      kind: "ticket-created",
-      serviceKey: "support",
-      message: `Wallet ${ticket.walletAddress} opened a ${ticket.category} ticket (${ticket.id}).`,
-    });
-
-    // Strictly best-effort — never awaited into the response's success/failure.
-    await sendSupportTicketTelegramAlertBestEffort(ticket);
+    // Both are strictly best-effort and must never delay the response — a
+    // pending Telegram call previously stayed on the request's critical path
+    // (issue #393 review) even though it was never awaited into the
+    // success/failure decision. runAfterResponse schedules them for after the
+    // response has already been sent, matching the recordAiOperationCostBestEffort
+    // pattern used by every other best-effort post-write bookkeeping call.
+    runAfterResponse(() =>
+      recordAdminActivityBestEffort({
+        kind: "ticket-created",
+        serviceKey: "support",
+        message: `Wallet ${ticket.walletAddress} opened a ${ticket.category} ticket (${ticket.id}).`,
+      }),
+    );
+    runAfterResponse(() => sendSupportTicketTelegramAlertBestEffort(ticket));
 
     return NextResponse.json({ ticket }, { status: 201, headers });
   } catch (error) {

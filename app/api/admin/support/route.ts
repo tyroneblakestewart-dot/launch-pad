@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { hashAdminSessionToken, parseAdminSessionCookie } from "@/lib/server/admin-auth";
 import { AdminSessionStoreUnavailableError, isAdminSessionValid } from "@/lib/server/admin-session-store";
-import { getSupportTicketsStore, isSupportTicketStatus, SupportTicketsStoreUnavailableError } from "@/lib/server/support-tickets-store";
+import {
+  getSupportTicketsStore,
+  isSupportTicketStatus,
+  SupportTicketsStoreUnavailableError,
+  type SupportTicketStatus,
+} from "@/lib/server/support-tickets-store";
 
 // Read-only admin listing of the support ticket queue, optionally filtered
 // by status. Mirrors app/api/admin/outreach/route.ts's auth/error-mapping
@@ -32,7 +37,16 @@ export async function GET(request: Request) {
     }
 
     const statusParam = new URL(request.url).searchParams.get("status");
-    const status = isSupportTicketStatus(statusParam) ? statusParam : "all";
+    let status: SupportTicketStatus | "all" = "all";
+    if (statusParam !== null && statusParam !== "all") {
+      if (!isSupportTicketStatus(statusParam)) {
+        return NextResponse.json(
+          { error: "Status must be 'all' or one of the known ticket statuses." },
+          { status: 400, headers: NO_STORE_HEADERS },
+        );
+      }
+      status = statusParam;
+    }
     const tickets = await getSupportTicketsStore().listForAdmin(status);
 
     return NextResponse.json({ tickets }, { status: 200, headers: NO_STORE_HEADERS });

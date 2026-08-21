@@ -3,6 +3,7 @@ import {
   getSupportTicketsStore,
   isSupportTicketCategory,
   isSupportTicketStatus,
+  isValidSupportTicketId,
   resetSupportTicketsStoreForTests,
   setSupportTicketsStoreForTests,
   SupportTicketsStoreUnavailableError,
@@ -25,6 +26,17 @@ describe("isSupportTicketCategory / isSupportTicketStatus", () => {
     expect(isSupportTicketStatus("open")).toBe(true);
     expect(isSupportTicketStatus("needs_user")).toBe(true);
     expect(isSupportTicketStatus("archived")).toBe(false);
+  });
+});
+
+describe("isValidSupportTicketId", () => {
+  it("accepts a well-formed UUID and rejects malformed ids (issue #393 review)", () => {
+    expect(isValidSupportTicketId("11111111-1111-1111-1111-111111111111")).toBe(true);
+    expect(isValidSupportTicketId("not-a-uuid")).toBe(false);
+    expect(isValidSupportTicketId("11111111-1111-1111-1111-11111111111")).toBe(false);
+    expect(isValidSupportTicketId("")).toBe(false);
+    expect(isValidSupportTicketId(undefined)).toBe(false);
+    expect(isValidSupportTicketId(123)).toBe(false);
   });
 });
 
@@ -115,6 +127,16 @@ describe("SupportTicketsStore contract (via in-memory double)", () => {
   it("owner reply 404s for an unknown ticket", async () => {
     const store = createMemorySupportTicketsStore();
     expect((await store.addOwnerMessage("00000000-0000-0000-0000-000000000000", "hi")).status).toBe("not_found");
+  });
+
+  it("rejects an owner reply once the ticket is solved or closed, rather than implicitly reopening it (issue #393 review)", async () => {
+    const store = createMemorySupportTicketsStore();
+    const ticket = await store.create({ walletAddress: WALLET, category: "other", subject: "s", body: "b", diagnostics: {} });
+    await store.setStatus(ticket.id, "solved");
+    expect((await store.addOwnerMessage(ticket.id, "still here?")).status).toBe("closed");
+
+    await store.setStatus(ticket.id, "closed");
+    expect((await store.addOwnerMessage(ticket.id, "still here?")).status).toBe("closed");
   });
 
   it("filters the admin listing by status, and 'all' returns everything", async () => {
