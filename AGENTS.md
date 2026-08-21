@@ -439,3 +439,40 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   confirm. Per-content-type toggles (milestone announcements, market
   moments, community posts, mascot drops, replies to mentions) shown in the
   issue's mockup remain a follow-up, out of scope for this PR.
+- Note: this AGENTS.md roadmap section was several PRs behind CLAUDE.md's
+  (issues #364, #368, #392, #393 and others were missing) before this PR
+  added the entry below — that pre-existing gap was not backfilled here,
+  only flagged, since fully reconstructing it is a separate cleanup.
+- Support tickets, Phase B — AI-suggested fixes (issue #400) is implemented
+  for review: a "Suggest a fix" button in `/admin` → Support, on-demand
+  per ticket, that proposes a diagnosis + draft reply for the OWNER to
+  verify and send. The "Nothing here posts or replies automatically"
+  contract from Phase A is unchanged — the suggestion only ever populates
+  the existing reply textarea (`applySuggestedReply` in
+  `components/admin-support-section.tsx`); there is no new send path. The
+  heart of this issue is a code-derived Hoodlums knowledge base
+  (`lib/server/support-knowledge/`): an error catalogue (`error-catalogue.ts`)
+  covering every distinct literal `error: "..."` JSON string returned by a
+  non-admin, non-cron API route, a feature-flow catalogue
+  (`feature-flows.ts`), system dependencies (`system-dependencies.ts`), and
+  a known-issue playbook (`known-issues.ts`, seeding
+  #388/#384/#392/#378-383). Many literally-distinct error strings collapse
+  into one entry via a `pattern` match, keeping the catalogue a reviewable
+  ~60 entries instead of a 250-row near-duplicate list.
+  `tests/support-knowledge-error-catalogue-completeness.test.ts`
+  mechanically enforces completeness both ways (mirroring
+  `backend-inventory.test.ts`'s pattern). `select-knowledge.ts`'s
+  `selectRelevantKnowledge` deterministically pre-selects the relevant
+  slice per ticket, capped at `MAX_SELECTED_KNOWLEDGE_ENTRIES`. The
+  suggestion route (`app/api/admin/support/suggest/route.ts`) follows
+  `app/api/social/draft/route.ts`'s shape: admin-session + Origin
+  protection, its own rate limit, the `support` service-isolation switch,
+  an optional attachment screenshot forwarded as an `input_image` part,
+  forced structured JSON output
+  (`lib/server/support-suggestion-pipeline.ts`), mechanical rejection of
+  unknown/empty citations or a refund/compensation/timeline promise, one
+  corrective retry re-checked identically (the #364 pattern), then a clean
+  error rather than an unchecked suggestion. Cost is metered via
+  `ai_operation_costs`, a new `support-suggestion-generated` admin activity
+  kind logs only the ticket id, and the `support` System Health pipeline
+  gained a `provider-configured` stage. See CLAUDE.md for the full detail.

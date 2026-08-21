@@ -20,6 +20,8 @@ export const AI_FEATURE_KEYS = {
   SOCIAL_DRAFT_RETRY: "social.draft-retry",
   SOCIAL_MASCOT_ANALYSIS: "social.mascot-analysis",
   SOCIAL_MASCOT_IMAGE: "social.mascot-image",
+  SUPPORT_SUGGESTION: "support.suggestion",
+  SUPPORT_SUGGESTION_RETRY: "support.suggestion-retry",
 } as const;
 
 export type AiFeatureKey = (typeof AI_FEATURE_KEYS)[keyof typeof AI_FEATURE_KEYS];
@@ -36,6 +38,7 @@ const FEATURE_GROUP_PREFIXES: Array<{ prefix: string; label: string }> = [
   { prefix: "social.mascot-analysis", label: "Mascot analysis" },
   { prefix: "social.mascot-image", label: "Mascot image" },
   { prefix: "social.x-post", label: "X post" },
+  { prefix: "support.suggestion", label: "Support ticket suggestion" },
 ];
 
 /** Groups a precise stage key into the understandable label the Operations UI shows, per issue #368's feature breakdown. */

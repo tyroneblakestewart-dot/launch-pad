@@ -69,6 +69,18 @@ describe("Admin Support UI", () => {
     expect(component).toContain("if (succeeded)");
   });
 
+  it("offers a 'Suggest a fix' action that only fills the existing reply textarea, never a separate send path (issue #400)", async () => {
+    const component = await source("components", "admin-support-section.tsx");
+    expect(component).toContain("Suggest a fix");
+    expect(component).toContain('fetch("/api/admin/support/suggest"');
+    expect(component).toContain("applySuggestedReply");
+    expect(component).toContain("setReplyDrafts");
+    expect(component).toContain("probableCause");
+    expect(component).toContain("citedKnowledgeIds");
+    expect(component).toContain("needsCodeFix");
+    expect(component).toContain("confidence");
+  });
+
   it("mirrors the existing admin section CSS module's mobile breakpoint for the 390px iPhone viewport (CLAUDE.md rule 7)", async () => {
     const pagesCss = await source("components", "admin-pages-section.module.css");
     const supportCss = await source("components", "admin-support-section.module.css");

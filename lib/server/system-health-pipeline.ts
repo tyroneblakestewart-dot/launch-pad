@@ -1556,6 +1556,8 @@ export type SupportPipelineDeps = {
   getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
   env?: Record<string, string | undefined>;
   now?: Date;
+  /** For the "Suggest a fix" (issue #400) provider-configured stage below. */
+  requestOidcToken?: string;
 };
 
 function supportTelegramAlertStage(env: Record<string, string | undefined>): AdminPipelineStage {
@@ -1578,6 +1580,7 @@ export async function buildSupportPipeline(deps: SupportPipelineDeps = {}): Prom
 
   const isolationStage = await chatIsolationStage("support", getServiceControl);
   const telegramStage = supportTelegramAlertStage(env);
+  const suggestFixStage = providerConfiguredStage(env, deps.requestOidcToken ?? "");
 
   if (!databaseUrl) {
     const message = "DATABASE_URL is not configured.";
@@ -1587,6 +1590,7 @@ export async function buildSupportPipeline(deps: SupportPipelineDeps = {}): Prom
       stages: [
         isolationStage,
         telegramStage,
+        suggestFixStage,
         stage("table-exists", "support_tickets table exists", "amber", message),
         stage("open-count", "Open ticket count", "amber", message),
         stage("oldest-open-age", "Age of oldest open ticket", "amber", message),
@@ -1674,7 +1678,7 @@ export async function buildSupportPipeline(deps: SupportPipelineDeps = {}): Prom
   return {
     id: "support",
     label: "Support tickets",
-    stages: [isolationStage, telegramStage, tableExistsStage, openCountStage, oldestAgeStage],
+    stages: [isolationStage, telegramStage, suggestFixStage, tableExistsStage, openCountStage, oldestAgeStage],
   };
 }
 
@@ -1741,6 +1745,6 @@ export async function buildServicePipeline(
     case "content-filter":
       return buildContentFilterPipeline(deps.contentFilter);
     case "support":
-      return buildSupportPipeline({ env: deps.env, ...deps.support });
+      return buildSupportPipeline({ env: deps.env, requestOidcToken: deps.requestOidcToken, ...deps.support });
   }
 }

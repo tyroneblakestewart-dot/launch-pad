@@ -475,6 +475,22 @@ export function resetSupportRateLimitsForTests() {
   ["support-action", "support-read"].forEach((name) => namedRateStore(name).clear());
 }
 
+// AI-suggested fixes on admin support tickets (issue #400). Admin-only and
+// on-demand (never automatic, each run costs money), so this gets its own
+// tight per-IP limit — deliberately much lower than the wallet-facing
+// SUPPORT_ACTION_LIMIT above, since it's a single owner operating from
+// /admin, not a public-facing endpoint.
+export const ADMIN_SUPPORT_SUGGEST_LIMIT = 20;
+export const ADMIN_SUPPORT_SUGGEST_WINDOW_MS = 60 * 60 * 1000;
+
+export function consumeAdminSupportSuggestRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("admin-support-suggest"), ip, ADMIN_SUPPORT_SUGGEST_LIMIT, ADMIN_SUPPORT_SUGGEST_WINDOW_MS, now);
+}
+
+export function resetAdminSupportSuggestRateLimitForTests() {
+  namedRateStore("admin-support-suggest").clear();
+}
+
 /**
  * Same-origin check for support-ticket endpoints, mirroring
  * isSocialStudioRequestOriginAllowed's fallback chain (a dedicated

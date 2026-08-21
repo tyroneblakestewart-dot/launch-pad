@@ -75,6 +75,11 @@ export function createMemorySupportTicketsStore(): SupportTicketsStore {
         .map(withMessages);
     },
 
+    async getById(ticketId: string) {
+      const ticket = tickets.get(ticketId);
+      return ticket ? withMessages(ticket) : null;
+    },
+
     async addOwnerMessage(ticketId: string, body: string): Promise<AddSupportTicketOwnerMessageResult> {
       const ticket = tickets.get(ticketId);
       if (!ticket) return { status: "not_found" };

@@ -110,7 +110,8 @@ export type AdminActivityKind =
   | "client-error-group-resolved"
   | "content-filter-rejected"
   | "ticket-created"
-  | "ticket-replied";
+  | "ticket-replied"
+  | "support-suggestion-generated";
 
 export type AdminActivityItem = {
   id: string;

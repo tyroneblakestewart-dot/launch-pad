@@ -671,3 +671,71 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   in this PR is a human (user or owner) typing into a box. The per-ticket
   200-message response cap and the lack of physical Mobile Safari
   verification remain open trade-offs for this phase.
+- Support tickets, Phase B — AI-suggested fixes (issue #400) is implemented
+  for review: a "Suggest a fix" button in `/admin` → Support, on-demand
+  per ticket, that proposes a diagnosis + draft reply for the OWNER to
+  verify and send. The "Nothing here posts or replies automatically"
+  contract from Phase A is unchanged — the suggestion only ever populates
+  the existing reply textarea (`applySuggestedReply` in
+  `components/admin-support-section.tsx`); there is no new send path. The
+  heart of this issue is a code-derived Hoodlums knowledge base
+  (`lib/server/support-knowledge/`): an error catalogue (`error-catalogue.ts`)
+  covering every distinct literal `error: "..."` JSON string returned by a
+  non-admin, non-cron API route (admin/cron routes are owner/system-only
+  and never seen by a ticket-filing user, so cataloguing them wouldn't help
+  diagnose a user's ticket), a feature-flow catalogue (`feature-flows.ts`)
+  describing every user journey and status meaning, system dependencies
+  (`system-dependencies.ts`, which env vars gate which features and what
+  happens when missing), and a known-issue playbook (`known-issues.ts`,
+  seeding #388/#384/#392/#378-383 and two undated recurring patterns).
+  Many literally-distinct error strings collapse into one entry via a
+  `pattern` match (e.g. every "wallet challenge expired" variant across
+  hoodchat/token-chat/publish/Social Studio/support shares one cause/fix)
+  — this is what keeps the catalogue a reviewable ~60 entries instead of a
+  250-row near-duplicate list. `tests/support-knowledge-error-catalogue-completeness.test.ts`
+  mechanically enforces completeness both ways (mirroring
+  `backend-inventory.test.ts`'s pattern): it fails when a new user-facing
+  error string ships without a catalogue entry, and when a catalogue entry
+  no longer matches anything in source (a rename that orphaned it) — this
+  is the mechanism that keeps the knowledge base honest as the app
+  evolves, not a one-off script. `select-knowledge.ts`'s
+  `selectRelevantKnowledge` deterministically pre-selects the relevant
+  slice for one ticket (category + exact/pattern error-string matches in
+  the ticket body + diagnostics-driven rules, e.g. a `reconnect_needed`
+  social connection pulls in the credentials-encryption-key dependency and
+  the cross-tab-connection known issue), capped at
+  `MAX_SELECTED_KNOWLEDGE_ENTRIES`, so the model is given a small precise
+  slice rather than the whole corpus — this is what keeps generation
+  accurate and cheap. The suggestion route
+  (`app/api/admin/support/suggest/route.ts`) follows
+  `app/api/social/draft/route.ts`'s shape: admin-session + Origin
+  protection, its own per-IP rate limit
+  (`consumeAdminSupportSuggestRateLimit`, 20/hour — deliberately tighter
+  than the wallet-facing support limits since this is one owner operating
+  from `/admin`, not a public endpoint), the `support` service-isolation
+  switch, and the ticket's attachment screenshot forwarded as an
+  `input_image` content part when present (mirroring
+  `mascot-visual-dna-pipeline.ts`'s pattern — both configured provider
+  paths already support the vision-capable model, so this is unconditional
+  rather than a source-gated capability check), forced structured JSON
+  output (`lib/server/support-suggestion-pipeline.ts`:
+  `{probableCause, citedKnowledgeIds, draftReply, needsCodeFix,
+  confidence}`), and mechanical rejection of an unknown/empty
+  `citedKnowledgeIds` (empty citations paired with `needsCodeFix: false`
+  means the model is guessing without grounding) or a `draftReply`
+  containing a refund/compensation/guarantee/specific-timeline promise we
+  never make. One corrective retry, re-checked identically — a second bad
+  suggestion can never slip through unchecked (the #364 pattern) — then a
+  clean error, never an unchecked suggestion. Cost is metered via the
+  existing `ai_operation_costs` table (`AI_FEATURE_KEYS.SUPPORT_SUGGESTION`
+  / `_RETRY`), a new `support-suggestion-generated` admin activity kind
+  logs only the ticket id (never the ticket or suggestion text), and the
+  existing `support` System Health pipeline gained a `provider-configured`
+  stage. `SupportTicketsStore` gained a single-ticket `getById` read (the
+  existing interface only supported listing); Phase A's write paths
+  (create/reply/status) are untouched. Not verified on a real mobile
+  Safari device this pass (rule 7) — the suggestion card was checked by
+  reading the CSS against the existing 390px breakpoint, not on-device.
+  `AGENTS.md`'s roadmap section was already several PRs behind
+  `CLAUDE.md`'s (last synced around issue #358) before this PR; backfilling
+  that gap is a separate pre-existing cleanup, out of scope here.

@@ -354,6 +354,109 @@
   outline-offset: 1px;
 }
 
+.suggestRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.suggestButton {
+  align-self: flex-start;
+  box-sizing: border-box;
+  min-height: 44px;
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-size: 0.74rem;
+  font-weight: 750;
+  cursor: pointer;
+  color: #72c9e8;
+  background: transparent;
+  border: 1px solid rgba(114, 201, 232, 0.3);
+}
+
+.suggestButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.suggestionCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid rgba(114, 201, 232, 0.22);
+  border-radius: 11px;
+  background: rgba(114, 201, 232, 0.06);
+  padding: 12px;
+}
+
+.suggestionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.confidenceBadge,
+.needsCodeFixBadge {
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.confidenceBadge {
+  color: #72c9e8;
+  background: rgba(114, 201, 232, 0.12);
+  border: 1px solid rgba(114, 201, 232, 0.3);
+}
+
+.needsCodeFixBadge {
+  color: #f0bf4e;
+  background: rgba(240, 191, 78, 0.12);
+  border: 1px solid rgba(240, 191, 78, 0.3);
+}
+
+.suggestionLabel {
+  margin: 4px 0 0;
+  color: rgba(238, 243, 234, 0.55);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.suggestionText {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.citedIds {
+  margin: 0;
+  color: rgba(238, 243, 234, 0.5);
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.useReplyButton {
+  align-self: flex-start;
+  box-sizing: border-box;
+  min-height: 44px;
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-size: 0.74rem;
+  font-weight: 750;
+  cursor: pointer;
+  color: #10150d;
+  background: #72c9e8;
+  border: 1px solid #72c9e8;
+}
+
 .terminalNote {
   margin: 0;
   color: rgba(238, 243, 234, 0.55);

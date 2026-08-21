@@ -601,6 +601,22 @@ describe("buildSupportPipeline", () => {
     expect(stageById(pipeline, "oldest-open-age")).toMatchObject({ status: "amber" });
   });
 
+  it("reports the suggest-fix provider-configured stage from env, independent of the database (issue #400)", async () => {
+    const withoutKey = await buildSupportPipeline({
+      databaseUrl: "",
+      env: {},
+      getServiceControl: async () => activeControl({ key: "support" }),
+    });
+    expect(stageById(withoutKey, "provider-configured")).toMatchObject({ status: "amber" });
+
+    const withKey = await buildSupportPipeline({
+      databaseUrl: "",
+      env: { OPENAI_API_KEY: "test-key" },
+      getServiceControl: async () => activeControl({ key: "support" }),
+    });
+    expect(stageById(withKey, "provider-configured")).toMatchObject({ status: "green" });
+  });
+
   it("reports the Telegram alert stage from env, independent of the database", async () => {
     const off = await buildSupportPipeline({
       databaseUrl: "",

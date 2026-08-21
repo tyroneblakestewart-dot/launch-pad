@@ -27,6 +27,17 @@ type SupportTicket = {
   messages: SupportTicketMessage[];
 };
 
+type SuggestionConfidence = "low" | "medium" | "high";
+
+/** Mirrors lib/server/support-suggestion-pipeline.ts's SupportSuggestion (issue #400) — this card only ever offers to fill the existing reply textarea, never sends anything itself. */
+type SupportSuggestion = {
+  probableCause: string;
+  citedKnowledgeIds: string[];
+  draftReply: string;
+  needsCodeFix: boolean;
+  confidence: SuggestionConfidence;
+};
+
 const STATUS_FILTERS: Array<{ id: SupportTicketStatus | "all"; label: string }> = [
   { id: "open", label: "Open" },
   { id: "needs_user", label: "Needs user" },
@@ -74,6 +85,9 @@ export function AdminSupportSection() {
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [lightboxDataUrl, setLightboxDataUrl] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<Record<string, SupportSuggestion>>({});
+  const [suggestingId, setSuggestingId] = useState<string | null>(null);
+  const [suggestionError, setSuggestionError] = useState<Record<string, string>>({});
 
   const loadTickets = useCallback(async () => {
     setLoading(true);
@@ -137,6 +151,39 @@ export function AdminSupportSection() {
     if (succeeded) {
       setReplyDrafts((current) => ({ ...current, [id]: "" }));
     }
+  }
+
+  /** On-demand only (issue #400) — never runs automatically, since each call spends money. Returns a suggestion for the owner to review; nothing here posts or replies. */
+  async function suggestFix(id: string): Promise<void> {
+    setSuggestingId(id);
+    setSuggestionError((current) => ({ ...current, [id]: "" }));
+    try {
+      const response = await fetch("/api/admin/support/suggest", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!response.ok) {
+        throw new Error(await readError(response, "The suggestion could not be generated."));
+      }
+      const payload = (await response.json()) as { suggestion: SupportSuggestion };
+      setSuggestions((current) => ({ ...current, [id]: payload.suggestion }));
+    } catch (error) {
+      setSuggestionError((current) => ({
+        ...current,
+        [id]: error instanceof Error ? error.message : "The suggestion could not be generated.",
+      }));
+    } finally {
+      setSuggestingId(null);
+    }
+  }
+
+  /** Only ever populates the existing reply textarea for the owner to edit and send — there is no separate send path for a suggestion (issue #400). */
+  function applySuggestedReply(id: string): void {
+    const suggestion = suggestions[id];
+    if (!suggestion) return;
+    setReplyDrafts((current) => ({ ...current, [id]: suggestion.draftReply }));
   }
 
   return (
@@ -228,6 +275,48 @@ export function AdminSupportSection() {
                         <span className={styles.messageTime}>{formatTimestamp(message.createdAt)}</span>
                       </div>
                     ))}
+                  </div>
+
+                  <div className={styles.suggestRow}>
+                    <button
+                      type="button"
+                      className={styles.suggestButton}
+                      disabled={suggestingId === ticket.id}
+                      onClick={() => void suggestFix(ticket.id)}
+                    >
+                      {suggestingId === ticket.id ? "Thinking…" : "Suggest a fix"}
+                    </button>
+                    {suggestionError[ticket.id] ? (
+                      <p className={styles.error} role="alert">
+                        {suggestionError[ticket.id]}
+                      </p>
+                    ) : null}
+                    {suggestions[ticket.id] ? (
+                      <div className={styles.suggestionCard}>
+                        <div className={styles.suggestionMeta}>
+                          <span className={styles.confidenceBadge}>{suggestions[ticket.id].confidence} confidence</span>
+                          {suggestions[ticket.id].needsCodeFix ? (
+                            <span className={styles.needsCodeFixBadge}>Needs code fix</span>
+                          ) : null}
+                        </div>
+                        <p className={styles.suggestionLabel}>Probable cause</p>
+                        <p className={styles.suggestionText}>{suggestions[ticket.id].probableCause}</p>
+                        {suggestions[ticket.id].citedKnowledgeIds.length > 0 ? (
+                          <p className={styles.citedIds}>
+                            Sourced from: {suggestions[ticket.id].citedKnowledgeIds.join(", ")}
+                          </p>
+                        ) : (
+                          <p className={styles.citedIds}>No matching knowledge entry — this is a low-confidence guess.</p>
+                        )}
+                        <p className={styles.suggestionLabel}>Draft reply</p>
+                        <p className={styles.suggestionText}>{suggestions[ticket.id].draftReply}</p>
+                        {isTerminalSupportTicketStatus(ticket.status) ? null : (
+                          <button type="button" className={styles.useReplyButton} onClick={() => applySuggestedReply(ticket.id)}>
+                            Use this reply
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className={styles.replyRow}>

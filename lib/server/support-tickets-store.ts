@@ -127,6 +127,8 @@ export interface SupportTicketsStore {
   /** Rejects with "forbidden" when the ticket belongs to a different wallet, "closed" when solved/closed. */
   addUserMessage(ticketId: string, walletAddress: string, body: string): Promise<AddSupportTicketMessageResult>;
   listForAdmin(status: SupportTicketStatus | "all"): Promise<SupportTicketWithMessages[]>;
+  /** Single-ticket admin read (issue #400's "Suggest a fix"), null when not found. */
+  getById(ticketId: string): Promise<SupportTicketWithMessages | null>;
   /** Also flips the ticket's status to 'needs_user'. Rejects with "closed" for a solved/closed ticket rather than implicitly reopening it. */
   addOwnerMessage(ticketId: string, body: string): Promise<AddSupportTicketOwnerMessageResult>;
   setStatus(ticketId: string, status: SupportTicketStatus): Promise<SetSupportTicketStatusResult>;
@@ -153,6 +155,9 @@ const unconfiguredStore: SupportTicketsStore = {
     throw new SupportTicketsStoreUnavailableError();
   },
   async listForAdmin() {
+    throw new SupportTicketsStoreUnavailableError();
+  },
+  async getById() {
     throw new SupportTicketsStoreUnavailableError();
   },
   async addOwnerMessage() {
@@ -392,6 +397,14 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
               [status, MAX_ADMIN_SUPPORT_TICKETS],
             );
       return ticketsWithMessages(result.rows);
+    },
+
+    async getById(ticketId) {
+      const result = await pool.query<TicketRow>(`SELECT ${TICKET_COLUMNS} FROM support_tickets WHERE id = $1`, [ticketId]);
+      const row = result.rows[0];
+      if (!row) return null;
+      const [withMessages] = await ticketsWithMessages([row]);
+      return withMessages ?? null;
     },
 
     async addOwnerMessage(ticketId, body) {
