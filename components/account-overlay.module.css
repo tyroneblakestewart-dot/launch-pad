@@ -244,8 +244,12 @@
 }
 
 .supportLink {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 44px;
   margin-top: 16px;
+  padding: 4px 0;
   color: #83b78b;
   font-size: 11px;
   text-decoration: underline;

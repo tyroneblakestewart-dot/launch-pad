@@ -5,6 +5,17 @@ import { createWalletClient, custom } from "viem";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./support-hub.module.css";
 
+type AccountsChangedHandler = (accounts: string[]) => void;
+
+// getInjectedEvmProvider()'s shared Eip1193Provider type only declares
+// `request` — widen locally for the accountsChanged listener, matching
+// components/account-wallet-bridge.tsx's own local extension.
+type WalletProviderWithEvents = {
+  request: (args: { method: string; params?: unknown[] | Record<string, unknown> }) => Promise<unknown>;
+  on?: (event: "accountsChanged", handler: AccountsChangedHandler) => void;
+  removeListener?: (event: "accountsChanged", handler: AccountsChangedHandler) => void;
+};
+
 type SupportTicketCategory = "account" | "payments" | "site-builder" | "social-studio" | "publishing" | "other";
 type SupportTicketStatus = "open" | "needs_user" | "solved" | "closed";
 
@@ -79,7 +90,22 @@ async function signSupportChallenge(purpose: "support:ticket-create" | "support:
   return { account, challengeId: challenge.challengeId, nonce: challenge.nonce, signature };
 }
 
-export function SupportHub() {
+type SupportHubProps = {
+  heroEyebrow?: string;
+  heroTitle?: string;
+  heroIntro?: string;
+};
+
+const DEFAULT_HERO_EYEBROW = "SUPPORT";
+const DEFAULT_HERO_TITLE = "Report a problem";
+const DEFAULT_HERO_INTRO =
+  "Tell us what happened. We attach your plan and connection status automatically — never your credentials — so we can help faster.";
+
+export function SupportHub({
+  heroEyebrow = DEFAULT_HERO_EYEBROW,
+  heroTitle = DEFAULT_HERO_TITLE,
+  heroIntro = DEFAULT_HERO_INTRO,
+}: SupportHubProps = {}) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [category, setCategory] = useState<SupportTicketCategory>("other");
   const [subject, setSubject] = useState("");
@@ -108,7 +134,7 @@ export function SupportHub() {
 
   useEffect(() => {
     let cancelled = false;
-    const provider = getInjectedEvmProvider();
+    const provider = getInjectedEvmProvider() as WalletProviderWithEvents | undefined;
     if (!provider) return;
     provider
       .request({ method: "eth_accounts" })
@@ -116,8 +142,21 @@ export function SupportHub() {
         if (!cancelled && Array.isArray(accounts) && accounts[0]) setWalletAddress(accounts[0] as string);
       })
       .catch(() => {});
+
+    // Keep the displayed ticket history following whichever wallet/account is
+    // actually active — a switch or disconnect in the extension must clear
+    // stale tickets immediately rather than keep showing the previous
+    // wallet's history (issue #393 review).
+    const handleAccountsChanged: AccountsChangedHandler = (accounts) => {
+      if (cancelled) return;
+      const nextAccount = Array.isArray(accounts) ? accounts[0] : undefined;
+      setWalletAddress(nextAccount || null);
+    };
+    provider.on?.("accountsChanged", handleAccountsChanged);
+
     return () => {
       cancelled = true;
+      provider.removeListener?.("accountsChanged", handleAccountsChanged);
     };
   }, []);
 
@@ -202,12 +241,9 @@ export function SupportHub() {
     <main className={styles.page}>
       <div className={styles.shell}>
         <header className={styles.hero}>
-          <p className={styles.eyebrow}>SUPPORT</p>
-          <h1 className={styles.title}>Report a problem</h1>
-          <p className={styles.intro}>
-            Tell us what happened. We attach your plan and connection status automatically — never your credentials —
-            so we can help faster.
-          </p>
+          <p className={styles.eyebrow}>{heroEyebrow}</p>
+          <h1 className={styles.title}>{heroTitle}</h1>
+          <p className={styles.intro}>{heroIntro}</p>
         </header>
 
         {!walletAddress ? (

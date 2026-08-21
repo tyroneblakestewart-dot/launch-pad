@@ -65,4 +65,11 @@ describe("Admin Support UI", () => {
     expect(breakpoint).toBeTruthy();
     expect(supportCss).toContain(`@media (max-width: ${breakpoint}px)`);
   });
+
+  it("gives the filter, item-summary and reply/status action controls a real 44px touch target (issue #393 review)", async () => {
+    const css = await source("components", "admin-support-section.module.css");
+    const minHeightCount = (css.match(/min-height:\s*44px/g) || []).length;
+    // refreshButton, filter/filterActive, itemSummary, replyButton/solveButton/closeButton.
+    expect(minHeightCount).toBeGreaterThanOrEqual(4);
+  });
 });

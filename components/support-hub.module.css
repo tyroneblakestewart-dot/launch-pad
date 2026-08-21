@@ -85,6 +85,7 @@
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
+  min-height: 44px;
   padding: 12px 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 12px;
@@ -115,6 +116,7 @@
 .connectButton,
 .submitButton {
   width: 100%;
+  min-height: 44px;
   padding: 13px;
   border: 1px solid #c6f53e;
   border-radius: 12px;
@@ -181,6 +183,7 @@
   gap: 8px;
   width: 100%;
   min-width: 0;
+  min-height: 44px;
   padding: 12px;
   border: none;
   background: rgba(255, 255, 255, 0.02);
@@ -296,6 +299,7 @@
 
 .replyButton {
   align-self: flex-end;
+  min-height: 44px;
   padding: 10px 16px;
   border: 1px solid #c6f53e;
   border-radius: 10px;
@@ -303,6 +307,7 @@
   color: #071008;
   font: 800 11px "IBM Plex Mono", monospace;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .replyButton:disabled {
