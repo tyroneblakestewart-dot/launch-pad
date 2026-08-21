@@ -8,6 +8,8 @@ import {
 } from "@/lib/server/api-protection";
 import { getVercelOidcToken, resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
 import { recordImageOperationCostBestEffort, runAfterResponse, type AiOperationAccessSource } from "@/lib/server/ai-operation-cost-store";
+import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
+import { contentFilterRejectionMessage, runContentFilterFailOpen } from "@/lib/server/content-filter";
 import { buildMascotImagePrompt, type MascotVisualDNA } from "@/lib/server/mascot-prompt-builder";
 import { requestMascotImage } from "@/lib/server/mascot-image-request";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
@@ -105,6 +107,19 @@ export async function POST(request: Request) {
   if (!isMascotVisualDNA(body.mascotVisualDNA)) {
     return NextResponse.json(
       { error: "Upload a mascot reference image first so its visual identity can be locked in." },
+      { status: 400, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  const inputContentFilter = runContentFilterFailOpen({ name, ticker, sceneInput });
+  if (inputContentFilter.blocked) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "social-studio-ai",
+      message: `Content filter rejected a mascot-image input (field: ${inputContentFilter.field}, wallet: ${authorisation.walletAddress}).`,
+    });
+    return NextResponse.json(
+      { error: contentFilterRejectionMessage(inputContentFilter.field) },
       { status: 400, headers: noStoreHeaders(rateHeaders) },
     );
   }

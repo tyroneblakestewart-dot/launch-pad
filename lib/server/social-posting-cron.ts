@@ -1,3 +1,5 @@
+import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
+import { runContentFilterFailClosed } from "@/lib/server/content-filter";
 import { bodyContainsLink } from "@/lib/server/social-link-detection";
 import { getPostgresPool } from "@/lib/server/postgres";
 import {
@@ -44,6 +46,14 @@ export const LINK_POST_COMPOSER_REASON =
   "This post contains a link — link posts are published from your own X account to control API cost. Tap to post it from the X composer.";
 export const MONTHLY_COST_CAP_REASON =
   "This wallet's monthly X posting cost cap has been reached — X sends resume next month. Telegram is unaffected.";
+// Issue #392 — a final content-filter check right before send, so a body
+// approved before the filter existed (or one the client-side checks missed)
+// can never go out. This is terminal: the destination is marked permanently
+// failed directly, bypassing recordFailureAndSchedule's retry/backoff
+// entirely, since a filter violation is never a transient or auth problem
+// that should be retried.
+export const CONTENT_FILTER_REJECTION_ERROR_MESSAGE =
+  "This post was blocked by our content safety filter (hateful slurs and sexualisation of minors are never allowed) and was not sent.";
 
 export function computeRetryBackoffSeconds(attemptCount: number): number {
   return RETRY_BACKOFF_BASE_SECONDS * 2 ** Math.max(0, attemptCount);
@@ -201,6 +211,8 @@ export type SocialPostingCronDeps = {
   publishTelegramPost?: typeof publishTelegramPost;
   /** Overridable for tests; defaults to the real link detector. */
   bodyContainsLink?: typeof bodyContainsLink;
+  /** Overridable for tests; defaults to the real fail-closed content filter. */
+  contentFilterCheck?: typeof runContentFilterFailClosed;
   /** Overridable for tests; production writes one constant-size DB row. */
   heartbeatRecorder?: SocialPostingHeartbeatRecorder;
 };
@@ -293,7 +305,19 @@ async function sendOneDestination(
   postTweet: typeof postTweetForUser,
   publishTelegram: typeof publishTelegramPost,
   linkDetector: typeof bodyContainsLink,
+  contentFilterCheck: typeof runContentFilterFailClosed,
 ): Promise<Outcome> {
+  const contentFilterOutcome = contentFilterCheck({ body: destination.body });
+  if (contentFilterOutcome.blocked) {
+    await scheduledPostsStore.markDestinationFailedFinal(destination.destinationId, CONTENT_FILTER_REJECTION_ERROR_MESSAGE);
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "social-posting",
+      message: `Content filter rejected a scheduled post before send (platform: ${destination.platform}, wallet: ${destination.walletAddress}).`,
+    });
+    return "failed";
+  }
+
   if (destination.platform === "x" && linkDetector(destination.body)) {
     await scheduledPostsStore.markDestinationNeedsComposer(destination.destinationId, LINK_POST_COMPOSER_REASON);
     return "routed_to_composer";
@@ -426,6 +450,7 @@ export async function runSocialPostingCron(deps: SocialPostingCronDeps = {}): Pr
   const postTweet = deps.postTweetForUser ?? postTweetForUser;
   const publishTelegram = deps.publishTelegramPost ?? publishTelegramPost;
   const linkDetector = deps.bodyContainsLink ?? bodyContainsLink;
+  const contentFilterCheck = deps.contentFilterCheck ?? runContentFilterFailClosed;
   const heartbeat = deps.heartbeatRecorder ?? createSocialPostingHeartbeatRecorder(env);
 
   await recordHeartbeatBestEffort("start", () => heartbeat.markStarted(now));
@@ -444,7 +469,7 @@ export async function runSocialPostingCron(deps: SocialPostingCronDeps = {}): Pr
       // unexpected throw must not abort the rest of the batch or skip
       // recomputePostStatus for posts already processed this run.
       try {
-        const outcome = await sendOneDestination(destination, env, scheduledPostsStore, connectionsStore, costStore, now, postTweet, publishTelegram, linkDetector);
+        const outcome = await sendOneDestination(destination, env, scheduledPostsStore, connectionsStore, costStore, now, postTweet, publishTelegram, linkDetector, contentFilterCheck);
         if (outcome === "sent") sent += 1;
         else if (outcome === "retried") retried += 1;
         else if (outcome === "routed_to_composer") routedToComposer += 1;

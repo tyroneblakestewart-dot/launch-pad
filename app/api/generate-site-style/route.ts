@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { AI_FEATURE_KEYS } from "@/lib/ai-feature-keys";
 import { recordTextOperationCostBestEffort, runAfterResponse } from "@/lib/server/ai-operation-cost-store";
+import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
+import { contentFilterRejectionMessage, runContentFilterFailOpen } from "@/lib/server/content-filter";
 import {
   getInspirationDomain,
   isValidImageDataUrl,
@@ -153,6 +155,23 @@ export async function POST(request: Request) {
     );
   }
 
+  const inputContentFilter = runContentFilterFailOpen({
+    name: input.name,
+    ticker: input.ticker,
+    description: input.description,
+  });
+  if (inputContentFilter.blocked) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "website-generation",
+      message: `Content filter rejected a generate-site-style input (field: ${inputContentFilter.field}).`,
+    });
+    return NextResponse.json(
+      { error: contentFilterRejectionMessage(inputContentFilter.field) },
+      { status: 400, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
   const model = process.env.OPENAI_VISION_MODEL || "gpt-5-mini";
   let inspirationAnalysis = "";
   let artworkIdentity: ArtworkIdentity | undefined;
@@ -273,6 +292,35 @@ export async function POST(request: Request) {
           ? "AI returned a design that did not prove collaboration between the artwork and inspiration website. Try again."
           : "AI returned an invalid design. Try generating the website again.",
       },
+      { status: 502, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
+  const outputContentFilter = runContentFilterFailOpen({
+    eyebrow: style.eyebrow,
+    headline: style.headline,
+    heroBody: style.heroBody,
+    cta: style.cta,
+    aboutEyebrow: style.aboutEyebrow,
+    aboutTitle: style.aboutTitle,
+    aboutBody: style.aboutBody,
+    roadmapTitle: style.roadmapTitle,
+    roadmapItem0Title: style.roadmap[0]?.title,
+    roadmapItem0Body: style.roadmap[0]?.body,
+    roadmapItem1Title: style.roadmap[1]?.title,
+    roadmapItem1Body: style.roadmap[1]?.body,
+    roadmapItem2Title: style.roadmap[2]?.title,
+    roadmapItem2Body: style.roadmap[2]?.body,
+    tickerPhrase: style.tickerPhrase,
+  });
+  if (outputContentFilter.blocked) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "website-generation",
+      message: "Content filter rejected generated site-style output before it reached the client.",
+    });
+    return NextResponse.json(
+      { error: "The generated design could not be delivered because it failed our content safety filter. Try again." },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
   }

@@ -99,7 +99,8 @@ export type AdminActivityKind =
   | "social-x-disconnected"
   | "social-telegram-connected"
   | "social-telegram-disconnected"
-  | "client-error-group-resolved";
+  | "client-error-group-resolved"
+  | "content-filter-rejected";
 
 export type AdminActivityItem = {
   id: string;
@@ -124,6 +125,7 @@ export const SYSTEM_HEALTH_CHECK_IDS = [
   "social-posting",
   "client-errors",
   "operations-cost",
+  "content-filter",
 ] as const;
 
 export type SystemHealthCheckId = (typeof SYSTEM_HEALTH_CHECK_IDS)[number];

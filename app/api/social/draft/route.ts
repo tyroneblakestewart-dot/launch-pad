@@ -8,12 +8,15 @@ import {
 } from "@/lib/server/api-protection";
 import { getVercelOidcToken, resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
 import { recordTextOperationCostBestEffort, runAfterResponse, type AiOperationAccessSource } from "@/lib/server/ai-operation-cost-store";
+import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
+import { contentFilterRejectionMessage, runContentFilterFailOpen } from "@/lib/server/content-filter";
 import type { OpenAIResponse } from "@/lib/server/generate-site-style";
 import { normaliseLikedSampleLines } from "@/lib/server/social-reinforcement";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import {
   buildDraftRequestBody,
   checkDraftCompliance,
+  checkDraftContentFilter,
   extractRepeatedPhrases,
   parseDraftResponseDetailed,
   resolveChainLabel,
@@ -153,6 +156,25 @@ export async function POST(request: Request) {
   const recentTelegramDrafts = stringArray(body.recentTelegramDrafts, MAX_RECENT_DRAFTS_ACCEPTED, 2_000);
   const angleIndex = typeof body.angleIndex === "number" && Number.isFinite(body.angleIndex) ? body.angleIndex : 0;
 
+  const inputContentFilter = runContentFilterFailOpen({
+    name: project.name,
+    ticker: project.ticker,
+    description: project.description,
+    directionBrief,
+    theme,
+  });
+  if (inputContentFilter.blocked) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "social-studio-ai",
+      message: `Content filter rejected a social draft input (field: ${inputContentFilter.field}, wallet: ${authorisation.walletAddress}).`,
+    });
+    return NextResponse.json(
+      { error: contentFilterRejectionMessage(inputContentFilter.field) },
+      { status: 400, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+
   const ai = resolveAIResponsesRuntime(process.env, getVercelOidcToken(request));
   if (!ai) {
     return NextResponse.json(
@@ -273,11 +295,24 @@ export async function POST(request: Request) {
     recentTelegramDrafts,
   };
   const compliance = checkDraftCompliance(result.draft, complianceInput);
-  if (!compliance.violated) {
+  const contentFilterResult = checkDraftContentFilter(result.draft);
+  if (contentFilterResult.violated) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "social-studio-ai",
+      message: `Content filter rejected a social draft output (first attempt, wallet: ${authorisation.walletAddress}).`,
+    });
+  }
+  if (!compliance.violated && !contentFilterResult.violated) {
     return NextResponse.json({ draft: result.draft }, { headers: noStoreHeaders(rateHeaders) });
   }
 
-  const retryResult = await requestDraft(compliance.feedback);
+  const correctiveFeedback = contentFilterResult.violated
+    ? contentFilterResult.feedback
+    : compliance.violated
+      ? compliance.feedback
+      : "";
+  const retryResult = await requestDraft(correctiveFeedback);
   if (!retryResult.ok) {
     console.error("Corrective retry request failed after the first draft failed safety checks", retryResult.error);
     return NextResponse.json(
@@ -287,8 +322,19 @@ export async function POST(request: Request) {
   }
 
   const retryCompliance = checkDraftCompliance(retryResult.draft, complianceInput);
-  if (retryCompliance.violated) {
-    console.error("Draft still failed safety checks after the corrective retry", retryCompliance.feedback);
+  const retryContentFilterResult = checkDraftContentFilter(retryResult.draft);
+  if (retryContentFilterResult.violated) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "social-studio-ai",
+      message: `Content filter rejected a social draft output (corrective retry, wallet: ${authorisation.walletAddress}).`,
+    });
+  }
+  if (retryCompliance.violated || retryContentFilterResult.violated) {
+    console.error(
+      "Draft still failed safety checks after the corrective retry",
+      retryContentFilterResult.violated ? retryContentFilterResult.feedback : retryCompliance.violated ? retryCompliance.feedback : "",
+    );
     return NextResponse.json(
       { error: "The AI couldn't generate a draft that passed safety checks. Try again." },
       { status: 502, headers: noStoreHeaders(rateHeaders) },

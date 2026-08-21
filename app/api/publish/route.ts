@@ -4,6 +4,8 @@ import {
   consumePublishSiteRateLimit,
   getClientIp,
 } from "@/lib/server/api-protection";
+import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
+import { contentFilterRejectionMessage, runContentFilterFailClosed } from "@/lib/server/content-filter";
 import {
   hashPublishNonce,
   verifyPublishSignature,
@@ -123,6 +125,25 @@ export async function POST(request: Request) {
   if (!slugValidation.valid) {
     return NextResponse.json(
       { error: slugValidation.reason },
+      { status: 400, headers },
+    );
+  }
+
+  const contentFilterOutcome = runContentFilterFailClosed({
+    name: validation.site.name,
+    ticker: validation.site.ticker,
+    description: validation.site.description,
+    slug: validation.site.slug,
+    generatedSiteHtml: validation.site.generatedSiteHtml,
+  });
+  if (contentFilterOutcome.blocked) {
+    void recordAdminActivityBestEffort({
+      kind: "content-filter-rejected",
+      serviceKey: "public-publishing",
+      message: `Content filter rejected a publish request (field: ${contentFilterOutcome.field}).`,
+    });
+    return NextResponse.json(
+      { error: contentFilterRejectionMessage(contentFilterOutcome.field) },
       { status: 400, headers },
     );
   }

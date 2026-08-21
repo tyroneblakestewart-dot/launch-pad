@@ -580,3 +580,38 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   its `/v1/billing/charges` API is only daily-granularity and is worth a
   dedicated future PR once overage materially affects margin), and any
   pruning/rollup of the raw `ai_operation_costs` rows.
+- The go-live content filter (issue #392) is implemented as one shared,
+  deterministic, owner-maintained module, `lib/server/content-filter.ts`
+  (server-only, never imported by client code), blocking only slurs/hateful
+  content targeting race, ethnicity, national origin or religion, and
+  content sexualising minors — profanity, crude humour, adult innuendo,
+  violence, drugs and other edgy content are deliberately NOT filtered, per
+  the issue's own narrow-scope decision. Matching is word-boundary aware
+  (never bare substring) with leetspeak/separator evasion handling for the
+  highest-severity terms, so it never fires on a slur embedded inside an
+  unrelated legitimate word. It is wired into every point where
+  user-supplied or AI-generated text becomes public or costs money to
+  generate: `/api/publish` and `/api/publish/challenge` screen name,
+  ticker, description, slug and generated HTML and fail closed (a filter
+  runtime error is treated as a rejection); `generate-site-page`,
+  `generate-free-site`, `generate-site-style`, `social/voice-profile`,
+  `social/mascot/visual-dna` and `social/mascot/image` screen inputs before
+  any paid provider call and screen the generated output before it reaches
+  the client, failing open (logged, never blocking generation) on an
+  unexpected filter crash; `/api/social/draft` gained a new
+  `checkDraftContentFilter` function in `lib/server/social-draft-pipeline.ts`
+  that the route calls alongside the existing `checkDraftCompliance` chain
+  on both the first response and the corrective retry, so a slur can never
+  slip through the same #364 fail-open retry gap; and
+  `lib/server/social-posting-cron.ts` runs one final fail-closed check
+  immediately before every X/Telegram send, routing a match straight to the
+  existing terminal `markDestinationFailedFinal` path (bypassing the
+  retry/backoff funnel entirely, since a filter violation is never a
+  transient or auth problem worth retrying) so a body approved before the
+  filter existed can never go out. `/admin` gained a `content-filter`
+  System Health check/pipeline (filter-loaded status, term-list size and
+  category count, rejections in the last 24 hours read from
+  `admin_activity_log`) and a new `content-filter-rejected` Activity log
+  kind recording the rejecting route/field and wallet when known — the
+  matched term itself is never logged or echoed back to the user, only a
+  plain-English message naming the rejected field.

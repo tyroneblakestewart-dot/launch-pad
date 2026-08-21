@@ -366,6 +366,77 @@ describe("POST /api/generate-site-page", () => {
     expect(errorEvent.error).toContain("incomplete, unsafe");
   });
 
+  describe("content filter (issue #392)", () => {
+    it("rejects a slur in the description before calling any provider", async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(
+        request({
+          name: "Journey",
+          ticker: "RIDE",
+          description: "A nigger coin for the community, buy now.",
+          imageDataUrl: VALID_IMAGE,
+          inspirationUrl: "",
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("description") });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects generated HTML that fails the content safety filter instead of streaming it to the client", async () => {
+      const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
+      const poisonedHtml = html().replace(
+        "Original campaign content shaped by the uploaded journey artwork.",
+        "Original campaign content about kike coins shaped by the uploaded journey artwork.",
+      );
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(outputText(ARTWORK))
+        .mockResolvedValueOnce(streamedPage({ html: poisonedHtml, ...ids }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(
+        request({
+          name: "Journey",
+          ticker: "RIDE",
+          description: "A community token inspired by finding your route through London.",
+          imageDataUrl: VALID_IMAGE,
+          inspirationUrl: "",
+        }),
+      );
+      const events = await readNdjsonEvents(response);
+
+      expect(events.some((event) => event.type === "complete")).toBe(false);
+      const errorEvent = events.at(-1) as { type: string; error: string };
+      expect(errorEvent.type).toBe("error");
+      expect(errorEvent.error).toContain("content safety filter");
+    });
+
+    it("passes crude but allowed content", async () => {
+      const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(outputText(ARTWORK))
+        .mockResolvedValueOnce(streamedPage({ html: html(), ...ids }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(
+        request({
+          name: "Journey",
+          ticker: "RIDE",
+          description: "This degenerate ape coin is for adults only, fuck the bear market.",
+          imageDataUrl: VALID_IMAGE,
+          inspirationUrl: "",
+        }),
+      );
+      const events = await readNdjsonEvents(response);
+      expect(events.some((event) => event.type === "complete")).toBe(true);
+    });
+  });
+
   // Issue #323 part 1: a page rejected only for the responsive-layout
   // baseline gets exactly one automatic retry with corrective feedback,
   // instead of failing the whole request over a fixable layout mistake.

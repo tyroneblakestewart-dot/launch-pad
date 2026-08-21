@@ -8,6 +8,7 @@ import {
   buildDraftRequestBody,
   checkDraftAngleCompliance,
   checkDraftCompliance,
+  checkDraftContentFilter,
   checkDraftFactualRisk,
   checkDraftIdentityOpener,
   checkDraftRepetition,
@@ -927,6 +928,30 @@ describe("checkDraftWatchedFillerTerms (issue #366 follow-up)", () => {
 
   it("exposes the watched term list as containing 'vibe'", () => {
     expect(WATCHED_FILLER_TERMS).toContain("vibe");
+  });
+});
+
+describe("checkDraftContentFilter (issue #392)", () => {
+  it("passes clean X and Telegram text", () => {
+    const draft: SocialDraft = { xText: "DOOM keeps building steadily.", telegramText: "Come hang with the crew." };
+    expect(checkDraftContentFilter(draft)).toEqual({ violated: false });
+  });
+
+  it("flags a slur in the X text", () => {
+    const draft: SocialDraft = { xText: "This nigger coin is pumping.", telegramText: "clean" };
+    const result = checkDraftContentFilter(draft);
+    expect(result.violated).toBe(true);
+    if (result.violated) expect(result.feedback.toLowerCase()).not.toContain("nigger");
+  });
+
+  it("flags a slur in the Telegram text even when the X text is clean", () => {
+    const draft: SocialDraft = { xText: "clean", telegramText: "Come hang with the kike crew." };
+    expect(checkDraftContentFilter(draft).violated).toBe(true);
+  });
+
+  it("passes crude but allowed content", () => {
+    const draft: SocialDraft = { xText: "fuck the bear market, degenerates unite.", telegramText: "This shitcoin is for adults only." };
+    expect(checkDraftContentFilter(draft)).toEqual({ violated: false });
   });
 });
 
