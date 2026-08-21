@@ -214,6 +214,22 @@ export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
     ],
   },
   {
+    id: "support",
+    label: "Support",
+    route: "/support",
+    elements: [
+      { id: "hero_eyebrow", type: "text", label: "Hero eyebrow", defaultValue: "SUPPORT" },
+      { id: "hero_title", type: "heading", label: "Hero title", defaultValue: "Report a problem" },
+      {
+        id: "hero_intro",
+        type: "text",
+        label: "Hero intro copy",
+        defaultValue:
+          "Tell us what happened. We attach your plan and connection status automatically — never your credentials — so we can help faster.",
+      },
+    ],
+  },
+  {
     id: "account",
     label: "Account",
     route: "/account",

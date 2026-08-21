@@ -243,6 +243,19 @@
   background: rgba(131, 183, 139, 0.14);
 }
 
+.supportLink {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 44px;
+  margin-top: 16px;
+  padding: 4px 0;
+  color: #83b78b;
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .footer {
   margin-top: 18px;
   padding-top: 16px;

@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  ClientErrorStoreUnavailableError,
+  getClientErrorStore,
+  resetClientErrorStoreForTests,
+} from "@/lib/server/client-errors-store";
 import { MemoryClientErrorStore } from "./client-errors-test-helpers";
 
 function input(overrides: Partial<Parameters<MemoryClientErrorStore["recordError"]>[0]> = {}) {
@@ -108,5 +113,43 @@ describe("client-error grouping", () => {
 
     const count = await store.countNewGroupsSince(since);
     expect(count).toBe(1);
+  });
+
+  it("counts only one wallet's occurrences within the window, case-insensitively (issue #393)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const store = new MemoryClientErrorStore();
+    await store.recordError(input({ walletAddress: "0xAAAA111111111111111111111111111111111111" }));
+    await store.recordError(input({ walletAddress: "0xbbbb222222222222222222222222222222222222" }));
+
+    vi.setSystemTime(new Date("2026-01-02T00:00:00.000Z"));
+    await store.recordError(input({ walletAddress: "0xaaaa111111111111111111111111111111111111" }));
+
+    const since = new Date("2025-12-01T00:00:00.000Z");
+    expect(await store.countRecentForWallet("0xAAAA111111111111111111111111111111111111", since)).toBe(2);
+    expect(await store.countRecentForWallet("0xbbbb222222222222222222222222222222222222", since)).toBe(1);
+    expect(await store.countRecentForWallet("0xcccc333333333333333333333333333333333333", since)).toBe(0);
+
+    const recentOnly = new Date("2026-01-01T12:00:00.000Z");
+    expect(await store.countRecentForWallet("0xAAAA111111111111111111111111111111111111", recentOnly)).toBe(1);
+  });
+});
+
+describe("getClientErrorStore (unconfigured fallback)", () => {
+  const originalDatabaseUrl = process.env.DATABASE_URL;
+
+  afterEach(() => {
+    if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalDatabaseUrl;
+    resetClientErrorStoreForTests();
+  });
+
+  it("rejects countRecentForWallet with ClientErrorStoreUnavailableError rather than a false 0 (issue #393 review)", async () => {
+    delete process.env.DATABASE_URL;
+    resetClientErrorStoreForTests();
+    const store = getClientErrorStore();
+    await expect(store.countRecentForWallet("0x1111111111111111111111111111111111111111", new Date())).rejects.toThrow(
+      ClientErrorStoreUnavailableError,
+    );
   });
 });

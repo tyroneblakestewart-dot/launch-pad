@@ -11,6 +11,7 @@ import {
   checkSocialPostingHealth,
   checkSocialStudioAiHealth,
   checkSubscribersHealth,
+  checkSupportHealth,
   checkTokenChatHealth,
   checkWebsiteGenerationHealth,
   getSystemHealth,
@@ -362,6 +363,36 @@ describe("checkContentFilterHealth", () => {
   });
 });
 
+describe("checkSupportHealth", () => {
+  it("is green when the table ping succeeds, and reports whether the Telegram alert is configured", async () => {
+    const unconfigured = await checkSupportHealth({
+      ping: async () => ({ openCount: 0, oldestOpenAgeSeconds: null }),
+      env: {},
+    });
+    expect(unconfigured).toMatchObject({ id: "support", status: "green" });
+    expect(unconfigured.message).toContain("Owner Telegram alert is not configured");
+
+    const configured = await checkSupportHealth({
+      ping: async () => ({ openCount: 2, oldestOpenAgeSeconds: 3600 }),
+      env: { TELEGRAM_ADMIN_CHAT_ID: "-100123" },
+    });
+    expect(configured.message).toContain("2 open ticket(s)");
+    expect(configured.message).toContain("Owner Telegram alert is configured");
+  });
+
+  it("is red when the ping rejects (e.g. the migration has not been applied)", async () => {
+    const result = await checkSupportHealth({
+      ping: async () => Promise.reject(new Error(`relation "support_tickets" does not exist`)),
+    });
+    expect(result).toMatchObject({ id: "support", status: "red" });
+  });
+
+  it("is red when DATABASE_URL is not configured", async () => {
+    const result = await checkSupportHealth({ databaseUrl: "", env: {} });
+    expect(result).toMatchObject({ id: "support", status: "red" });
+  });
+});
+
 describe("checkOperationsCostHealth", () => {
   it("is amber when the amber/red thresholds are misconfigured (red <= amber) but storage is reachable", async () => {
     const result = await checkOperationsCostHealth({
@@ -423,7 +454,7 @@ describe("checkOperationsCostHealth", () => {
 });
 
 describe("getSystemHealth", () => {
-  it("returns all thirteen checks, one per required area", async () => {
+  it("returns all fourteen checks, one per required area", async () => {
     const checks = await getSystemHealth({
       env: { NODE_ENV: "development" },
       database: { databaseUrl: "" },
@@ -436,12 +467,13 @@ describe("getSystemHealth", () => {
       clientErrors: { databaseUrl: "" },
       operationsCost: { databaseUrl: "" },
       contentFilter: { databaseUrl: "" },
+      support: { databaseUrl: "" },
     });
     expect(checks.map((check) => check.id).sort()).toEqual(
       [
         "client-errors",
-        "contracts",
         "content-filter",
+        "contracts",
         "database",
         "deployment",
         "hoodchat",
@@ -450,6 +482,7 @@ describe("getSystemHealth", () => {
         "social-posting",
         "social-studio-ai",
         "subscribers",
+        "support",
         "token-chat",
         "website-generation",
       ].sort(),

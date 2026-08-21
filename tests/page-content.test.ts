@@ -95,6 +95,13 @@ describe("getPublishedPageContent", () => {
       hero_title: "Bonding Curve",
     });
   });
+
+  it("registers the /support page (issue #393 review) with its default chrome copy", async () => {
+    const content = await getPublishedPageContent("support");
+    expect(content.hero_eyebrow).toBe("SUPPORT");
+    expect(content.hero_title).toBe("Report a problem");
+    expect(content.hero_intro).toContain("never your credentials");
+  });
 });
 
 describe("getPreviewPageContent", () => {
@@ -157,6 +164,29 @@ describe("resolvePageContent", () => {
     const withFlag = await resolvePageContent("bonding-curve", "1");
     expect(withFlag.isPreview).toBe(true);
     expect(withFlag.content.hero_title).toBe("Preview-only title");
+  });
+
+  it("resolves published/preview support-page content the same way as every other registered page", async () => {
+    const token = "a-real-admin-session-token";
+    await createAdminSession(hashAdminSessionToken(token));
+    cookieJar.set("hoodlums_admin_session", { value: token });
+
+    const store = createMemoryPageContentStore();
+    setPageContentStoreForTests(store);
+    await store.saveDraft({
+      pageId: "support",
+      elementId: "hero_title",
+      elementType: "heading",
+      value: "Preview-only support title",
+      actor: "admin",
+    });
+
+    const withoutFlag = await resolvePageContent("support", undefined);
+    expect(withoutFlag.content.hero_title).toBe("Report a problem");
+
+    const withFlag = await resolvePageContent("support", "1");
+    expect(withFlag.isPreview).toBe(true);
+    expect(withFlag.content.hero_title).toBe("Preview-only support title");
   });
 });
 

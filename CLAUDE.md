@@ -615,3 +615,59 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   kind recording the rejecting route/field and wallet when known — the
   matched term itself is never logged or echoed back to the user, only a
   plain-English message naming the rejected field.
+- Support tickets, Phase A — the pipe (issue #393) is implemented for
+  review: wallet-signed problem reporting, an admin reply/status queue, and
+  a best-effort Telegram owner alert. Migration `db/migrations/025_support_tickets.sql`
+  adds `support_tickets` and `support_ticket_messages`, and widens the
+  `admin_service_controls_known_service` / `admin_activity_log_known_service`
+  constraints for a new `support` service key, following exactly what
+  `018_social_studio_connections.sql` did for `social-posting`. A new
+  `/support` page (mobile-first, verified against the 390px breakpoint by
+  source-level CSS assertion, not yet on a physical device per rule 7) lets
+  a connected wallet submit a category/subject/description report and read
+  back owner replies; submission and follow-up replies are wallet-signed
+  with dedicated purposes `support:ticket-create` / `support:ticket-reply`
+  built on `lib/server/chat-auth.ts`'s existing challenge/signature
+  primitives (`lib/server/support-ticket-auth.ts`,
+  `POST /api/support/challenge`) — a sibling to, not a modification of,
+  `lib/server/social-studio-action-auth.ts`, so isolating Social Studio
+  posting can never accidentally block support ticket submission or vice
+  versa. `lib/server/support-tickets-store.ts` follows the
+  `social-connections-store.ts` shape (interface + unconfigured fallback +
+  test-injectable singleton + Postgres implementation), never returns
+  unbounded ticket sets, and enforces that only the owning wallet can reply
+  to its own open/needs_user ticket. On creation, the server assembles a
+  `diagnostics` snapshot itself — current plan/entitlement via the
+  canonical `getSubscriptionAccess`, social connection platform+status only
+  (`lib/server/social-connections-store.ts`'s `list()` already excludes
+  credentials), and a recent-client-error count via a new
+  `ClientErrorStore.countRecentForWallet` capability that degrades to
+  `null` if the crash-report store can't be queried — then sends one
+  best-effort Telegram alert (category/subject/truncated wallet/ticket id,
+  never the body) through the existing `lib/server/telegram.ts` client and
+  new server-only `TELEGRAM_ADMIN_CHAT_ID`; a Telegram failure is caught
+  and logged and never affects ticket creation, and the send itself runs
+  after the HTTP response via the repository's `after()`/`runAfterResponse`
+  pattern so a slow or hanging Telegram call can never delay ticket
+  creation. Existing security middleware and protections were not weakened
+  — `lib/server/api-protection.ts` gained new Support-specific rate/origin
+  helpers alongside the existing ones. `/admin` gained a top-level Support
+  section (newest-first list, status filter, full diagnostics, full
+  message history, an owner reply box that also flips the ticket to
+  `needs_user`, and status controls limited to `solved`/`closed`) and a
+  `support` System Health pipeline (both support tables reachable,
+  `TELEGRAM_ADMIN_CHAT_ID` configured yes/no, open ticket count,
+  oldest-open-ticket age), plus two new admin activity kinds
+  (`ticket-created`, `ticket-replied`) that log bounded identifiers/status
+  only — never ticket subject/body/message body/diagnostics. Public
+  create/list/reply responses use a dedicated projection that omits
+  `diagnostics` and `walletAddress`; full diagnostics remain admin-only.
+  Message writes and status transitions run inside a single locked
+  Postgres transaction (ticket row `FOR UPDATE`), a user reply clears
+  `needs_user` back to `open`, and an owner reply rejects rather than
+  reopening a solved/closed ticket. Ticket-message reads are capped per
+  ticket. Deliberately out of scope, per the issue: any AI assistant,
+  auto-answer layer, autopilot, or unattended support action — every reply
+  in this PR is a human (user or owner) typing into a box. The per-ticket
+  200-message response cap and the lack of physical Mobile Safari
+  verification remain open trade-offs for this phase.

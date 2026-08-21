@@ -42,6 +42,8 @@ export interface ClientErrorStore {
   resolveGroup(message: string, routePath: string): Promise<ResolveGroupResult>;
   /** Groups whose very first occurrence ever fell within the window — used by the System Health "at a glance" check. */
   countNewGroupsSince(since: Date): Promise<number>;
+  /** Raw occurrence count for one wallet since the given time — used by support-ticket diagnostics (issue #393). */
+  countRecentForWallet(walletAddress: string, since: Date): Promise<number>;
 }
 
 export class ClientErrorStoreUnavailableError extends Error {
@@ -63,6 +65,13 @@ const unconfiguredStore: ClientErrorStore = {
   },
   async countNewGroupsSince() {
     return 0;
+  },
+  async countRecentForWallet() {
+    // Unlike countNewGroupsSince (an at-a-glance System Health count where 0
+    // is an acceptable "nothing to report"), this feeds support-ticket
+    // diagnostics (issue #393), where a real 0 and "couldn't check" must be
+    // distinguishable — a false 0 here would read as "definitely no crashes".
+    throw new ClientErrorStoreUnavailableError();
   },
 };
 
@@ -204,6 +213,14 @@ export function createPostgresClientErrorStore(databaseUrl: string): ClientError
            HAVING MIN(created_at) >= $1
          ) AS new_groups`,
         [since],
+      );
+      return Number(result.rows[0]?.count ?? 0);
+    },
+
+    async countRecentForWallet(walletAddress: string, since: Date): Promise<number> {
+      const result = await pool.query<{ count: number | string }>(
+        `SELECT COUNT(*)::int AS count FROM client_errors WHERE LOWER(wallet_address) = LOWER($1) AND created_at >= $2`,
+        [walletAddress, since],
       );
       return Number(result.rows[0]?.count ?? 0);
     },

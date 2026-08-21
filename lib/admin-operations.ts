@@ -60,6 +60,14 @@ export const ADMIN_SERVICE_DEFINITIONS = [
       "/api/social/challenge, /api/social/x/connect/start, /api/social/x/connect/callback, /api/social/x/disconnect, /api/social/telegram/connect, /api/social/telegram/disconnect, /api/social/connections, /api/social/posts, /api/social/posts/cancel, /api/cron/social-posting",
   },
   {
+    key: "support",
+    label: "Support tickets",
+    description:
+      "Wallet-signed support-ticket reporting, the admin reply/status queue, and the best-effort Telegram owner alert.",
+    affectedRoutes:
+      "/api/support/challenge, /api/support/tickets, /api/support/tickets/[id]/reply, /api/admin/support, /api/admin/support/actions",
+  },
+  {
     key: "test-access",
     label: "Wallet test-access allowlist",
     description:
@@ -100,7 +108,9 @@ export type AdminActivityKind =
   | "social-telegram-connected"
   | "social-telegram-disconnected"
   | "client-error-group-resolved"
-  | "content-filter-rejected";
+  | "content-filter-rejected"
+  | "ticket-created"
+  | "ticket-replied";
 
 export type AdminActivityItem = {
   id: string;
@@ -126,6 +136,7 @@ export const SYSTEM_HEALTH_CHECK_IDS = [
   "client-errors",
   "operations-cost",
   "content-filter",
+  "support",
 ] as const;
 
 export type SystemHealthCheckId = (typeof SYSTEM_HEALTH_CHECK_IDS)[number];

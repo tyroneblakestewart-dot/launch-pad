@@ -132,6 +132,7 @@ async function expectWorkingSessionAndHealth(loginResponse: Response): Promise<v
       "social-posting",
       "social-studio-ai",
       "subscribers",
+      "support",
       "token-chat",
       "website-generation",
     ].sort(),

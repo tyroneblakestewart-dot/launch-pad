@@ -12,6 +12,7 @@ import {
   buildSocialPostingPipeline,
   buildSocialStudioAiPipeline,
   buildSubscribersPipeline,
+  buildSupportPipeline,
   buildWebsiteGenerationPipeline,
 } from "@/lib/server/system-health-pipeline";
 
@@ -559,6 +560,129 @@ describe("buildServicePipeline dispatch", () => {
       outreach: { databaseUrl: "", getServiceControl: async () => activeControl({ key: "outreach" }) },
     });
     expect(outreach.id).toBe("outreach");
+
+    const support = await buildServicePipeline("support", {
+      env: {},
+      support: { databaseUrl: "", getServiceControl: async () => activeControl({ key: "support" }) },
+    });
+    expect(support.id).toBe("support");
+  });
+});
+
+describe("buildSupportPipeline", () => {
+  function fakePool(overrides: {
+    query?: (text: string, params?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>;
+  } = {}) {
+    return {
+      totalCount: 1,
+      idleCount: 1,
+      waitingCount: 0,
+      query:
+        overrides.query ??
+        (async (text: string) => {
+          if (text.includes("information_schema.tables")) {
+            return { rows: [{ table_name: "support_tickets" }, { table_name: "support_ticket_messages" }] };
+          }
+          if (text.includes("COUNT(*)::int AS count")) return { rows: [{ count: 0 }] };
+          if (text.includes("created_at")) return { rows: [] };
+          return { rows: [] };
+        }),
+    };
+  }
+
+  it("reports amber for the DB-dependent stages when DATABASE_URL is not configured", async () => {
+    const pipeline = await buildSupportPipeline({
+      databaseUrl: "",
+      env: {},
+      getServiceControl: async () => activeControl({ key: "support" }),
+    });
+    expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "amber" });
+    expect(stageById(pipeline, "open-count")).toMatchObject({ status: "amber" });
+    expect(stageById(pipeline, "oldest-open-age")).toMatchObject({ status: "amber" });
+  });
+
+  it("reports the Telegram alert stage from env, independent of the database", async () => {
+    const off = await buildSupportPipeline({
+      databaseUrl: "",
+      env: {},
+      getServiceControl: async () => activeControl({ key: "support" }),
+    });
+    expect(stageById(off, "telegram-alert")).toMatchObject({ status: "amber" });
+
+    const on = await buildSupportPipeline({
+      databaseUrl: "",
+      env: { TELEGRAM_ADMIN_CHAT_ID: "-100123" },
+      getServiceControl: async () => activeControl({ key: "support" }),
+    });
+    expect(stageById(on, "telegram-alert")).toMatchObject({ status: "green" });
+  });
+
+  it("is green end to end when the table exists with no open tickets", async () => {
+    const pipeline = await buildSupportPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      getServiceControl: async () => activeControl({ key: "support" }),
+      getPool: () => fakePool(),
+    });
+    expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "open-count")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "oldest-open-age")).toMatchObject({ status: "green" });
+  });
+
+  it("is red on table-exists and does not probe the count stages when neither support table has been created", async () => {
+    const pipeline = await buildSupportPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      getServiceControl: async () => activeControl({ key: "support" }),
+      getPool: () => fakePool({ query: async () => ({ rows: [] }) }),
+    });
+    expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "open-count")).toMatchObject({ status: "amber" });
+    expect(stageById(pipeline, "oldest-open-age")).toMatchObject({ status: "amber" });
+  });
+
+  it("is red on table-exists when support_tickets exists but support_ticket_messages is missing (issue #393 review)", async () => {
+    const pipeline = await buildSupportPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      getServiceControl: async () => activeControl({ key: "support" }),
+      getPool: () =>
+        fakePool({
+          query: async (text: string) => {
+            if (text.includes("information_schema.tables")) return { rows: [{ table_name: "support_tickets" }] };
+            if (text.includes("COUNT(*)::int AS count")) return { rows: [{ count: 0 }] };
+            return { rows: [] };
+          },
+        }),
+    });
+    expect(stageById(pipeline, "table-exists")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "table-exists").message).toContain("support_ticket_messages");
+  });
+
+  it("flags a stale oldest-open ticket (48h+) as amber", async () => {
+    const now = new Date("2026-06-01T00:00:00.000Z");
+    const oldCreatedAt = new Date(now.getTime() - 50 * 60 * 60 * 1000).toISOString();
+    const pipeline = await buildSupportPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      now,
+      getServiceControl: async () => activeControl({ key: "support" }),
+      getPool: () =>
+        fakePool({
+          query: async (text: string) => {
+            if (text.includes("information_schema.tables")) return { rows: [{ table_name: "support_tickets" }] };
+            if (text.includes("COUNT(*)::int AS count")) return { rows: [{ count: 1 }] };
+            if (text.includes("created_at")) return { rows: [{ created_at: oldCreatedAt }] };
+            return { rows: [] };
+          },
+        }),
+    });
+    expect(stageById(pipeline, "oldest-open-age")).toMatchObject({ status: "amber" });
+  });
+
+  it("is reachable through the buildServicePipeline dispatcher", async () => {
+    const pipeline = await buildServicePipeline("support", { support: { databaseUrl: "" } });
+    expect(pipeline.id).toBe("support");
   });
 });
 
