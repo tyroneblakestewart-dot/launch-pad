@@ -42,10 +42,20 @@ describe("public nav testnet-tools flag", () => {
     expect(guardIndex).toBeLessThan(sidebarNoteIndex);
   });
 
-  it("renders both desktop and mobile nav from the same filtered item list", async () => {
+  it("renders desktop's workflow and utility groups, and the mobile pill, from the same filtered item list", async () => {
+    // Issue #396: the desktop sidebar splits VISIBLE_NAV_ITEMS into a
+    // numbered workflow list and a separate bottom-pinned utility group
+    // (Support), while the mobile pill still renders the single flat list.
     const navigation = await source("components/app-navigation.tsx");
 
-    expect(navigation).toContain("VISIBLE_NAV_ITEMS.map((item) => {");
+    expect(navigation).toContain(
+      'const WORKFLOW_NAV_ITEMS = VISIBLE_NAV_ITEMS.filter((item) => !("utility" in item && item.utility));',
+    );
+    expect(navigation).toContain(
+      'const UTILITY_NAV_ITEMS = VISIBLE_NAV_ITEMS.filter((item) => "utility" in item && item.utility);',
+    );
+    expect(navigation).toContain("WORKFLOW_NAV_ITEMS.map((item) => {");
+    expect(navigation).toContain("UTILITY_NAV_ITEMS.map((item) => {");
     expect(navigation).toContain("{VISIBLE_NAV_ITEMS.map((item) => (");
     expect(navigation).not.toContain("{NAV_ITEMS.map(");
   });

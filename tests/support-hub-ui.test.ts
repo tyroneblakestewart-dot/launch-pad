@@ -45,13 +45,13 @@ describe("Support hub UI (issue #393)", () => {
     expect(component).toContain("/reply");
   });
 
-  it("is reachable from the account overlay without touching the primary launch-flow nav", async () => {
+  it("is reachable from the account overlay's 'Report a problem' link (issue #393) and, as of issue #396, the main nav too", async () => {
     const overlay = await source("components", "account-overlay.tsx");
     expect(overlay).toContain('href="/support"');
     expect(overlay).toContain("Report a problem");
 
     const navigation = await source("components", "app-navigation.tsx");
-    expect(navigation).not.toContain('href="/support"');
+    expect(navigation).toContain('href: "/support"');
   });
 
   it("is mobile-first and safe at a 390px iPhone Safari viewport (CLAUDE.md rule 7)", async () => {
