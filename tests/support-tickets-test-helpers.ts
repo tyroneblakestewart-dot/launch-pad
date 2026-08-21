@@ -58,7 +58,11 @@ export function createMemorySupportTicketsStore(): SupportTicketsStore {
 
       const message: SupportTicketMessage = { id: randomUUID(), ticketId, author: "user", body, createdAt: new Date().toISOString() };
       messages.set(ticketId, [...(messages.get(ticketId) ?? []), message]);
-      const updated = { ...ticket, updatedAt: new Date().toISOString() };
+      const updated: SupportTicket = {
+        ...ticket,
+        status: ticket.status === "needs_user" ? "open" : ticket.status,
+        updatedAt: new Date().toISOString(),
+      };
       tickets.set(ticketId, updated);
       return { status: "ok", ticket: updated, message };
     },

@@ -14,6 +14,7 @@ import {
   SupportTicketsStoreUnavailableError,
   getSupportTicketsStore,
   isValidSupportTicketId,
+  toPublicSupportTicket,
 } from "@/lib/server/support-tickets-store";
 
 // A user's follow-up reply on their own open/needs_user support ticket
@@ -103,7 +104,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }),
     );
 
-    return NextResponse.json({ ticket: result.ticket, message: result.message }, { status: 201, headers: responseHeaders });
+    return NextResponse.json(
+      { ticket: toPublicSupportTicket(result.ticket), message: result.message },
+      { status: 201, headers: responseHeaders },
+    );
   } catch (error) {
     if (error instanceof SupportTicketsStoreUnavailableError) {
       return NextResponse.json(

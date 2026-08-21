@@ -111,13 +111,11 @@ describe("GET /api/admin/support", () => {
     expect(payload.tickets).toHaveLength(1);
   });
 
-  it("degrades to 200 with an empty list when storage is unavailable, matching the store's read-tolerant unconfigured fallback", async () => {
+  it("returns 503 when storage is unavailable, never a false-empty admin queue (issue #393 review)", async () => {
     resetSupportTicketsStoreForTests();
     delete process.env.DATABASE_URL;
     const response = await getAdminSupport(request("GET", "/api/admin/support?status=all"));
-    expect(response.status).toBe(200);
-    const payload = (await response.json()) as { tickets: unknown[] };
-    expect(payload.tickets).toEqual([]);
+    expect(response.status).toBe(503);
   });
 });
 

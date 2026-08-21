@@ -77,6 +77,22 @@ export type SupportTicketMessage = {
 
 export type SupportTicketWithMessages = SupportTicket & { messages: SupportTicketMessage[] };
 
+/**
+ * What a wallet-signed public response is allowed to echo back about its own
+ * ticket — never `diagnostics` (assembled for the owner's eyes only) or the
+ * raw `walletAddress` (issue #393 review). Every public support route
+ * (create/list/reply) must project through this, never return the full
+ * store `SupportTicket`/`SupportTicketWithMessages` shape directly.
+ */
+export type PublicSupportTicket = Omit<SupportTicket, "diagnostics" | "walletAddress">;
+
+export function toPublicSupportTicket<T extends SupportTicket>(ticket: T): Omit<T, "diagnostics" | "walletAddress"> {
+  const { diagnostics: _diagnostics, walletAddress: _walletAddress, ...rest } = ticket;
+  void _diagnostics;
+  void _walletAddress;
+  return rest;
+}
+
 export type CreateSupportTicketInput = {
   walletAddress: string;
   category: SupportTicketCategory;
@@ -127,13 +143,13 @@ const unconfiguredStore: SupportTicketsStore = {
     throw new SupportTicketsStoreUnavailableError();
   },
   async listForWallet() {
-    return [];
+    throw new SupportTicketsStoreUnavailableError();
   },
   async addUserMessage() {
     throw new SupportTicketsStoreUnavailableError();
   },
   async listForAdmin() {
-    return [];
+    throw new SupportTicketsStoreUnavailableError();
   },
   async addOwnerMessage() {
     throw new SupportTicketsStoreUnavailableError();
@@ -335,11 +351,19 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
         const message = messageFromRow(messageResult.rows[0]);
         if (!message) throw new Error("The support ticket reply could not be saved.");
 
+        // A user follow-up clears any pending "needs_user" flag back to
+        // "open" — otherwise the admin queue would keep showing a ticket the
+        // user already responded to as still waiting on them.
         const updatedResult = await client.query<TicketRow>(
-          `UPDATE support_tickets SET updated_at = NOW() WHERE id = $1 RETURNING ${TICKET_COLUMNS}`,
+          `UPDATE support_tickets
+              SET status = CASE WHEN status = 'needs_user' THEN 'open' ELSE status END,
+                  updated_at = NOW()
+            WHERE id = $1
+        RETURNING ${TICKET_COLUMNS}`,
           [ticketId],
         );
-        const updatedTicket = ticketFromRow(updatedResult.rows[0]) ?? ticket;
+        const updatedTicket = updatedResult.rows[0] ? ticketFromRow(updatedResult.rows[0]) : null;
+        if (!updatedTicket) throw new Error("The support ticket could not be updated.");
         await client.query("COMMIT");
         return { status: "ok", ticket: updatedTicket, message };
       } catch (error) {

@@ -20,6 +20,7 @@ import {
   SupportTicketsStoreUnavailableError,
   getSupportTicketsStore,
   isSupportTicketCategory,
+  toPublicSupportTicket,
 } from "@/lib/server/support-tickets-store";
 
 // User-facing support ticket create + list (issue #393). Creation is
@@ -78,7 +79,7 @@ export async function GET(request: Request) {
 
   try {
     const tickets = await getSupportTicketsStore().listForWallet(walletAddress);
-    return NextResponse.json({ tickets }, { status: 200, headers });
+    return NextResponse.json({ tickets: tickets.map(toPublicSupportTicket) }, { status: 200, headers });
   } catch (error) {
     if (error instanceof SupportTicketsStoreUnavailableError) return storageUnavailableResponse(headers);
     console.error("Support ticket listing failed unexpectedly.", error instanceof Error ? (error.stack ?? error.message) : error);
@@ -155,7 +156,7 @@ export async function POST(request: Request) {
     );
     runAfterResponse(() => sendSupportTicketTelegramAlertBestEffort(ticket));
 
-    return NextResponse.json({ ticket }, { status: 201, headers });
+    return NextResponse.json({ ticket: toPublicSupportTicket(ticket) }, { status: 201, headers });
   } catch (error) {
     if (error instanceof SupportTicketsStoreUnavailableError) return storageUnavailableResponse(headers);
     console.error("Support ticket creation failed unexpectedly.", error instanceof Error ? (error.stack ?? error.message) : error);

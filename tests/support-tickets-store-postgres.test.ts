@@ -82,7 +82,7 @@ describe("createPostgresSupportTicketsStore — addUserMessage transaction shape
       if (text === "BEGIN" || text === "COMMIT") return { rows: [] };
       if (text.includes("FOR UPDATE")) return { rows: [ticketRow()] };
       if (text.includes("INSERT INTO support_ticket_messages")) return { rows: [messageRow()] };
-      if (text.includes("UPDATE support_tickets SET updated_at")) return { rows: [ticketRow()] };
+      if (text.includes("UPDATE support_tickets")) return { rows: [ticketRow()] };
       return { rows: [] };
     });
     installPool(client);
@@ -95,8 +95,43 @@ describe("createPostgresSupportTicketsStore — addUserMessage transaction shape
     expect(texts[0]).toBe("BEGIN");
     expect(texts.some((text) => text.includes("SELECT") && text.includes("FOR UPDATE"))).toBe(true);
     expect(texts.some((text) => text.includes("INSERT INTO support_ticket_messages"))).toBe(true);
-    expect(texts.some((text) => text.includes("UPDATE support_tickets SET updated_at"))).toBe(true);
+    expect(texts.some((text) => text.includes("UPDATE support_tickets") && text.includes("updated_at = NOW()"))).toBe(true);
     expect(texts[texts.length - 1]).toBe("COMMIT");
+    expect(releaseSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears a pending needs_user status back to open on a successful user reply", async () => {
+    const { client } = createFakeClient((text) => {
+      if (text === "BEGIN" || text === "COMMIT") return { rows: [] };
+      if (text.includes("FOR UPDATE")) return { rows: [ticketRow({ status: "needs_user" })] };
+      if (text.includes("INSERT INTO support_ticket_messages")) return { rows: [messageRow()] };
+      if (text.includes("UPDATE support_tickets")) return { rows: [ticketRow({ status: "open" })] };
+      return { rows: [] };
+    });
+    installPool(client);
+
+    const store = createPostgresSupportTicketsStore("postgres://test");
+    const result = await store.addUserMessage(TICKET_ID, WALLET, "still broken");
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") expect(result.ticket.status).toBe("open");
+  });
+
+  it("rolls back, releases the client, and rethrows when the status/updated_at UPDATE returns no row", async () => {
+    const { client, calls, releaseSpy } = createFakeClient((text) => {
+      if (text === "BEGIN" || text === "COMMIT") return { rows: [] };
+      if (text.includes("FOR UPDATE")) return { rows: [ticketRow()] };
+      if (text.includes("INSERT INTO support_ticket_messages")) return { rows: [messageRow()] };
+      if (text.includes("UPDATE support_tickets")) return { rows: [] };
+      return { rows: [] };
+    });
+    installPool(client);
+
+    const store = createPostgresSupportTicketsStore("postgres://test");
+    await expect(store.addUserMessage(TICKET_ID, WALLET, "more detail")).rejects.toThrow(
+      "The support ticket could not be updated.",
+    );
+    expect(calls[calls.length - 1].text).toBe("ROLLBACK");
     expect(releaseSpy).toHaveBeenCalledTimes(1);
   });
 

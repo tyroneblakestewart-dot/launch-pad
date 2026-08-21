@@ -258,10 +258,17 @@ describe("POST /api/support/tickets (create)", () => {
   it("creates a ticket with server-assembled diagnostics and never fails when Telegram is unconfigured", async () => {
     const response = await createSignedTicket(ACCOUNT);
     expect(response.status).toBe(201);
-    const payload = (await response.json()) as { ticket: { id: string; status: string; diagnostics: unknown; walletAddress: string } };
+    const payload = (await response.json()) as { ticket: Record<string, unknown> };
     expect(payload.ticket.status).toBe("open");
-    expect(payload.ticket.walletAddress.toLowerCase()).toBe(ACCOUNT.address.toLowerCase());
-    expect(payload.ticket.diagnostics).toBeTruthy();
+    expect(payload.ticket.id).toBeTruthy();
+  });
+
+  it("never echoes diagnostics or the raw walletAddress in the public create response (issue #393 review)", async () => {
+    const response = await createSignedTicket(ACCOUNT);
+    expect(response.status).toBe(201);
+    const payload = (await response.json()) as { ticket: Record<string, unknown> };
+    expect(payload.ticket.diagnostics).toBeUndefined();
+    expect(payload.ticket.walletAddress).toBeUndefined();
   });
 
   it("does not fail ticket creation when the Telegram alert call throws (issue #393)", async () => {
@@ -313,6 +320,24 @@ describe("GET /api/support/tickets (list)", () => {
     expect(payload.tickets).toHaveLength(1);
     expect(payload.tickets[0].subject).toBe("mine");
   });
+
+  it("never echoes diagnostics or the raw walletAddress in the public list response (issue #393 review)", async () => {
+    await createSignedTicket(ACCOUNT);
+
+    const response = await listTickets(getRequest(`/api/support/tickets?walletAddress=${ACCOUNT.address}`));
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { tickets: Array<Record<string, unknown>> };
+    expect(payload.tickets).toHaveLength(1);
+    expect(payload.tickets[0].diagnostics).toBeUndefined();
+    expect(payload.tickets[0].walletAddress).toBeUndefined();
+  });
+
+  it("returns 503 when the store is unavailable rather than a false-empty list (issue #393 review)", async () => {
+    resetSupportTicketsStoreForTests();
+    delete process.env.DATABASE_URL;
+    const response = await listTickets(getRequest(`/api/support/tickets?walletAddress=${ACCOUNT.address}`));
+    expect(response.status).toBe(503);
+  });
 });
 
 describe("POST /api/support/tickets/[id]/reply", () => {
@@ -339,6 +364,19 @@ describe("POST /api/support/tickets/[id]/reply", () => {
       { params: Promise.resolve({ id: ticketId }) },
     );
     expect(response.status).toBe(201);
+  });
+
+  it("never echoes diagnostics or the raw walletAddress in the public reply response (issue #393 review)", async () => {
+    const ticketId = await createOpenTicket();
+    const auth = await signedAction(ACCOUNT, "support:ticket-reply", { ticketId, body: "more detail" });
+    const response = await replyTicket(
+      postRequest(`/api/support/tickets/${ticketId}/reply`, { body: "more detail", ...auth }),
+      { params: Promise.resolve({ id: ticketId }) },
+    );
+    expect(response.status).toBe(201);
+    const payload = (await response.json()) as { ticket: Record<string, unknown> };
+    expect(payload.ticket.diagnostics).toBeUndefined();
+    expect(payload.ticket.walletAddress).toBeUndefined();
   });
 
   it("logs ticket-replied admin activity for a user's own reply, without the reply text (issue #393 review)", async () => {

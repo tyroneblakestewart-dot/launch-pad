@@ -101,7 +101,7 @@ describe("SupportTicketsStore contract (via in-memory double)", () => {
     expect((await store.addUserMessage(ticket.id, WALLET, "still broken")).status).toBe("closed");
   });
 
-  it("allows a reply while needs_user, matching an owner reply's flip", async () => {
+  it("allows a reply while needs_user, and clears the flag back to open (issue #393 review)", async () => {
     const store = createMemorySupportTicketsStore();
     const ticket = await store.create({ walletAddress: WALLET, category: "other", subject: "s", body: "b", diagnostics: {} });
     await store.addOwnerMessage(ticket.id, "Can you share more detail?");
@@ -110,6 +110,10 @@ describe("SupportTicketsStore contract (via in-memory double)", () => {
 
     const result = await store.addUserMessage(ticket.id, WALLET, "Sure, here it is.");
     expect(result.status).toBe("ok");
+    if (result.status === "ok") expect(result.ticket.status).toBe("open");
+
+    const afterUserReply = (await store.listForWallet(WALLET))[0];
+    expect(afterUserReply.status).toBe("open");
   });
 
   it("owner reply creates an owner message and flips status to needs_user", async () => {
@@ -188,8 +192,11 @@ describe("getSupportTicketsStore", () => {
     delete process.env.DATABASE_URL;
     resetSupportTicketsStoreForTests();
     const store = getSupportTicketsStore();
-    expect(await store.listForWallet(WALLET)).toEqual([]);
-    expect(await store.listForAdmin("all")).toEqual([]);
+    // Reads must fail loudly rather than degrade to a false-empty queue —
+    // a missing DATABASE_URL/unapplied migration must never look like "no
+    // tickets" to a user or the admin queue (issue #393 review).
+    await expect(store.listForWallet(WALLET)).rejects.toThrow(SupportTicketsStoreUnavailableError);
+    await expect(store.listForAdmin("all")).rejects.toThrow(SupportTicketsStoreUnavailableError);
     expect(await store.countOpen()).toBe(0);
     expect(await store.oldestOpenTicketAgeSeconds()).toBeNull();
     await expect(store.create({ walletAddress: WALLET, category: "other", subject: "s", body: "b", diagnostics: {} })).rejects.toThrow(
