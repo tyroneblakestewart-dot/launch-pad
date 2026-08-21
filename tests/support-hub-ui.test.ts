@@ -39,6 +39,21 @@ describe("Support hub UI (issue #393)", () => {
     expect(component).toContain("/api/support/tickets");
   });
 
+  it("offers an optional screenshot attachment, restricted to PNG/JPEG/WEBP, with a remove control (issue #398)", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("Add a screenshot (optional)");
+    expect(component).toContain('accept="image/png,image/jpeg,image/webp"');
+    expect(component).toContain("handleScreenshotChange");
+    expect(component).toContain("removeAttachment");
+  });
+
+  it("binds the attachment to the signed payload with a SHA-256 image hash, computed the same way the server does (issue #398)", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("sha256Hex");
+    expect(component).toContain("imageHash");
+    expect(component).toContain('crypto.subtle.digest("SHA-256"');
+  });
+
   it("lets a user post a wallet-signed follow-up with support:ticket-reply", async () => {
     const component = await source("components", "support-hub.tsx");
     expect(component).toContain('"support:ticket-reply"');

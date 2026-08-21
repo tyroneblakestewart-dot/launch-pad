@@ -10,10 +10,15 @@ import {
 } from "@/lib/server/api-protection";
 import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
 import { runAfterResponse } from "@/lib/server/ai-operation-cost-store";
+import { hashChatMessageContent } from "@/lib/server/chat-auth";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import { sendSupportTicketTelegramAlertBestEffort } from "@/lib/server/support-ticket-alert";
 import { buildSupportTicketDiagnostics } from "@/lib/server/support-ticket-diagnostics";
 import { authoriseSupportAction, type AuthoriseSupportActionResult } from "@/lib/server/support-ticket-auth";
+import {
+  supportTicketAttachmentErrorMessage,
+  validateSupportTicketAttachment,
+} from "@/lib/server/support-ticket-attachment";
 import {
   MAX_SUPPORT_TICKET_BODY_LENGTH,
   MAX_SUPPORT_TICKET_SUBJECT_LENGTH,
@@ -118,13 +123,26 @@ export async function POST(request: Request) {
   if (!ticketBody || ticketBody.length > MAX_SUPPORT_TICKET_BODY_LENGTH) {
     return NextResponse.json({ error: `Enter a description between 1 and ${MAX_SUPPORT_TICKET_BODY_LENGTH} characters.` }, { status: 400, headers });
   }
+
+  // The attachment is validated (mime allowlist + byte cap + data-URL
+  // syntax) *before* it's folded into the wallet-signed payload below — the
+  // hash that binds the signature to this exact image is always computed
+  // from the server's own validated bytes, never a client-declared hash, so
+  // a signature can't be forged to cover an image the server never checked.
+  const attachmentValidation = validateSupportTicketAttachment(body?.attachmentDataUrl);
+  if (attachmentValidation.status !== "ok" && attachmentValidation.status !== "empty") {
+    return NextResponse.json({ error: supportTicketAttachmentErrorMessage(attachmentValidation.status) }, { status: 400, headers });
+  }
+  const attachmentDataUrl = attachmentValidation.status === "ok" ? attachmentValidation.dataUrl : null;
+  const imageHash = attachmentDataUrl ? hashChatMessageContent(attachmentDataUrl) : "";
+
   if (!challengeId || !nonce || !signature) {
     return NextResponse.json({ error: "A valid support challenge and signature are required." }, { status: 400, headers });
   }
 
   const authorisation = await authoriseSupportAction({
     purpose: "support:ticket-create",
-    payload: { category, subject, body: ticketBody },
+    payload: { category, subject, body: ticketBody, imageHash },
     challengeId,
     nonce,
     signature,
@@ -139,6 +157,7 @@ export async function POST(request: Request) {
       subject,
       body: ticketBody,
       diagnostics,
+      attachmentDataUrl,
     });
 
     // Both are strictly best-effort and must never delay the response — a

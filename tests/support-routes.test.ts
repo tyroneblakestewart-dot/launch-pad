@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 import { POST as supportChallenge } from "@/app/api/support/challenge/route";
@@ -48,6 +49,11 @@ function getRequest(path: string) {
   return new Request(`${ORIGIN}${path}`, { method: "GET" });
 }
 
+/** Matches lib/server/chat-auth.ts's hashChatMessageContent exactly, so tests can construct a signed payload the same way the client would. */
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
 async function signedAction(
   account: typeof ACCOUNT,
   purpose: "support:ticket-create" | "support:ticket-reply",
@@ -62,12 +68,18 @@ async function signedAction(
   return { challengeId: challenge.challengeId, nonce: challenge.nonce, signature };
 }
 
-async function createSignedTicket(account: typeof ACCOUNT, overrides: Partial<{ category: string; subject: string; body: string }> = {}) {
+async function createSignedTicket(
+  account: typeof ACCOUNT,
+  overrides: Partial<{ category: string; subject: string; body: string; attachmentDataUrl: string; imageHash: string }> = {},
+) {
   const category = overrides.category ?? "payments";
   const subject = overrides.subject ?? "Payment stuck";
   const body = overrides.body ?? "My payment has not confirmed in an hour.";
-  const auth = await signedAction(account, "support:ticket-create", { category, subject, body });
-  return createTicket(postRequest("/api/support/tickets", { category, subject, body, ...auth }));
+  const imageHash = overrides.imageHash ?? "";
+  const auth = await signedAction(account, "support:ticket-create", { category, subject, body, imageHash });
+  return createTicket(
+    postRequest("/api/support/tickets", { category, subject, body, attachmentDataUrl: overrides.attachmentDataUrl, ...auth }),
+  );
 }
 
 beforeEach(() => {
@@ -230,7 +242,7 @@ describe("POST /api/support/tickets (create)", () => {
         walletAddress: ACCOUNT.address,
         walletChainId: 46630,
         purpose: "support:ticket-create",
-        payload: { category: "other", subject: "s", body: "b" },
+        payload: { category: "other", subject: "s", body: "b", imageHash: "" },
       }),
     );
     const challenge = (await challengeResponse.json()) as { challengeId: string; nonce: string };
@@ -248,7 +260,7 @@ describe("POST /api/support/tickets (create)", () => {
   });
 
   it("rejects a replayed challenge", async () => {
-    const auth = await signedAction(ACCOUNT, "support:ticket-create", { category: "other", subject: "s", body: "b" });
+    const auth = await signedAction(ACCOUNT, "support:ticket-create", { category: "other", subject: "s", body: "b", imageHash: "" });
     const first = await createTicket(postRequest("/api/support/tickets", { category: "other", subject: "s", body: "b", ...auth }));
     expect(first.status).toBe(201);
     const replay = await createTicket(postRequest("/api/support/tickets", { category: "other", subject: "s", body: "b", ...auth }));
@@ -289,9 +301,116 @@ describe("POST /api/support/tickets (create)", () => {
   it("returns 503 when the store is unavailable", async () => {
     resetSupportTicketsStoreForTests();
     delete process.env.DATABASE_URL;
-    const auth = await signedAction(ACCOUNT, "support:ticket-create", { category: "other", subject: "s", body: "b" });
+    const auth = await signedAction(ACCOUNT, "support:ticket-create", { category: "other", subject: "s", body: "b", imageHash: "" });
     const response = await createTicket(postRequest("/api/support/tickets", { category: "other", subject: "s", body: "b", ...auth }));
     expect(response.status).toBe(503);
+  });
+
+  describe("optional screenshot attachment (issue #398)", () => {
+    const VALID_PNG_DATA_URL = "data:image/png;base64,aGVsbG8gd29ybGQ=";
+    const OTHER_VALID_PNG_DATA_URL = "data:image/png;base64,YSBkaWZmZXJlbnQgaW1hZ2U=";
+
+    it("creates a ticket with a valid screenshot attachment, returned in the public response", async () => {
+      const response = await createSignedTicket(ACCOUNT, {
+        attachmentDataUrl: VALID_PNG_DATA_URL,
+        imageHash: sha256Hex(VALID_PNG_DATA_URL),
+      });
+      expect(response.status).toBe(201);
+      const payload = (await response.json()) as { ticket: { attachmentDataUrl: string | null } };
+      expect(payload.ticket.attachmentDataUrl).toBe(VALID_PNG_DATA_URL);
+    });
+
+    it("behaves exactly as before when no attachment is provided (regression)", async () => {
+      const response = await createSignedTicket(ACCOUNT);
+      expect(response.status).toBe(201);
+      const payload = (await response.json()) as { ticket: { attachmentDataUrl: string | null } };
+      expect(payload.ticket.attachmentDataUrl).toBeNull();
+    });
+
+    it("rejects an oversized screenshot with a plain-English size error, before ever consuming the challenge", async () => {
+      const oversized = `data:image/png;base64,${"A".repeat(3_000_000)}`;
+      const response = await createTicket(
+        postRequest("/api/support/tickets", {
+          category: "other",
+          subject: "s",
+          body: "b",
+          attachmentDataUrl: oversized,
+          challengeId: "unused",
+          nonce: "unused",
+          signature: "0x00",
+        }),
+      );
+      expect(response.status).toBe(400);
+      const payload = (await response.json()) as { error: string };
+      expect(payload.error).toMatch(/too large/i);
+    });
+
+    it("rejects an unsupported mime type, including image/svg+xml, with a plain-English error", async () => {
+      const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from("<svg onload=alert(1)></svg>").toString("base64")}`;
+      const response = await createTicket(
+        postRequest("/api/support/tickets", {
+          category: "other",
+          subject: "s",
+          body: "b",
+          attachmentDataUrl: svgDataUrl,
+          challengeId: "unused",
+          nonce: "unused",
+          signature: "0x00",
+        }),
+      );
+      expect(response.status).toBe(400);
+      const payload = (await response.json()) as { error: string };
+      expect(payload.error).toMatch(/file type/i);
+    });
+
+    it("rejects a malformed data URL with a plain-English error", async () => {
+      const response = await createTicket(
+        postRequest("/api/support/tickets", {
+          category: "other",
+          subject: "s",
+          body: "b",
+          attachmentDataUrl: "not-a-data-url",
+          challengeId: "unused",
+          nonce: "unused",
+          signature: "0x00",
+        }),
+      );
+      expect(response.status).toBe(400);
+      const payload = (await response.json()) as { error: string };
+      expect(payload.error).toMatch(/could not be read/i);
+    });
+
+    it("rejects a request whose attachment doesn't match the imageHash it was signed with — the image can't be swapped after signing", async () => {
+      const auth = await signedAction(ACCOUNT, "support:ticket-create", {
+        category: "other",
+        subject: "s",
+        body: "b",
+        imageHash: sha256Hex(VALID_PNG_DATA_URL),
+      });
+      const response = await createTicket(
+        postRequest("/api/support/tickets", {
+          category: "other",
+          subject: "s",
+          body: "b",
+          attachmentDataUrl: OTHER_VALID_PNG_DATA_URL,
+          ...auth,
+        }),
+      );
+      expect(response.status).toBe(401);
+    });
+
+    it("rejects a request that drops the attachment after signing with a non-empty imageHash", async () => {
+      const auth = await signedAction(ACCOUNT, "support:ticket-create", {
+        category: "other",
+        subject: "s",
+        body: "b",
+        imageHash: sha256Hex(VALID_PNG_DATA_URL),
+      });
+      const response = await createTicket(
+        postRequest("/api/support/tickets", { category: "other", subject: "s", body: "b", ...auth }),
+      );
+      expect(response.status).toBe(401);
+    });
   });
 });
 
@@ -330,6 +449,16 @@ describe("GET /api/support/tickets (list)", () => {
     expect(payload.tickets).toHaveLength(1);
     expect(payload.tickets[0].diagnostics).toBeUndefined();
     expect(payload.tickets[0].walletAddress).toBeUndefined();
+  });
+
+  it("includes the wallet's own attachment in the public list response (issue #398)", async () => {
+    const dataUrl = "data:image/png;base64,aGVsbG8gd29ybGQ=";
+    await createSignedTicket(ACCOUNT, { attachmentDataUrl: dataUrl, imageHash: sha256Hex(dataUrl) });
+
+    const response = await listTickets(getRequest(`/api/support/tickets?walletAddress=${ACCOUNT.address}`));
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { tickets: Array<{ attachmentDataUrl: string | null }> };
+    expect(payload.tickets[0].attachmentDataUrl).toBe(dataUrl);
   });
 
   it("returns 503 when the store is unavailable rather than a false-empty list (issue #393 review)", async () => {

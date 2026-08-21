@@ -36,6 +36,7 @@ export function createMemorySupportTicketsStore(): SupportTicketsStore {
         body: input.body,
         status: "open",
         diagnostics: input.diagnostics,
+        attachmentDataUrl: input.attachmentDataUrl ?? null,
         createdAt: now,
         updatedAt: now,
       };

@@ -62,6 +62,32 @@ describe("SupportTicketsStore contract (via in-memory double)", () => {
     expect(await store.listForWallet(WALLET.toUpperCase())).toHaveLength(1);
   });
 
+  it("defaults attachmentDataUrl to null when none is provided, and round-trips it when one is (issue #398)", async () => {
+    const store = createMemorySupportTicketsStore();
+    const withoutAttachment = await store.create({
+      walletAddress: WALLET,
+      category: "other",
+      subject: "no screenshot",
+      body: "b",
+      diagnostics: {},
+    });
+    expect(withoutAttachment.attachmentDataUrl).toBeNull();
+
+    const dataUrl = "data:image/png;base64,aGVsbG8=";
+    const withAttachment = await store.create({
+      walletAddress: WALLET,
+      category: "other",
+      subject: "has screenshot",
+      body: "b",
+      diagnostics: {},
+      attachmentDataUrl: dataUrl,
+    });
+    expect(withAttachment.attachmentDataUrl).toBe(dataUrl);
+
+    const mine = await store.listForWallet(WALLET);
+    expect(mine.find((t) => t.id === withAttachment.id)?.attachmentDataUrl).toBe(dataUrl);
+  });
+
   it("lets the owning wallet reply to an open ticket", async () => {
     const store = createMemorySupportTicketsStore();
     const ticket = await store.create({ walletAddress: WALLET, category: "other", subject: "s", body: "b", diagnostics: {} });

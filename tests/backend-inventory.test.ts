@@ -257,6 +257,7 @@ describe("backend test inventory", () => {
       "lib/server/subscription-lifecycle.ts",
       "lib/server/subscription-telegram.ts",
       "lib/server/support-ticket-alert.ts",
+      "lib/server/support-ticket-attachment.ts",
       "lib/server/support-ticket-auth.ts",
       "lib/server/support-ticket-diagnostics.ts",
       "lib/server/support-tickets-store.ts",

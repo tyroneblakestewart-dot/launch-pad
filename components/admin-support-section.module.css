@@ -205,6 +205,62 @@
   white-space: pre-wrap;
 }
 
+.attachmentButton {
+  display: block;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.attachmentThumb {
+  display: block;
+  max-width: 100%;
+  width: auto;
+  max-height: 220px;
+  border-radius: 10px;
+  border: 1px solid rgba(238, 243, 234, 0.14);
+  object-fit: contain;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 20px;
+  background: rgba(4, 6, 5, 0.9);
+  box-sizing: border-box;
+}
+
+.lightboxImage {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+.lightboxClose {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 8px 18px;
+  border-radius: 9px;
+  border: 1px solid rgba(238, 243, 234, 0.24);
+  background: transparent;
+  color: #eef3ea;
+  font-size: 0.8rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
 .diagnostics {
   border: 1px solid rgba(238, 243, 234, 0.1);
   border-radius: 9px;
