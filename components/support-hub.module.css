@@ -144,13 +144,14 @@
 }
 
 .successBanner {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
   margin: 0;
-  padding: 10px 14px;
+  padding: 10px 44px 10px 14px;
   border: 1px solid rgba(198, 245, 62, 0.35);
   border-radius: 12px;
   background: rgba(198, 245, 62, 0.08);
@@ -163,6 +164,25 @@
   margin: 0;
   color: #c6f53e;
   font-size: 12px;
+}
+
+.successDismissX {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #c6f53e;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .doneButton {
@@ -298,6 +318,20 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.chevron,
+.chevronExpanded {
+  flex: none;
+  display: inline-block;
+  color: #6b706a;
+  font-size: 12px;
+  transition: transform 0.15s ease;
+}
+
+.chevronExpanded {
+  color: #c6f53e;
+  transform: rotate(180deg);
 }
 
 .ticketBody {

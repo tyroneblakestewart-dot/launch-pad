@@ -14,7 +14,11 @@ import { writeSupportLastSeen } from "@/lib/support-unread";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./support-hub.module.css";
 
-type AccountsChangedHandler = (accounts: string[]) => void;
+// The extension calls this with whatever it wants — `accounts` is untrusted
+// wallet-extension input, not necessarily a string[] (issue #405 crash
+// audit), so the handler itself narrows before use rather than trusting
+// this type.
+type AccountsChangedHandler = (accounts: unknown) => void;
 
 // getInjectedEvmProvider()'s shared Eip1193Provider type only declares
 // `request` — widen locally for the accountsChanged listener, matching
@@ -24,6 +28,29 @@ type WalletProviderWithEvents = {
   on?: (event: "accountsChanged", handler: AccountsChangedHandler) => void;
   removeListener?: (event: "accountsChanged", handler: AccountsChangedHandler) => void;
 };
+
+/**
+ * Calls a browser/extension API that isn't itself a user-visible action
+ * (event (un)registration, best-effort cleanup, scroll-into-view) and
+ * swallows a synchronous throw rather than let it become an uncaught
+ * exception (issue #405 crash audit — extension-injected methods like
+ * `provider.on`/`removeListener` are not guaranteed not to throw). Never
+ * used for calls whose failure should be shown to the user.
+ */
+function safeInvoke(fn: () => void): void {
+  try {
+    fn();
+  } catch {
+    // Best-effort — see the doc comment above.
+  }
+}
+
+/** Narrows an untrusted accountsChanged payload to a single string address, or undefined for anything else (issue #405 crash audit). */
+function firstStringAccount(accounts: unknown): string | undefined {
+  if (!Array.isArray(accounts)) return undefined;
+  const first = accounts[0];
+  return typeof first === "string" && first ? first : undefined;
+}
 
 type SupportTicketCategory = "account" | "payments" | "site-builder" | "social-studio" | "publishing" | "other";
 type SupportTicketStatus = "open" | "needs_user" | "solved" | "closed";
@@ -91,28 +118,69 @@ function formatMegabytes(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(bytes >= 10_000_000 ? 0 : 1)} MB`;
 }
 
+// image.onload/onerror and reader.onload/onerror below run as separate
+// event dispatches, not inside this Promise executor's synchronous
+// execution — a throw inside one of them would NOT auto-reject the promise
+// the way a throw during the executor itself does, so it would surface as
+// an uncaught exception instead. Every callback body below is wrapped
+// accordingly (issue #405 crash audit).
+const SCREENSHOT_OPEN_ERROR = "This image could not be opened by the browser. Try a PNG, JPG or WEBP screenshot.";
+
 function loadImageFromFile(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
+    let objectUrl: string;
+    try {
+      objectUrl = URL.createObjectURL(file);
+    } catch {
+      reject(new Error(SCREENSHOT_OPEN_ERROR));
+      return;
+    }
     const image = new Image();
     image.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      resolve(image);
+      safeInvoke(() => URL.revokeObjectURL(objectUrl));
+      try {
+        resolve(image);
+      } catch {
+        reject(new Error(SCREENSHOT_OPEN_ERROR));
+      }
     };
     image.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error("This image could not be opened by the browser. Try a PNG, JPG or WEBP screenshot."));
+      safeInvoke(() => URL.revokeObjectURL(objectUrl));
+      reject(new Error(SCREENSHOT_OPEN_ERROR));
     };
-    image.src = objectUrl;
+    try {
+      image.src = objectUrl;
+    } catch {
+      safeInvoke(() => URL.revokeObjectURL(objectUrl));
+      reject(new Error(SCREENSHOT_OPEN_ERROR));
+    }
   });
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error ?? new Error("The file could not be read."));
-    reader.readAsDataURL(file);
+    let reader: FileReader;
+    try {
+      reader = new FileReader();
+    } catch {
+      reject(new Error("The file could not be read."));
+      return;
+    }
+    reader.onload = () => {
+      try {
+        resolve(String(reader.result || ""));
+      } catch {
+        reject(new Error("The file could not be read."));
+      }
+    };
+    reader.onerror = () => {
+      reject(reader.error ?? new Error("The file could not be read."));
+    };
+    try {
+      reader.readAsDataURL(file);
+    } catch {
+      reject(new Error("The file could not be read."));
+    }
   });
 }
 
@@ -127,20 +195,27 @@ async function optimiseScreenshotToDataUrl(file: File): Promise<string> {
   for (const type of ["image/webp", "image/jpeg"] as const) {
     for (const step of ARTWORK_COMPRESSION_STEPS) {
       const { width, height } = fitArtworkDimensions(image.naturalWidth, image.naturalHeight, step.maxDimension);
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext("2d", { alpha: type !== "image/jpeg" });
-      if (!context) throw new Error("The browser could not prepare the image canvas.");
-      context.imageSmoothingEnabled = true;
-      context.imageSmoothingQuality = "high";
-      if (type === "image/jpeg") {
-        context.fillStyle = "#050706";
-        context.fillRect(0, 0, width, height);
+      let dataUrl: string;
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d", { alpha: type !== "image/jpeg" });
+        if (!context) throw new Error("The browser could not prepare the image canvas.");
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = "high";
+        if (type === "image/jpeg") {
+          context.fillStyle = "#050706";
+          context.fillRect(0, 0, width, height);
+        }
+        context.drawImage(image, 0, 0, width, height);
+        dataUrl = canvas.toDataURL(type, step.quality);
+      } catch {
+        // Contained per-step — a canvas failure at one size/type
+        // combination tries the next step instead of aborting the whole
+        // optimisation pass (issue #405 crash audit).
+        continue;
       }
-      context.drawImage(image, 0, 0, width, height);
-
-      const dataUrl = canvas.toDataURL(type, step.quality);
       if (!smallest || dataUrl.length < smallest.length) smallest = dataUrl;
       if (dataUrl.length <= estimateDataUrlLength(TARGET_COMPRESSED_ARTWORK_BYTES)) return dataUrl;
     }
@@ -246,24 +321,29 @@ export function SupportHub({
     provider
       .request({ method: "eth_accounts" })
       .then((accounts) => {
-        if (!cancelled && Array.isArray(accounts) && accounts[0]) setWalletAddress(accounts[0] as string);
+        const first = firstStringAccount(accounts);
+        if (!cancelled && first) setWalletAddress(first);
       })
       .catch(() => {});
 
     // Keep the displayed ticket history following whichever wallet/account is
     // actually active — a switch or disconnect in the extension must clear
     // stale tickets immediately rather than keep showing the previous
-    // wallet's history (issue #393 review).
+    // wallet's history (issue #393 review). `accounts` is untrusted
+    // extension input — firstStringAccount narrows it rather than trusting
+    // Array.isArray alone, since a non-string first element (object, symbol)
+    // would otherwise flow into walletAddress and later explode during
+    // encoding/rendering (issue #405 crash audit).
     const handleAccountsChanged: AccountsChangedHandler = (accounts) => {
       if (cancelled) return;
-      const nextAccount = Array.isArray(accounts) ? accounts[0] : undefined;
+      const nextAccount = firstStringAccount(accounts);
       setWalletAddress(nextAccount || null);
     };
-    provider.on?.("accountsChanged", handleAccountsChanged);
+    safeInvoke(() => provider.on?.("accountsChanged", handleAccountsChanged));
 
     return () => {
       cancelled = true;
-      provider.removeListener?.("accountsChanged", handleAccountsChanged);
+      safeInvoke(() => provider.removeListener?.("accountsChanged", handleAccountsChanged));
     };
   }, []);
 
@@ -286,22 +366,39 @@ export function SupportHub({
     const wallet = walletAddress;
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
+    // Every browser-API call below is wrapped — a hostile/broken
+    // environment (or an extension patching these globals) must not turn
+    // listener setup, a timer tick, or cleanup into an uncaught exception
+    // (issue #405 crash audit).
     function stopTimer() {
       if (intervalId !== null) {
-        clearInterval(intervalId);
+        const id = intervalId;
         intervalId = null;
+        safeInvoke(() => clearInterval(id));
       }
     }
 
     function startTimer() {
       if (intervalId !== null) return;
-      intervalId = setInterval(() => {
-        void loadTickets(wallet);
-      }, 60_000);
+      try {
+        intervalId = setInterval(() => {
+          void loadTickets(wallet);
+        }, 60_000);
+      } catch {
+        intervalId = null;
+      }
+    }
+
+    function isPageVisible(): boolean {
+      try {
+        return document.visibilityState === "visible";
+      } catch {
+        return true;
+      }
     }
 
     function handleBecameVisible() {
-      if (document.visibilityState !== "visible") {
+      if (!isPageVisible()) {
         stopTimer();
         return;
       }
@@ -310,13 +407,13 @@ export function SupportHub({
     }
 
     if (document.visibilityState === "visible") startTimer();
-    document.addEventListener("visibilitychange", handleBecameVisible);
-    window.addEventListener("focus", handleBecameVisible);
+    safeInvoke(() => document.addEventListener("visibilitychange", handleBecameVisible));
+    safeInvoke(() => window.addEventListener("focus", handleBecameVisible));
 
     return () => {
       stopTimer();
-      document.removeEventListener("visibilitychange", handleBecameVisible);
-      window.removeEventListener("focus", handleBecameVisible);
+      safeInvoke(() => document.removeEventListener("visibilitychange", handleBecameVisible));
+      safeInvoke(() => window.removeEventListener("focus", handleBecameVisible));
     };
   }, [walletAddress, loadTickets]);
 
@@ -336,7 +433,9 @@ export function SupportHub({
 
   async function handleScreenshotChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    event.target.value = "";
+    safeInvoke(() => {
+      event.target.value = "";
+    });
     if (!file) return;
 
     setAttachmentError(null);
@@ -415,7 +514,8 @@ export function SupportHub({
 
   // Dismisses the post-submit success state (issue #401) — resets the form
   // to a fresh, empty New report and scrolls to the reports list below,
-  // where the just-created ticket now shows.
+  // where the just-created ticket now shows. Shared verbatim by both the
+  // Done button and the success card's corner X (issue #405).
   function handleDone() {
     setSubmitted(false);
     setSubmitError(null);
@@ -424,7 +524,7 @@ export function SupportHub({
     setBody("");
     setAttachmentDataUrl(null);
     setAttachmentError(null);
-    historyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    safeInvoke(() => historyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
   async function handleClose(ticketId: string) {
@@ -559,7 +659,14 @@ export function SupportHub({
                     type="button"
                     className={styles.attachmentButton}
                     disabled={submitting || attachmentBusy}
-                    onClick={() => attachmentInputRef.current?.click()}
+                    onClick={() => {
+                      setAttachmentError(null);
+                      try {
+                        attachmentInputRef.current?.click();
+                      } catch {
+                        setAttachmentError("The file picker could not be opened. Try again.");
+                      }
+                    }}
                   >
                     {attachmentBusy ? "Optimising…" : "Choose screenshot"}
                   </button>
@@ -579,6 +686,14 @@ export function SupportHub({
             ) : null}
             {submitted ? (
               <div className={styles.successBanner} role="status">
+                <button
+                  type="button"
+                  className={styles.successDismissX}
+                  onClick={handleDone}
+                  aria-label="Dismiss"
+                >
+                  ×
+                </button>
                 <p className={styles.successText}>
                   Report sent. We&apos;ll reply here. A red dot will appear on the Support tab when there&apos;s
                   news — you don&apos;t need to keep this page open.
@@ -619,6 +734,8 @@ export function SupportHub({
                 const expanded = expandedId === ticket.id;
                 return (
                   <li key={ticket.id} className={styles.ticket}>
+                    {/* Collapse/expand only ever touches local UI state (expandedId) — it
+                        never calls an API, unlike "Mark as resolved" below (issue #405). */}
                     <button
                       type="button"
                       className={styles.ticketSummary}
@@ -627,6 +744,9 @@ export function SupportHub({
                     >
                       <span className={styles.ticketSubject}>{ticket.subject}</span>
                       <span className={styles.ticketStatus}>{STATUS_LABEL[ticket.status]}</span>
+                      <span className={expanded ? styles.chevronExpanded : styles.chevron} aria-hidden="true">
+                        ▾
+                      </span>
                     </button>
 
                     {expanded ? (
@@ -684,8 +804,8 @@ export function SupportHub({
                             {closeConfirmId === ticket.id ? (
                               <>
                                 <p className={styles.closeConfirmText}>
-                                  Close this report? You can&apos;t reopen it — file a new report if the problem comes
-                                  back.
+                                  This closes the report. It does not just hide this box. You can&apos;t reopen it —
+                                  file a new report if the problem comes back.
                                 </p>
                                 <div className={styles.closeConfirmActions}>
                                   <button
@@ -715,7 +835,7 @@ export function SupportHub({
                                   setCloseConfirmId(ticket.id);
                                 }}
                               >
-                                Close this report
+                                Mark as resolved — I&apos;m done with this
                               </button>
                             )}
                             {closeError && closeConfirmId === ticket.id ? (

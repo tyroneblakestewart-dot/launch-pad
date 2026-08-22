@@ -65,21 +65,21 @@ describe("Support unread nav badge (issue #403)", () => {
 describe("Support page live refresh (issue #403)", () => {
   it("refetches on window focus and document visibilitychange", async () => {
     const component = await source("components", "support-hub.tsx");
-    expect(component).toContain('document.addEventListener("visibilitychange", handleBecameVisible);');
-    expect(component).toContain('window.addEventListener("focus", handleBecameVisible);');
+    expect(component).toContain('document.addEventListener("visibilitychange", handleBecameVisible)');
+    expect(component).toContain('window.addEventListener("focus", handleBecameVisible)');
   });
 
   it("runs a 60s timer only while the tab is visible, and tears it down when hidden", async () => {
     const component = await source("components", "support-hub.tsx");
     expect(component).toContain("60_000");
-    expect(component).toMatch(/if \(document\.visibilityState !== "visible"\) \{\s*stopTimer\(\);/);
+    expect(component).toMatch(/if \(!isPageVisible\(\)\) \{\s*stopTimer\(\);/);
     expect(component).toContain('if (document.visibilityState === "visible") startTimer();');
   });
 
-  it("cleans up the timer and both listeners on unmount", async () => {
+  it("cleans up the timer and both listeners on unmount, guarding every browser-API call against a synchronous throw (issue #405 crash audit)", async () => {
     const component = await source("components", "support-hub.tsx");
     expect(component).toMatch(
-      /return \(\) => \{\s*stopTimer\(\);\s*document\.removeEventListener\("visibilitychange", handleBecameVisible\);\s*window\.removeEventListener\("focus", handleBecameVisible\);\s*\};/,
+      /return \(\) => \{\s*stopTimer\(\);\s*safeInvoke\(\(\) => document\.removeEventListener\("visibilitychange", handleBecameVisible\)\);\s*safeInvoke\(\(\) => window\.removeEventListener\("focus", handleBecameVisible\)\);\s*\};/,
     );
   });
 
