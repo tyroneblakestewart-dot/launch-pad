@@ -694,3 +694,44 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   user-closed ticket exactly like any other closed ticket — no admin-side
   behaviour changed — and a new `ticket-closed-by-user` admin activity kind
   logs the ticket id and wallet only, never body text.
+- Support unread badge and live /support refresh (issue #403). A red dot on
+  the Support nav item (both the desktop sidebar utility entry and the
+  mobile pill tab, via a shared `SupportUnreadDot` in
+  `components/app-navigation.tsx`) appears when a wallet has owner activity
+  on a ticket it hasn't seen. Unread state needed no backend response
+  change: `GET /api/support/tickets` already returns `status` and
+  `updatedAt` per ticket, and a user can never move their own ticket into
+  `needs_user` (only an owner reply does that) or `solved` (an admin-only
+  status change) — so "status is needs_user/solved and updatedAt is newer
+  than last-seen" (`lib/support-unread.ts`'s `hasSupportTicketNews`)
+  already captures owner activity without conflating it with the user's
+  own reply/close, which move status to `open`/`closed` instead. Last-seen
+  is a single `hoodlums.support.lastSeen.v1` localStorage key holding a
+  `{ walletLowercased: timestampMs }` map (no existing per-wallet-key
+  convention to follow, so this establishes one on the same "one static
+  key, map value" shape token-project persistence already uses); a
+  successful ticket load on `/support` writes it and clears the dot
+  immediately. `lib/use-support-unread.ts` is a module-level singleton
+  hook, not per-component state, because `AppNavigation` and
+  `MobileBottomNavigation` are always both mounted (CSS just hides
+  whichever doesn't match the viewport) — sharing one cached value and one
+  in-flight fetch keeps two nav surfaces checking on the same mount/focus
+  from doubling the request count. The nav checks unread on mount and
+  window focus only, no polling timer; a failed or rate-limited check
+  always shows no dot rather than a false alert, and no stored wallet
+  skips the check entirely. `/support` itself (`components/support-hub.tsx`)
+  gets the one deliberate exception to the app's no-polling rule: it
+  refetches on `focus`/`visibilitychange` and on a 60-second timer that
+  only ever runs while `document.visibilityState === "visible"`, torn down
+  the moment it isn't and on unmount. The refresh is silent by
+  construction — `loadTickets` only ever updates the existing `tickets`
+  array in place and never resets it to a loading state, so there's no
+  spinner flash or scroll jump. Because the 60s timer alone is exactly
+  60 reads/hour — already the old `SUPPORT_READ_LIMIT` with zero headroom
+  for the nav's own checks, focus refetches, or the initial page load —
+  `SUPPORT_READ_LIMIT` is raised from 60 to 150/hour (still a per-IP,
+  per-hour cap; the math is spelled out in a comment in
+  `lib/server/api-protection.ts`). The post-submit success banner now also
+  tells the user plainly that a red dot will appear when there's news, so
+  they know they don't need to keep the page open. No admin-side changes —
+  this is a pure client-side UX layer over the existing ticket data.

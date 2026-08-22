@@ -460,7 +460,18 @@ export function isSocialStudioRequestOriginAllowed(request: Request): boolean {
 // endpoints; "read" covers the plain GET listing the /support page polls —
 // same challenge/action/read split as Social Studio.
 export const SUPPORT_ACTION_LIMIT = 20;
-export const SUPPORT_READ_LIMIT = 60;
+// Raised for issue #403's live refresh, which reads this same GET from two
+// independent places while /support is open: the page's own 60s
+// visible-only timer (worst case exactly 60 reads/hour on its own — that
+// alone would exhaust the old 60/hour limit with zero headroom) plus a
+// focus/visibilitychange refetch fired by *both* the page and the separate
+// nav unread-badge check on every tab refocus. A generous but still bounded
+// session — say ~20 refocuses in an hour — adds roughly 20 * 2 = 40 more
+// reads, plus a couple of one-off loads (initial page mount, nav mount,
+// post submit/reply/close reloads). 60 + 40 + a handful of one-offs is
+// comfortably under 150/hour with real headroom to spare; it stays a
+// per-IP, per-hour cap, not per-wallet or unbounded.
+export const SUPPORT_READ_LIMIT = 150;
 export const SUPPORT_WINDOW_MS = 60 * 60 * 1000;
 
 export function consumeSupportActionRateLimit(ip: string, now = Date.now()) {

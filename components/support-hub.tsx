@@ -10,6 +10,7 @@ import {
   estimateDataUrlLength,
   fitArtworkDimensions,
 } from "@/lib/artwork-compression";
+import { writeSupportLastSeen } from "@/lib/support-unread";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./support-hub.module.css";
 
@@ -228,6 +229,11 @@ export function SupportHub({
       const payload = await readJsonResponse<{ tickets: SupportTicket[] }>(response, "Your tickets could not be loaded.");
       setTickets(payload.tickets);
       setTicketsError(null);
+      // Any load that actually reaches the screen counts as "seen" (issue
+      // #403) — including the background refreshes below — so the nav's red
+      // dot clears the moment this page has current data on screen, not just
+      // on the very first load.
+      writeSupportLastSeen(wallet, Date.now());
     } catch (error) {
       setTicketsError(error instanceof Error ? error.message : "Your tickets could not be loaded.");
     }
@@ -266,6 +272,52 @@ export function SupportHub({
       if (walletAddress) void loadTickets(walletAddress);
       else setTickets(null);
     });
+  }, [walletAddress, loadTickets]);
+
+  // Live refresh while this page is open (issue #403) — the one deliberate
+  // exception to the app's no-polling rule, since this is the one screen a
+  // user is actively awaiting a reply on. A refetch is silent: loadTickets
+  // only ever updates `tickets` in place (never resets it to null), so
+  // there's no loading-state flash and no scroll jump. The 60s timer only
+  // ever runs while the tab is visible, and is torn down the moment it isn't
+  // — see the SUPPORT_READ_LIMIT math in lib/server/api-protection.ts.
+  useEffect(() => {
+    if (!walletAddress) return;
+    const wallet = walletAddress;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    function stopTimer() {
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    }
+
+    function startTimer() {
+      if (intervalId !== null) return;
+      intervalId = setInterval(() => {
+        void loadTickets(wallet);
+      }, 60_000);
+    }
+
+    function handleBecameVisible() {
+      if (document.visibilityState !== "visible") {
+        stopTimer();
+        return;
+      }
+      void loadTickets(wallet);
+      startTimer();
+    }
+
+    if (document.visibilityState === "visible") startTimer();
+    document.addEventListener("visibilitychange", handleBecameVisible);
+    window.addEventListener("focus", handleBecameVisible);
+
+    return () => {
+      stopTimer();
+      document.removeEventListener("visibilitychange", handleBecameVisible);
+      window.removeEventListener("focus", handleBecameVisible);
+    };
   }, [walletAddress, loadTickets]);
 
   const connectWallet = useCallback(async () => {
@@ -527,7 +579,10 @@ export function SupportHub({
             ) : null}
             {submitted ? (
               <div className={styles.successBanner} role="status">
-                <p className={styles.successText}>Report sent. We&apos;ll reply here.</p>
+                <p className={styles.successText}>
+                  Report sent. We&apos;ll reply here. A red dot will appear on the Support tab when there&apos;s
+                  news — you don&apos;t need to keep this page open.
+                </p>
                 <button type="button" className={styles.doneButton} onClick={handleDone}>
                   Done
                 </button>

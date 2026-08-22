@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type CSSProperties } from "react";
 import { HOODLUMS_WORDMARK_IMAGE } from "@/lib/hoodlums-wordmark-image";
+import { useSupportUnread } from "@/lib/use-support-unread";
 import styles from "./app-navigation.module.css";
 
 const NAV_ITEMS = [
@@ -71,8 +72,18 @@ function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h16M5 16l4-5 3 2 5-7 2 2M17 6h2v2" /></svg>;
 }
 
+// Red notification dot for unread owner activity on a ticket (issue #403),
+// shown at both nav render points below when the Support item has unseen
+// news. role="img" gives it its own accessible name distinct from the
+// surrounding Link's aria-label, without announcing anything when there's
+// nothing new.
+function SupportUnreadDot() {
+  return <span className={styles.unreadDot} role="img" aria-label="Support — new reply waiting" />;
+}
+
 export function AppNavigation() {
   const pathname = usePathname();
+  const supportUnread = useSupportUnread();
 
   return (
     <>
@@ -97,7 +108,10 @@ export function AppNavigation() {
             const active = isActive(pathname, item.href);
             return (
               <Link key={item.href} href={item.href} className={active ? styles.active : ""}>
-                <span className={styles.step}><NavIcon name={item.icon} /></span>
+                <span className={styles.step}>
+                  <NavIcon name={item.icon} />
+                  {item.href === "/support" && supportUnread ? <SupportUnreadDot /> : null}
+                </span>
                 <span><b>{item.label}</b><small>{item.description}</small></span>
               </Link>
             );
@@ -119,6 +133,7 @@ export function AppNavigation() {
 
 export function MobileBottomNavigation() {
   const pathname = usePathname();
+  const supportUnread = useSupportUnread();
   const [pendingTarget, setPendingTarget] = useState<{ href: string; fromPathname: string } | null>(null);
 
   function markPending(href: string) {
@@ -152,6 +167,7 @@ export function MobileBottomNavigation() {
           onClick={() => markPending(item.href)}
         >
           <NavIcon name={item.icon} />
+          {item.href === "/support" && supportUnread ? <SupportUnreadDot /> : null}
         </Link>
       ))}
     </nav>

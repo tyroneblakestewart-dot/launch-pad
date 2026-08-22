@@ -54,7 +54,9 @@ describe("Support in main navigation (issue #396)", () => {
 
     expect(navigation).toContain("WORKFLOW_NAV_ITEMS.map((item) => {");
     expect(navigation).toContain("UTILITY_NAV_ITEMS.map((item) => {");
-    expect(navigation).toContain("<span className={styles.step}><NavIcon name={item.icon} /></span>");
+    // The step span wraps the icon (and, since issue #403, an optional
+    // unread dot alongside it) rather than a bare self-closing NavIcon.
+    expect(navigation).toMatch(/<span className=\{styles\.step\}>\s*<NavIcon name=\{item\.icon\} \/>/);
   });
 
   it("still renders the mobile pill from the single flat VISIBLE_NAV_ITEMS list, so Support lands last", async () => {
