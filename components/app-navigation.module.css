@@ -8,9 +8,12 @@
 .sideNav a:hover, .sideNav a.active, .sidebarUtility a:hover, .sidebarUtility a.active, .mobileMenu a.active { border-color:rgba(185,239,77,.35); background:rgba(185,239,77,.09); color:#fff; }
 .sideNav a > span:last-child, .sidebarUtility a > span:last-child, .mobileMenu a > span:last-child { display:grid; gap:3px; }
 .sideNav b, .sidebarUtility b, .mobileMenu b { font-size:12px; }
-.step { display:grid; place-items:center; width:28px; height:28px; border-radius:8px; background:#111713; color:#b9ef4d; font:800 10px "IBM Plex Mono", monospace; }
+.step { position:relative; display:grid; place-items:center; width:28px; height:28px; border-radius:8px; background:#111713; color:#b9ef4d; font:800 10px "IBM Plex Mono", monospace; }
 .step svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 .active .step { background:#b9ef4d; color:#071008; }
+/* Support unread red dot (issue #403) — absolutely positioned so it never
+   shifts the icon/touch-target layout at either render point. */
+.unreadDot { position:absolute; top:-2px; right:-2px; width:8px; height:8px; border-radius:50%; background:#ff4d4f; border:2px solid #030805; pointer-events:none; }
 /* Support is a utility link, not a workflow step (issue #396) — its own
    bottom-pinned group, visually separated above the testnet note. */
 .sidebarUtility { margin-top:auto; padding-top:12px; border-top:1px solid rgba(131,183,139,.16); }
@@ -35,7 +38,7 @@
   .bottomNav a:hover,
   .bottomNav a:focus,
   .bottomNav a:active,
-  .bottomNav a.active { display:grid; place-items:center; justify-self:center; width:46px; height:46px; margin:0; padding:0; border:1px solid transparent; border-radius:999px; background:transparent !important; color:rgba(239,244,236,.72) !important; box-shadow:none !important; outline:none; text-decoration:none; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+  .bottomNav a.active { position:relative; display:grid; place-items:center; justify-self:center; width:46px; height:46px; margin:0; padding:0; border:1px solid transparent; border-radius:999px; background:transparent !important; color:rgba(239,244,236,.72) !important; box-shadow:none !important; outline:none; text-decoration:none; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
   .bottomNav a:not(.active),
   .bottomNav a:not(.active):focus,
   .bottomNav a:not(.active):focus-visible { border-color:transparent !important; background:transparent !important; box-shadow:none !important; outline:none !important; }
