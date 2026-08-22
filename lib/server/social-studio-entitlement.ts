@@ -1,6 +1,7 @@
 import { isAddress } from "viem";
 import { getPostgresPool } from "@/lib/server/postgres";
 import { getSubscriptionAccess, type SubscriptionQuery } from "@/lib/server/subscription-lifecycle";
+import type { SubscriptionPlan } from "@/lib/subscription-lifecycle";
 
 /**
  * The AI Social Studio page (`/social`) is already wrapped in
@@ -22,6 +23,14 @@ export type SocialStudioAuthorisation =
       walletAddress: string;
       /** Real server authorisations include this (issue #368); optional keeps older injected test fixtures compatible. */
       accessSource?: "paid" | "test-allowlist";
+      /**
+       * The canonical plan behind this authorisation (issue #407) — carried
+       * here so the project-slot wrapper can enforce the Pro/Pro Bundle
+       * limit without a second getSubscriptionAccess call. Null for a
+       * test-allowlist bypass (getSubscriptionAccess never assigns one);
+       * optional keeps older injected test fixtures compatible.
+       */
+      plan?: SubscriptionPlan | null;
     }
   | { status: "upsell"; message: string }
   | { status: "invalid-wallet"; message: string }
@@ -101,5 +110,6 @@ export async function authoriseSocialStudioRequest(
     status: "allowed",
     walletAddress: access.walletAddress,
     accessSource: access.accessSource === "test-allowlist" ? "test-allowlist" : "paid",
+    plan: access.plan,
   };
 }

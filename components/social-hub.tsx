@@ -81,6 +81,15 @@ type ScheduledPostDestinationSummary = {
   sentAt: string | null;
 };
 
+/** Shape returned by GET /api/social/project-slots (issue #407). */
+type SlotUsageSummary = {
+  plan: "pro" | "pro-bundle" | null;
+  unlimited: boolean;
+  limit: number | null;
+  activeCount: number;
+  slots: Array<{ projectId: string; displayName: string; registeredAt: string }>;
+};
+
 /** One row returned by GET /api/social/posts — issue #335's durable approve-first queue, read here for the "Approved & scheduled" and "History" Queue tab sections (issue #352). */
 type ScheduledPostSummary = {
   id: string;
@@ -96,6 +105,7 @@ const SOCIAL_STUDIO_ACTION_PURPOSES = {
   postCreate: "social:post-create",
   postCancel: "social:post-cancel",
   postReschedule: "social:post-reschedule",
+  projectSlotRelease: "social:project-slot-release",
 } as const;
 
 function platformLabel(platform: SocialPlatform): string {
@@ -454,6 +464,16 @@ export function SocialHub() {
   const [directionBrief, setDirectionBrief] = useState("");
   const [postingCadence, setPostingCadence] = useState<PostingCadence>(DEFAULT_POSTING_CADENCE);
 
+  // Server-side project-slot usage (issue #407) — "Project X of Y (Plan)".
+  // Read-only summary from GET /api/social/project-slots; the server, not
+  // this state, is the entitlement decision. Refreshed after any AI call or
+  // post approval (which may auto-register a new slot) and after a release.
+  const [slotUsage, setSlotUsage] = useState<SlotUsageSummary | null>(null);
+  const [slotUsageStatus, setSlotUsageStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+  const [releasePending, setReleasePending] = useState(false);
+  const [releaseBusy, setReleaseBusy] = useState(false);
+  const [releaseStatus, setReleaseStatus] = useState<PanelStatus>(null);
+
   useEffect(() => {
     const loadedProjects = safeProjects(localStorage.getItem(PROJECT_STORAGE_KEY));
     const drafts = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
@@ -556,6 +576,30 @@ export function SocialHub() {
       window.removeEventListener("focus", handleFocusOrVisible);
       document.removeEventListener("visibilitychange", handleFocusOrVisible);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAddress]);
+
+  /** Refreshes the "Project X of Y" usage summary — called on wallet change and after any claim/release (issue #407). */
+  async function loadSlotUsage() {
+    if (!walletAddress) {
+      setSlotUsage(null);
+      setSlotUsageStatus("idle");
+      return;
+    }
+    setSlotUsageStatus("loading");
+    try {
+      const response = await fetch(`/api/social/project-slots?walletAddress=${encodeURIComponent(walletAddress)}`, { cache: "no-store" });
+      const payload = await readJsonResponse<SlotUsageSummary>(response, "Could not load your project-slot usage.");
+      setSlotUsage(payload);
+      setSlotUsageStatus("loaded");
+    } catch {
+      setSlotUsageStatus("error");
+    }
+  }
+
+  useEffect(() => {
+    void loadSlotUsage();
+    // loadSlotUsage closes over the latest walletAddress on every render already.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletAddress]);
 
@@ -967,6 +1011,8 @@ export function SocialHub() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           walletAddress,
+          projectId: selectedProject?.id,
+          displayName: selectedProject?.name,
           project,
           examples,
           likedSampleLines: likedReinforcementLines(sampleLineFeedback),
@@ -978,6 +1024,7 @@ export function SocialHub() {
       }
       setVoiceProfile(payload.voiceProfile);
       persistSocialStudio({ voiceProfile: payload.voiceProfile });
+      void loadSlotUsage();
       setVoiceStatus({
         tone: "success",
         message:
@@ -1021,6 +1068,8 @@ export function SocialHub() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           walletAddress,
+          projectId: selectedProject?.id,
+          displayName: selectedProject?.name,
           project,
           voiceProfile,
           dayLabel: options.dayLabel ?? null,
@@ -1040,6 +1089,7 @@ export function SocialHub() {
       if (!response.ok || !payload.draft) {
         throw new Error(payload.error || "The draft could not be generated.");
       }
+      void loadSlotUsage();
 
       if (options.dayLabel || options.replenish) {
         const item: QueueItem = {
@@ -1179,6 +1229,45 @@ export function SocialHub() {
     return { account, challengeId: challenge.challengeId, nonce: challenge.nonce, signature };
   }
 
+  /**
+   * "Use this plan slot for a different project" (issue #407) — a
+   * wallet-signed release of the current project's plan slot. Only reached
+   * via a two-tap confirmation (releasePending) so a mis-tap can't burn the
+   * wallet's one-per-seven-days release. Refreshes slot usage on success so
+   * the "Project X of Y" indicator and the swap button reflect the freed
+   * slot immediately.
+   */
+  async function releaseCurrentProjectSlot() {
+    if (!selectedProject) return;
+    setReleaseBusy(true);
+    setReleaseStatus({ tone: "progress", message: "Releasing this plan slot…" });
+    try {
+      const auth = await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.projectSlotRelease, {
+        projectId: selectedProject.id,
+        displayName: selectedProject.name,
+      });
+      const response = await fetch("/api/social/project-slots/release", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: selectedProject.id,
+          displayName: selectedProject.name,
+          challengeId: auth.challengeId,
+          nonce: auth.nonce,
+          signature: auth.signature,
+        }),
+      });
+      await readJsonResponse<{ releasedAt?: string }>(response, "The plan slot could not be released.");
+      setReleasePending(false);
+      setReleaseStatus({ tone: "success", message: "Plan slot released. Choose a different project to use it." });
+      void loadSlotUsage();
+    } catch (error) {
+      setReleaseStatus({ tone: "error", message: error instanceof Error ? error.message : "The plan slot could not be released." });
+    } finally {
+      setReleaseBusy(false);
+    }
+  }
+
   function toggleItemDestination(itemId: string, platform: SocialPlatform) {
     setItemDestinations((current) => {
       const selected = current[itemId] ?? [];
@@ -1229,6 +1318,10 @@ export function SocialHub() {
    * Only reachable via handleApproveClick's second tap.
    */
   async function approveQueueItem(item: QueueItem) {
+    if (!selectedProject) {
+      setPostsStatus({ tone: "error", message: "Choose a project before approving a post." });
+      return;
+    }
     const destinations = (itemDestinations[item.id] ?? []).filter((platform) => myConnectedPlatforms.includes(platform));
     if (destinations.length === 0) {
       setPostsStatus({ tone: "error", message: "Select at least one connected destination before approving." });
@@ -1264,6 +1357,8 @@ export function SocialHub() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               body,
+              projectId: selectedProject.id,
+              displayName: selectedProject.name,
               artworkDataUrl: item.artwork || undefined,
               destinations: [platform],
               scheduledAt: scheduledAtIso,
@@ -1278,6 +1373,7 @@ export function SocialHub() {
           );
           if (payload.replacedPostId) replacedAny = true;
           approvedAny = true;
+          void loadSlotUsage();
         } catch (error) {
           failureMessage = error instanceof Error ? error.message : `${platformLabel(platform)} approval failed.`;
           break;
@@ -1485,12 +1581,13 @@ export function SocialHub() {
       const response = await fetch("/api/social/mascot/visual-dna", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress, project, imageDataUrl }),
+        body: JSON.stringify({ walletAddress, projectId: selectedProject?.id, displayName: selectedProject?.name, project, imageDataUrl }),
       });
       const payload = (await response.json()) as { mascotVisualDNA?: MascotVisualDNA; error?: string };
       if (!response.ok || !payload.mascotVisualDNA) {
         throw new Error(payload.error || "The mascot artwork could not be analysed.");
       }
+      void loadSlotUsage();
       setMascotVisualDNA(payload.mascotVisualDNA);
       setMascotReferenceImage(imageDataUrl);
       persistSocialStudio({ mascotVisualDNA: payload.mascotVisualDNA, mascotReferenceImage: imageDataUrl });
@@ -1524,12 +1621,13 @@ export function SocialHub() {
       const response = await fetch("/api/social/mascot/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress, project, mascotVisualDNA, sceneInput }),
+        body: JSON.stringify({ walletAddress, projectId: selectedProject?.id, displayName: selectedProject?.name, project, mascotVisualDNA, sceneInput }),
       });
       const payload = (await response.json()) as { imageDataUrl?: string; error?: string };
       if (!response.ok || !payload.imageDataUrl) {
         throw new Error(payload.error || "The mascot scene image could not be generated.");
       }
+      void loadSlotUsage();
       setGeneratedMascotImage(payload.imageDataUrl);
       setMascotSceneStatus({ tone: "success", message: "Mascot artwork ready — attach it to Telegram, download it, or add it to the Queue." });
     } catch (error) {
@@ -1773,6 +1871,44 @@ export function SocialHub() {
             </div>
           </div>
         </header>
+
+        {selectedProject && slotUsageStatus === "loaded" && slotUsage ? (
+          <div className={styles.slotUsageBar}>
+            <span className={styles.slotUsageText}>
+              {slotUsage.unlimited
+                ? "Unlimited projects (test access)"
+                : `Project ${slotUsage.activeCount} of ${slotUsage.limit ?? "?"} (${slotUsage.plan === "pro-bundle" ? "Pro Bundle" : "Pro"})`}
+            </span>
+            {!slotUsage.unlimited ? (
+              releasePending ? (
+                <div className={styles.slotUsageConfirm}>
+                  <span>Release this plan slot? You can only do this once every 7 days.</span>
+                  <button
+                    type="button"
+                    className={styles.slotUsageConfirmButton}
+                    disabled={releaseBusy}
+                    onClick={() => void releaseCurrentProjectSlot()}
+                  >
+                    {releaseBusy ? "Releasing…" : "Confirm release"}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.slotUsageCancelButton}
+                    disabled={releaseBusy}
+                    onClick={() => setReleasePending(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className={styles.slotUsageSwapButton} onClick={() => setReleasePending(true)}>
+                  Use this plan slot for a different project
+                </button>
+              )
+            ) : null}
+            <InlineStatus status={releaseStatus} />
+          </div>
+        ) : null}
 
         {projects.length === 0 ? (
           <section className={styles.noProject}>

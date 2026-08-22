@@ -1,0 +1,63 @@
+.panel {
+  border: 1px solid rgba(188, 231, 89, 0.15);
+  border-radius: 16px;
+  background: rgba(10, 13, 11, 0.88);
+  padding: 18px;
+}
+
+.sectionHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.sectionTitle { margin: 0; color: #eef3ea; font-size: 1.05rem; }
+.sectionIntro { max-width: 760px; margin: 6px 0 0; color: rgba(238, 243, 234, 0.62); font-size: 0.88rem; line-height: 1.5; }
+.refreshButton { flex: none; border-radius: 9px; border: 1px solid rgba(188, 231, 89, 0.3); background: transparent; color: #bce759; padding: 8px 12px; font-size: 0.78rem; font-weight: 750; cursor: pointer; min-height: 44px; }
+.refreshButton:disabled { cursor: default; opacity: 0.55; }
+
+.error, .notice { margin: 0 0 12px; border-radius: 10px; padding: 10px 12px; font-size: 0.8rem; }
+.error { border: 1px solid rgba(255, 119, 119, 0.28); background: rgba(255, 119, 119, 0.08); color: #ff9a9a; }
+.notice { border: 1px solid rgba(240, 191, 78, 0.25); background: rgba(240, 191, 78, 0.08); color: #f0bf4e; }
+.empty { margin: 12px 0 0; color: rgba(238, 243, 234, 0.62); font-size: 0.78rem; }
+
+.rowList { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.row { border: 1px solid rgba(238, 243, 234, 0.09); border-radius: 13px; background: rgba(255, 255, 255, 0.018); padding: 14px; }
+.wallet { margin: 0 0 10px; color: #eef3ea; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.84rem; font-weight: 700; }
+
+.slotList { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.slotRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px;
+  border: 1px solid rgba(238, 243, 234, 0.08);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.slotRow b { display: block; color: #eef3ea; font-size: 0.8rem; }
+.slotRow small { display: block; color: rgba(238, 243, 234, 0.6); font-size: 0.7rem; margin-top: 2px; }
+.slotRow code { display: block; color: rgba(188, 231, 89, 0.68); font-size: 0.62rem; overflow-wrap: anywhere; margin-top: 2px; }
+
+.releaseButton {
+  flex: none;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 119, 119, 0.3);
+  background: transparent;
+  color: #ff9a9a;
+  font-size: 0.78rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.confirmRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.confirmRow span { color: rgba(238, 243, 234, 0.7); font-size: 0.74rem; }
+.confirmButton, .cancelButton { min-height: 44px; padding: 0 14px; border-radius: 9px; font-size: 0.78rem; font-weight: 750; cursor: pointer; }
+.confirmButton { border: 1px solid rgba(255, 119, 119, 0.4); background: rgba(255, 119, 119, 0.12); color: #ff9a9a; }
+.cancelButton { border: 1px solid rgba(238, 243, 234, 0.16); background: transparent; color: rgba(238, 243, 234, 0.7); }
+.confirmButton:disabled, .cancelButton:disabled { cursor: default; opacity: 0.55; }
+
+@media (max-width: 520px) {
+  .panel { padding: 14px; }
+  .sectionHeader { flex-direction: column; }
+  .slotRow { flex-direction: column; align-items: stretch; }
+}

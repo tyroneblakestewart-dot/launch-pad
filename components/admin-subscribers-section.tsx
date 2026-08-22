@@ -18,6 +18,12 @@ type SubscriberPayment = {
   confirmedAt: string;
 };
 
+type SocialProjectSlot = {
+  projectId: string;
+  displayName: string;
+  registeredAt: string;
+};
+
 type SubscriberRow = {
   walletAddress: string;
   tier: SubscriberTier;
@@ -36,6 +42,7 @@ type SubscriberRow = {
   lastPaymentAmountEth: string | null;
   lastPaymentAt: string | null;
   paymentHistory: SubscriberPayment[];
+  socialProjectSlots: SocialProjectSlot[];
 };
 
 type SubscribersResponse = {
@@ -244,6 +251,23 @@ export function AdminSubscribersSection() {
                       <span>{payment.amountDisplay} {payment.asset} · {formatUsd(payment.amountUsdCents)}</span>
                       <small>{formatDate(payment.confirmedAt)} · {formatDate(payment.paidFrom)} → {formatDate(payment.paidUntil)}</small>
                       <code>{payment.transactionHash}</code>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </details>
+
+            <details className={styles.history}>
+              <summary>AI Social Studio project slots ({row.socialProjectSlots.length})</summary>
+              {row.socialProjectSlots.length === 0 ? (
+                <p className={styles.empty}>No active project slots. Release them from the Project Slots section.</p>
+              ) : (
+                <ol className={styles.historyList}>
+                  {row.socialProjectSlots.map((slot) => (
+                    <li key={slot.projectId}>
+                      <b>{slot.displayName}</b>
+                      <small>Registered {formatDate(slot.registeredAt)}</small>
+                      <code>{slot.projectId}</code>
                     </li>
                   ))}
                 </ol>

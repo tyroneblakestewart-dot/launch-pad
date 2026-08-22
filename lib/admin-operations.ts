@@ -49,7 +49,8 @@ export const ADMIN_SERVICE_DEFINITIONS = [
     label: "AI Social Studio",
     description:
       "Pro/Pro Bundle-gated voice-profile, draft and mascot scene-image generation for the /social Setup and Calendar tabs.",
-    affectedRoutes: "/api/social/voice-profile, /api/social/draft, /api/social/mascot/visual-dna, /api/social/mascot/image",
+    affectedRoutes:
+      "/api/social/voice-profile, /api/social/draft, /api/social/mascot/visual-dna, /api/social/mascot/image, /api/social/project-slots, /api/social/project-slots/release",
   },
   {
     key: "social-posting",
@@ -111,7 +112,10 @@ export type AdminActivityKind =
   | "content-filter-rejected"
   | "ticket-created"
   | "ticket-replied"
-  | "ticket-closed-by-user";
+  | "ticket-closed-by-user"
+  | "slot-registered"
+  | "slot-released-by-user"
+  | "slot-released-by-admin";
 
 export type AdminActivityItem = {
   id: string;
@@ -335,6 +339,12 @@ export type AdminSubscriberPayment = {
   confirmedAt: string;
 };
 
+export type AdminSubscriberSocialProjectSlot = {
+  projectId: string;
+  displayName: string;
+  registeredAt: string;
+};
+
 export type AdminSubscriberRow = {
   walletAddress: string;
   tier: AdminSubscriberTier;
@@ -353,6 +363,8 @@ export type AdminSubscriberRow = {
   lastPaymentAmountEth: string | null;
   lastPaymentAt: string | null;
   paymentHistory: AdminSubscriberPayment[];
+  /** Active AI Social Studio project slots (issue #407) — released slots are excluded. */
+  socialProjectSlots: AdminSubscriberSocialProjectSlot[];
 };
 
 export type AdminSubscribersSnapshot = {

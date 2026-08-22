@@ -264,6 +264,8 @@ export type SocialStudioAiPipelineDeps = {
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
   getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
+  databaseUrl?: string;
+  getPool?: (databaseUrl: string) => PoolLike;
 };
 
 function socialStudioEntitlementStage(env: Record<string, string | undefined>): AdminPipelineStage {
@@ -314,13 +316,65 @@ function socialStudioImageProviderStage(env: Record<string, string | undefined>,
   );
 }
 
+// Project-slot registry reachability (issue #407) — every entitled request
+// now fails closed with a 503 if social_project_slots can't be read, a new
+// dependency the AI Social Studio pipeline should surface directly rather
+// than silently folding into the generic entitlement stage above.
+async function socialProjectSlotRegistryStage(
+  databaseUrl: string,
+  getPool: (databaseUrl: string) => PoolLike,
+): Promise<AdminPipelineStage> {
+  if (!databaseUrl) {
+    return stage(
+      "project-slot-registry",
+      "Project-slot registry (social_project_slots)",
+      "red",
+      "DATABASE_URL is not configured; every entitled request fails closed with a 503 rather than skip the plan-slot limit.",
+    );
+  }
+  try {
+    const pool = getPool(databaseUrl);
+    const result = await withTimeout(
+      pool.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'social_project_slots'`,
+      ),
+      HEALTH_CHECK_TIMEOUT_MS,
+      "timed out",
+    );
+    if (result.rows.length === 0) {
+      return stage(
+        "project-slot-registry",
+        "Project-slot registry (social_project_slots)",
+        "red",
+        "Migration 028_social_project_slots.sql has not been applied. Every entitled request fails closed with a 503.",
+      );
+    }
+    return stage(
+      "project-slot-registry",
+      "Project-slot registry (social_project_slots)",
+      "green",
+      "The Pro/Pro Bundle project-slot table is reachable.",
+    );
+  } catch {
+    return stage(
+      "project-slot-registry",
+      "Project-slot registry (social_project_slots)",
+      "red",
+      "Could not check whether the project-slot registry table exists.",
+    );
+  }
+}
+
 export async function buildSocialStudioAiPipeline(deps: SocialStudioAiPipelineDeps = {}): Promise<AdminServicePipeline> {
   const env = deps.env ?? process.env;
   const requestOidcToken = deps.requestOidcToken ?? "";
   const getServiceControl =
     deps.getServiceControl ?? ((key: AdminServiceKey) => getAdminOperationsStore().getServiceControl(key));
+  const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
+  const getPool = deps.getPool ?? ((url: string) => getPostgresPool(url) as unknown as PoolLike);
 
   const isolationStage = await chatIsolationStage("social-studio-ai", getServiceControl);
+  const registryStage = await socialProjectSlotRegistryStage(databaseUrl, getPool);
 
   return {
     id: "social-studio-ai",
@@ -332,6 +386,7 @@ export async function buildSocialStudioAiPipeline(deps: SocialStudioAiPipelineDe
       socialStudioRateLimiterStage(env),
       socialStudioEntitlementStage(env),
       socialStudioImageProviderStage(env, requestOidcToken),
+      registryStage,
     ],
   };
 }
@@ -867,6 +922,13 @@ export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps
   const isolationStage = await chatIsolationStage("social-posting", getServiceControl);
   const destinationsStage = socialPostingDestinationsStage(env);
   const encryptionStage = socialPostingEncryptionStage(env);
+  // POST /api/social/posts now also depends on the project-slot registry
+  // (issue #407) — reused here, not just the AI Social Studio pipeline,
+  // since a missing/unreachable table fails post approval closed too.
+  const registryStage = await socialProjectSlotRegistryStage(
+    databaseUrl,
+    deps.getPool ?? ((url: string) => getPostgresPool(url) as unknown as PoolLike),
+  );
 
   if (!databaseUrl) {
     const message = "DATABASE_URL is not configured.";
@@ -877,6 +939,7 @@ export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps
         isolationStage,
         destinationsStage,
         encryptionStage,
+        registryStage,
         stage("table-exists", "social_scheduled_posts table exists", "amber", message),
         stage("cron-heartbeat", "Social-posting cron freshness", "amber", message),
         stage("queue-counts", "Post counts (scheduled/sent/partially_sent/failed/canceled)", "amber", message),
@@ -1023,6 +1086,7 @@ export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps
       isolationStage,
       destinationsStage,
       encryptionStage,
+      registryStage,
       tableExistsStage,
       heartbeatStage,
       queueCountsStage,

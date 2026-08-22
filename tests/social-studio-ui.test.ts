@@ -377,3 +377,61 @@ describe("Hoodlums AI Social Studio", () => {
     expect(refreshEffectIndex - mountReadIndex).toBeLessThan(800);
   });
 });
+
+describe("AI Social Studio project-slot usage and release (issue #407)", () => {
+  it("sends the current project's id and display name to every entitled request", async () => {
+    const social = await source("components", "social-hub.tsx");
+
+    // Every AI route and the post-approval call all send projectId/displayName.
+    expect(social.match(/projectId: selectedProject\??\.id/g)?.length).toBeGreaterThanOrEqual(5);
+    expect(social.match(/displayName: selectedProject\??\.name/g)?.length).toBeGreaterThanOrEqual(5);
+    expect(social).toContain('fetch("/api/social/voice-profile"');
+    expect(social).toContain('fetch("/api/social/draft"');
+    expect(social).toContain('fetch("/api/social/mascot/visual-dna"');
+    expect(social).toContain('fetch("/api/social/mascot/image"');
+    expect(social).toContain('fetch("/api/social/posts"');
+  });
+
+  it("reads and shows usage from GET /api/social/project-slots, refreshing after any claim or release", async () => {
+    const social = await source("components", "social-hub.tsx");
+
+    expect(social).toContain("async function loadSlotUsage()");
+    expect(social).toContain('fetch(`/api/social/project-slots?walletAddress=');
+    expect(social).toContain("Project ${slotUsage.activeCount} of ${slotUsage.limit ?? \"?\"}");
+    expect(social).toContain("Unlimited projects (test access)");
+    // Refreshed after every entitled call that can auto-register a new slot.
+    expect(social.match(/void loadSlotUsage\(\);/g)?.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("requires a two-tap confirmation before a wallet-signed release, naming the seven-day cooldown", async () => {
+    const social = await source("components", "social-hub.tsx");
+
+    expect(social).toContain("async function releaseCurrentProjectSlot()");
+    expect(social).toContain('"social:project-slot-release"');
+    expect(social).toContain('fetch("/api/social/project-slots/release"');
+    expect(social).toContain("releasePending");
+    expect(social).toContain("Use this plan slot for a different project");
+    expect(social).toContain("You can only do this once every 7 days.");
+    expect(social).toContain("Confirm release");
+  });
+
+  it("reuses signSocialStudioChallenge's wallet-mismatch guard rather than a fourth direct check", async () => {
+    const social = await source("components", "social-hub.tsx");
+    // The release flow calls the same shared, already-guarded challenge helper as post approve/cancel/reschedule — it does not add a fourth direct describeWalletMismatch(account, walletAddress) call site.
+    expect(social.split("const mismatch = describeWalletMismatch(account, walletAddress);").length - 1).toBe(3);
+    expect(social).toContain("const auth = await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.projectSlotRelease");
+  });
+
+  it("has 44px-minimum touch targets for the usage bar's actions (source-checked, not device-verified)", async () => {
+    const socialCss = await source("components", "social-hub.module.css");
+    expect(socialCss).toMatch(/\.slotUsageSwapButton\s*\{[^}]*min-height:\s*44px/);
+    expect(socialCss).toMatch(/\.slotUsageConfirmButton,\s*\n?\.slotUsageCancelButton\s*\{[^}]*min-height:\s*44px/);
+  });
+
+  it("stacks the usage bar full-width at the 480px mobile breakpoint", async () => {
+    const socialCss = await source("components", "social-hub.module.css");
+    const mobileBlock = socialCss.match(/@media \(max-width: 480px\) \{[\s\S]*?\n\}/);
+    expect(mobileBlock).not.toBeNull();
+    expect(mobileBlock![0]).toContain(".slotUsageBar { flex-direction: column; align-items: flex-start; }");
+  });
+});
