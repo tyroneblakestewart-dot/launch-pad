@@ -18,7 +18,7 @@ import {
 // replies. An invalid, missing or unknown code all get the identical
 // generic not-found response, so a caller can't distinguish "malformed" from
 // "well-formed but nobody filed that report" — no oracle for enumeration
-// beyond the already-impractical ~1.1e15-value keyspace.
+// beyond the already-impractical ~8.2e14-value keyspace (31^10 codes).
 
 export const runtime = "nodejs";
 

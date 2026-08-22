@@ -53,3 +53,27 @@ export function hasAdminSupportNews(tickets: AdminSupportActivityTicket[], lastS
     });
   });
 }
+
+/**
+ * The newest "news-eligible" activity timestamp across an observed ticket
+ * listing — a brand-new ticket's `createdAt`, or a `user`-authored message's
+ * `createdAt` (issue #405 review). This is exactly the same fields
+ * `hasAdminSupportNews` reads, so marking a listing as seen using this value
+ * is self-consistent with the check that later decides whether it's news: a
+ * ticket/message strictly newer than this boundary is, by construction, one
+ * this listing never actually observed. An owner-authored message or a
+ * bare status change never advances this boundary, matching
+ * `hasAdminSupportNews`.
+ */
+export function maxAdminSupportActivityMs(tickets: AdminSupportActivityTicket[]): number {
+  return tickets.reduce((max, ticket) => {
+    const createdMs = Date.parse(ticket.createdAt);
+    let ticketMax = Number.isFinite(createdMs) && createdMs > max ? createdMs : max;
+    for (const message of ticket.messages) {
+      if (message.author !== "user") continue;
+      const messageMs = Date.parse(message.createdAt);
+      if (Number.isFinite(messageMs) && messageMs > ticketMax) ticketMax = messageMs;
+    }
+    return ticketMax;
+  }, 0);
+}

@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { ACCOUNT_WALLET_STORAGE_KEY, parseStoredAccountWallet } from "@/lib/account-wallet-state";
-import { hasSupportTicketNews, readSupportLastSeen, type SupportUnreadTicket } from "@/lib/support-unread";
+import {
+  hasSupportTicketNews,
+  readSupportLastSeen,
+  writeSupportLastSeen,
+  type SupportUnreadTicket,
+} from "@/lib/support-unread";
 
 // Nav-wide red-dot check (issue #403). AppNavigation and MobileBottomNavigation
 // are both always mounted (CSS just hides whichever doesn't match the current
@@ -28,6 +33,28 @@ let inFlight: Promise<void> | null = null;
 function notify(value: boolean): void {
   cachedUnread = value;
   listeners.forEach((listener) => listener(value));
+}
+
+// In-memory, per-wallet fallback for this module's last-seen boundary
+// (issue #405 review) — a Safari private-mode/quota-exceeded write can fail
+// silently in lib/support-unread.ts's best-effort localStorage write, and
+// without this, the *next* check would fall back to the stale persisted
+// value and relight a dot that was already marked seen this session. Never
+// persisted itself, never a source of truth across page loads — purely a
+// same-session guard against relighting.
+const inMemoryLastSeenFallback = new Map<string, number>();
+
+function effectiveLastSeen(walletAddress: string): number {
+  const key = walletAddress.toLowerCase();
+  const persisted = readSupportLastSeen(walletAddress);
+  const inMemory = inMemoryLastSeenFallback.get(key) ?? 0;
+  return Math.max(persisted, inMemory);
+}
+
+function rememberLastSeenInMemory(walletAddress: string, timestampMs: number): void {
+  const key = walletAddress.toLowerCase();
+  const current = inMemoryLastSeenFallback.get(key) ?? 0;
+  if (timestampMs > current) inMemoryLastSeenFallback.set(key, timestampMs);
 }
 
 /**
@@ -63,7 +90,7 @@ export async function refreshSupportUnread(): Promise<void> {
         notify(false);
         return;
       }
-      notify(hasSupportTicketNews(payload.tickets, readSupportLastSeen(wallet)));
+      notify(hasSupportTicketNews(payload.tickets, effectiveLastSeen(wallet)));
     } catch {
       notify(false);
     }
@@ -73,6 +100,46 @@ export async function refreshSupportUnread(): Promise<void> {
     await inFlight;
   } finally {
     inFlight = null;
+  }
+}
+
+/**
+ * Called by SupportHub.loadTickets after every successful signed-wallet
+ * ticket-list response (issue #405 review) — clears the dot the moment that
+ * wallet's current data is on screen, rather than waiting for the nav's next
+ * mount/focus check to independently refetch and notice.
+ *
+ * The seen boundary is the newest *observed* ticket activity timestamp
+ * (`SupportUnreadTicket.updatedAt`), never `Date.now()`: wall-clock write
+ * time would incorrectly mark as "seen" any owner activity that lands in the
+ * gap between this response being fetched and this call running, hiding a
+ * real notification. It's also monotonic against whatever was already
+ * recorded (persisted or in-memory) so a call can never move the boundary
+ * backwards.
+ *
+ * Writes are per-wallet (`writeSupportLastSeen`/`inMemoryLastSeenFallback`
+ * are both keyed by `walletAddress`), so marking wallet A seen never touches
+ * wallet B's cached state. The shared `notify()` — which drives the single
+ * nav-wide `cachedUnread` value — only fires when `walletAddress` matches
+ * the wallet currently active in this browser (mirroring
+ * `refreshSupportUnread`'s own `storedWalletAddress()` check), so a stale or
+ * out-of-order call for a wallet that's no longer active can't flip the dot
+ * for whichever wallet the user has since switched to.
+ */
+export function markSupportUnreadSeen(walletAddress: string, observedTickets: SupportUnreadTicket[]): void {
+  if (!walletAddress) return;
+  const newestObservedMs = observedTickets.reduce((max, ticket) => {
+    const updatedMs = Date.parse(ticket.updatedAt);
+    return Number.isFinite(updatedMs) && updatedMs > max ? updatedMs : max;
+  }, effectiveLastSeen(walletAddress));
+
+  writeSupportLastSeen(walletAddress, newestObservedMs);
+  // Remembered unconditionally, regardless of whether the localStorage write
+  // above actually succeeded — see the module-level doc comment above.
+  rememberLastSeenInMemory(walletAddress, newestObservedMs);
+
+  if (storedWalletAddress().toLowerCase() === walletAddress.toLowerCase()) {
+    notify(hasSupportTicketNews(observedTickets, newestObservedMs));
   }
 }
 
@@ -86,6 +153,7 @@ export function resetSupportUnreadForTests(): void {
   cachedUnread = false;
   listeners.clear();
   inFlight = null;
+  inMemoryLastSeenFallback.clear();
 }
 
 export function useSupportUnread(): boolean {

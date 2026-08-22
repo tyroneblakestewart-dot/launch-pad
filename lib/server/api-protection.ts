@@ -492,8 +492,8 @@ export function resetSupportRateLimitsForTests() {
 // all, so creation gets its own materially tighter per-IP limiter: a clear
 // fraction (1/4) of SUPPORT_ACTION_LIMIT's 20/hour. Status lookup is
 // read-only but still bounded to blunt reference-code enumeration, even
-// though the ~1.1e15-value keyspace (32^10 codes) already makes guessing
-// impractical.
+// though the ~8.2e14-value keyspace (31^10 codes, about 49.5 bits) already
+// makes guessing impractical.
 export const SUPPORT_ANONYMOUS_CREATE_LIMIT = 5;
 export const SUPPORT_REFERENCE_LOOKUP_LIMIT = 20;
 

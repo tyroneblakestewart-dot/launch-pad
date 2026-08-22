@@ -22,11 +22,23 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     textarea.setAttribute("readonly", "");
     textarea.style.position = "fixed";
     textarea.style.opacity = "0";
-    document.body.appendChild(textarea);
-    textarea.select();
-    const copied = document.execCommand("copy");
-    document.body.removeChild(textarea);
-    return copied;
+    let appended = false;
+    try {
+      document.body.appendChild(textarea);
+      appended = true;
+      textarea.select();
+      return document.execCommand("copy");
+    } finally {
+      // Removed even if select()/execCommand above throws, so a broken
+      // browser implementation never leaves the hidden textarea behind.
+      if (appended) {
+        try {
+          document.body.removeChild(textarea);
+        } catch {
+          // Best-effort — nothing more to do if removal itself throws.
+        }
+      }
+    }
   } catch {
     return false;
   }

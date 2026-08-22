@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACCOUNT_WALLET_STORAGE_KEY } from "@/lib/account-wallet-state";
-import { writeSupportLastSeen } from "@/lib/support-unread";
+import { readSupportLastSeen } from "@/lib/support-unread";
 import {
   getCachedSupportUnreadForTests,
+  markSupportUnreadSeen,
   refreshSupportUnread,
   resetSupportUnreadForTests,
 } from "@/lib/use-support-unread";
@@ -20,10 +21,13 @@ import { createFakeLocalStorage, type FakeLocalStorage } from "./fake-local-stor
 // closest "real component-level" test this environment allows; it is
 // honestly not a full DOM render of AppNavigation/SupportHub.
 //
-// Two facts this test exists to lock in, stated loudly per the issue:
-//   1. Unread state is PER-WALLET — wallet A's news never lights wallet B.
+// Three facts this test exists to lock in, stated loudly per the issue:
+//   1. Unread state is PER-WALLET — wallet A's news never lights wallet B,
+//      and marking wallet A seen never clears an already-lit wallet B dot.
 //   2. Being on /support when activity lands clears it immediately once the
-//      refreshed data is shown (loadTickets's writeSupportLastSeen call).
+//      refreshed data is shown — loadTickets's real markSupportUnreadSeen
+//      call, not a Date.now() write, and not a second refreshSupportUnread()
+//      round-trip.
 
 const WALLET_A = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const WALLET_B = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -83,29 +87,54 @@ describe("Support unread notification dot — end-to-end-ish (issue #405)", () =
     expect(getCachedSupportUnreadForTests()).toBe(false);
 
     // Step 4: switching back to wallet A and opening /support — a
-    // successful ticket load calls writeSupportLastSeen(wallet, Date.now())
+    // successful ticket load calls markSupportUnreadSeen(wallet, tickets)
     // exactly like components/support-hub.tsx's loadTickets does on every
     // successful load. That alone, with no further owner activity, clears
     // wallet A's dot on the next check.
     storeActiveWallet(fakeLocalStorage, WALLET_A);
-    writeSupportLastSeen(WALLET_A, Date.now());
+    markSupportUnreadSeen(WALLET_A, [{ status: "needs_user", updatedAt: ownerReplyAt }]);
     fetchMock.mockImplementation(async () => ticketsResponse([{ status: "needs_user", updatedAt: ownerReplyAt }]));
     await refreshSupportUnread();
     expect(getCachedSupportUnreadForTests()).toBe(false);
   });
 
-  it("marks a reply that arrives during the visible refresh as seen immediately, so a single-person tester may never observe the dot", async () => {
-    // Simulates support-hub.tsx's loadTickets: every successful load,
-    // including a background 60s-timer refresh while the page is already
-    // open, writes last-seen with the load's own timestamp — before the nav
-    // ever gets a chance to check and show a dot for that same activity.
+  it("marks a reply that arrives during the visible refresh as seen IMMEDIATELY — no refreshSupportUnread() round-trip needed — so a single-person tester may never observe the dot", async () => {
+    // Simulates components/support-hub.tsx's loadTickets: every successful
+    // load, including a background 60s-timer refresh while the page is
+    // already open, calls markSupportUnreadSeen with the tickets it just
+    // displayed — before the nav ever gets a chance to independently
+    // refetch and notice. The assertion below deliberately never calls
+    // refreshSupportUnread() again, to prove the clear is immediate and not
+    // an artifact of the next check happening to also see the same data.
     storeActiveWallet(fakeLocalStorage, WALLET_A);
     const replyDuringVisit = new Date().toISOString();
-    writeSupportLastSeen(WALLET_A, Date.now());
 
-    fetchMock.mockImplementation(async () => ticketsResponse([{ status: "needs_user", updatedAt: replyDuringVisit }]));
-    await refreshSupportUnread();
+    markSupportUnreadSeen(WALLET_A, [{ status: "needs_user", updatedAt: replyDuringVisit }]);
+
     expect(getCachedSupportUnreadForTests()).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("marking wallet A seen never clears an already-lit wallet B dot", async () => {
+    // Wallet B is the browser's currently active wallet and already has a
+    // lit dot from a prior nav check.
+    storeActiveWallet(fakeLocalStorage, WALLET_B);
+    const ownerReplyAt = new Date().toISOString();
+    fetchMock.mockImplementation(async () => ticketsResponse([{ status: "needs_user", updatedAt: ownerReplyAt }]));
+    await refreshSupportUnread();
+    expect(getCachedSupportUnreadForTests()).toBe(true);
+
+    // A stale caller — e.g. a loadTickets response for a wallet the user
+    // has since switched away from — marks wallet A seen. Because wallet A
+    // is not the browser's currently active wallet, this must not touch the
+    // shared cached dot at all, and wallet B's true notification must stay
+    // lit.
+    markSupportUnreadSeen(WALLET_A, [{ status: "needs_user", updatedAt: new Date().toISOString() }]);
+    expect(getCachedSupportUnreadForTests()).toBe(true);
+
+    // Wallet A's own last-seen was still recorded, independently of B — it
+    // just never touched the shared notifier.
+    expect(readSupportLastSeen(WALLET_A)).toBeGreaterThan(0);
   });
 
   it("shows no dot when the check fails or is rate-limited, never a false alert", async () => {

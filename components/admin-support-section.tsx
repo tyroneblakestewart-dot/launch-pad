@@ -99,7 +99,9 @@ export function AdminSupportSection() {
       // support data has actually loaded and is on screen (issue #405) —
       // not just on the section's very first load, so a later refresh
       // (status-filter change, manual Refresh tap) keeps it cleared too.
-      markAdminSupportSeen();
+      // Passing this same listing payload lets markAdminSupportSeen derive
+      // the seen boundary from what was actually observed, not Date.now().
+      markAdminSupportSeen(payload.tickets);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "The support queue could not be loaded.");
     } finally {

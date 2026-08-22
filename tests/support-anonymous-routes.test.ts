@@ -212,8 +212,11 @@ describe("GET /api/support/tickets/reference (issue #405)", () => {
     const missing = await lookupReference(getRequest("/api/support/tickets/reference?code="));
     expect(malformed.status).toBe(404);
     expect(missing.status).toBe(404);
-    expect(await malformed.json()).toEqual(await unknown.json());
-    expect(await missing.json()).toEqual(await unknown.json());
+    const unknownPayload = await unknown.json();
+    const malformedPayload = await malformed.json();
+    const missingPayload = await missing.json();
+    expect(malformedPayload).toEqual(unknownPayload);
+    expect(missingPayload).toEqual(unknownPayload);
   });
 
   it("returns 429 once the per-IP lookup limit is exceeded", async () => {

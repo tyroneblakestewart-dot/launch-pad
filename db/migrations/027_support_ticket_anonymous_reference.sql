@@ -21,7 +21,7 @@ ALTER TABLE support_tickets
     wallet_address IS NULL OR wallet_address ~ '^0x[0-9A-Fa-f]{40}$'
   );
 
--- Human-quotable format "XXXX-XXXXXX" (4 + 6 chars) drawn from a 32-symbol
+-- Human-quotable format "XXXX-XXXXXX" (4 + 6 chars) drawn from a 31-symbol
 -- alphabet excluding visually ambiguous characters (0/O, 1/I/L) — see
 -- generateSupportTicketReferenceCode in lib/server/support-tickets-store.ts.
 -- Stored uppercase; lookups normalise the same way before querying.

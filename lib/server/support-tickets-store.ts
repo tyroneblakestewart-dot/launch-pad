@@ -74,9 +74,10 @@ export type SupportTicket = {
 };
 
 // Anonymous reporting reference codes (issue #405). Human-quotable
-// "XXXX-XXXXXX" format from a 32-symbol alphabet excluding visually
-// ambiguous characters (0/O, 1/I/L) — 50 bits of node:crypto randomness per
-// code, generated server-side only, never derived from body/wallet/IP.
+// "XXXX-XXXXXX" format from a 31-symbol alphabet excluding visually
+// ambiguous characters (0/O, 1/I/L) — about 49.5 bits of node:crypto
+// randomness per code (31^10 combinations), generated server-side only,
+// never derived from body/wallet/IP.
 const REFERENCE_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const REFERENCE_CODE_PATTERN = /^[A-Z0-9]{4}-[A-Z0-9]{6}$/;
 
@@ -391,9 +392,9 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
 
     async createAnonymous(input) {
       // Retries on a random reference-code collision (astronomically
-      // unlikely given ~50 bits of randomness per code, but handled rather
-      // than assumed away) — bounded so a persistently broken unique index
-      // still fails loudly instead of looping forever.
+      // unlikely given ~49.5 bits of randomness per code, but handled
+      // rather than assumed away) — bounded so a persistently broken unique
+      // index still fails loudly instead of looping forever.
       const MAX_ATTEMPTS = 5;
       for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
         const referenceCode = generateSupportTicketReferenceCode();

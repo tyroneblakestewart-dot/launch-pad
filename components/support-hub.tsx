@@ -11,7 +11,7 @@ import {
   fitArtworkDimensions,
 } from "@/lib/artwork-compression";
 import { copyToClipboard } from "@/lib/clipboard";
-import { writeSupportLastSeen } from "@/lib/support-unread";
+import { markSupportUnreadSeen } from "@/lib/use-support-unread";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./support-hub.module.css";
 
@@ -51,6 +51,27 @@ function firstStringAccount(accounts: unknown): string | undefined {
   if (!Array.isArray(accounts)) return undefined;
   const first = accounts[0];
   return typeof first === "string" && first ? first : undefined;
+}
+
+/**
+ * `provider.request` is extension-injected code — it isn't guaranteed to
+ * return a Promise, and it isn't guaranteed not to throw synchronously
+ * before it gets the chance to (issue #405 review). Calling it directly
+ * inside a `.then()`/`.catch()` chain only protects the async rejection
+ * path; a synchronous throw would still become an uncaught exception. This
+ * wraps the call itself and normalises whatever comes back — a thrown
+ * error, a non-Promise value, or a well-behaved Promise — through
+ * `Promise.resolve` so callers can always safely `.then()`/`.catch()` it.
+ */
+function safeProviderRequest(
+  provider: WalletProviderWithEvents,
+  args: { method: string; params?: unknown[] | Record<string, unknown> },
+): Promise<unknown> {
+  try {
+    return Promise.resolve(provider.request(args));
+  } catch {
+    return Promise.resolve(undefined);
+  }
 }
 
 type SupportTicketCategory = "account" | "payments" | "site-builder" | "social-studio" | "publishing" | "other";
@@ -145,7 +166,14 @@ function loadImageFromFile(file: File): Promise<HTMLImageElement> {
       reject(new Error(SCREENSHOT_OPEN_ERROR));
       return;
     }
-    const image = new Image();
+    let image: HTMLImageElement;
+    try {
+      image = new Image();
+    } catch {
+      safeInvoke(() => URL.revokeObjectURL(objectUrl));
+      reject(new Error(SCREENSHOT_OPEN_ERROR));
+      return;
+    }
     image.onload = () => {
       safeInvoke(() => URL.revokeObjectURL(objectUrl));
       try {
@@ -184,7 +212,11 @@ function readFileAsDataUrl(file: File): Promise<string> {
       }
     };
     reader.onerror = () => {
-      reject(reader.error ?? new Error("The file could not be read."));
+      try {
+        reject(reader.error ?? new Error("The file could not be read."));
+      } catch {
+        reject(new Error("The file could not be read."));
+      }
     };
     try {
       reader.readAsDataURL(file);
@@ -328,8 +360,11 @@ export function SupportHub({
       // Any load that actually reaches the screen counts as "seen" (issue
       // #403) — including the background refreshes below — so the nav's red
       // dot clears the moment this page has current data on screen, not just
-      // on the very first load.
-      writeSupportLastSeen(wallet, Date.now());
+      // on the very first load. markSupportUnreadSeen (issue #405) uses the
+      // newest *observed* ticket activity timestamp rather than wall-clock
+      // write time, and notifies the shared nav cache immediately so an
+      // already-lit dot clears without waiting for another focus/refresh.
+      markSupportUnreadSeen(wallet, payload.tickets);
     } catch (error) {
       setTicketsError(error instanceof Error ? error.message : "Your tickets could not be loaded.");
     }
@@ -339,8 +374,7 @@ export function SupportHub({
     let cancelled = false;
     const provider = getInjectedEvmProvider() as WalletProviderWithEvents | undefined;
     if (!provider) return;
-    provider
-      .request({ method: "eth_accounts" })
+    safeProviderRequest(provider, { method: "eth_accounts" })
       .then((accounts) => {
         const first = firstStringAccount(accounts);
         if (!cancelled && first) setWalletAddress(first);
@@ -427,7 +461,7 @@ export function SupportHub({
       startTimer();
     }
 
-    if (document.visibilityState === "visible") startTimer();
+    if (isPageVisible()) startTimer();
     safeInvoke(() => document.addEventListener("visibilitychange", handleBecameVisible));
     safeInvoke(() => window.addEventListener("focus", handleBecameVisible));
 
