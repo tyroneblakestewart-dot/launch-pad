@@ -9,7 +9,12 @@ import {
   setAiOperationCostStoreForTests,
   type RecordAiOperationCostInput,
 } from "@/lib/server/ai-operation-cost-store";
+import {
+  resetSocialProjectSlotsStoreForTests,
+  setSocialProjectSlotsStoreForTests,
+} from "@/lib/server/social-project-slots-store";
 import { setSocialStudioAuthoriserForTests, resetSocialStudioAuthoriserForTests } from "@/lib/server/social-studio-entitlement";
+import { createMemorySocialProjectSlotsStore } from "./social-project-slots-test-helpers";
 import { VALID_STYLE } from "./site-style-fixture";
 
 const ORIGIN = "https://hoodlums.dev";
@@ -36,6 +41,7 @@ describe("AI operation cost recording (issue #368)", () => {
     process.env.GENERATE_SITE_STYLE_ALLOWED_ORIGIN = ORIGIN;
     resetSocialStudioRateLimitsForTests();
     resetSocialStudioAuthoriserForTests();
+    setSocialProjectSlotsStoreForTests(createMemorySocialProjectSlotsStore());
     vi.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
@@ -45,6 +51,7 @@ describe("AI operation cost recording (issue #368)", () => {
     delete process.env.GENERATE_SITE_STYLE_ALLOWED_ORIGIN;
     resetSocialStudioRateLimitsForTests();
     resetSocialStudioAuthoriserForTests();
+    resetSocialProjectSlotsStoreForTests();
     resetAiOperationCostStoreForTests();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -106,7 +113,7 @@ describe("AI operation cost recording (issue #368)", () => {
   }
 
   it("records one row per attempt, including the corrective retry, attributed to the wallet", async () => {
-    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET, accessSource: "paid" }));
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET, accessSource: "paid", plan: "pro" }));
     // angleIndex 1 = culture-observation, which forbids ending in a question mark — first draft violates it.
     const fetchMock = vi
       .fn()
@@ -115,7 +122,7 @@ describe("AI operation cost recording (issue #368)", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await postDraft(
-      draftRequest({ walletAddress: WALLET, project: { name: "Test Coin", ticker: "TEST" }, angleIndex: 1 }),
+      draftRequest({ walletAddress: WALLET, projectId: "proj-1", displayName: "Test Coin", project: { name: "Test Coin", ticker: "TEST" }, angleIndex: 1 }),
     );
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -132,11 +139,11 @@ describe("AI operation cost recording (issue #368)", () => {
         throw new Error("db exploded");
       },
     });
-    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET, accessSource: "paid" }));
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET, accessSource: "paid", plan: "pro" }));
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(draftPayload("What's your favorite thing about DOOM?")));
 
     const response = await postDraft(
-      draftRequest({ walletAddress: WALLET, project: { name: "Test Coin", ticker: "TEST" }, angleIndex: 0 }),
+      draftRequest({ walletAddress: WALLET, projectId: "proj-1", displayName: "Test Coin", project: { name: "Test Coin", ticker: "TEST" }, angleIndex: 0 }),
     );
     expect(response.status).toBe(200);
     const payload = (await response.json()) as { draft?: { xText: string } };
@@ -145,7 +152,7 @@ describe("AI operation cost recording (issue #368)", () => {
   });
 
   it("records a mascot image cost row after a successful generation", async () => {
-    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET, accessSource: "paid" }));
+    setSocialStudioAuthoriserForTests(async () => ({ status: "allowed", walletAddress: WALLET, accessSource: "paid", plan: "pro" }));
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ data: [{ b64_json: "AAAA" }] })));
 
     const response = await postMascotImage(
@@ -159,6 +166,8 @@ describe("AI operation cost recording (issue #368)", () => {
         },
         body: JSON.stringify({
           walletAddress: WALLET,
+          projectId: "proj-1",
+          displayName: "Test Coin",
           project: { name: "Test Coin", ticker: "TEST" },
           sceneInput: "beach",
           mascotVisualDNA: {

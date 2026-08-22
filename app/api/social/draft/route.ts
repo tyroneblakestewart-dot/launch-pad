@@ -22,6 +22,7 @@ import {
   resolveChainLabel,
   type DraftProject,
 } from "@/lib/server/social-draft-pipeline";
+import { authoriseSocialProjectSlot } from "@/lib/server/social-project-slot-entitlement";
 import { authoriseSocialStudioRequest } from "@/lib/server/social-studio-entitlement";
 import type { SocialDraft, VoiceProfile } from "@/lib/social-studio-types";
 
@@ -30,6 +31,8 @@ export const maxDuration = 30;
 
 type DraftRequestBody = {
   walletAddress?: unknown;
+  projectId?: unknown;
+  displayName?: unknown;
   project?: {
     name?: unknown;
     ticker?: unknown;
@@ -130,6 +133,29 @@ export async function POST(request: Request) {
       { error: authorisation.message, code: "social-studio-plan-required", upsell: true },
       { status: 403, headers: noStoreHeaders(rateHeaders) },
     );
+  }
+
+  const projectSlot = await authoriseSocialProjectSlot(
+    authorisation,
+    { projectId: body.projectId, displayName: body.displayName },
+    { serviceKey: "social-studio-ai" },
+  );
+  if (projectSlot.status === "invalid-project") {
+    return NextResponse.json({ error: projectSlot.message }, { status: 400, headers: noStoreHeaders(rateHeaders) });
+  }
+  if (projectSlot.status === "limit-reached") {
+    return NextResponse.json(
+      {
+        error: projectSlot.message,
+        code: "social-studio-project-slot-limit",
+        activeCount: projectSlot.activeCount,
+        limit: projectSlot.limit,
+      },
+      { status: 403, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+  if (projectSlot.status === "unavailable") {
+    return NextResponse.json({ error: projectSlot.message }, { status: 503, headers: noStoreHeaders(rateHeaders) });
   }
 
   const name = typeof body.project?.name === "string" ? body.project.name.trim() : "";

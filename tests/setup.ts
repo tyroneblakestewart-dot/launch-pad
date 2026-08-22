@@ -22,9 +22,12 @@ beforeEach(() => {
   // Same rationale for the AI Social Studio routes (issue #332): pipeline
   // tests exercise the AI request/response shape, not entitlement — focused
   // entitlement tests reset this override and exercise the real
-  // subscriptions-table decision.
+  // subscriptions-table decision. accessSource "test-allowlist" (issue #407)
+  // also bypasses the project-slot limit unconditionally, so these pipeline
+  // tests don't need a projectId or a configured slot registry either.
   setSocialStudioAuthoriserForTests(async (walletAddress) => ({
     status: "allowed",
     walletAddress: typeof walletAddress === "string" ? walletAddress : TEST_PAID_WALLET,
+    accessSource: "test-allowlist",
   }));
 });

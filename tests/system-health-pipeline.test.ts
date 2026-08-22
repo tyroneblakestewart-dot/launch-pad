@@ -989,6 +989,33 @@ describe("buildSocialPostingPipeline (issue #335)", () => {
     expect(stageById(pipeline, "endpoint-reachable")).toMatchObject({ status: "amber" });
   });
 
+  it("reports the project-slot registry (issue #407) — green when reachable, red without DATABASE_URL", async () => {
+    const withDb = await buildSocialPostingPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      getPool: () => fakePool(),
+      getServiceControl: async () => activeControl({ key: "social-posting" }),
+    });
+    expect(stageById(withDb, "project-slot-registry")).toMatchObject({ status: "green" });
+
+    const withoutDb = await buildSocialPostingPipeline({
+      databaseUrl: "",
+      env: {},
+      getServiceControl: async () => activeControl({ key: "social-posting" }),
+    });
+    expect(stageById(withoutDb, "project-slot-registry")).toMatchObject({ status: "red" });
+  });
+
+  it("reports the project-slot registry red when the table is missing", async () => {
+    const pipeline = await buildSocialPostingPipeline({
+      databaseUrl: "postgres://test",
+      env: {},
+      getPool: () => fakePool({ query: async () => ({ rows: [] }) }),
+      getServiceControl: async () => activeControl({ key: "social-posting" }),
+    });
+    expect(stageById(pipeline, "project-slot-registry")).toMatchObject({ status: "red" });
+  });
+
   it("is reachable through the buildServicePipeline dispatcher", async () => {
     const pipeline = await buildServicePipeline("social-posting", {
       env: {},
@@ -1007,22 +1034,41 @@ describe("buildSocialStudioAiPipeline (issue #332)", () => {
     DATABASE_URL: "postgres://test",
   };
 
+  function fakePool(overrides: {
+    query?: (text: string, params?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>;
+  } = {}) {
+    return {
+      totalCount: 1,
+      idleCount: 1,
+      waitingCount: 0,
+      query:
+        overrides.query ??
+        (async (text: string) => {
+          if (text.includes("information_schema.tables")) return { rows: [{ table_name: "social_project_slots" }] };
+          return { rows: [] };
+        }),
+    };
+  }
+
   it("is green with a direct OpenAI key, a configured secret and a configured database", async () => {
     const pipeline = await buildSocialStudioAiPipeline({
       env,
       getServiceControl: async () => activeControl({ key: "social-studio-ai" }),
+      getPool: () => fakePool(),
     });
     expect(stageById(pipeline, "provider-configured")).toMatchObject({ status: "green" });
     expect(stageById(pipeline, "origin-check")).toMatchObject({ status: "green" });
     expect(stageById(pipeline, "rate-limiter")).toMatchObject({ status: "green" });
     expect(stageById(pipeline, "entitlement-configured")).toMatchObject({ status: "green" });
     expect(stageById(pipeline, "mascot-image-provider")).toMatchObject({ status: "green" });
+    expect(stageById(pipeline, "project-slot-registry")).toMatchObject({ status: "green" });
   });
 
   it("reports the mascot image provider as amber (not red) on the Vercel AI Gateway fallback", async () => {
     const pipeline = await buildSocialStudioAiPipeline({
       env: { ...env, OPENAI_API_KEY: "", AI_GATEWAY_API_KEY: "gateway-key" },
       getServiceControl: async () => activeControl({ key: "social-studio-ai" }),
+      getPool: () => fakePool(),
     });
     expect(stageById(pipeline, "provider-configured")).toMatchObject({ status: "green" });
     expect(stageById(pipeline, "mascot-image-provider")).toMatchObject({ status: "amber" });
@@ -1034,12 +1080,14 @@ describe("buildSocialStudioAiPipeline (issue #332)", () => {
       getServiceControl: async () => activeControl({ key: "social-studio-ai" }),
     });
     expect(stageById(pipeline, "entitlement-configured")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "project-slot-registry")).toMatchObject({ status: "red" });
   });
 
   it("surfaces isolation state", async () => {
     const pipeline = await buildSocialStudioAiPipeline({
       env,
       getServiceControl: async () => activeControl({ key: "social-studio-ai", isolated: true, reason: "maintenance" }),
+      getPool: () => fakePool(),
     });
     expect(stageById(pipeline, "endpoint-reachable")).toMatchObject({ status: "amber" });
   });
@@ -1047,10 +1095,28 @@ describe("buildSocialStudioAiPipeline (issue #332)", () => {
   it("is reachable through the buildServicePipeline dispatcher", async () => {
     const pipeline = await buildServicePipeline("social-studio-ai", {
       env,
-      socialStudioAi: { getServiceControl: async () => activeControl({ key: "social-studio-ai" }) },
+      socialStudioAi: { getServiceControl: async () => activeControl({ key: "social-studio-ai" }), getPool: () => fakePool() },
     });
     expect(pipeline.id).toBe("social-studio-ai");
     expect(stageById(pipeline, "provider-configured")).toMatchObject({ status: "green" });
+  });
+
+  it("reports the project-slot registry red when migration 028 hasn't been applied", async () => {
+    const pipeline = await buildSocialStudioAiPipeline({
+      env,
+      getServiceControl: async () => activeControl({ key: "social-studio-ai" }),
+      getPool: () => fakePool({ query: async () => ({ rows: [] }) }),
+    });
+    expect(stageById(pipeline, "project-slot-registry")).toMatchObject({ status: "red" });
+  });
+
+  it("reports the project-slot registry red when the reachability query itself fails", async () => {
+    const pipeline = await buildSocialStudioAiPipeline({
+      env,
+      getServiceControl: async () => activeControl({ key: "social-studio-ai" }),
+      getPool: () => fakePool({ query: async () => Promise.reject(new Error("boom")) }),
+    });
+    expect(stageById(pipeline, "project-slot-registry")).toMatchObject({ status: "red" });
   });
 });
 

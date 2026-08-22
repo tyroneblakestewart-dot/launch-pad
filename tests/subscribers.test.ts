@@ -26,6 +26,7 @@ function row(overrides: Partial<SubscribersQueryRow> = {}): SubscribersQueryRow 
     telegrams: null,
     has_bond_pro_site_payment: false,
     payment_history: null,
+    social_project_slots: null,
     ...overrides,
   };
 }
@@ -263,5 +264,33 @@ describe("listSubscribers", () => {
       query: async () => ({ rows: [row({ slugs: ["zeta", "alpha", "alpha"] })] }),
     });
     expect(published.rows[0].slugs).toEqual(["alpha", "zeta"]);
+  });
+
+  it("maps active AI Social Studio project slots for issue #407's admin view", async () => {
+    const snapshot = await listSubscribers({
+      databaseUrl: "postgres://example",
+      query: async () => ({
+        rows: [
+          row({
+            tier: "pro_bundle",
+            paid_until: "2027-01-01T00:00:00.000Z",
+            social_project_slots: [
+              { project_id: "abc-123", display_name: "My Coin", registered_at: "2026-06-01T00:00:00.000Z" },
+            ],
+          }),
+        ],
+      }),
+    });
+    expect(snapshot.rows[0].socialProjectSlots).toEqual([
+      { projectId: "abc-123", displayName: "My Coin", registeredAt: "2026-06-01T00:00:00.000Z" },
+    ]);
+  });
+
+  it("defaults to an empty project-slot list when the query returns none", async () => {
+    const snapshot = await listSubscribers({
+      databaseUrl: "postgres://example",
+      query: async () => ({ rows: [row()] }),
+    });
+    expect(snapshot.rows[0].socialProjectSlots).toEqual([]);
   });
 });
