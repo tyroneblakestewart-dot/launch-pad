@@ -24,12 +24,13 @@
 .groupTimestamps { margin: 4px 0 0; color: rgba(238, 243, 234, 0.5); font-size: 0.72rem; }
 .occurrenceBadge { flex: none; border-radius: 999px; padding: 4px 10px; font-size: 0.78rem; font-weight: 800; color: #0a0d0b; background: #bce759; }
 
-.groupActions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.expandButton, .resolveButton { border-radius: 8px; padding: 6px 10px; font-size: 0.74rem; font-weight: 700; cursor: pointer; }
+.groupActions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.expandButton, .resolveButton, .copyDetailsButton { box-sizing: border-box; min-height: 44px; border-radius: 8px; padding: 6px 10px; font-size: 0.74rem; font-weight: 700; cursor: pointer; }
 .expandButton { border: 1px solid rgba(238, 243, 234, 0.16); background: transparent; color: rgba(238, 243, 234, 0.75); }
 .expandButton:disabled { cursor: default; opacity: 0.4; }
 .resolveButton { border: 1px solid rgba(188, 231, 89, 0.3); background: transparent; color: #bce759; }
 .resolveButton:disabled { cursor: default; opacity: 0.55; }
+.copyDetailsButton { border: 1px solid rgba(114, 201, 232, 0.3); background: transparent; color: #72c9e8; }
 
 .stack { margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: rgba(0, 0, 0, 0.3); color: rgba(238, 243, 234, 0.75); font-size: 0.72rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow-y: auto; }
 

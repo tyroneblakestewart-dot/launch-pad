@@ -30,7 +30,15 @@ function notify(value: boolean): void {
   listeners.forEach((listener) => listener(value));
 }
 
-async function refreshSupportUnread(): Promise<void> {
+/**
+ * Exported (issue #405) so a test can exercise the real fetch → hasSupportTicketNews
+ * → notify → listeners path directly — this repo's Vitest suite runs in a
+ * plain Node environment with no jsdom/@testing-library, so a mounted
+ * `useSupportUnread()` component tree isn't available to test against; this
+ * is the closest "real component-level end-to-end-ish" seam that
+ * environment allows. Not part of the hook's public contract otherwise.
+ */
+export async function refreshSupportUnread(): Promise<void> {
   if (inFlight) {
     await inFlight;
     return;
@@ -66,6 +74,18 @@ async function refreshSupportUnread(): Promise<void> {
   } finally {
     inFlight = null;
   }
+}
+
+/** Test-only seam: reads the current cached value without subscribing a component (issue #405). */
+export function getCachedSupportUnreadForTests(): boolean {
+  return cachedUnread;
+}
+
+/** Test-only seam: resets this module's singleton state between tests (issue #405). */
+export function resetSupportUnreadForTests(): void {
+  cachedUnread = false;
+  listeners.clear();
+  inFlight = null;
 }
 
 export function useSupportUnread(): boolean {

@@ -69,6 +69,7 @@
 
 .navItem,
 .navItemActive {
+  position: relative;
   padding: 9px 16px;
   font-size: 0.85rem;
   font-weight: 600;
@@ -78,6 +79,18 @@
   color: rgba(238, 243, 234, 0.7);
   cursor: pointer;
   white-space: nowrap;
+}
+
+.navUnreadDot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff4d4f;
+  border: 2px solid #050706;
+  pointer-events: none;
 }
 
 .navItemActive {

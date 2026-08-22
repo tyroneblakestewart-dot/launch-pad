@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { markAdminSupportSeen } from "@/lib/use-admin-support-unread";
 import styles from "./admin-support-section.module.css";
 
 type SupportTicketCategory = "account" | "payments" | "site-builder" | "social-studio" | "publishing" | "other";
@@ -94,6 +95,11 @@ export function AdminSupportSection() {
       const payload = (await response.json()) as { tickets: SupportTicket[] };
       setTickets(payload.tickets);
       setLoadError(null);
+      // Opening the Support section clears the nav dot the moment current
+      // support data has actually loaded and is on screen (issue #405) —
+      // not just on the section's very first load, so a later refresh
+      // (status-filter change, manual Refresh tap) keeps it cleared too.
+      markAdminSupportSeen();
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "The support queue could not be loaded.");
     } finally {

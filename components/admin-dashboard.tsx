@@ -22,6 +22,7 @@ import type {
   AdminOperationsSnapshot,
   AdminServiceKey,
 } from "@/lib/admin-operations";
+import { useAdminSupportUnread } from "@/lib/use-admin-support-unread";
 import styles from "./admin-dashboard.module.css";
 
 type SectionId =
@@ -90,6 +91,7 @@ async function fetchOperations(): Promise<AdminOperationsSnapshot> {
 }
 
 export function AdminDashboard() {
+  const supportUnread = useAdminSupportUnread();
   const [activeSection, setActiveSection] = useState<SectionId>("overview");
   const [snapshot, setSnapshot] = useState<AdminOperationsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -225,6 +227,9 @@ export function AdminDashboard() {
             onClick={() => setActiveSection(section.id)}
           >
             {section.label}
+            {section.id === "support" && supportUnread ? (
+              <span className={styles.navUnreadDot} role="img" aria-label="Support — new activity waiting" />
+            ) : null}
           </button>
         ))}
       </nav>
