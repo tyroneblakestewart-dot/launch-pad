@@ -10,6 +10,7 @@ import {
   estimateDataUrlLength,
   fitArtworkDimensions,
 } from "@/lib/artwork-compression";
+import { copyToClipboard } from "@/lib/clipboard";
 import { writeSupportLastSeen } from "@/lib/support-unread";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./support-hub.module.css";
@@ -92,6 +93,15 @@ type SupportTicket = {
   createdAt: string;
   updatedAt: string;
   messages: SupportTicketMessage[];
+};
+
+/** The bounded, status-only shape GET /api/support/tickets/reference returns (issue #405) — never body/subject/attachment/diagnostics/messages/wallet. */
+type AnonymousSupportTicketStatus = {
+  referenceCode: string;
+  status: SupportTicketStatus;
+  category: SupportTicketCategory;
+  createdAt: string;
+  updatedAt: string;
 };
 
 async function readJsonResponse<T>(response: Response, fallback: string): Promise<T> {
@@ -287,6 +297,17 @@ export function SupportHub({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Anonymous/no-wallet reporting (issue #405) — a fallback for a reporter
+  // whose wallet won't connect. The reference code is shown exactly once on
+  // success and deliberately never written to localStorage/sessionStorage.
+  const [anonymousReferenceCode, setAnonymousReferenceCode] = useState<string | null>(null);
+  const [referenceCodeCopied, setReferenceCodeCopied] = useState(false);
+
+  const [referenceCodeQuery, setReferenceCodeQuery] = useState("");
+  const [referenceLookupResult, setReferenceLookupResult] = useState<AnonymousSupportTicketStatus | null>(null);
+  const [referenceLookupError, setReferenceLookupError] = useState<string | null>(null);
+  const [referenceLookupBusy, setReferenceLookupBusy] = useState(false);
+
   const [tickets, setTickets] = useState<SupportTicket[] | null>(null);
   const [ticketsError, setTicketsError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -464,7 +485,7 @@ export function SupportHub({
     setAttachmentError(null);
   }
 
-  async function handleSubmit() {
+  async function handleSignedSubmit() {
     const trimmedSubject = subject.trim();
     const trimmedBody = body.trim();
     if (!trimmedSubject || !trimmedBody || submitting) return;
@@ -509,6 +530,80 @@ export function SupportHub({
       setSubmitError(error instanceof Error ? error.message : "Your report could not be submitted.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // Anonymous fallback (issue #405) for a reporter whose wallet won't
+  // connect — no challenge, no signature. The server generates and returns
+  // a one-time reference code; this report gets no reply thread.
+  async function handleAnonymousSubmit() {
+    const trimmedSubject = subject.trim();
+    const trimmedBody = body.trim();
+    if (!trimmedSubject || !trimmedBody || submitting) return;
+
+    setSubmitting(true);
+    setSubmitError(null);
+    setAnonymousReferenceCode(null);
+    setReferenceCodeCopied(false);
+    try {
+      const response = await fetch("/api/support/tickets/anonymous", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category, subject: trimmedSubject, body: trimmedBody, attachmentDataUrl }),
+      });
+      const payload = await readJsonResponse<{ ticket: { referenceCode: string } }>(response, "Your report could not be submitted.");
+      setSubject("");
+      setBody("");
+      setAttachmentDataUrl(null);
+      setAnonymousReferenceCode(payload.ticket.referenceCode);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Your report could not be submitted.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleSubmit() {
+    return walletAddress ? handleSignedSubmit() : handleAnonymousSubmit();
+  }
+
+  // Dismisses the anonymous success state (issue #405) — there is no ticket
+  // history to scroll to without a wallet, so this is deliberately simpler
+  // than handleDone below.
+  function handleAnonymousDone() {
+    setAnonymousReferenceCode(null);
+    setReferenceCodeCopied(false);
+    setSubmitError(null);
+    setCategory("other");
+    setSubject("");
+    setBody("");
+    setAttachmentDataUrl(null);
+    setAttachmentError(null);
+  }
+
+  async function handleCopyReferenceCode() {
+    if (!anonymousReferenceCode) return;
+    const copied = await copyToClipboard(anonymousReferenceCode);
+    setReferenceCodeCopied(copied);
+  }
+
+  async function handleReferenceLookup() {
+    const code = referenceCodeQuery.trim();
+    if (!code || referenceLookupBusy) return;
+    setReferenceLookupBusy(true);
+    setReferenceLookupError(null);
+    setReferenceLookupResult(null);
+    try {
+      const response = await fetch(`/api/support/tickets/reference?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+      const payload = await readJsonResponse<{ status: AnonymousSupportTicketStatus }>(
+        response,
+        "No report was found for that reference code.",
+      );
+      setReferenceLookupResult(payload.status);
+    } catch (error) {
+      setReferenceLookupError(error instanceof Error ? error.message : "No report was found for that reference code.");
+    } finally {
+      setReferenceLookupBusy(false);
     }
   }
 
@@ -579,15 +674,21 @@ export function SupportHub({
           <p className={styles.intro}>{heroIntro}</p>
         </header>
 
-        {!walletAddress ? (
-          <button type="button" className={styles.connectButton} onClick={() => void connectWallet()}>
-            Connect wallet to report a problem
-          </button>
-        ) : (
-          <section className={styles.panel} aria-labelledby="support-form-title">
+        <section className={styles.panel} aria-labelledby="support-form-title">
             <h2 id="support-form-title" className={styles.panelTitle}>
               New report
             </h2>
+
+            {!walletAddress ? (
+              <div className={styles.anonymousNotice}>
+                <p className={styles.anonymousNoticeText}>
+                  Connect your wallet if you can — it lets us reply to you.
+                </p>
+                <button type="button" className={styles.connectButton} onClick={() => void connectWallet()}>
+                  Connect wallet
+                </button>
+              </div>
+            ) : null}
 
             <label className={styles.field}>
               <span className={styles.fieldLabel}>Category</span>
@@ -679,6 +780,14 @@ export function SupportHub({
               ) : null}
             </div>
 
+            {!walletAddress && !anonymousReferenceCode ? (
+              <p className={styles.anonymousWarning}>
+                Reporting without a wallet means this report has no reply thread — we can&apos;t message you back
+                here. You&apos;ll get a one-time reference code to check its status later. Save it; it can&apos;t be
+                recovered from this browser afterward.
+              </p>
+            ) : null}
+
             {submitError ? (
               <p className={styles.errorBanner} role="alert">
                 {submitError}
@@ -703,6 +812,33 @@ export function SupportHub({
                 </button>
               </div>
             ) : null}
+            {anonymousReferenceCode ? (
+              <div className={styles.successBanner} role="status">
+                <button
+                  type="button"
+                  className={styles.successDismissX}
+                  onClick={handleAnonymousDone}
+                  aria-label="Dismiss"
+                >
+                  ×
+                </button>
+                <div className={styles.referenceCodeBlock}>
+                  <p className={styles.successText}>
+                    Report sent anonymously. This report has no reply thread — save this reference code to check its
+                    status later. It cannot be recovered from this browser.
+                  </p>
+                  <div className={styles.referenceCodeRow}>
+                    <code className={styles.referenceCodeValue}>{anonymousReferenceCode}</code>
+                    <button type="button" className={styles.copyButton} onClick={() => void handleCopyReferenceCode()}>
+                      {referenceCodeCopied ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+                <button type="button" className={styles.doneButton} onClick={handleAnonymousDone}>
+                  Done
+                </button>
+              </div>
+            ) : null}
 
             <button
               type="button"
@@ -712,8 +848,42 @@ export function SupportHub({
             >
               {submitting ? "Sending…" : "Send report"}
             </button>
-          </section>
-        )}
+        </section>
+
+        <section className={styles.panel} aria-labelledby="support-reference-lookup-title">
+          <h2 id="support-reference-lookup-title" className={styles.panelTitle}>
+            Check a report by reference code
+          </h2>
+          <div className={styles.referenceLookupRow}>
+            <input
+              className={styles.input}
+              type="text"
+              value={referenceCodeQuery}
+              placeholder="XXXX-XXXXXX"
+              disabled={referenceLookupBusy}
+              onChange={(event) => setReferenceCodeQuery(event.target.value)}
+            />
+            <button
+              type="button"
+              className={styles.referenceLookupButton}
+              disabled={referenceLookupBusy || !referenceCodeQuery.trim()}
+              onClick={() => void handleReferenceLookup()}
+            >
+              {referenceLookupBusy ? "Checking…" : "Check status"}
+            </button>
+          </div>
+          {referenceLookupError ? (
+            <p className={styles.errorBanner} role="alert">
+              {referenceLookupError}
+            </p>
+          ) : null}
+          {referenceLookupResult ? (
+            <p className={styles.referenceLookupResult}>
+              {STATUS_LABEL[referenceLookupResult.status]} · {referenceLookupResult.category} · reported{" "}
+              {formatTimestamp(referenceLookupResult.createdAt)}
+            </p>
+          ) : null}
+        </section>
 
         {walletAddress ? (
           <section ref={historyRef} className={styles.panel} aria-labelledby="support-history-title">

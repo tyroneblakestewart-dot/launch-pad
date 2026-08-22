@@ -162,6 +162,60 @@ describe("Support hub UI (issue #393)", () => {
   });
 });
 
+describe("Anonymous/no-wallet reporting (issue #405)", () => {
+  it("shows the report form even without a confirmed wallet, rather than only a connect button", async () => {
+    const component = await source("components", "support-hub.tsx");
+    // The form section is no longer gated behind `{!walletAddress ? (<button>Connect…) : (<section>...`
+    expect(component).not.toMatch(/\{!walletAddress \? \(\s*<button[^>]*connectButton/);
+    expect(component).toContain('<section className={styles.panel} aria-labelledby="support-form-title">');
+  });
+
+  it("shows the exact required honesty message and a Connect wallet action when no wallet is present", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("Connect your wallet if you can — it lets us reply to you.");
+    expect(component).toMatch(/onClick=\{\(\) => void connectWallet\(\)\}>\s*Connect wallet\s*</);
+  });
+
+  it("explains before submit that an anonymous report has no reply thread and the code must be saved", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("this report has no reply thread");
+    expect(component).toContain("Save it; it can&apos;t be");
+  });
+
+  it("submits to the dedicated anonymous route with no challenge/signature when there is no wallet", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("async function handleAnonymousSubmit() {");
+    expect(component).toContain('"/api/support/tickets/anonymous"');
+    expect(component).toMatch(/function handleSubmit\(\) \{\s*return walletAddress \? handleSignedSubmit\(\) : handleAnonymousSubmit\(\);/);
+  });
+
+  it("shows the one-time reference code prominently with copy support, and never persists it to storage", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("import { copyToClipboard } from \"@/lib/clipboard\";");
+    expect(component).toContain("async function handleCopyReferenceCode() {");
+    expect(component).toContain("It cannot be recovered from this browser.");
+    expect(component).not.toContain("localStorage.setItem(\"hoodlums.support");
+    expect(component).not.toMatch(/anonymousReferenceCode[\s\S]{0,80}localStorage/);
+  });
+
+  it("offers a compact 'Check a report by reference code' form, status-only, always available", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("Check a report by reference code");
+    expect(component).toContain("async function handleReferenceLookup() {");
+    expect(component).toContain("/api/support/tickets/reference?code=");
+
+    const css = await source("components", "support-hub.module.css");
+    expect(css).toMatch(/\.referenceLookupButton\s*\{[^}]*min-height:\s*44px/s);
+  });
+
+  it("is mobile-first and 390px-safe for the new anonymous/reference-lookup UI", async () => {
+    const css = await source("components", "support-hub.module.css");
+    expect(css).toContain(".anonymousNotice");
+    expect(css).toContain(".referenceCodeRow");
+    expect(css).toMatch(/@media \(max-width: 390px\) \{[\s\S]*\.referenceLookupRow/);
+  });
+});
+
 describe("Support hub client crash hardening (issue #405)", () => {
   it("defines a safeInvoke helper and uses it to guard every non-user-initiated browser/extension API call", async () => {
     const component = await source("components", "support-hub.tsx");

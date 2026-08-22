@@ -79,6 +79,12 @@ export async function POST(request: Request) {
       if (result.status === "not_found") {
         return NextResponse.json({ error: "That support ticket could not be found." }, { status: 404, headers: NO_STORE_HEADERS });
       }
+      if (result.status === "anonymous") {
+        return NextResponse.json(
+          { error: "This is an anonymous report — it has no wallet to reply to. Use the status controls instead." },
+          { status: 409, headers: NO_STORE_HEADERS },
+        );
+      }
       if (result.status === "closed") {
         return NextResponse.json(
           { error: "This ticket is solved or closed and can no longer be replied to." },

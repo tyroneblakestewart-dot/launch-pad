@@ -83,4 +83,19 @@ describe("Admin Support UI", () => {
     // refreshButton, filter/filterActive, itemSummary, replyButton/solveButton/closeButton.
     expect(minHeightCount).toBeGreaterThanOrEqual(4);
   });
+
+  it("badges an anonymous ticket and shows its reference code instead of a wallet address (issue #405)", async () => {
+    const component = await source("components", "admin-support-section.tsx");
+    expect(component).toContain("!ticket.walletAddress ? <span className={styles.anonymousBadge}>Anonymous</span> : null");
+    expect(component).toContain("No wallet — ref ${ticket.referenceCode ?? \"unknown\"}");
+
+    const css = await source("components", "admin-support-section.module.css");
+    expect(css).toContain(".anonymousBadge");
+  });
+
+  it("disables the reply composer for an anonymous ticket but keeps status controls available (issue #405)", async () => {
+    const component = await source("components", "admin-support-section.tsx");
+    expect(component).toMatch(/!ticket\.walletAddress \? \(\s*<p className=\{styles\.terminalNote\}>\s*This is an anonymous report/);
+    expect(component).toContain("!ticket.walletAddress || isTerminalSupportTicketStatus(ticket.status) ? null : (");
+  });
 });

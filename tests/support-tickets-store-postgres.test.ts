@@ -244,6 +244,21 @@ describe("createPostgresSupportTicketsStore — addOwnerMessage transaction shap
     expect(result.status).toBe("not_found");
     expect(calls[calls.length - 1].text).toBe("ROLLBACK");
   });
+
+  it("rejects a reply to an anonymous (wallet-less) ticket rather than writing an unreadable message (issue #405)", async () => {
+    const { client, calls } = createFakeClient((text) => {
+      if (text.includes("FOR UPDATE")) return { rows: [ticketRow({ wallet_address: null, reference_code: "ABCD-EFGH23" })] };
+      return { rows: [] };
+    });
+    installPool(client);
+
+    const store = createPostgresSupportTicketsStore("postgres://test");
+    const result = await store.addOwnerMessage(TICKET_ID, "are you still there?");
+
+    expect(result.status).toBe("anonymous");
+    expect(calls.some((call) => call.text.includes("INSERT"))).toBe(false);
+    expect(calls[calls.length - 1].text).toBe("ROLLBACK");
+  });
 });
 
 describe("createPostgresSupportTicketsStore — closeTicketByUser transaction shape (issue #401)", () => {

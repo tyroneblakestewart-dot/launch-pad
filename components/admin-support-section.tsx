@@ -15,7 +15,9 @@ type SupportTicketMessage = {
 
 type SupportTicket = {
   id: string;
-  walletAddress: string;
+  /** Null for an anonymous ticket (issue #405) — it carries a referenceCode instead. */
+  walletAddress: string | null;
+  referenceCode: string | null;
   category: SupportTicketCategory;
   subject: string;
   body: string;
@@ -192,9 +194,10 @@ export function AdminSupportSection() {
                 <div className={styles.itemMeta}>
                   <p className={styles.itemTitle}>
                     {ticket.subject} <span className={styles.category}>{ticket.category}</span>
+                    {!ticket.walletAddress ? <span className={styles.anonymousBadge}>Anonymous</span> : null}
                   </p>
                   <p className={styles.itemSub}>
-                    {ticket.walletAddress} · {formatTimestamp(ticket.createdAt)}
+                    {ticket.walletAddress ?? `No wallet — ref ${ticket.referenceCode ?? "unknown"}`} · {formatTimestamp(ticket.createdAt)}
                   </p>
                 </div>
                 <span className={badgeClassName(ticket.status)}>{STATUS_BADGE_LABEL[ticket.status]}</span>
@@ -231,7 +234,12 @@ export function AdminSupportSection() {
                   </div>
 
                   <div className={styles.replyRow}>
-                    {isTerminalSupportTicketStatus(ticket.status) ? (
+                    {!ticket.walletAddress ? (
+                      <p className={styles.terminalNote}>
+                        This is an anonymous report — it has no wallet to reply to, so it can&apos;t receive a reply.
+                        Status controls are still available below.
+                      </p>
+                    ) : isTerminalSupportTicketStatus(ticket.status) ? (
                       <p className={styles.terminalNote}>
                         This ticket is {STATUS_BADGE_LABEL[ticket.status].toLowerCase()} and can no longer be replied to.
                       </p>
@@ -246,7 +254,7 @@ export function AdminSupportSection() {
                       />
                     )}
                     <div className={styles.itemActions}>
-                      {isTerminalSupportTicketStatus(ticket.status) ? null : (
+                      {!ticket.walletAddress || isTerminalSupportTicketStatus(ticket.status) ? null : (
                         <button
                           type="button"
                           className={styles.replyButton}

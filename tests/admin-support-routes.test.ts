@@ -109,6 +109,17 @@ describe("GET /api/admin/support", () => {
     expect(payload.tickets.find((t) => t.subject === "no screenshot")?.attachmentDataUrl).toBeNull();
   });
 
+  it("includes anonymous tickets in the admin listing with a null wallet and a reference code (issue #405)", async () => {
+    const store = getSupportTicketsStore();
+    const anon = await store.createAnonymous({ category: "other", subject: "anon report", body: "b", diagnostics: { mode: "anonymous" } });
+
+    const response = await getAdminSupport(request("GET", "/api/admin/support?status=all"));
+    const payload = (await response.json()) as { tickets: Array<{ id: string; walletAddress: string | null; referenceCode: string | null }> };
+    const found = payload.tickets.find((t) => t.id === anon.id);
+    expect(found?.walletAddress).toBeNull();
+    expect(found?.referenceCode).toBe(anon.referenceCode);
+  });
+
   it("rejects an invalid status filter with 400 rather than silently widening it to 'all' (issue #393 review)", async () => {
     const response = await getAdminSupport(request("GET", "/api/admin/support?status=not-a-status"));
     expect(response.status).toBe(400);
@@ -185,6 +196,26 @@ describe("POST /api/admin/support/actions", () => {
       request("POST", "/api/admin/support/actions", { id: ticket.id, action: "reply", body: "still here?" }),
     );
     expect(response.status).toBe(409);
+  });
+
+  it("rejects a reply to an anonymous ticket — there is no wallet to notify (issue #405)", async () => {
+    const store = getSupportTicketsStore();
+    const ticket = await store.createAnonymous({ category: "other", subject: "s", body: "b", diagnostics: { mode: "anonymous" } });
+    const response = await postAdminSupportAction(
+      request("POST", "/api/admin/support/actions", { id: ticket.id, action: "reply", body: "hello?" }),
+    );
+    expect(response.status).toBe(409);
+    const payload = (await response.json()) as { error: string };
+    expect(payload.error).toMatch(/anonymous/i);
+  });
+
+  it("still allows a status change on an anonymous ticket", async () => {
+    const store = getSupportTicketsStore();
+    const ticket = await store.createAnonymous({ category: "other", subject: "s", body: "b", diagnostics: { mode: "anonymous" } });
+    const response = await postAdminSupportAction(
+      request("POST", "/api/admin/support/actions", { id: ticket.id, action: "status", status: "solved" }),
+    );
+    expect(response.status).toBe(200);
   });
 
   it("rejects a reply with an empty body", async () => {
