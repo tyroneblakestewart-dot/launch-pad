@@ -112,17 +112,25 @@ export type SupportTicketWithMessages = SupportTicket & { messages: SupportTicke
 
 /**
  * What a wallet-signed public response is allowed to echo back about its own
- * ticket — never `diagnostics` (assembled for the owner's eyes only) or the
- * raw `walletAddress` (issue #393 review). Every public support route
- * (create/list/reply) must project through this, never return the full
- * store `SupportTicket`/`SupportTicketWithMessages` shape directly.
+ * ticket — never `diagnostics` (assembled for the owner's eyes only), the
+ * raw `walletAddress` (issue #393 review), or `referenceCode` (issue #405
+ * review: `referenceCode` is only ever null on a signed ticket, and adding it
+ * to the store's `SupportTicket` type must not leak a stray `referenceCode:
+ * null` into the signed create/list/reply/close response shape — the
+ * anonymous create route has its own minimal success shape instead of
+ * reusing this projection). Every public support route (create/list/reply/
+ * close) must project through this, never return the full store
+ * `SupportTicket`/`SupportTicketWithMessages` shape directly.
  */
-export type PublicSupportTicket = Omit<SupportTicket, "diagnostics" | "walletAddress">;
+export type PublicSupportTicket = Omit<SupportTicket, "diagnostics" | "walletAddress" | "referenceCode">;
 
-export function toPublicSupportTicket<T extends SupportTicket>(ticket: T): Omit<T, "diagnostics" | "walletAddress"> {
-  const { diagnostics: _diagnostics, walletAddress: _walletAddress, ...rest } = ticket;
+export function toPublicSupportTicket<T extends SupportTicket>(
+  ticket: T,
+): Omit<T, "diagnostics" | "walletAddress" | "referenceCode"> {
+  const { diagnostics: _diagnostics, walletAddress: _walletAddress, referenceCode: _referenceCode, ...rest } = ticket;
   void _diagnostics;
   void _walletAddress;
+  void _referenceCode;
   return rest;
 }
 
@@ -145,13 +153,19 @@ export type CreateAnonymousSupportTicketInput = {
   attachmentDataUrl?: string | null;
 };
 
-/** The only fields a status-only reference-code lookup is ever allowed to return — never body, subject, attachment, diagnostics, messages or wallet (issue #405). */
+/**
+ * The status-only reference-code lookup response (issue #405 review) — the
+ * caller's own requirement is "status only", so this is deliberately just
+ * the status: never referenceCode, category, createdAt, updatedAt, or any of
+ * body/subject/attachment/diagnostics/messages/wallet.
+ */
 export type AnonymousSupportTicketStatusView = {
-  referenceCode: string;
   status: SupportTicketStatus;
-  category: SupportTicketCategory;
-  createdAt: string;
-  updatedAt: string;
+};
+
+/** The minimal success shape the anonymous create route returns — never the full (or even the public-projected) ticket shape, since there is nothing else safe to echo back without a wallet to authenticate future reads with (issue #405 review). */
+export type AnonymousSupportTicketCreated = {
+  referenceCode: string;
 };
 
 export type AddSupportTicketMessageResult =
@@ -198,7 +212,7 @@ export interface SupportTicketsStore {
   countOpen(): Promise<number>;
   /** Age in seconds of the oldest open-or-needs_user ticket, or null when there are none. */
   oldestOpenTicketAgeSeconds(now?: Date): Promise<number | null>;
-  /** Bounded status-only lookup by normalised reference code (issue #405) — never returns body/subject/attachment/diagnostics/messages/wallet. Null for an unknown or malformed code. */
+  /** Bounded status-only lookup by normalised reference code (issue #405) — never returns referenceCode/category/timestamps/body/subject/attachment/diagnostics/messages/wallet, only the ticket's status. Null for an unknown or malformed code. */
   lookupAnonymousStatus(referenceCode: string): Promise<AnonymousSupportTicketStatusView | null>;
 }
 
@@ -629,32 +643,20 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
 
     async lookupAnonymousStatus(referenceCode) {
       // Bounded projection at the query level, not just in the return type —
-      // body/subject/attachment/diagnostics never leave Postgres for this
-      // lookup (issue #405).
-      const result = await pool.query<{
-        reference_code: string | null;
-        status: string;
-        category: string;
-        created_at: Date | string;
-        updated_at: Date | string;
-      }>(
-        `SELECT reference_code, status, category, created_at, updated_at
+      // only `status` ever leaves Postgres for this lookup (issue #405
+      // review: the caller's requirement is "status only"). The WHERE clause
+      // still requires reference_code IS NOT NULL so a future NULL-reference
+      // row can never match an equality comparison here.
+      const result = await pool.query<{ status: string }>(
+        `SELECT status
            FROM support_tickets
-          WHERE reference_code = $1
+          WHERE reference_code = $1 AND reference_code IS NOT NULL
           LIMIT 1`,
         [referenceCode],
       );
       const row = result.rows[0];
-      if (!row || !row.reference_code || !isSupportTicketCategory(row.category) || !isSupportTicketStatus(row.status)) {
-        return null;
-      }
-      return {
-        referenceCode: row.reference_code,
-        status: row.status,
-        category: row.category,
-        createdAt: asDate(row.created_at).toISOString(),
-        updatedAt: asDate(row.updated_at).toISOString(),
-      };
+      if (!row || !isSupportTicketStatus(row.status)) return null;
+      return { status: row.status };
     },
   };
 }

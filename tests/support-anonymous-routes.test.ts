@@ -60,28 +60,31 @@ afterEach(() => {
 });
 
 describe("POST /api/support/tickets/anonymous (issue #405)", () => {
-  it("creates an anonymous ticket with no wallet signature, returning a reference code", async () => {
+  it("creates an anonymous ticket with no wallet signature, returning only a reference code", async () => {
     const response = await createValidAnonymousTicket();
     expect(response.status).toBe(201);
-    const payload = (await response.json()) as { ticket: { referenceCode: string; status: string } };
-    expect(payload.ticket.status).toBe("open");
-    expect(payload.ticket.referenceCode).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{6}$/);
+    const payload = (await response.json()) as { referenceCode: string };
+    expect(payload.referenceCode).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{6}$/);
   });
 
-  it("never echoes diagnostics or a wallet address — there is none — in the create response", async () => {
+  it("returns the minimal { referenceCode } success shape only — never a ticket object, status, diagnostics or a wallet address (issue #405 review)", async () => {
     const response = await createValidAnonymousTicket();
-    const payload = (await response.json()) as { ticket: Record<string, unknown> };
-    expect(payload.ticket.diagnostics).toBeUndefined();
-    expect(payload.ticket.walletAddress).toBeUndefined();
+    const raw = await response.text();
+    const payload = JSON.parse(raw) as Record<string, unknown>;
+    expect(Object.keys(payload)).toEqual(["referenceCode"]);
+    expect(raw).not.toContain("diagnostics");
+    expect(raw).not.toContain("walletAddress");
+    expect(raw).not.toContain('"ticket"');
+    expect(raw).not.toContain('"status"');
   });
 
   it("stores minimal diagnostics that never pretend a subscription/social identity exists", async () => {
     const response = await createValidAnonymousTicket();
     expect(response.status).toBe(201);
-    const payload = (await response.json()) as { ticket: { id: string } };
+    const payload = (await response.json()) as { referenceCode: string };
     const store = getSupportTicketsStore();
     const admin = await store.listForAdmin("all");
-    const stored = admin.find((t) => t.id === payload.ticket.id);
+    const stored = admin.find((t) => t.referenceCode === payload.referenceCode);
     expect(stored?.diagnostics).toEqual({ mode: "anonymous" });
   });
 
@@ -151,21 +154,21 @@ describe("POST /api/support/tickets/anonymous (issue #405)", () => {
   });
 });
 
-describe("GET /api/support/tickets/reference (issue #405)", () => {
+describe("GET /api/support/tickets/reference (issue #405 review: status-only)", () => {
   async function createTicketWithCode(): Promise<string> {
     const response = await createValidAnonymousTicket();
-    const payload = (await response.json()) as { ticket: { referenceCode: string } };
-    return payload.ticket.referenceCode;
+    const payload = (await response.json()) as { referenceCode: string };
+    return payload.referenceCode;
   }
 
-  it("returns bounded status fields for a valid, known code", async () => {
+  it("returns exactly { status } for a valid, known code — no other field", async () => {
     const referenceCode = await createTicketWithCode();
     const response = await lookupReference(getRequest(`/api/support/tickets/reference?code=${encodeURIComponent(referenceCode)}`));
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as { status: Record<string, unknown> };
-    expect(payload.status).toMatchObject({ referenceCode, status: "open", category: "other" });
-    expect(typeof payload.status.createdAt).toBe("string");
-    expect(typeof payload.status.updatedAt).toBe("string");
+    const raw = await response.text();
+    const payload = JSON.parse(raw) as Record<string, unknown>;
+    expect(Object.keys(payload)).toEqual(["status"]);
+    expect(payload.status).toBe("open");
   });
 
   it("is normalised case-insensitively (lowercase input still matches)", async () => {
@@ -174,16 +177,16 @@ describe("GET /api/support/tickets/reference (issue #405)", () => {
     expect(response.status).toBe(200);
   });
 
-  it("never returns body, subject, attachment, diagnostics, messages, wallet or reply text", async () => {
+  it("never returns referenceCode, category, timestamps, body, subject, attachment, diagnostics, messages, wallet or reply text — status only", async () => {
     const response1 = await createValidAnonymousTicket({
       subject: "a very unique subject line",
       body: "a very unique body of text nobody should see",
       attachmentDataUrl: "data:image/png;base64,aGVsbG8gd29ybGQ=",
     });
-    const created = (await response1.json()) as { ticket: { referenceCode: string } };
+    const created = (await response1.json()) as { referenceCode: string };
 
     const response = await lookupReference(
-      getRequest(`/api/support/tickets/reference?code=${encodeURIComponent(created.ticket.referenceCode)}`),
+      getRequest(`/api/support/tickets/reference?code=${encodeURIComponent(created.referenceCode)}`),
     );
     expect(response.status).toBe(200);
     const raw = await response.text();
@@ -196,9 +199,13 @@ describe("GET /api/support/tickets/reference (issue #405)", () => {
     expect(raw).not.toContain("subject");
     expect(raw).not.toContain("body");
     expect(raw).not.toContain("attachment");
+    expect(raw).not.toContain("category");
+    expect(raw).not.toContain("createdAt");
+    expect(raw).not.toContain("updatedAt");
+    expect(raw).not.toContain(created.referenceCode);
 
-    const payload = JSON.parse(raw) as { status: Record<string, unknown> };
-    expect(Object.keys(payload.status).sort()).toEqual(["category", "createdAt", "referenceCode", "status", "updatedAt"]);
+    const payload = JSON.parse(raw) as Record<string, unknown>;
+    expect(Object.keys(payload)).toEqual(["status"]);
   });
 
   it("returns a generic 404 for a well-formed but unknown code", async () => {

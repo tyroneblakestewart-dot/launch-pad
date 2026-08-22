@@ -12,13 +12,14 @@ import {
 } from "@/lib/server/support-tickets-store";
 
 // Status-only lookup for an anonymous report by its reference code (issue
-// #405) — no wallet, no signature, read-only. Returns only bounded
-// status-display fields (referenceCode/status/category/createdAt/updatedAt)
-// — never body, subject, attachment, diagnostics, messages, wallet or owner
-// replies. An invalid, missing or unknown code all get the identical
-// generic not-found response, so a caller can't distinguish "malformed" from
-// "well-formed but nobody filed that report" — no oracle for enumeration
-// beyond the already-impractical ~8.2e14-value keyspace (31^10 codes).
+// #405 review) — no wallet, no signature, read-only. Returns exactly
+// { status: "open" | "needs_user" | "solved" | "closed" } — never
+// referenceCode, category, createdAt, updatedAt, body, subject, attachment,
+// diagnostics, messages, wallet or owner replies. An invalid, missing or
+// unknown code all get the identical generic not-found response, so a caller
+// can't distinguish "malformed" from "well-formed but nobody filed that
+// report" — no oracle for enumeration beyond the already-impractical
+// ~8.2e14-value keyspace (31^10 codes).
 
 export const runtime = "nodejs";
 
@@ -53,9 +54,12 @@ export async function GET(request: Request) {
   if (!referenceCode) return notFoundResponse(responseHeaders);
 
   try {
-    const status = await getSupportTicketsStore().lookupAnonymousStatus(referenceCode);
-    if (!status) return notFoundResponse(responseHeaders);
-    return NextResponse.json({ status }, { status: 200, headers: responseHeaders });
+    const view = await getSupportTicketsStore().lookupAnonymousStatus(referenceCode);
+    if (!view) return notFoundResponse(responseHeaders);
+    // Exactly one key — { status: "open" } — never referenceCode, category or
+    // timestamps (issue #405 review: the caller's own requirement is
+    // "status only").
+    return NextResponse.json({ status: view.status }, { status: 200, headers: responseHeaders });
   } catch (error) {
     if (error instanceof SupportTicketsStoreUnavailableError) {
       return NextResponse.json(

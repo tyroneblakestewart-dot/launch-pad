@@ -237,12 +237,39 @@ describe("Support hub client crash hardening (issue #405)", () => {
     expect(component).toContain("safeInvoke(() => historyRef.current?.scrollIntoView({ behavior: \"smooth\", block: \"start\" }));");
   });
 
-  it("narrows an untrusted accountsChanged payload to a single string address instead of trusting Array.isArray alone", async () => {
+  it("narrows an untrusted accounts payload to a single valid EVM address instead of trusting Array.isArray or typeof string alone", async () => {
     const component = await source("components", "support-hub.tsx");
-    expect(component).toContain("function firstStringAccount(accounts: unknown): string | undefined {");
+    expect(component).toContain('import { createWalletClient, custom, isAddress } from "viem";');
+    expect(component).toContain("function firstValidEvmAddress(accounts: unknown): string | undefined {");
     expect(component).toContain("if (!Array.isArray(accounts)) return undefined;");
-    expect(component).toContain('typeof first === "string" && first ? first : undefined;');
-    expect(component).toContain("const nextAccount = firstStringAccount(accounts);");
+    expect(component).toContain('if (typeof first !== "string") return undefined;');
+    expect(component).toContain("return isAddress(trimmed) ? trimmed : undefined;");
+    expect(component).toContain("const nextAccount = firstValidEvmAddress(accounts);");
+    expect(component).toContain("const first = firstValidEvmAddress(accounts);");
+    expect(component).not.toContain("firstStringAccount");
+  });
+
+  it("guards getInjectedEvmProvider() itself, not just provider.request, everywhere the component reads it", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("function safeGetInjectedEvmProvider(): WalletProviderWithEvents | undefined {");
+    expect(component).toMatch(/try \{\s*return getInjectedEvmProvider\(\) as WalletProviderWithEvents \| undefined;\s*\} catch \{/);
+    // Every call site in the component goes through the wrapper — the raw
+    // import is only ever invoked inside the wrapper's own try block (via
+    // `return getInjectedEvmProvider()`), not directly in the mount effect,
+    // connectWallet or signSupportChallenge.
+    const rawInvocations = (component.match(/return getInjectedEvmProvider\(\)/g) || []).length;
+    const wrappedCallSites = (component.match(/safeGetInjectedEvmProvider\(\)/g) || []).length;
+    expect(rawInvocations).toBe(1);
+    expect(wrappedCallSites).toBeGreaterThanOrEqual(3); // mount effect, connectWallet, signSupportChallenge
+  });
+
+  it("hardens connectWallet against a synchronous throw, a rejected promise, and a non-address payload alike", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toMatch(/const connectWallet = useCallback\(async \(\) => \{\s*const provider = safeGetInjectedEvmProvider\(\);/);
+    expect(component).toMatch(
+      /const accounts = await safeProviderRequest\(provider, \{ method: "eth_requestAccounts" \}\);\s*const account = firstValidEvmAddress\(accounts\);/,
+    );
+    expect(component).toContain('setSubmitError("Wallet connection was cancelled.");');
   });
 
   it("contains screenshot object-URL/canvas/FileReader failures instead of letting an onload/onerror callback throw uncaught", async () => {
@@ -269,8 +296,15 @@ describe("Support hub client crash hardening (issue #405)", () => {
 
   it("resets the file input value defensively, and guards the timer visibility check", async () => {
     const component = await source("components", "support-hub.tsx");
-    expect(component).toMatch(/safeInvoke\(\(\) => \{\s*event\.target\.value = "";\s*\}\);/);
+    expect(component).toMatch(/safeInvoke\(\(\) => \{\s*inputElement\.value = "";\s*\}\);/);
     expect(component).toContain("function isPageVisible(): boolean {");
     expect(component).toMatch(/if \(!isPageVisible\(\)\) \{\s*stopTimer\(\);/);
+  });
+
+  it("guards the pre-await event.target.files read in handleScreenshotChange, not just the reset", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toMatch(
+      /const inputElement = event\.target;\s*let file: File \| undefined;\s*try \{\s*file = inputElement\.files\?\.\[0\];\s*\} catch \{\s*file = undefined;\s*\}/,
+    );
   });
 });

@@ -157,13 +157,7 @@ export function createMemorySupportTicketsStore(): SupportTicketsStore {
     async lookupAnonymousStatus(referenceCode: string): Promise<AnonymousSupportTicketStatusView | null> {
       const ticket = [...tickets.values()].find((t) => t.referenceCode === referenceCode);
       if (!ticket || !ticket.referenceCode) return null;
-      return {
-        referenceCode: ticket.referenceCode,
-        status: ticket.status,
-        category: ticket.category,
-        createdAt: ticket.createdAt,
-        updatedAt: ticket.updatedAt,
-      };
+      return { status: ticket.status };
     },
   };
 }

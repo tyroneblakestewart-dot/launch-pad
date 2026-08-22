@@ -19,7 +19,7 @@ import {
   SupportTicketsStoreUnavailableError,
   getSupportTicketsStore,
   isSupportTicketCategory,
-  toPublicSupportTicket,
+  type AnonymousSupportTicketCreated,
 } from "@/lib/server/support-tickets-store";
 
 // Anonymous/no-wallet support reporting (issue #405) — a fallback for a
@@ -117,7 +117,13 @@ export async function POST(request: Request) {
     );
     runAfterResponse(() => sendSupportTicketTelegramAlertBestEffort(ticket));
 
-    return NextResponse.json({ ticket: toPublicSupportTicket(ticket) }, { status: 201, headers: responseHeaders });
+    // Deliberately the minimal { referenceCode } success shape (issue #405
+    // review), not the shared toPublicSupportTicket projection — there is no
+    // wallet to authenticate a future read with, so nothing else about this
+    // ticket is safe to echo back here.
+    if (!ticket.referenceCode) throw new Error("The anonymous support ticket was created without a reference code.");
+    const created: AnonymousSupportTicketCreated = { referenceCode: ticket.referenceCode };
+    return NextResponse.json(created, { status: 201, headers: responseHeaders });
   } catch (error) {
     if (error instanceof SupportTicketsStoreUnavailableError) return storageUnavailableResponse(responseHeaders);
     console.error("Anonymous support ticket creation failed unexpectedly.", error instanceof Error ? (error.stack ?? error.message) : error);

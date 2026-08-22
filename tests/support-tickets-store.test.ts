@@ -294,18 +294,12 @@ describe("Anonymous support tickets (issue #405)", () => {
     expect(mine[0].subject).toBe("mine");
   });
 
-  it("looks up an anonymous ticket's bounded status by reference code", async () => {
+  it("looks up an anonymous ticket's bounded status by reference code — status only (issue #405 review)", async () => {
     const store = createMemorySupportTicketsStore();
     const ticket = await store.createAnonymous({ category: "payments", subject: "s", body: "b", diagnostics: {} });
 
     const status = await store.lookupAnonymousStatus(ticket.referenceCode!);
-    expect(status).toEqual({
-      referenceCode: ticket.referenceCode,
-      status: "open",
-      category: "payments",
-      createdAt: ticket.createdAt,
-      updatedAt: ticket.updatedAt,
-    });
+    expect(status).toEqual({ status: "open" });
   });
 
   it("returns null for an unknown reference code", async () => {

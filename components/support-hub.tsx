@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
-import { createWalletClient, custom } from "viem";
+import { createWalletClient, custom, isAddress } from "viem";
 import {
   ARTWORK_COMPRESSION_STEPS,
   MAX_ARTWORK_SOURCE_BYTES,
@@ -46,11 +46,34 @@ function safeInvoke(fn: () => void): void {
   }
 }
 
-/** Narrows an untrusted accountsChanged payload to a single string address, or undefined for anything else (issue #405 crash audit). */
-function firstStringAccount(accounts: unknown): string | undefined {
+/**
+ * Narrows an untrusted accounts payload (from `eth_accounts`,
+ * `eth_requestAccounts`, or an `accountsChanged` event) to a single valid EVM
+ * address, or undefined for anything else — a non-array payload, a
+ * non-string first element, or a string that isn't actually a valid address
+ * must never flow into `walletAddress` state (issue #405 review).
+ */
+function firstValidEvmAddress(accounts: unknown): string | undefined {
   if (!Array.isArray(accounts)) return undefined;
   const first = accounts[0];
-  return typeof first === "string" && first ? first : undefined;
+  if (typeof first !== "string") return undefined;
+  const trimmed = first.trim();
+  return isAddress(trimmed) ? trimmed : undefined;
+}
+
+/**
+ * `getInjectedEvmProvider()` itself reads extension-defined getters
+ * (`window.__launchpadEthereum` / `window.ethereum`), which are not
+ * guaranteed not to throw synchronously (issue #405 review) — wrapping only
+ * `provider.request` isn't enough if fetching the provider object itself can
+ * already blow up.
+ */
+function safeGetInjectedEvmProvider(): WalletProviderWithEvents | undefined {
+  try {
+    return getInjectedEvmProvider() as WalletProviderWithEvents | undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -116,13 +139,9 @@ type SupportTicket = {
   messages: SupportTicketMessage[];
 };
 
-/** The bounded, status-only shape GET /api/support/tickets/reference returns (issue #405) — never body/subject/attachment/diagnostics/messages/wallet. */
-type AnonymousSupportTicketStatus = {
-  referenceCode: string;
+/** The bounded, status-only shape GET /api/support/tickets/reference returns (issue #405 review) — exactly { status }, never referenceCode/category/timestamps/body/subject/attachment/diagnostics/messages/wallet. */
+type AnonymousSupportTicketStatusResponse = {
   status: SupportTicketStatus;
-  category: SupportTicketCategory;
-  createdAt: string;
-  updatedAt: string;
 };
 
 async function readJsonResponse<T>(response: Response, fallback: string): Promise<T> {
@@ -280,7 +299,7 @@ async function signSupportChallenge(
   purpose: "support:ticket-create" | "support:ticket-reply" | "support:ticket-close",
   payload: Record<string, string>,
 ) {
-  const provider = getInjectedEvmProvider();
+  const provider = safeGetInjectedEvmProvider();
   if (!provider) throw new Error("Connect an EVM wallet first.");
   const walletClient = createWalletClient({ transport: custom(provider) });
   const [account] = await walletClient.getAddresses();
@@ -309,7 +328,7 @@ type SupportHubProps = {
 const DEFAULT_HERO_EYEBROW = "SUPPORT";
 const DEFAULT_HERO_TITLE = "Report a problem";
 const DEFAULT_HERO_INTRO =
-  "Tell us what happened. We attach your plan and connection status automatically — never your credentials — so we can help faster.";
+  "Tell us what happened. If your wallet is connected, we attach your plan and connection status automatically — never your credentials — so we can help faster.";
 
 export function SupportHub({
   heroEyebrow = DEFAULT_HERO_EYEBROW,
@@ -336,7 +355,7 @@ export function SupportHub({
   const [referenceCodeCopied, setReferenceCodeCopied] = useState(false);
 
   const [referenceCodeQuery, setReferenceCodeQuery] = useState("");
-  const [referenceLookupResult, setReferenceLookupResult] = useState<AnonymousSupportTicketStatus | null>(null);
+  const [referenceLookupResult, setReferenceLookupResult] = useState<SupportTicketStatus | null>(null);
   const [referenceLookupError, setReferenceLookupError] = useState<string | null>(null);
   const [referenceLookupBusy, setReferenceLookupBusy] = useState(false);
 
@@ -372,11 +391,11 @@ export function SupportHub({
 
   useEffect(() => {
     let cancelled = false;
-    const provider = getInjectedEvmProvider() as WalletProviderWithEvents | undefined;
+    const provider = safeGetInjectedEvmProvider();
     if (!provider) return;
     safeProviderRequest(provider, { method: "eth_accounts" })
       .then((accounts) => {
-        const first = firstStringAccount(accounts);
+        const first = firstValidEvmAddress(accounts);
         if (!cancelled && first) setWalletAddress(first);
       })
       .catch(() => {});
@@ -385,13 +404,14 @@ export function SupportHub({
     // actually active — a switch or disconnect in the extension must clear
     // stale tickets immediately rather than keep showing the previous
     // wallet's history (issue #393 review). `accounts` is untrusted
-    // extension input — firstStringAccount narrows it rather than trusting
-    // Array.isArray alone, since a non-string first element (object, symbol)
-    // would otherwise flow into walletAddress and later explode during
+    // extension input — firstValidEvmAddress narrows it to a real EVM
+    // address rather than trusting Array.isArray or typeof "string" alone,
+    // since a non-address string (or a non-string first element) would
+    // otherwise flow into walletAddress and later explode during
     // encoding/rendering (issue #405 crash audit).
     const handleAccountsChanged: AccountsChangedHandler = (accounts) => {
       if (cancelled) return;
-      const nextAccount = firstStringAccount(accounts);
+      const nextAccount = firstValidEvmAddress(accounts);
       setWalletAddress(nextAccount || null);
     };
     safeInvoke(() => provider.on?.("accountsChanged", handleAccountsChanged));
@@ -473,23 +493,43 @@ export function SupportHub({
   }, [walletAddress, loadTickets]);
 
   const connectWallet = useCallback(async () => {
-    const provider = getInjectedEvmProvider();
+    const provider = safeGetInjectedEvmProvider();
     if (!provider) {
       setSubmitError("No EVM wallet was found in this browser.");
       return;
     }
     try {
-      const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
-      if (accounts?.[0]) setWalletAddress(accounts[0]);
+      // safeProviderRequest normalises a synchronous throw, a non-Promise
+      // return, or a well-behaved Promise alike; firstValidEvmAddress then
+      // narrows whatever comes back to a real EVM address or nothing at all
+      // (issue #405 review) — a non-array payload or an invalid first
+      // element must fall through to the same honest error below rather
+      // than ever reach setWalletAddress.
+      const accounts = await safeProviderRequest(provider, { method: "eth_requestAccounts" });
+      const account = firstValidEvmAddress(accounts);
+      if (!account) {
+        setSubmitError("Wallet connection was cancelled.");
+        return;
+      }
+      setWalletAddress(account);
     } catch {
       setSubmitError("Wallet connection was cancelled.");
     }
   }, []);
 
   async function handleScreenshotChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+    // The input element and its FileList getter can themselves be patched by
+    // a browser extension — reading event.target.files must not throw before
+    // this handler ever reaches its own try/catch below (issue #405 review).
+    const inputElement = event.target;
+    let file: File | undefined;
+    try {
+      file = inputElement.files?.[0];
+    } catch {
+      file = undefined;
+    }
     safeInvoke(() => {
-      event.target.value = "";
+      inputElement.value = "";
     });
     if (!file) return;
 
@@ -585,11 +625,15 @@ export function SupportHub({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ category, subject: trimmedSubject, body: trimmedBody, attachmentDataUrl }),
       });
-      const payload = await readJsonResponse<{ ticket: { referenceCode: string } }>(response, "Your report could not be submitted.");
+      // The anonymous route returns only the minimal { referenceCode }
+      // success shape (issue #405 review) — there is no wallet to
+      // authenticate a future read with, so nothing else about the ticket is
+      // echoed back here.
+      const payload = await readJsonResponse<{ referenceCode: string }>(response, "Your report could not be submitted.");
       setSubject("");
       setBody("");
       setAttachmentDataUrl(null);
-      setAnonymousReferenceCode(payload.ticket.referenceCode);
+      setAnonymousReferenceCode(payload.referenceCode);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Your report could not be submitted.");
     } finally {
@@ -629,7 +673,7 @@ export function SupportHub({
     setReferenceLookupResult(null);
     try {
       const response = await fetch(`/api/support/tickets/reference?code=${encodeURIComponent(code)}`, { cache: "no-store" });
-      const payload = await readJsonResponse<{ status: AnonymousSupportTicketStatus }>(
+      const payload = await readJsonResponse<AnonymousSupportTicketStatusResponse>(
         response,
         "No report was found for that reference code.",
       );
@@ -912,10 +956,7 @@ export function SupportHub({
             </p>
           ) : null}
           {referenceLookupResult ? (
-            <p className={styles.referenceLookupResult}>
-              {STATUS_LABEL[referenceLookupResult.status]} · {referenceLookupResult.category} · reported{" "}
-              {formatTimestamp(referenceLookupResult.createdAt)}
-            </p>
+            <p className={styles.referenceLookupResult}>Report status: {STATUS_LABEL[referenceLookupResult]}</p>
           ) : null}
         </section>
 

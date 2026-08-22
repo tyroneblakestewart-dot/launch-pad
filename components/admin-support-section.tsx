@@ -155,8 +155,9 @@ export function AdminSupportSection() {
         <div>
           <h2 className={styles.sectionTitle}>Support</h2>
           <p className={styles.sectionIntro}>
-            Wallet-signed problem reports. Reply below to flip a ticket to &ldquo;Needs user&rdquo;; mark it Solved or
-            Closed once it&apos;s resolved. Nothing here posts or replies automatically.
+            Problem reports, wallet-signed or anonymous (badged below, no reply thread). Reply below to flip a
+            wallet-signed ticket to &ldquo;Needs user&rdquo;; mark it Solved or Closed once it&apos;s resolved.
+            Nothing here posts or replies automatically.
           </p>
         </div>
         <button type="button" className={styles.refreshButton} onClick={() => void loadTickets()} disabled={loading}>
