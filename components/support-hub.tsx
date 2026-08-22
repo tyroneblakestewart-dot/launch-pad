@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
-import { createWalletClient, custom } from "viem";
+import { createWalletClient, custom, isAddress } from "viem";
 import {
   ARTWORK_COMPRESSION_STEPS,
   MAX_ARTWORK_SOURCE_BYTES,
@@ -10,11 +10,16 @@ import {
   estimateDataUrlLength,
   fitArtworkDimensions,
 } from "@/lib/artwork-compression";
-import { writeSupportLastSeen } from "@/lib/support-unread";
+import { copyToClipboard } from "@/lib/clipboard";
+import { markSupportUnreadSeen } from "@/lib/use-support-unread";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./support-hub.module.css";
 
-type AccountsChangedHandler = (accounts: string[]) => void;
+// The extension calls this with whatever it wants — `accounts` is untrusted
+// wallet-extension input, not necessarily a string[] (issue #405 crash
+// audit), so the handler itself narrows before use rather than trusting
+// this type.
+type AccountsChangedHandler = (accounts: unknown) => void;
 
 // getInjectedEvmProvider()'s shared Eip1193Provider type only declares
 // `request` — widen locally for the accountsChanged listener, matching
@@ -24,6 +29,73 @@ type WalletProviderWithEvents = {
   on?: (event: "accountsChanged", handler: AccountsChangedHandler) => void;
   removeListener?: (event: "accountsChanged", handler: AccountsChangedHandler) => void;
 };
+
+/**
+ * Calls a browser/extension API that isn't itself a user-visible action
+ * (event (un)registration, best-effort cleanup, scroll-into-view) and
+ * swallows a synchronous throw rather than let it become an uncaught
+ * exception (issue #405 crash audit — extension-injected methods like
+ * `provider.on`/`removeListener` are not guaranteed not to throw). Never
+ * used for calls whose failure should be shown to the user.
+ */
+function safeInvoke(fn: () => void): void {
+  try {
+    fn();
+  } catch {
+    // Best-effort — see the doc comment above.
+  }
+}
+
+/**
+ * Narrows an untrusted accounts payload (from `eth_accounts`,
+ * `eth_requestAccounts`, or an `accountsChanged` event) to a single valid EVM
+ * address, or undefined for anything else — a non-array payload, a
+ * non-string first element, or a string that isn't actually a valid address
+ * must never flow into `walletAddress` state (issue #405 review).
+ */
+function firstValidEvmAddress(accounts: unknown): string | undefined {
+  if (!Array.isArray(accounts)) return undefined;
+  const first = accounts[0];
+  if (typeof first !== "string") return undefined;
+  const trimmed = first.trim();
+  return isAddress(trimmed) ? trimmed : undefined;
+}
+
+/**
+ * `getInjectedEvmProvider()` itself reads extension-defined getters
+ * (`window.__launchpadEthereum` / `window.ethereum`), which are not
+ * guaranteed not to throw synchronously (issue #405 review) — wrapping only
+ * `provider.request` isn't enough if fetching the provider object itself can
+ * already blow up.
+ */
+function safeGetInjectedEvmProvider(): WalletProviderWithEvents | undefined {
+  try {
+    return getInjectedEvmProvider() as WalletProviderWithEvents | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * `provider.request` is extension-injected code — it isn't guaranteed to
+ * return a Promise, and it isn't guaranteed not to throw synchronously
+ * before it gets the chance to (issue #405 review). Calling it directly
+ * inside a `.then()`/`.catch()` chain only protects the async rejection
+ * path; a synchronous throw would still become an uncaught exception. This
+ * wraps the call itself and normalises whatever comes back — a thrown
+ * error, a non-Promise value, or a well-behaved Promise — through
+ * `Promise.resolve` so callers can always safely `.then()`/`.catch()` it.
+ */
+function safeProviderRequest(
+  provider: WalletProviderWithEvents,
+  args: { method: string; params?: unknown[] | Record<string, unknown> },
+): Promise<unknown> {
+  try {
+    return Promise.resolve(provider.request(args));
+  } catch {
+    return Promise.resolve(undefined);
+  }
+}
 
 type SupportTicketCategory = "account" | "payments" | "site-builder" | "social-studio" | "publishing" | "other";
 type SupportTicketStatus = "open" | "needs_user" | "solved" | "closed";
@@ -67,6 +139,11 @@ type SupportTicket = {
   messages: SupportTicketMessage[];
 };
 
+/** The bounded, status-only shape GET /api/support/tickets/reference returns (issue #405 review) — exactly { status }, never referenceCode/category/timestamps/body/subject/attachment/diagnostics/messages/wallet. */
+type AnonymousSupportTicketStatusResponse = {
+  status: SupportTicketStatus;
+};
+
 async function readJsonResponse<T>(response: Response, fallback: string): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as { error?: string } & Partial<T>;
   if (!response.ok) throw new Error(payload.error || fallback);
@@ -91,28 +168,80 @@ function formatMegabytes(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(bytes >= 10_000_000 ? 0 : 1)} MB`;
 }
 
+// image.onload/onerror and reader.onload/onerror below run as separate
+// event dispatches, not inside this Promise executor's synchronous
+// execution — a throw inside one of them would NOT auto-reject the promise
+// the way a throw during the executor itself does, so it would surface as
+// an uncaught exception instead. Every callback body below is wrapped
+// accordingly (issue #405 crash audit).
+const SCREENSHOT_OPEN_ERROR = "This image could not be opened by the browser. Try a PNG, JPG or WEBP screenshot.";
+
 function loadImageFromFile(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
-    const image = new Image();
+    let objectUrl: string;
+    try {
+      objectUrl = URL.createObjectURL(file);
+    } catch {
+      reject(new Error(SCREENSHOT_OPEN_ERROR));
+      return;
+    }
+    let image: HTMLImageElement;
+    try {
+      image = new Image();
+    } catch {
+      safeInvoke(() => URL.revokeObjectURL(objectUrl));
+      reject(new Error(SCREENSHOT_OPEN_ERROR));
+      return;
+    }
     image.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      resolve(image);
+      safeInvoke(() => URL.revokeObjectURL(objectUrl));
+      try {
+        resolve(image);
+      } catch {
+        reject(new Error(SCREENSHOT_OPEN_ERROR));
+      }
     };
     image.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error("This image could not be opened by the browser. Try a PNG, JPG or WEBP screenshot."));
+      safeInvoke(() => URL.revokeObjectURL(objectUrl));
+      reject(new Error(SCREENSHOT_OPEN_ERROR));
     };
-    image.src = objectUrl;
+    try {
+      image.src = objectUrl;
+    } catch {
+      safeInvoke(() => URL.revokeObjectURL(objectUrl));
+      reject(new Error(SCREENSHOT_OPEN_ERROR));
+    }
   });
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error ?? new Error("The file could not be read."));
-    reader.readAsDataURL(file);
+    let reader: FileReader;
+    try {
+      reader = new FileReader();
+    } catch {
+      reject(new Error("The file could not be read."));
+      return;
+    }
+    reader.onload = () => {
+      try {
+        resolve(String(reader.result || ""));
+      } catch {
+        reject(new Error("The file could not be read."));
+      }
+    };
+    reader.onerror = () => {
+      try {
+        reject(reader.error ?? new Error("The file could not be read."));
+      } catch {
+        reject(new Error("The file could not be read."));
+      }
+    };
+    try {
+      reader.readAsDataURL(file);
+    } catch {
+      reject(new Error("The file could not be read."));
+    }
   });
 }
 
@@ -127,20 +256,27 @@ async function optimiseScreenshotToDataUrl(file: File): Promise<string> {
   for (const type of ["image/webp", "image/jpeg"] as const) {
     for (const step of ARTWORK_COMPRESSION_STEPS) {
       const { width, height } = fitArtworkDimensions(image.naturalWidth, image.naturalHeight, step.maxDimension);
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext("2d", { alpha: type !== "image/jpeg" });
-      if (!context) throw new Error("The browser could not prepare the image canvas.");
-      context.imageSmoothingEnabled = true;
-      context.imageSmoothingQuality = "high";
-      if (type === "image/jpeg") {
-        context.fillStyle = "#050706";
-        context.fillRect(0, 0, width, height);
+      let dataUrl: string;
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d", { alpha: type !== "image/jpeg" });
+        if (!context) throw new Error("The browser could not prepare the image canvas.");
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = "high";
+        if (type === "image/jpeg") {
+          context.fillStyle = "#050706";
+          context.fillRect(0, 0, width, height);
+        }
+        context.drawImage(image, 0, 0, width, height);
+        dataUrl = canvas.toDataURL(type, step.quality);
+      } catch {
+        // Contained per-step — a canvas failure at one size/type
+        // combination tries the next step instead of aborting the whole
+        // optimisation pass (issue #405 crash audit).
+        continue;
       }
-      context.drawImage(image, 0, 0, width, height);
-
-      const dataUrl = canvas.toDataURL(type, step.quality);
       if (!smallest || dataUrl.length < smallest.length) smallest = dataUrl;
       if (dataUrl.length <= estimateDataUrlLength(TARGET_COMPRESSED_ARTWORK_BYTES)) return dataUrl;
     }
@@ -163,7 +299,7 @@ async function signSupportChallenge(
   purpose: "support:ticket-create" | "support:ticket-reply" | "support:ticket-close",
   payload: Record<string, string>,
 ) {
-  const provider = getInjectedEvmProvider();
+  const provider = safeGetInjectedEvmProvider();
   if (!provider) throw new Error("Connect an EVM wallet first.");
   const walletClient = createWalletClient({ transport: custom(provider) });
   const [account] = await walletClient.getAddresses();
@@ -192,7 +328,7 @@ type SupportHubProps = {
 const DEFAULT_HERO_EYEBROW = "SUPPORT";
 const DEFAULT_HERO_TITLE = "Report a problem";
 const DEFAULT_HERO_INTRO =
-  "Tell us what happened. We attach your plan and connection status automatically — never your credentials — so we can help faster.";
+  "Tell us what happened. If your wallet is connected, we attach your plan and connection status automatically — never your credentials — so we can help faster.";
 
 export function SupportHub({
   heroEyebrow = DEFAULT_HERO_EYEBROW,
@@ -211,6 +347,17 @@ export function SupportHub({
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Anonymous/no-wallet reporting (issue #405) — a fallback for a reporter
+  // whose wallet won't connect. The reference code is shown exactly once on
+  // success and deliberately never written to localStorage/sessionStorage.
+  const [anonymousReferenceCode, setAnonymousReferenceCode] = useState<string | null>(null);
+  const [referenceCodeCopied, setReferenceCodeCopied] = useState(false);
+
+  const [referenceCodeQuery, setReferenceCodeQuery] = useState("");
+  const [referenceLookupResult, setReferenceLookupResult] = useState<SupportTicketStatus | null>(null);
+  const [referenceLookupError, setReferenceLookupError] = useState<string | null>(null);
+  const [referenceLookupBusy, setReferenceLookupBusy] = useState(false);
 
   const [tickets, setTickets] = useState<SupportTicket[] | null>(null);
   const [ticketsError, setTicketsError] = useState<string | null>(null);
@@ -232,8 +379,11 @@ export function SupportHub({
       // Any load that actually reaches the screen counts as "seen" (issue
       // #403) — including the background refreshes below — so the nav's red
       // dot clears the moment this page has current data on screen, not just
-      // on the very first load.
-      writeSupportLastSeen(wallet, Date.now());
+      // on the very first load. markSupportUnreadSeen (issue #405) uses the
+      // newest *observed* ticket activity timestamp rather than wall-clock
+      // write time, and notifies the shared nav cache immediately so an
+      // already-lit dot clears without waiting for another focus/refresh.
+      markSupportUnreadSeen(wallet, payload.tickets);
     } catch (error) {
       setTicketsError(error instanceof Error ? error.message : "Your tickets could not be loaded.");
     }
@@ -241,29 +391,34 @@ export function SupportHub({
 
   useEffect(() => {
     let cancelled = false;
-    const provider = getInjectedEvmProvider() as WalletProviderWithEvents | undefined;
+    const provider = safeGetInjectedEvmProvider();
     if (!provider) return;
-    provider
-      .request({ method: "eth_accounts" })
+    safeProviderRequest(provider, { method: "eth_accounts" })
       .then((accounts) => {
-        if (!cancelled && Array.isArray(accounts) && accounts[0]) setWalletAddress(accounts[0] as string);
+        const first = firstValidEvmAddress(accounts);
+        if (!cancelled && first) setWalletAddress(first);
       })
       .catch(() => {});
 
     // Keep the displayed ticket history following whichever wallet/account is
     // actually active — a switch or disconnect in the extension must clear
     // stale tickets immediately rather than keep showing the previous
-    // wallet's history (issue #393 review).
+    // wallet's history (issue #393 review). `accounts` is untrusted
+    // extension input — firstValidEvmAddress narrows it to a real EVM
+    // address rather than trusting Array.isArray or typeof "string" alone,
+    // since a non-address string (or a non-string first element) would
+    // otherwise flow into walletAddress and later explode during
+    // encoding/rendering (issue #405 crash audit).
     const handleAccountsChanged: AccountsChangedHandler = (accounts) => {
       if (cancelled) return;
-      const nextAccount = Array.isArray(accounts) ? accounts[0] : undefined;
+      const nextAccount = firstValidEvmAddress(accounts);
       setWalletAddress(nextAccount || null);
     };
-    provider.on?.("accountsChanged", handleAccountsChanged);
+    safeInvoke(() => provider.on?.("accountsChanged", handleAccountsChanged));
 
     return () => {
       cancelled = true;
-      provider.removeListener?.("accountsChanged", handleAccountsChanged);
+      safeInvoke(() => provider.removeListener?.("accountsChanged", handleAccountsChanged));
     };
   }, []);
 
@@ -286,22 +441,39 @@ export function SupportHub({
     const wallet = walletAddress;
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
+    // Every browser-API call below is wrapped — a hostile/broken
+    // environment (or an extension patching these globals) must not turn
+    // listener setup, a timer tick, or cleanup into an uncaught exception
+    // (issue #405 crash audit).
     function stopTimer() {
       if (intervalId !== null) {
-        clearInterval(intervalId);
+        const id = intervalId;
         intervalId = null;
+        safeInvoke(() => clearInterval(id));
       }
     }
 
     function startTimer() {
       if (intervalId !== null) return;
-      intervalId = setInterval(() => {
-        void loadTickets(wallet);
-      }, 60_000);
+      try {
+        intervalId = setInterval(() => {
+          void loadTickets(wallet);
+        }, 60_000);
+      } catch {
+        intervalId = null;
+      }
+    }
+
+    function isPageVisible(): boolean {
+      try {
+        return document.visibilityState === "visible";
+      } catch {
+        return true;
+      }
     }
 
     function handleBecameVisible() {
-      if (document.visibilityState !== "visible") {
+      if (!isPageVisible()) {
         stopTimer();
         return;
       }
@@ -309,34 +481,56 @@ export function SupportHub({
       startTimer();
     }
 
-    if (document.visibilityState === "visible") startTimer();
-    document.addEventListener("visibilitychange", handleBecameVisible);
-    window.addEventListener("focus", handleBecameVisible);
+    if (isPageVisible()) startTimer();
+    safeInvoke(() => document.addEventListener("visibilitychange", handleBecameVisible));
+    safeInvoke(() => window.addEventListener("focus", handleBecameVisible));
 
     return () => {
       stopTimer();
-      document.removeEventListener("visibilitychange", handleBecameVisible);
-      window.removeEventListener("focus", handleBecameVisible);
+      safeInvoke(() => document.removeEventListener("visibilitychange", handleBecameVisible));
+      safeInvoke(() => window.removeEventListener("focus", handleBecameVisible));
     };
   }, [walletAddress, loadTickets]);
 
   const connectWallet = useCallback(async () => {
-    const provider = getInjectedEvmProvider();
+    const provider = safeGetInjectedEvmProvider();
     if (!provider) {
       setSubmitError("No EVM wallet was found in this browser.");
       return;
     }
     try {
-      const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
-      if (accounts?.[0]) setWalletAddress(accounts[0]);
+      // safeProviderRequest normalises a synchronous throw, a non-Promise
+      // return, or a well-behaved Promise alike; firstValidEvmAddress then
+      // narrows whatever comes back to a real EVM address or nothing at all
+      // (issue #405 review) — a non-array payload or an invalid first
+      // element must fall through to the same honest error below rather
+      // than ever reach setWalletAddress.
+      const accounts = await safeProviderRequest(provider, { method: "eth_requestAccounts" });
+      const account = firstValidEvmAddress(accounts);
+      if (!account) {
+        setSubmitError("Wallet connection was cancelled.");
+        return;
+      }
+      setWalletAddress(account);
     } catch {
       setSubmitError("Wallet connection was cancelled.");
     }
   }, []);
 
   async function handleScreenshotChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+    // The input element and its FileList getter can themselves be patched by
+    // a browser extension — reading event.target.files must not throw before
+    // this handler ever reaches its own try/catch below (issue #405 review).
+    const inputElement = event.target;
+    let file: File | undefined;
+    try {
+      file = inputElement.files?.[0];
+    } catch {
+      file = undefined;
+    }
+    safeInvoke(() => {
+      inputElement.value = "";
+    });
     if (!file) return;
 
     setAttachmentError(null);
@@ -365,7 +559,7 @@ export function SupportHub({
     setAttachmentError(null);
   }
 
-  async function handleSubmit() {
+  async function handleSignedSubmit() {
     const trimmedSubject = subject.trim();
     const trimmedBody = body.trim();
     if (!trimmedSubject || !trimmedBody || submitting) return;
@@ -413,9 +607,88 @@ export function SupportHub({
     }
   }
 
+  // Anonymous fallback (issue #405) for a reporter whose wallet won't
+  // connect — no challenge, no signature. The server generates and returns
+  // a one-time reference code; this report gets no reply thread.
+  async function handleAnonymousSubmit() {
+    const trimmedSubject = subject.trim();
+    const trimmedBody = body.trim();
+    if (!trimmedSubject || !trimmedBody || submitting) return;
+
+    setSubmitting(true);
+    setSubmitError(null);
+    setAnonymousReferenceCode(null);
+    setReferenceCodeCopied(false);
+    try {
+      const response = await fetch("/api/support/tickets/anonymous", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category, subject: trimmedSubject, body: trimmedBody, attachmentDataUrl }),
+      });
+      // The anonymous route returns only the minimal { referenceCode }
+      // success shape (issue #405 review) — there is no wallet to
+      // authenticate a future read with, so nothing else about the ticket is
+      // echoed back here.
+      const payload = await readJsonResponse<{ referenceCode: string }>(response, "Your report could not be submitted.");
+      setSubject("");
+      setBody("");
+      setAttachmentDataUrl(null);
+      setAnonymousReferenceCode(payload.referenceCode);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Your report could not be submitted.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleSubmit() {
+    return walletAddress ? handleSignedSubmit() : handleAnonymousSubmit();
+  }
+
+  // Dismisses the anonymous success state (issue #405) — there is no ticket
+  // history to scroll to without a wallet, so this is deliberately simpler
+  // than handleDone below.
+  function handleAnonymousDone() {
+    setAnonymousReferenceCode(null);
+    setReferenceCodeCopied(false);
+    setSubmitError(null);
+    setCategory("other");
+    setSubject("");
+    setBody("");
+    setAttachmentDataUrl(null);
+    setAttachmentError(null);
+  }
+
+  async function handleCopyReferenceCode() {
+    if (!anonymousReferenceCode) return;
+    const copied = await copyToClipboard(anonymousReferenceCode);
+    setReferenceCodeCopied(copied);
+  }
+
+  async function handleReferenceLookup() {
+    const code = referenceCodeQuery.trim();
+    if (!code || referenceLookupBusy) return;
+    setReferenceLookupBusy(true);
+    setReferenceLookupError(null);
+    setReferenceLookupResult(null);
+    try {
+      const response = await fetch(`/api/support/tickets/reference?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+      const payload = await readJsonResponse<AnonymousSupportTicketStatusResponse>(
+        response,
+        "No report was found for that reference code.",
+      );
+      setReferenceLookupResult(payload.status);
+    } catch (error) {
+      setReferenceLookupError(error instanceof Error ? error.message : "No report was found for that reference code.");
+    } finally {
+      setReferenceLookupBusy(false);
+    }
+  }
+
   // Dismisses the post-submit success state (issue #401) — resets the form
   // to a fresh, empty New report and scrolls to the reports list below,
-  // where the just-created ticket now shows.
+  // where the just-created ticket now shows. Shared verbatim by both the
+  // Done button and the success card's corner X (issue #405).
   function handleDone() {
     setSubmitted(false);
     setSubmitError(null);
@@ -424,7 +697,7 @@ export function SupportHub({
     setBody("");
     setAttachmentDataUrl(null);
     setAttachmentError(null);
-    historyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    safeInvoke(() => historyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
   async function handleClose(ticketId: string) {
@@ -479,15 +752,21 @@ export function SupportHub({
           <p className={styles.intro}>{heroIntro}</p>
         </header>
 
-        {!walletAddress ? (
-          <button type="button" className={styles.connectButton} onClick={() => void connectWallet()}>
-            Connect wallet to report a problem
-          </button>
-        ) : (
-          <section className={styles.panel} aria-labelledby="support-form-title">
+        <section className={styles.panel} aria-labelledby="support-form-title">
             <h2 id="support-form-title" className={styles.panelTitle}>
               New report
             </h2>
+
+            {!walletAddress ? (
+              <div className={styles.anonymousNotice}>
+                <p className={styles.anonymousNoticeText}>
+                  Connect your wallet if you can — it lets us reply to you.
+                </p>
+                <button type="button" className={styles.connectButton} onClick={() => void connectWallet()}>
+                  Connect wallet
+                </button>
+              </div>
+            ) : null}
 
             <label className={styles.field}>
               <span className={styles.fieldLabel}>Category</span>
@@ -559,7 +838,14 @@ export function SupportHub({
                     type="button"
                     className={styles.attachmentButton}
                     disabled={submitting || attachmentBusy}
-                    onClick={() => attachmentInputRef.current?.click()}
+                    onClick={() => {
+                      setAttachmentError(null);
+                      try {
+                        attachmentInputRef.current?.click();
+                      } catch {
+                        setAttachmentError("The file picker could not be opened. Try again.");
+                      }
+                    }}
                   >
                     {attachmentBusy ? "Optimising…" : "Choose screenshot"}
                   </button>
@@ -572,6 +858,14 @@ export function SupportHub({
               ) : null}
             </div>
 
+            {!walletAddress && !anonymousReferenceCode ? (
+              <p className={styles.anonymousWarning}>
+                Reporting without a wallet means this report has no reply thread — we can&apos;t message you back
+                here. You&apos;ll get a one-time reference code to check its status later. Save it; it can&apos;t be
+                recovered from this browser afterward.
+              </p>
+            ) : null}
+
             {submitError ? (
               <p className={styles.errorBanner} role="alert">
                 {submitError}
@@ -579,11 +873,46 @@ export function SupportHub({
             ) : null}
             {submitted ? (
               <div className={styles.successBanner} role="status">
+                <button
+                  type="button"
+                  className={styles.successDismissX}
+                  onClick={handleDone}
+                  aria-label="Dismiss"
+                >
+                  ×
+                </button>
                 <p className={styles.successText}>
                   Report sent. We&apos;ll reply here. A red dot will appear on the Support tab when there&apos;s
                   news — you don&apos;t need to keep this page open.
                 </p>
                 <button type="button" className={styles.doneButton} onClick={handleDone}>
+                  Done
+                </button>
+              </div>
+            ) : null}
+            {anonymousReferenceCode ? (
+              <div className={styles.successBanner} role="status">
+                <button
+                  type="button"
+                  className={styles.successDismissX}
+                  onClick={handleAnonymousDone}
+                  aria-label="Dismiss"
+                >
+                  ×
+                </button>
+                <div className={styles.referenceCodeBlock}>
+                  <p className={styles.successText}>
+                    Report sent anonymously. This report has no reply thread — save this reference code to check its
+                    status later. It cannot be recovered from this browser.
+                  </p>
+                  <div className={styles.referenceCodeRow}>
+                    <code className={styles.referenceCodeValue}>{anonymousReferenceCode}</code>
+                    <button type="button" className={styles.copyButton} onClick={() => void handleCopyReferenceCode()}>
+                      {referenceCodeCopied ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                </div>
+                <button type="button" className={styles.doneButton} onClick={handleAnonymousDone}>
                   Done
                 </button>
               </div>
@@ -597,8 +926,39 @@ export function SupportHub({
             >
               {submitting ? "Sending…" : "Send report"}
             </button>
-          </section>
-        )}
+        </section>
+
+        <section className={styles.panel} aria-labelledby="support-reference-lookup-title">
+          <h2 id="support-reference-lookup-title" className={styles.panelTitle}>
+            Check a report by reference code
+          </h2>
+          <div className={styles.referenceLookupRow}>
+            <input
+              className={styles.input}
+              type="text"
+              value={referenceCodeQuery}
+              placeholder="XXXX-XXXXXX"
+              disabled={referenceLookupBusy}
+              onChange={(event) => setReferenceCodeQuery(event.target.value)}
+            />
+            <button
+              type="button"
+              className={styles.referenceLookupButton}
+              disabled={referenceLookupBusy || !referenceCodeQuery.trim()}
+              onClick={() => void handleReferenceLookup()}
+            >
+              {referenceLookupBusy ? "Checking…" : "Check status"}
+            </button>
+          </div>
+          {referenceLookupError ? (
+            <p className={styles.errorBanner} role="alert">
+              {referenceLookupError}
+            </p>
+          ) : null}
+          {referenceLookupResult ? (
+            <p className={styles.referenceLookupResult}>Report status: {STATUS_LABEL[referenceLookupResult]}</p>
+          ) : null}
+        </section>
 
         {walletAddress ? (
           <section ref={historyRef} className={styles.panel} aria-labelledby="support-history-title">
@@ -619,6 +979,8 @@ export function SupportHub({
                 const expanded = expandedId === ticket.id;
                 return (
                   <li key={ticket.id} className={styles.ticket}>
+                    {/* Collapse/expand only ever touches local UI state (expandedId) — it
+                        never calls an API, unlike "Mark as resolved" below (issue #405). */}
                     <button
                       type="button"
                       className={styles.ticketSummary}
@@ -627,6 +989,9 @@ export function SupportHub({
                     >
                       <span className={styles.ticketSubject}>{ticket.subject}</span>
                       <span className={styles.ticketStatus}>{STATUS_LABEL[ticket.status]}</span>
+                      <span className={expanded ? styles.chevronExpanded : styles.chevron} aria-hidden="true">
+                        ▾
+                      </span>
                     </button>
 
                     {expanded ? (
@@ -684,8 +1049,8 @@ export function SupportHub({
                             {closeConfirmId === ticket.id ? (
                               <>
                                 <p className={styles.closeConfirmText}>
-                                  Close this report? You can&apos;t reopen it — file a new report if the problem comes
-                                  back.
+                                  This closes the report. It does not just hide this box. You can&apos;t reopen it —
+                                  file a new report if the problem comes back.
                                 </p>
                                 <div className={styles.closeConfirmActions}>
                                   <button
@@ -715,7 +1080,7 @@ export function SupportHub({
                                   setCloseConfirmId(ticket.id);
                                 }}
                               >
-                                Close this report
+                                Mark as resolved — I&apos;m done with this
                               </button>
                             )}
                             {closeError && closeConfirmId === ticket.id ? (

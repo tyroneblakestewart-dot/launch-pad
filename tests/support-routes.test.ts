@@ -276,12 +276,17 @@ describe("POST /api/support/tickets (create)", () => {
     expect(payload.ticket.id).toBeTruthy();
   });
 
-  it("never echoes diagnostics or the raw walletAddress in the public create response (issue #393 review)", async () => {
+  it("never echoes diagnostics, the raw walletAddress, or referenceCode in the public create response (issue #393 review, #405 review)", async () => {
     const response = await createSignedTicket(ACCOUNT);
     expect(response.status).toBe(201);
     const payload = (await response.json()) as { ticket: Record<string, unknown> };
     expect(payload.ticket.diagnostics).toBeUndefined();
     expect(payload.ticket.walletAddress).toBeUndefined();
+    // Adding referenceCode to the internal store type (issue #405) must not
+    // leak a stray `referenceCode: null` into the signed response shape —
+    // it's always null on a wallet-owned ticket, and this projection must
+    // omit the key entirely rather than echo that null back.
+    expect("referenceCode" in payload.ticket).toBe(false);
   });
 
   it("does not fail ticket creation when the Telegram alert call throws (issue #393)", async () => {
@@ -441,7 +446,7 @@ describe("GET /api/support/tickets (list)", () => {
     expect(payload.tickets[0].subject).toBe("mine");
   });
 
-  it("never echoes diagnostics or the raw walletAddress in the public list response (issue #393 review)", async () => {
+  it("never echoes diagnostics, the raw walletAddress, or referenceCode in the public list response (issue #393 review, #405 review)", async () => {
     await createSignedTicket(ACCOUNT);
 
     const response = await listTickets(getRequest(`/api/support/tickets?walletAddress=${ACCOUNT.address}`));
@@ -450,6 +455,7 @@ describe("GET /api/support/tickets (list)", () => {
     expect(payload.tickets).toHaveLength(1);
     expect(payload.tickets[0].diagnostics).toBeUndefined();
     expect(payload.tickets[0].walletAddress).toBeUndefined();
+    expect("referenceCode" in payload.tickets[0]).toBe(false);
   });
 
   it("includes the wallet's own attachment in the public list response (issue #398)", async () => {
@@ -496,7 +502,7 @@ describe("POST /api/support/tickets/[id]/reply", () => {
     expect(response.status).toBe(201);
   });
 
-  it("never echoes diagnostics or the raw walletAddress in the public reply response (issue #393 review)", async () => {
+  it("never echoes diagnostics, the raw walletAddress, or referenceCode in the public reply response (issue #393 review, #405 review)", async () => {
     const ticketId = await createOpenTicket();
     const auth = await signedAction(ACCOUNT, "support:ticket-reply", { ticketId, body: "more detail" });
     const response = await replyTicket(
@@ -507,6 +513,7 @@ describe("POST /api/support/tickets/[id]/reply", () => {
     const payload = (await response.json()) as { ticket: Record<string, unknown> };
     expect(payload.ticket.diagnostics).toBeUndefined();
     expect(payload.ticket.walletAddress).toBeUndefined();
+    expect("referenceCode" in payload.ticket).toBe(false);
   });
 
   it("logs ticket-replied admin activity for a user's own reply, without the reply text (issue #393 review)", async () => {
@@ -646,7 +653,7 @@ describe("POST /api/support/tickets/[id]/close (issue #401)", () => {
     expect(payload.ticket.status).toBe("closed");
   });
 
-  it("never echoes diagnostics or the raw walletAddress in the public close response", async () => {
+  it("never echoes diagnostics, the raw walletAddress, or referenceCode in the public close response (issue #405 review)", async () => {
     const ticketId = await createOpenTicket();
     const auth = await signedAction(ACCOUNT, "support:ticket-close", { ticketId });
     const response = await closeTicket(
@@ -657,6 +664,7 @@ describe("POST /api/support/tickets/[id]/close (issue #401)", () => {
     const payload = (await response.json()) as { ticket: Record<string, unknown> };
     expect(payload.ticket.diagnostics).toBeUndefined();
     expect(payload.ticket.walletAddress).toBeUndefined();
+    expect("referenceCode" in payload.ticket).toBe(false);
   });
 
   it("logs ticket-closed-by-user admin activity with the ticket id and wallet only, never body text", async () => {

@@ -225,7 +225,7 @@ export const PAGE_CONTENT_REGISTRY: readonly PageContentPageDefinition[] = [
         type: "text",
         label: "Hero intro copy",
         defaultValue:
-          "Tell us what happened. We attach your plan and connection status automatically — never your credentials — so we can help faster.",
+          "Tell us what happened. If your wallet is connected, we attach your plan and connection status automatically — never your credentials — so we can help faster.",
       },
     ],
   },

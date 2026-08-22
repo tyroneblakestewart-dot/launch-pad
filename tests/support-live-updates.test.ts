@@ -65,21 +65,25 @@ describe("Support unread nav badge (issue #403)", () => {
 describe("Support page live refresh (issue #403)", () => {
   it("refetches on window focus and document visibilitychange", async () => {
     const component = await source("components", "support-hub.tsx");
-    expect(component).toContain('document.addEventListener("visibilitychange", handleBecameVisible);');
-    expect(component).toContain('window.addEventListener("focus", handleBecameVisible);');
+    expect(component).toContain('document.addEventListener("visibilitychange", handleBecameVisible)');
+    expect(component).toContain('window.addEventListener("focus", handleBecameVisible)');
   });
 
   it("runs a 60s timer only while the tab is visible, and tears it down when hidden", async () => {
     const component = await source("components", "support-hub.tsx");
     expect(component).toContain("60_000");
-    expect(component).toMatch(/if \(document\.visibilityState !== "visible"\) \{\s*stopTimer\(\);/);
-    expect(component).toContain('if (document.visibilityState === "visible") startTimer();');
+    expect(component).toMatch(/if \(!isPageVisible\(\)\) \{\s*stopTimer\(\);/);
+    // The initial startTimer() gate also goes through the safe visibility
+    // helper (issue #405 review) rather than a direct document.visibilityState
+    // read, so a hostile/broken environment can't throw here either.
+    expect(component).toContain("if (isPageVisible()) startTimer();");
+    expect(component).not.toContain('if (document.visibilityState === "visible") startTimer();');
   });
 
-  it("cleans up the timer and both listeners on unmount", async () => {
+  it("cleans up the timer and both listeners on unmount, guarding every browser-API call against a synchronous throw (issue #405 crash audit)", async () => {
     const component = await source("components", "support-hub.tsx");
     expect(component).toMatch(
-      /return \(\) => \{\s*stopTimer\(\);\s*document\.removeEventListener\("visibilitychange", handleBecameVisible\);\s*window\.removeEventListener\("focus", handleBecameVisible\);\s*\};/,
+      /return \(\) => \{\s*stopTimer\(\);\s*safeInvoke\(\(\) => document\.removeEventListener\("visibilitychange", handleBecameVisible\)\);\s*safeInvoke\(\(\) => window\.removeEventListener\("focus", handleBecameVisible\)\);\s*\};/,
     );
   });
 
@@ -92,10 +96,10 @@ describe("Support page live refresh (issue #403)", () => {
     expect(component).toContain("setTickets(payload.tickets);");
   });
 
-  it("clears the unread dot by writing last-seen on every successful load, including background refreshes", async () => {
+  it("clears the unread dot by marking last-seen on every successful load, including background refreshes", async () => {
     const component = await source("components", "support-hub.tsx");
-    expect(component).toContain('import { writeSupportLastSeen } from "@/lib/support-unread";');
-    expect(component).toMatch(/setTicketsError\(null\);\s*\/\/[\s\S]*?writeSupportLastSeen\(wallet, Date\.now\(\)\);/);
+    expect(component).toContain('import { markSupportUnreadSeen } from "@/lib/use-support-unread";');
+    expect(component).toMatch(/setTicketsError\(null\);\s*\/\/[\s\S]*?markSupportUnreadSeen\(wallet, payload\.tickets\);/);
   });
 
   it("tells the user plainly what to expect after submitting, so they know they don't need to keep the page open", async () => {

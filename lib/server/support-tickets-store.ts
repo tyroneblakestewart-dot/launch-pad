@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import type { PoolClient } from "pg";
 import { getPostgresPool } from "@/lib/server/postgres";
 
@@ -57,7 +58,10 @@ export function isValidSupportTicketId(value: unknown): value is string {
 
 export type SupportTicket = {
   id: string;
-  walletAddress: string;
+  /** Null for an anonymous ticket (issue #405) — exactly one of walletAddress/referenceCode is ever set, enforced by a DB CHECK constraint. */
+  walletAddress: string | null;
+  /** Null for a signed (wallet-owned) ticket. Set for an anonymous ticket — its only way to check status later, since it has no wallet to authenticate with. */
+  referenceCode: string | null;
   category: SupportTicketCategory;
   subject: string;
   body: string;
@@ -68,6 +72,33 @@ export type SupportTicket = {
   createdAt: string;
   updatedAt: string;
 };
+
+// Anonymous reporting reference codes (issue #405). Human-quotable
+// "XXXX-XXXXXX" format from a 31-symbol alphabet excluding visually
+// ambiguous characters (0/O, 1/I/L) — about 49.5 bits of node:crypto
+// randomness per code (31^10 combinations), generated server-side only,
+// never derived from body/wallet/IP.
+const REFERENCE_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const REFERENCE_CODE_PATTERN = /^[A-Z0-9]{4}-[A-Z0-9]{6}$/;
+
+function generateSupportTicketReferenceCode(): string {
+  let raw = "";
+  for (let index = 0; index < 10; index += 1) {
+    raw += REFERENCE_CODE_ALPHABET[randomInt(REFERENCE_CODE_ALPHABET.length)];
+  }
+  return `${raw.slice(0, 4)}-${raw.slice(4)}`;
+}
+
+/** Normalises user-supplied input (case, whitespace) for a reference-code lookup; returns null for anything that doesn't match the stored shape, so an obviously-invalid code never even reaches a query. */
+export function normaliseSupportTicketReferenceCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const upper = value.trim().toUpperCase();
+  return REFERENCE_CODE_PATTERN.test(upper) ? upper : null;
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && (error as { code?: string }).code === "23505");
+}
 
 export type SupportTicketMessage = {
   id: string;
@@ -81,17 +112,25 @@ export type SupportTicketWithMessages = SupportTicket & { messages: SupportTicke
 
 /**
  * What a wallet-signed public response is allowed to echo back about its own
- * ticket — never `diagnostics` (assembled for the owner's eyes only) or the
- * raw `walletAddress` (issue #393 review). Every public support route
- * (create/list/reply) must project through this, never return the full
- * store `SupportTicket`/`SupportTicketWithMessages` shape directly.
+ * ticket — never `diagnostics` (assembled for the owner's eyes only), the
+ * raw `walletAddress` (issue #393 review), or `referenceCode` (issue #405
+ * review: `referenceCode` is only ever null on a signed ticket, and adding it
+ * to the store's `SupportTicket` type must not leak a stray `referenceCode:
+ * null` into the signed create/list/reply/close response shape — the
+ * anonymous create route has its own minimal success shape instead of
+ * reusing this projection). Every public support route (create/list/reply/
+ * close) must project through this, never return the full store
+ * `SupportTicket`/`SupportTicketWithMessages` shape directly.
  */
-export type PublicSupportTicket = Omit<SupportTicket, "diagnostics" | "walletAddress">;
+export type PublicSupportTicket = Omit<SupportTicket, "diagnostics" | "walletAddress" | "referenceCode">;
 
-export function toPublicSupportTicket<T extends SupportTicket>(ticket: T): Omit<T, "diagnostics" | "walletAddress"> {
-  const { diagnostics: _diagnostics, walletAddress: _walletAddress, ...rest } = ticket;
+export function toPublicSupportTicket<T extends SupportTicket>(
+  ticket: T,
+): Omit<T, "diagnostics" | "walletAddress" | "referenceCode"> {
+  const { diagnostics: _diagnostics, walletAddress: _walletAddress, referenceCode: _referenceCode, ...rest } = ticket;
   void _diagnostics;
   void _walletAddress;
+  void _referenceCode;
   return rest;
 }
 
@@ -105,17 +144,47 @@ export type CreateSupportTicketInput = {
   attachmentDataUrl?: string | null;
 };
 
+/** No walletAddress — an anonymous ticket has none. diagnostics must stay minimal (issue #405): never a plan/subscription or social-connection lookup, since there's no wallet to check either against. */
+export type CreateAnonymousSupportTicketInput = {
+  category: SupportTicketCategory;
+  subject: string;
+  body: string;
+  diagnostics: Record<string, unknown>;
+  attachmentDataUrl?: string | null;
+};
+
+/**
+ * The status-only reference-code lookup response (issue #405 review) — the
+ * caller's own requirement is "status only", so this is deliberately just
+ * the status: never referenceCode, category, createdAt, updatedAt, or any of
+ * body/subject/attachment/diagnostics/messages/wallet.
+ */
+export type AnonymousSupportTicketStatusView = {
+  status: SupportTicketStatus;
+};
+
+/** The minimal success shape the anonymous create route returns — never the full (or even the public-projected) ticket shape, since there is nothing else safe to echo back without a wallet to authenticate future reads with (issue #405 review). */
+export type AnonymousSupportTicketCreated = {
+  referenceCode: string;
+};
+
 export type AddSupportTicketMessageResult =
   | { status: "ok"; ticket: SupportTicket; message: SupportTicketMessage }
   | { status: "not_found" }
   | { status: "forbidden" }
   | { status: "closed" };
 
-/** No "forbidden" case — the owner isn't scoped to a single wallet's ticket. */
+/**
+ * No "forbidden" case — the owner isn't scoped to a single wallet's ticket.
+ * "anonymous" rejects a reply attempt on a wallet-less ticket (issue #405):
+ * an anonymous reporter has no wallet to authenticate with, so it can never
+ * read a reply — the ticket must not gain a thread.
+ */
 export type AddSupportTicketOwnerMessageResult =
   | { status: "ok"; ticket: SupportTicket; message: SupportTicketMessage }
   | { status: "not_found" }
-  | { status: "closed" };
+  | { status: "closed" }
+  | { status: "anonymous" };
 
 export type SetSupportTicketStatusResult =
   | { status: "ok"; ticket: SupportTicket }
@@ -129,18 +198,22 @@ export type CloseSupportTicketByUserResult =
 
 export interface SupportTicketsStore {
   create(input: CreateSupportTicketInput): Promise<SupportTicket>;
+  /** Anonymous/no-wallet creation (issue #405) — generates and returns a unique referenceCode server-side; retries internally on a random collision. */
+  createAnonymous(input: CreateAnonymousSupportTicketInput): Promise<SupportTicket>;
   listForWallet(walletAddress: string): Promise<SupportTicketWithMessages[]>;
   /** Rejects with "forbidden" when the ticket belongs to a different wallet, "closed" when solved/closed. */
   addUserMessage(ticketId: string, walletAddress: string, body: string): Promise<AddSupportTicketMessageResult>;
   /** A user closing their own open/needs_user ticket. Rejects with "forbidden" for a different wallet's ticket, "closed" when already solved/closed — a terminal ticket can't be re-closed. */
   closeTicketByUser(ticketId: string, walletAddress: string): Promise<CloseSupportTicketByUserResult>;
   listForAdmin(status: SupportTicketStatus | "all"): Promise<SupportTicketWithMessages[]>;
-  /** Also flips the ticket's status to 'needs_user'. Rejects with "closed" for a solved/closed ticket rather than implicitly reopening it. */
+  /** Also flips the ticket's status to 'needs_user'. Rejects with "closed" for a solved/closed ticket rather than implicitly reopening it, "anonymous" for a wallet-less ticket. */
   addOwnerMessage(ticketId: string, body: string): Promise<AddSupportTicketOwnerMessageResult>;
   setStatus(ticketId: string, status: SupportTicketStatus): Promise<SetSupportTicketStatusResult>;
   countOpen(): Promise<number>;
   /** Age in seconds of the oldest open-or-needs_user ticket, or null when there are none. */
   oldestOpenTicketAgeSeconds(now?: Date): Promise<number | null>;
+  /** Bounded status-only lookup by normalised reference code (issue #405) — never returns referenceCode/category/timestamps/body/subject/attachment/diagnostics/messages/wallet, only the ticket's status. Null for an unknown or malformed code. */
+  lookupAnonymousStatus(referenceCode: string): Promise<AnonymousSupportTicketStatusView | null>;
 }
 
 export class SupportTicketsStoreUnavailableError extends Error {
@@ -152,6 +225,9 @@ export class SupportTicketsStoreUnavailableError extends Error {
 
 const unconfiguredStore: SupportTicketsStore = {
   async create() {
+    throw new SupportTicketsStoreUnavailableError();
+  },
+  async createAnonymous() {
     throw new SupportTicketsStoreUnavailableError();
   },
   async listForWallet() {
@@ -177,6 +253,9 @@ const unconfiguredStore: SupportTicketsStore = {
   },
   async oldestOpenTicketAgeSeconds() {
     return null;
+  },
+  async lookupAnonymousStatus() {
+    throw new SupportTicketsStoreUnavailableError();
   },
 };
 
@@ -206,7 +285,8 @@ export function getSupportTicketsStore(): SupportTicketsStore {
 
 type TicketRow = {
   id: string;
-  wallet_address: string;
+  wallet_address: string | null;
+  reference_code: string | null;
   category: string;
   subject: string;
   body: string;
@@ -238,7 +318,8 @@ function ticketFromRow(row: TicketRow): SupportTicket | null {
   if (!isSupportTicketCategory(row.category) || !isSupportTicketStatus(row.status)) return null;
   return {
     id: row.id,
-    walletAddress: row.wallet_address,
+    walletAddress: row.wallet_address ?? null,
+    referenceCode: row.reference_code ?? null,
     category: row.category,
     subject: row.subject,
     body: row.body,
@@ -261,7 +342,7 @@ function messageFromRow(row: MessageRow): SupportTicketMessage | null {
   };
 }
 
-const TICKET_COLUMNS = `id, wallet_address, category, subject, body, status, diagnostics, attachment_data_url, created_at, updated_at`;
+const TICKET_COLUMNS = `id, wallet_address, reference_code, category, subject, body, status, diagnostics, attachment_data_url, created_at, updated_at`;
 const MESSAGE_COLUMNS = `id, ticket_id, author, body, created_at`;
 
 async function rollback(client: PoolClient): Promise<void> {
@@ -312,8 +393,8 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
   return {
     async create(input) {
       const result = await pool.query<TicketRow>(
-        `INSERT INTO support_tickets (wallet_address, category, subject, body, diagnostics, attachment_data_url)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+        `INSERT INTO support_tickets (wallet_address, reference_code, category, subject, body, diagnostics, attachment_data_url)
+         VALUES ($1, NULL, $2, $3, $4, $5::jsonb, $6)
          RETURNING ${TICKET_COLUMNS}`,
         [input.walletAddress, input.category, input.subject, input.body, JSON.stringify(input.diagnostics), input.attachmentDataUrl ?? null],
       );
@@ -321,6 +402,33 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
       const ticket = row ? ticketFromRow(row) : null;
       if (!ticket) throw new Error("The support ticket could not be created.");
       return ticket;
+    },
+
+    async createAnonymous(input) {
+      // Retries on a random reference-code collision (astronomically
+      // unlikely given ~49.5 bits of randomness per code, but handled
+      // rather than assumed away) — bounded so a persistently broken unique
+      // index still fails loudly instead of looping forever.
+      const MAX_ATTEMPTS = 5;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+        const referenceCode = generateSupportTicketReferenceCode();
+        try {
+          const result = await pool.query<TicketRow>(
+            `INSERT INTO support_tickets (wallet_address, reference_code, category, subject, body, diagnostics, attachment_data_url)
+             VALUES (NULL, $1, $2, $3, $4, $5::jsonb, $6)
+             RETURNING ${TICKET_COLUMNS}`,
+            [referenceCode, input.category, input.subject, input.body, JSON.stringify(input.diagnostics), input.attachmentDataUrl ?? null],
+          );
+          const row = result.rows[0];
+          const ticket = row ? ticketFromRow(row) : null;
+          if (!ticket) throw new Error("The anonymous support ticket could not be created.");
+          return ticket;
+        } catch (error) {
+          if (isUniqueViolation(error) && attempt < MAX_ATTEMPTS - 1) continue;
+          throw error;
+        }
+      }
+      throw new Error("A unique reference code could not be generated. Try again.");
     },
 
     async listForWallet(walletAddress) {
@@ -352,7 +460,11 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
           await rollback(client);
           return { status: "not_found" };
         }
-        if (ticket.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        // An anonymous ticket (walletAddress null) can never match a
+        // wallet-signed caller — it falls through to "forbidden" here, the
+        // same as any other wallet's ticket (issue #405: anonymous tickets
+        // must not gain a thread).
+        if (!ticket.walletAddress || ticket.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
           await rollback(client);
           return { status: "forbidden" };
         }
@@ -407,7 +519,9 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
           await rollback(client);
           return { status: "not_found" };
         }
-        if (ticket.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        // An anonymous ticket (walletAddress null) can never match a
+        // wallet-signed caller — same reasoning as addUserMessage above.
+        if (!ticket.walletAddress || ticket.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
           await rollback(client);
           return { status: "forbidden" };
         }
@@ -464,6 +578,15 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
           await rollback(client);
           return { status: "not_found" };
         }
+        // An anonymous ticket has no wallet to authenticate a reply read
+        // with — reject rather than silently writing a message the
+        // reporter can never see (issue #405: anonymous tickets must not
+        // gain a thread). Checked before the status check so this reason is
+        // surfaced even on an otherwise-replyable anonymous ticket.
+        if (!ticket.walletAddress) {
+          await rollback(client);
+          return { status: "anonymous" };
+        }
         if (!isReplyableSupportTicketStatus(ticket.status)) {
           await rollback(client);
           return { status: "closed" };
@@ -516,6 +639,24 @@ export function createPostgresSupportTicketsStore(databaseUrl: string): SupportT
       const createdAt = result.rows[0]?.created_at;
       if (!createdAt) return null;
       return Math.max(0, Math.floor((now.getTime() - asDate(createdAt).getTime()) / 1000));
+    },
+
+    async lookupAnonymousStatus(referenceCode) {
+      // Bounded projection at the query level, not just in the return type —
+      // only `status` ever leaves Postgres for this lookup (issue #405
+      // review: the caller's requirement is "status only"). The WHERE clause
+      // still requires reference_code IS NOT NULL so a future NULL-reference
+      // row can never match an equality comparison here.
+      const result = await pool.query<{ status: string }>(
+        `SELECT status
+           FROM support_tickets
+          WHERE reference_code = $1 AND reference_code IS NOT NULL
+          LIMIT 1`,
+        [referenceCode],
+      );
+      const row = result.rows[0];
+      if (!row || !isSupportTicketStatus(row.status)) return null;
+      return { status: row.status };
     },
   };
 }

@@ -12,18 +12,21 @@ function truncateWallet(walletAddress: string): string {
   return `${walletAddress.slice(0, 6)}…${walletAddress.slice(-4)}`;
 }
 
-export function buildSupportTicketAlertText(ticket: Pick<SupportTicket, "id" | "category" | "subject" | "walletAddress">): string {
-  return [
-    "New support ticket",
-    `Category: ${ticket.category}`,
-    `Subject: ${ticket.subject}`,
-    `Wallet: ${truncateWallet(ticket.walletAddress)}`,
-    `Ticket: ${ticket.id}`,
-  ].join("\n");
+export function buildSupportTicketAlertText(
+  ticket: Pick<SupportTicket, "id" | "category" | "subject" | "walletAddress" | "referenceCode">,
+): string {
+  // Anonymous tickets (issue #405) have no wallet — identify the reporter by
+  // their reference code instead, so the owner can still find the ticket.
+  const reporterLine = ticket.walletAddress
+    ? `Wallet: ${truncateWallet(ticket.walletAddress)}`
+    : `Reporter: anonymous (ref ${ticket.referenceCode ?? "unknown"})`;
+  return ["New support ticket", `Category: ${ticket.category}`, `Subject: ${ticket.subject}`, reporterLine, `Ticket: ${ticket.id}`].join(
+    "\n",
+  );
 }
 
 export async function sendSupportTicketTelegramAlertBestEffort(
-  ticket: Pick<SupportTicket, "id" | "category" | "subject" | "walletAddress">,
+  ticket: Pick<SupportTicket, "id" | "category" | "subject" | "walletAddress" | "referenceCode">,
   env: Record<string, string | undefined> = process.env,
 ): Promise<void> {
   try {

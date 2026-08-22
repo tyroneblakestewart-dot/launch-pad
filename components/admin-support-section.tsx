@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { markAdminSupportSeen } from "@/lib/use-admin-support-unread";
 import styles from "./admin-support-section.module.css";
 
 type SupportTicketCategory = "account" | "payments" | "site-builder" | "social-studio" | "publishing" | "other";
@@ -15,7 +16,9 @@ type SupportTicketMessage = {
 
 type SupportTicket = {
   id: string;
-  walletAddress: string;
+  /** Null for an anonymous ticket (issue #405) — it carries a referenceCode instead. */
+  walletAddress: string | null;
+  referenceCode: string | null;
   category: SupportTicketCategory;
   subject: string;
   body: string;
@@ -92,6 +95,13 @@ export function AdminSupportSection() {
       const payload = (await response.json()) as { tickets: SupportTicket[] };
       setTickets(payload.tickets);
       setLoadError(null);
+      // Opening the Support section clears the nav dot the moment current
+      // support data has actually loaded and is on screen (issue #405) —
+      // not just on the section's very first load, so a later refresh
+      // (status-filter change, manual Refresh tap) keeps it cleared too.
+      // Passing this same listing payload lets markAdminSupportSeen derive
+      // the seen boundary from what was actually observed, not Date.now().
+      markAdminSupportSeen(payload.tickets);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "The support queue could not be loaded.");
     } finally {
@@ -145,8 +155,9 @@ export function AdminSupportSection() {
         <div>
           <h2 className={styles.sectionTitle}>Support</h2>
           <p className={styles.sectionIntro}>
-            Wallet-signed problem reports. Reply below to flip a ticket to &ldquo;Needs user&rdquo;; mark it Solved or
-            Closed once it&apos;s resolved. Nothing here posts or replies automatically.
+            Problem reports, wallet-signed or anonymous (badged below, no reply thread). Reply below to flip a
+            wallet-signed ticket to &ldquo;Needs user&rdquo;; mark it Solved or Closed once it&apos;s resolved.
+            Nothing here posts or replies automatically.
           </p>
         </div>
         <button type="button" className={styles.refreshButton} onClick={() => void loadTickets()} disabled={loading}>
@@ -192,9 +203,10 @@ export function AdminSupportSection() {
                 <div className={styles.itemMeta}>
                   <p className={styles.itemTitle}>
                     {ticket.subject} <span className={styles.category}>{ticket.category}</span>
+                    {!ticket.walletAddress ? <span className={styles.anonymousBadge}>Anonymous</span> : null}
                   </p>
                   <p className={styles.itemSub}>
-                    {ticket.walletAddress} · {formatTimestamp(ticket.createdAt)}
+                    {ticket.walletAddress ?? `No wallet — ref ${ticket.referenceCode ?? "unknown"}`} · {formatTimestamp(ticket.createdAt)}
                   </p>
                 </div>
                 <span className={badgeClassName(ticket.status)}>{STATUS_BADGE_LABEL[ticket.status]}</span>
@@ -231,7 +243,12 @@ export function AdminSupportSection() {
                   </div>
 
                   <div className={styles.replyRow}>
-                    {isTerminalSupportTicketStatus(ticket.status) ? (
+                    {!ticket.walletAddress ? (
+                      <p className={styles.terminalNote}>
+                        This is an anonymous report — it has no wallet to reply to, so it can&apos;t receive a reply.
+                        Status controls are still available below.
+                      </p>
+                    ) : isTerminalSupportTicketStatus(ticket.status) ? (
                       <p className={styles.terminalNote}>
                         This ticket is {STATUS_BADGE_LABEL[ticket.status].toLowerCase()} and can no longer be replied to.
                       </p>
@@ -246,7 +263,7 @@ export function AdminSupportSection() {
                       />
                     )}
                     <div className={styles.itemActions}>
-                      {isTerminalSupportTicketStatus(ticket.status) ? null : (
+                      {!ticket.walletAddress || isTerminalSupportTicketStatus(ticket.status) ? null : (
                         <button
                           type="button"
                           className={styles.replyButton}

@@ -33,6 +33,25 @@ describe("admin Errors section UI", () => {
     expect(component).toContain("representativeStack");
     expect(component).toContain("Resolve");
   });
+
+  it("offers a per-group Copy details button using the clipboard helper with a safe fallback (issue #405)", async () => {
+    const component = await source("components/admin-client-errors-section.tsx");
+    expect(component).toContain('import { copyToClipboard } from "@/lib/clipboard";');
+    expect(component).toContain("async function handleCopyDetails(group: ClientErrorGroup): Promise<void> {");
+    expect(component).toContain("Copy details");
+    expect(component).toContain('"Copied"');
+    expect(component).toContain('"Copy failed"');
+
+    const css = await source("components/admin-client-errors-section.module.css");
+    expect(css).toContain(".copyDetailsButton");
+    expect(css).toMatch(/\.expandButton, \.resolveButton, \.copyDetailsButton \{[^}]*min-height:\s*44px/);
+  });
+
+  it("builds the copied text from the pure lib/client-error-details-text.ts helper, not inline in the component", async () => {
+    const component = await source("components/admin-client-errors-section.tsx");
+    expect(component).toContain('import { buildErrorGroupDetailsText } from "@/lib/client-error-details-text";');
+    expect(component).toContain("buildErrorGroupDetailsText(group)");
+  });
 });
 
 describe("global crash reporting wiring", () => {

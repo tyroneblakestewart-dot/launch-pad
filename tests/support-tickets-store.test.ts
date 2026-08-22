@@ -4,6 +4,7 @@ import {
   isSupportTicketCategory,
   isSupportTicketStatus,
   isValidSupportTicketId,
+  normaliseSupportTicketReferenceCode,
   resetSupportTicketsStoreForTests,
   setSupportTicketsStoreForTests,
   SupportTicketsStoreUnavailableError,
@@ -37,6 +38,20 @@ describe("isValidSupportTicketId", () => {
     expect(isValidSupportTicketId("")).toBe(false);
     expect(isValidSupportTicketId(undefined)).toBe(false);
     expect(isValidSupportTicketId(123)).toBe(false);
+  });
+});
+
+describe("normaliseSupportTicketReferenceCode (issue #405)", () => {
+  it("uppercases and trims a well-formed code", () => {
+    expect(normaliseSupportTicketReferenceCode(" abcd-efgh23 ")).toBe("ABCD-EFGH23");
+  });
+
+  it("rejects malformed shapes without throwing", () => {
+    expect(normaliseSupportTicketReferenceCode("not-a-code")).toBeNull();
+    expect(normaliseSupportTicketReferenceCode("ABCD-EFGH2")).toBeNull();
+    expect(normaliseSupportTicketReferenceCode("")).toBeNull();
+    expect(normaliseSupportTicketReferenceCode(undefined)).toBeNull();
+    expect(normaliseSupportTicketReferenceCode(123)).toBeNull();
   });
 });
 
@@ -260,6 +275,67 @@ describe("SupportTicketsStore contract (via in-memory double)", () => {
   });
 });
 
+describe("Anonymous support tickets (issue #405)", () => {
+  it("creates an anonymous ticket with no wallet and a unique reference code", async () => {
+    const store = createMemorySupportTicketsStore();
+    const ticket = await store.createAnonymous({ category: "other", subject: "s", body: "b", diagnostics: { mode: "anonymous" } });
+    expect(ticket.walletAddress).toBeNull();
+    expect(ticket.referenceCode).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{6}$/);
+    expect(ticket.status).toBe("open");
+  });
+
+  it("never lists an anonymous ticket in a wallet's own listing", async () => {
+    const store = createMemorySupportTicketsStore();
+    await store.createAnonymous({ category: "other", subject: "anon", body: "b", diagnostics: {} });
+    await store.create({ walletAddress: WALLET, category: "other", subject: "mine", body: "b", diagnostics: {} });
+
+    const mine = await store.listForWallet(WALLET);
+    expect(mine).toHaveLength(1);
+    expect(mine[0].subject).toBe("mine");
+  });
+
+  it("looks up an anonymous ticket's bounded status by reference code — status only (issue #405 review)", async () => {
+    const store = createMemorySupportTicketsStore();
+    const ticket = await store.createAnonymous({ category: "payments", subject: "s", body: "b", diagnostics: {} });
+
+    const status = await store.lookupAnonymousStatus(ticket.referenceCode!);
+    expect(status).toEqual({ status: "open" });
+  });
+
+  it("returns null for an unknown reference code", async () => {
+    const store = createMemorySupportTicketsStore();
+    expect(await store.lookupAnonymousStatus("ZZZZ-999999")).toBeNull();
+  });
+
+  it("rejects a reply attempt against an anonymous ticket as forbidden — it has no owning wallet", async () => {
+    const store = createMemorySupportTicketsStore();
+    const ticket = await store.createAnonymous({ category: "other", subject: "s", body: "b", diagnostics: {} });
+    const result = await store.addUserMessage(ticket.id, WALLET, "trying to reply");
+    expect(result.status).toBe("forbidden");
+  });
+
+  it("rejects a close attempt against an anonymous ticket as forbidden", async () => {
+    const store = createMemorySupportTicketsStore();
+    const ticket = await store.createAnonymous({ category: "other", subject: "s", body: "b", diagnostics: {} });
+    const result = await store.closeTicketByUser(ticket.id, WALLET);
+    expect(result.status).toBe("forbidden");
+  });
+
+  it("rejects an owner reply to an anonymous ticket with 'anonymous', never silently writing an unreadable message", async () => {
+    const store = createMemorySupportTicketsStore();
+    const ticket = await store.createAnonymous({ category: "other", subject: "s", body: "b", diagnostics: {} });
+    const result = await store.addOwnerMessage(ticket.id, "are you still there?");
+    expect(result.status).toBe("anonymous");
+  });
+
+  it("still allows the owner to change an anonymous ticket's status", async () => {
+    const store = createMemorySupportTicketsStore();
+    const ticket = await store.createAnonymous({ category: "other", subject: "s", body: "b", diagnostics: {} });
+    const result = await store.setStatus(ticket.id, "solved");
+    expect(result.status).toBe("ok");
+  });
+});
+
 describe("getSupportTicketsStore", () => {
   it("returns the unconfigured fallback when DATABASE_URL is unset", async () => {
     delete process.env.DATABASE_URL;
@@ -278,6 +354,10 @@ describe("getSupportTicketsStore", () => {
     await expect(store.closeTicketByUser("00000000-0000-0000-0000-000000000000", WALLET)).rejects.toThrow(
       SupportTicketsStoreUnavailableError,
     );
+    await expect(store.createAnonymous({ category: "other", subject: "s", body: "b", diagnostics: {} })).rejects.toThrow(
+      SupportTicketsStoreUnavailableError,
+    );
+    await expect(store.lookupAnonymousStatus("ZZZZ-999999")).rejects.toThrow(SupportTicketsStoreUnavailableError);
   });
 
   it("returns the test-injected store when one is set", () => {

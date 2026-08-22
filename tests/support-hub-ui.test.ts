@@ -118,10 +118,13 @@ describe("Support hub UI (issue #393)", () => {
     expect(component).toContain("async function handleClose(ticketId: string)");
 
     // One tap to request, a second, separate tap to confirm — a mis-tap on
-    // "Close this report" alone must not close the ticket.
+    // "Mark as resolved" alone must not close the ticket. Renamed from
+    // "Close this report" (issue #405) to read distinctly from the
+    // collapse/expand chevron, which never calls an API.
     expect(component).toContain("closeConfirmId");
     expect(component).toContain("setCloseConfirmId(ticket.id)");
-    expect(component).toContain("Close this report");
+    expect(component).toContain("Mark as resolved — I&apos;m done with this");
+    expect(component).toContain("This closes the report. It does not just hide this box.");
     expect(component).toContain("Confirm close");
     expect(component).toContain("Cancel");
     expect(component).toContain("void handleClose(ticket.id)");
@@ -137,5 +140,171 @@ describe("Support hub UI (issue #393)", () => {
     expect(css).toContain(".closeConfirmButton");
     expect(css).toMatch(/\.closeRequestButton\s*\{[^}]*min-height:\s*44px/s);
     expect(css).toMatch(/\.closeConfirmButton\s*\{[^}]*min-height:\s*44px/s);
+  });
+
+  it("gives ticket cards an explicit collapse/expand chevron that only ever touches local UI state, never an API (issue #405)", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toMatch(/className=\{expanded \? styles\.chevronExpanded : styles\.chevron\}/);
+    expect(component).toContain("never calls an API, unlike \"Mark as resolved\" below");
+
+    const css = await source("components", "support-hub.module.css");
+    expect(css).toContain(".chevron");
+    expect(css).toContain(".chevronExpanded");
+  });
+
+  it("adds a corner X to the success card that does exactly the same reset/dismiss as Done, both 44px-safe (issue #405)", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toMatch(/className=\{styles\.successDismissX\}\s*onClick=\{handleDone\}/);
+    expect(component).toContain('<button type="button" className={styles.doneButton} onClick={handleDone}>');
+
+    const css = await source("components", "support-hub.module.css");
+    expect(css).toMatch(/\.successDismissX\s*\{[^}]*width:\s*44px[^}]*height:\s*44px/s);
+  });
+});
+
+describe("Anonymous/no-wallet reporting (issue #405)", () => {
+  it("shows the report form even without a confirmed wallet, rather than only a connect button", async () => {
+    const component = await source("components", "support-hub.tsx");
+    // The form section is no longer gated behind `{!walletAddress ? (<button>Connect…) : (<section>...`
+    expect(component).not.toMatch(/\{!walletAddress \? \(\s*<button[^>]*connectButton/);
+    expect(component).toContain('<section className={styles.panel} aria-labelledby="support-form-title">');
+  });
+
+  it("shows the exact required honesty message and a Connect wallet action when no wallet is present", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("Connect your wallet if you can — it lets us reply to you.");
+    expect(component).toMatch(/onClick=\{\(\) => void connectWallet\(\)\}>\s*Connect wallet\s*</);
+  });
+
+  it("explains before submit that an anonymous report has no reply thread and the code must be saved", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("this report has no reply thread");
+    expect(component).toContain("Save it; it can&apos;t be");
+  });
+
+  it("submits to the dedicated anonymous route with no challenge/signature when there is no wallet", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("async function handleAnonymousSubmit() {");
+    expect(component).toContain('"/api/support/tickets/anonymous"');
+    expect(component).toMatch(/function handleSubmit\(\) \{\s*return walletAddress \? handleSignedSubmit\(\) : handleAnonymousSubmit\(\);/);
+  });
+
+  it("shows the one-time reference code prominently with copy support, and never persists it to storage", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("import { copyToClipboard } from \"@/lib/clipboard\";");
+    expect(component).toContain("async function handleCopyReferenceCode() {");
+    expect(component).toContain("It cannot be recovered from this browser.");
+    expect(component).not.toContain("localStorage.setItem(\"hoodlums.support");
+    expect(component).not.toMatch(/anonymousReferenceCode[\s\S]{0,80}localStorage/);
+  });
+
+  it("offers a compact 'Check a report by reference code' form, status-only, always available", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("Check a report by reference code");
+    expect(component).toContain("async function handleReferenceLookup() {");
+    expect(component).toContain("/api/support/tickets/reference?code=");
+
+    const css = await source("components", "support-hub.module.css");
+    expect(css).toMatch(/\.referenceLookupButton\s*\{[^}]*min-height:\s*44px/s);
+  });
+
+  it("is mobile-first and 390px-safe for the new anonymous/reference-lookup UI", async () => {
+    const css = await source("components", "support-hub.module.css");
+    expect(css).toContain(".anonymousNotice");
+    expect(css).toContain(".referenceCodeRow");
+    expect(css).toMatch(/@media \(max-width: 390px\) \{[\s\S]*\.referenceLookupRow/);
+  });
+});
+
+describe("Support hub client crash hardening (issue #405)", () => {
+  it("defines a safeInvoke helper and uses it to guard every non-user-initiated browser/extension API call", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("function safeInvoke(fn: () => void): void {");
+
+    // Wallet-extension listener (un)registration — an extension's on/removeListener
+    // implementation is not guaranteed not to throw synchronously.
+    expect(component).toContain('safeInvoke(() => provider.on?.("accountsChanged", handleAccountsChanged));');
+    expect(component).toContain('safeInvoke(() => provider.removeListener?.("accountsChanged", handleAccountsChanged));');
+
+    // The 60s visible-only timer's listener setup/cleanup and clearInterval.
+    expect(component).toContain('safeInvoke(() => document.addEventListener("visibilitychange", handleBecameVisible));');
+    expect(component).toContain('safeInvoke(() => window.addEventListener("focus", handleBecameVisible));');
+    expect(component).toContain('safeInvoke(() => document.removeEventListener("visibilitychange", handleBecameVisible));');
+    expect(component).toContain('safeInvoke(() => window.removeEventListener("focus", handleBecameVisible));');
+    expect(component).toContain("safeInvoke(() => clearInterval(id));");
+
+    // Done/X dismissal's scrollIntoView.
+    expect(component).toContain("safeInvoke(() => historyRef.current?.scrollIntoView({ behavior: \"smooth\", block: \"start\" }));");
+  });
+
+  it("narrows an untrusted accounts payload to a single valid EVM address instead of trusting Array.isArray or typeof string alone", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain('import { createWalletClient, custom, isAddress } from "viem";');
+    expect(component).toContain("function firstValidEvmAddress(accounts: unknown): string | undefined {");
+    expect(component).toContain("if (!Array.isArray(accounts)) return undefined;");
+    expect(component).toContain('if (typeof first !== "string") return undefined;');
+    expect(component).toContain("return isAddress(trimmed) ? trimmed : undefined;");
+    expect(component).toContain("const nextAccount = firstValidEvmAddress(accounts);");
+    expect(component).toContain("const first = firstValidEvmAddress(accounts);");
+    expect(component).not.toContain("firstStringAccount");
+  });
+
+  it("guards getInjectedEvmProvider() itself, not just provider.request, everywhere the component reads it", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toContain("function safeGetInjectedEvmProvider(): WalletProviderWithEvents | undefined {");
+    expect(component).toMatch(/try \{\s*return getInjectedEvmProvider\(\) as WalletProviderWithEvents \| undefined;\s*\} catch \{/);
+    // Every call site in the component goes through the wrapper — the raw
+    // import is only ever invoked inside the wrapper's own try block (via
+    // `return getInjectedEvmProvider()`), not directly in the mount effect,
+    // connectWallet or signSupportChallenge.
+    const rawInvocations = (component.match(/return getInjectedEvmProvider\(\)/g) || []).length;
+    const wrappedCallSites = (component.match(/safeGetInjectedEvmProvider\(\)/g) || []).length;
+    expect(rawInvocations).toBe(1);
+    expect(wrappedCallSites).toBeGreaterThanOrEqual(3); // mount effect, connectWallet, signSupportChallenge
+  });
+
+  it("hardens connectWallet against a synchronous throw, a rejected promise, and a non-address payload alike", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toMatch(/const connectWallet = useCallback\(async \(\) => \{\s*const provider = safeGetInjectedEvmProvider\(\);/);
+    expect(component).toMatch(
+      /const accounts = await safeProviderRequest\(provider, \{ method: "eth_requestAccounts" \}\);\s*const account = firstValidEvmAddress\(accounts\);/,
+    );
+    expect(component).toContain('setSubmitError("Wallet connection was cancelled.");');
+  });
+
+  it("contains screenshot object-URL/canvas/FileReader failures instead of letting an onload/onerror callback throw uncaught", async () => {
+    const component = await source("components", "support-hub.tsx");
+    // loadImageFromFile: createObjectURL, image.src assignment, and both
+    // onload/onerror bodies are each wrapped.
+    expect(component).toMatch(/try \{\s*objectUrl = URL\.createObjectURL\(file\);\s*\} catch \{/);
+    expect(component).toMatch(/image\.onload = \(\) => \{\s*safeInvoke\(\(\) => URL\.revokeObjectURL\(objectUrl\)\);\s*try \{/);
+    expect(component).toMatch(/try \{\s*image\.src = objectUrl;\s*\} catch \{/);
+    // readFileAsDataUrl: FileReader construction and readAsDataURL are wrapped.
+    expect(component).toMatch(/try \{\s*reader = new FileReader\(\);\s*\} catch \{/);
+    expect(component).toMatch(/try \{\s*reader\.readAsDataURL\(file\);\s*\} catch \{/);
+    // Canvas creation/draw/encode per compression step is wrapped and
+    // continues to the next step rather than aborting the whole pass.
+    expect(component).toMatch(/const canvas = document\.createElement\("canvas"\);[\s\S]*?\} catch \{[\s\S]*?continue;/);
+  });
+
+  it("contains the hidden file-input click, showing a plain error instead of an uncaught throw", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toMatch(
+      /try \{\s*attachmentInputRef\.current\?\.click\(\);\s*\} catch \{\s*setAttachmentError\("The file picker could not be opened\. Try again\."\);/,
+    );
+  });
+
+  it("resets the file input value defensively, and guards the timer visibility check", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toMatch(/safeInvoke\(\(\) => \{\s*inputElement\.value = "";\s*\}\);/);
+    expect(component).toContain("function isPageVisible(): boolean {");
+    expect(component).toMatch(/if \(!isPageVisible\(\)\) \{\s*stopTimer\(\);/);
+  });
+
+  it("guards the pre-await event.target.files read in handleScreenshotChange, not just the reset", async () => {
+    const component = await source("components", "support-hub.tsx");
+    expect(component).toMatch(
+      /const inputElement = event\.target;\s*let file: File \| undefined;\s*try \{\s*file = inputElement\.files\?\.\[0\];\s*\} catch \{\s*file = undefined;\s*\}/,
+    );
   });
 });

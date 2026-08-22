@@ -6,6 +6,15 @@ const TICKET = {
   category: "payments" as const,
   subject: "Payment stuck for an hour",
   walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
+  referenceCode: null,
+};
+
+const ANONYMOUS_TICKET = {
+  id: "22222222-2222-2222-2222-222222222222",
+  category: "other" as const,
+  subject: "Site preview is blank",
+  walletAddress: null,
+  referenceCode: "ABCD-EFGH12",
 };
 
 afterEach(() => {
@@ -20,6 +29,13 @@ describe("buildSupportTicketAlertText", () => {
     expect(text).toContain(TICKET.id);
     expect(text).toContain("0x1234…5678");
     expect(text).not.toContain(TICKET.walletAddress);
+  });
+
+  it("identifies an anonymous ticket by its reference code instead of a wallet (issue #405)", () => {
+    const text = buildSupportTicketAlertText(ANONYMOUS_TICKET);
+    expect(text).toContain("anonymous");
+    expect(text).toContain(ANONYMOUS_TICKET.referenceCode);
+    expect(text).not.toContain("Wallet:");
   });
 });
 

@@ -144,13 +144,14 @@
 }
 
 .successBanner {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
   margin: 0;
-  padding: 10px 14px;
+  padding: 10px 44px 10px 14px;
   border: 1px solid rgba(198, 245, 62, 0.35);
   border-radius: 12px;
   background: rgba(198, 245, 62, 0.08);
@@ -163,6 +164,25 @@
   margin: 0;
   color: #c6f53e;
   font-size: 12px;
+}
+
+.successDismissX {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #c6f53e;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .doneButton {
@@ -298,6 +318,20 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.chevron,
+.chevronExpanded {
+  flex: none;
+  display: inline-block;
+  color: #6b706a;
+  font-size: 12px;
+  transition: transform 0.15s ease;
+}
+
+.chevronExpanded {
+  color: #c6f53e;
+  transform: rotate(180deg);
 }
 
 .ticketBody {
@@ -471,6 +505,118 @@
   cursor: pointer;
 }
 
+/* Anonymous/no-wallet reporting (issue #405). */
+.anonymousNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  box-sizing: border-box;
+}
+
+.anonymousNoticeText {
+  margin: 0;
+  color: #d4d7d3;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.anonymousWarning {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(240, 191, 78, 0.3);
+  border-radius: 12px;
+  background: rgba(240, 191, 78, 0.06);
+  color: #f0bf4e;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.referenceCodeBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.referenceCodeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.referenceCodeValue {
+  padding: 8px 12px;
+  border: 1px solid rgba(198, 245, 62, 0.35);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  color: #c6f53e;
+  font: 800 14px "IBM Plex Mono", monospace;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+
+.copyButton {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid #c6f53e;
+  border-radius: 10px;
+  background: transparent;
+  color: #c6f53e;
+  font: 800 11px "IBM Plex Mono", monospace;
+  cursor: pointer;
+}
+
+.referenceLookupRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
+}
+
+.referenceLookupRow .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.referenceLookupButton {
+  flex: none;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid #c6f53e;
+  border-radius: 12px;
+  background: #c6f53e;
+  color: #071008;
+  font: 800 11px "IBM Plex Mono", monospace;
+  cursor: pointer;
+}
+
+.referenceLookupButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.referenceLookupResult {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(198, 245, 62, 0.25);
+  border-radius: 12px;
+  background: rgba(198, 245, 62, 0.06);
+  color: #f4f7f1;
+  font-size: 13px;
+}
+
 @media (max-width: 390px) {
   .page {
     padding: 12px 12px 28px;
@@ -478,5 +624,14 @@
 
   .panel {
     padding: 12px;
+  }
+
+  .referenceLookupRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .referenceLookupButton {
+    width: 100%;
   }
 }

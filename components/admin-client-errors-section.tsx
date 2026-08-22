@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { buildErrorGroupDetailsText } from "@/lib/client-error-details-text";
+import { copyToClipboard } from "@/lib/clipboard";
 import styles from "./admin-client-errors-section.module.css";
 
 type ClientErrorGroup = {
@@ -41,6 +43,8 @@ export function AdminClientErrorsSection() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [copyErrorKey, setCopyErrorKey] = useState<string | null>(null);
 
   const loadGroups = useCallback(async () => {
     setLoading(true);
@@ -86,6 +90,17 @@ export function AdminClientErrorsSection() {
       setActionError(error instanceof Error ? error.message : "The group could not be resolved.");
     } finally {
       setBusyKey(null);
+    }
+  }
+
+  async function handleCopyDetails(group: ClientErrorGroup): Promise<void> {
+    const key = groupKey(group);
+    setCopyErrorKey(null);
+    const copied = await copyToClipboard(buildErrorGroupDetailsText(group));
+    if (copied) {
+      setCopiedKey(key);
+    } else {
+      setCopyErrorKey(key);
     }
   }
 
@@ -147,6 +162,9 @@ export function AdminClientErrorsSection() {
                 </button>
                 <button type="button" className={styles.resolveButton} disabled={busy} onClick={() => void resolveGroup(group)}>
                   {busy ? "Resolving…" : "Resolve"}
+                </button>
+                <button type="button" className={styles.copyDetailsButton} onClick={() => void handleCopyDetails(group)}>
+                  {copiedKey === key ? "Copied" : copyErrorKey === key ? "Copy failed" : "Copy details"}
                 </button>
               </div>
 

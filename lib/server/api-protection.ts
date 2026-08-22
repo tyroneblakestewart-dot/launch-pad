@@ -483,7 +483,26 @@ export function consumeSupportReadRateLimit(ip: string, now = Date.now()) {
 }
 
 export function resetSupportRateLimitsForTests() {
-  ["support-action", "support-read"].forEach((name) => namedRateStore(name).clear());
+  ["support-action", "support-read", "support-anonymous-create", "support-reference-lookup"].forEach((name) =>
+    namedRateStore(name).clear(),
+  );
+}
+
+// Anonymous/no-wallet support reporting (issue #405) — no wallet friction at
+// all, so creation gets its own materially tighter per-IP limiter: a clear
+// fraction (1/4) of SUPPORT_ACTION_LIMIT's 20/hour. Status lookup is
+// read-only but still bounded to blunt reference-code enumeration, even
+// though the ~8.2e14-value keyspace (31^10 codes, about 49.5 bits) already
+// makes guessing impractical.
+export const SUPPORT_ANONYMOUS_CREATE_LIMIT = 5;
+export const SUPPORT_REFERENCE_LOOKUP_LIMIT = 20;
+
+export function consumeSupportAnonymousCreateRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("support-anonymous-create"), ip, SUPPORT_ANONYMOUS_CREATE_LIMIT, SUPPORT_WINDOW_MS, now);
+}
+
+export function consumeSupportReferenceLookupRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("support-reference-lookup"), ip, SUPPORT_REFERENCE_LOOKUP_LIMIT, SUPPORT_WINDOW_MS, now);
 }
 
 /**
