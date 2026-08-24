@@ -13,6 +13,7 @@ import { AdminOperationsCostSection } from "@/components/admin-operations-cost-s
 import { AdminOutreachSection } from "@/components/admin-outreach-section";
 import { AdminPagesSection } from "@/components/admin-pages-section";
 import { AdminSiteDomainsSection } from "@/components/admin-site-domains-section";
+import { AdminSocialProjectSlotsSection } from "@/components/admin-social-project-slots-section";
 import { AdminStreetTeamSection } from "@/components/admin-street-team-section";
 import { AdminSubscribersSection } from "@/components/admin-subscribers-section";
 import { AdminSupportSection } from "@/components/admin-support-section";
@@ -33,6 +34,7 @@ type SectionId =
   | "issues"
   | "pages"
   | "subscribers"
+  | "social-project-slots"
   | "test-access"
   | "accounts"
   | "outreach"
@@ -49,6 +51,7 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "issues", label: "Issues" },
   { id: "pages", label: "Pages" },
   { id: "subscribers", label: "Subscribers" },
+  { id: "social-project-slots", label: "Project Slots" },
   { id: "test-access", label: "Test access" },
   { id: "accounts", label: "Accounts" },
   { id: "outreach", label: "Outreach" },
@@ -274,6 +277,7 @@ export function AdminDashboard() {
           </>
         ) : null}
         {activeSection === "subscribers" ? <AdminSubscribersSection /> : null}
+        {activeSection === "social-project-slots" ? <AdminSocialProjectSlotsSection /> : null}
         {activeSection === "test-access" ? <AdminTestAccessSection /> : null}
         {activeSection === "accounts" ? <AdminAccountsSection /> : null}
         {activeSection === "outreach" ? <AdminOutreachSection /> : null}

@@ -81,7 +81,7 @@ describe("authoriseSocialStudioRequest", () => {
         },
       ]),
     });
-    expect(result).toEqual({ status: "allowed", walletAddress: ACTIVE_WALLET.toLowerCase(), accessSource: "paid" });
+    expect(result).toEqual({ status: "allowed", walletAddress: ACTIVE_WALLET.toLowerCase(), accessSource: "paid", plan: "pro" });
   });
 
   it("returns allowed for a wallet with an active Pro Bundle subscription", async () => {
@@ -99,6 +99,7 @@ describe("authoriseSocialStudioRequest", () => {
       ]),
     });
     expect(result.status).toBe("allowed");
+    expect(result).toMatchObject({ plan: "pro-bundle" });
   });
 
   it("returns upsell for a bond_pro_site-only wallet — Social Studio is Pro/Pro Bundle only, not the bespoke-site tier", async () => {

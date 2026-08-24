@@ -72,4 +72,12 @@ describe("admin Subscribers section UI", () => {
     const component = await source("components/admin-subscribers-section.tsx");
     expect(component).toContain("No subscribers yet");
   });
+
+  it("shows active AI Social Studio project slots per wallet, read-only (issue #407)", async () => {
+    const component = await source("components/admin-subscribers-section.tsx");
+    expect(component).toContain("AI Social Studio project slots");
+    expect(component).toContain("row.socialProjectSlots");
+    expect(component).not.toContain('"PATCH"');
+    expect(component).not.toContain('"POST"');
+  });
 });

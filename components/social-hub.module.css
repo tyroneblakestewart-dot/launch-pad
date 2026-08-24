@@ -249,6 +249,76 @@
   font-weight: 800;
 }
 
+.slotUsageBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.slotUsageText {
+  color: #c6f53e;
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.slotUsageSwapButton {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: #f4f7f1;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.slotUsageConfirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.slotUsageConfirm span {
+  color: rgba(244, 247, 241, 0.75);
+  font-size: 12px;
+}
+
+.slotUsageConfirmButton,
+.slotUsageCancelButton {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.slotUsageConfirmButton {
+  border: 1px solid rgba(255, 119, 119, 0.4);
+  background: rgba(255, 119, 119, 0.12);
+  color: #ff9a9a;
+}
+
+.slotUsageCancelButton {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: rgba(244, 247, 241, 0.75);
+}
+
+.slotUsageConfirmButton:disabled,
+.slotUsageCancelButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .studioPanel {
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 26px;
@@ -1397,6 +1467,11 @@
   .projectPickerButton { width: 100%; justify-content: flex-start; }
   .projectPickerChevron { margin-left: auto; }
   .projectMenu { left: 0; right: auto; width: 100%; }
+  .slotUsageBar { flex-direction: column; align-items: flex-start; }
+  .slotUsageSwapButton { width: 100%; }
+  .slotUsageConfirm { flex-direction: column; align-items: stretch; width: 100%; }
+  .slotUsageConfirmButton,
+  .slotUsageCancelButton { width: 100%; }
   .studioPanel { border-radius: 18px; }
   .tabBar { top: 72px; padding: 6px 8px; }
   .panelBody { padding: 16px 14px 24px; }

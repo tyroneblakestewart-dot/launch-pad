@@ -9,6 +9,7 @@ import {
   isSocialStudioRequestOriginAllowed,
 } from "@/lib/server/api-protection";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
+import { authoriseSocialProjectSlot } from "@/lib/server/social-project-slot-entitlement";
 import { findDuplicateScheduledPost } from "@/lib/server/social-post-duplicate-detection";
 import { X_DRAFT_CHARACTER_LIMIT } from "@/lib/server/social-draft-pipeline";
 import { getSocialConnectionsStore, isSocialPlatform, type SocialPlatform } from "@/lib/server/social-connections-store";
@@ -17,6 +18,7 @@ import {
   getSocialScheduledPostsStore,
 } from "@/lib/server/social-scheduled-posts-store";
 import { authoriseSocialStudioAction, type AuthoriseSocialStudioActionResult } from "@/lib/server/social-studio-action-auth";
+import { authoriseSocialStudioRequest } from "@/lib/server/social-studio-entitlement";
 import { parseArtwork } from "@/lib/server/telegram";
 
 // Approve-first scheduled post queue (issue #335, Mode 1 "review & release").
@@ -91,6 +93,8 @@ export async function POST(request: Request) {
 
   const requestBody = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   const postBody = typeof requestBody?.body === "string" ? requestBody.body.trim() : "";
+  const projectId = requestBody?.projectId;
+  const displayName = requestBody?.displayName;
   const artworkDataUrlRaw = typeof requestBody?.artworkDataUrl === "string" ? requestBody.artworkDataUrl.trim() : "";
   const destinationsInput = Array.isArray(requestBody?.destinations) ? requestBody.destinations : [];
   const scheduledAtInput = typeof requestBody?.scheduledAt === "string" ? requestBody.scheduledAt.trim() : "";
@@ -128,6 +132,48 @@ export async function POST(request: Request) {
     signature,
   });
   if (authorisation.status !== "ok") return authFailureResponse(authorisation, headers);
+
+  // Project-slot billing enforcement (issue #407) — approving a post is a
+  // paid Pro/Pro Bundle feature just like the AI generation routes, but
+  // this route previously had no subscription check at all beyond a valid
+  // wallet signature. authoriseSocialStudioRequest re-checks the
+  // signature-verified wallet's plan; authoriseSocialProjectSlot then
+  // enforces the same per-plan active-project limit as the AI routes.
+  const planAuthorisation = await authoriseSocialStudioRequest(authorisation.walletAddress);
+  if (planAuthorisation.status === "invalid-wallet") {
+    return NextResponse.json({ error: planAuthorisation.message }, { status: 401, headers });
+  }
+  if (planAuthorisation.status === "unavailable") {
+    return NextResponse.json({ error: planAuthorisation.message }, { status: 503, headers });
+  }
+  if (planAuthorisation.status === "upsell") {
+    return NextResponse.json(
+      { error: planAuthorisation.message, code: "social-studio-plan-required", upsell: true },
+      { status: 403, headers },
+    );
+  }
+  const projectSlot = await authoriseSocialProjectSlot(
+    planAuthorisation,
+    { projectId, displayName },
+    { serviceKey: "social-posting" },
+  );
+  if (projectSlot.status === "invalid-project") {
+    return NextResponse.json({ error: projectSlot.message }, { status: 400, headers });
+  }
+  if (projectSlot.status === "limit-reached") {
+    return NextResponse.json(
+      {
+        error: projectSlot.message,
+        code: "social-studio-project-slot-limit",
+        activeCount: projectSlot.activeCount,
+        limit: projectSlot.limit,
+      },
+      { status: 403, headers },
+    );
+  }
+  if (projectSlot.status === "unavailable") {
+    return NextResponse.json({ error: projectSlot.message }, { status: 503, headers });
+  }
 
   const connectionsStore = getSocialConnectionsStore();
   const unavailableDestinations: SocialPlatform[] = [];

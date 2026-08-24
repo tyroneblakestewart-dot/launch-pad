@@ -2,12 +2,19 @@ import { getAddress } from "viem";
 import {
   type AdminSubscriberPayment,
   type AdminSubscriberRow,
+  type AdminSubscriberSocialProjectSlot,
   type AdminSubscriberTier,
   type AdminSubscribersSnapshot,
 } from "@/lib/admin-operations";
 import { subscriptionStatusAt } from "@/lib/subscription-lifecycle";
 import { getPostgresPool } from "@/lib/server/postgres";
 import { isTestAccessWallet } from "@/lib/server/test-access";
+
+export type SubscribersSocialProjectSlotQueryRow = {
+  project_id: string;
+  display_name: string;
+  registered_at: Date | string;
+};
 
 export type SubscribersPaymentQueryRow = {
   payment_tx_hash: string;
@@ -42,6 +49,7 @@ export type SubscribersQueryRow = {
   telegrams: Array<string | null> | null;
   has_bond_pro_site_payment: boolean | string | number | null;
   payment_history: SubscribersPaymentQueryRow[] | null;
+  social_project_slots: SubscribersSocialProjectSlotQueryRow[] | null;
 };
 
 export type SubscribersQuery = (
@@ -153,7 +161,22 @@ const SUBSCRIBERS_QUERY = `
         WHERE payment.wallet_address = COALESCE(sw.wallet_address, sub.wallet_address)
       ),
       '[]'::jsonb
-    ) AS payment_history
+    ) AS payment_history,
+    COALESCE(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'project_id', slot.project_id,
+            'display_name', slot.display_name,
+            'registered_at', slot.registered_at
+          ) ORDER BY slot.registered_at ASC
+        )
+        FROM social_project_slots slot
+        WHERE LOWER(slot.wallet_address) = LOWER(COALESCE(sw.wallet_address, sub.wallet_address))
+          AND slot.released_at IS NULL
+      ),
+      '[]'::jsonb
+    ) AS social_project_slots
   FROM site_wallets sw
   FULL OUTER JOIN subscriptions sub ON sub.wallet_address = sw.wallet_address
   ORDER BY COALESCE(sw.wallet_address, sub.wallet_address)
@@ -202,6 +225,14 @@ function paymentFromQueryRow(row: SubscribersPaymentQueryRow): AdminSubscriberPa
     paidFrom: asIso(row.paid_from),
     paidUntil: asIso(row.paid_until),
     confirmedAt: asIso(row.confirmed_at)!,
+  };
+}
+
+function socialProjectSlotFromQueryRow(row: SubscribersSocialProjectSlotQueryRow): AdminSubscriberSocialProjectSlot {
+  return {
+    projectId: row.project_id,
+    displayName: row.display_name,
+    registeredAt: asIso(row.registered_at)!,
   };
 }
 
@@ -263,6 +294,7 @@ function rowFromQueryRow(row: SubscribersQueryRow, now: Date): AdminSubscriberRo
     lastPaymentAmountEth: row.amount_eth || null,
     lastPaymentAt: asIso(row.created_at),
     paymentHistory: (row.payment_history || []).map(paymentFromQueryRow),
+    socialProjectSlots: (row.social_project_slots || []).map(socialProjectSlotFromQueryRow),
   };
 }
 
