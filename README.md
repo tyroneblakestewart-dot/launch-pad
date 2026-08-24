@@ -158,7 +158,11 @@ your target chain directly from Uniswap's own official developer docs
 (developers.uniswap.org)**, not from a chat message, issue, or PR
 description — addresses copied secondhand have already been caught
 containing transcription errors during this project's review process (see
-issue #227). As of that issue, the following
+issue #227). **This does not exist for Robinhood Chain Testnet (46630)** —
+Uniswap's docs only document Robinhood Chain **mainnet** (4663), listed
+below; see "Uniswap V3 testnet deployment" further down for the testnet-only
+stand-in stack this repo deploys itself (issue #414) and the addresses that
+section's script prints. As of issue #227, the following
 Uniswap V3 addresses were verified against Uniswap's docs for **Robinhood
 Chain mainnet (chain ID 4663)** — note this repo's `lib/chains.ts` only
 configures Robinhood Chain **Testnet** (`46630`) today and deliberately
@@ -234,6 +238,108 @@ exact remaining amount from `remainingNativeToGraduate()`.
 Once a curve is deployed, set `NEXT_PUBLIC_HOODLUMS_BONDING_CURVE_ADDRESSES`
 (see "Live graduation status" above) to see its progress and graduation
 state on `/bonding-curve` — neither script does this automatically.
+
+### Uniswap V3 testnet deployment
+
+Milestone A's graduation path (`HoodlumsTestBondingCurve._graduate()`) calls
+a live Uniswap V3 `NonfungiblePositionManager`. As the caveat above says,
+Uniswap's official docs and Robinhood's own chain docs only document a
+Uniswap V3 deployment for Robinhood Chain **mainnet** (4663) — there is no
+documented official Uniswap V3 or WETH9 deployment on Robinhood Chain
+**Testnet** (46630). Without one, the final graduation buy in the deployment
+drill or the curve launch pipeline reverts. `scripts/deploy-uniswap-v3-testnet.ts`
+(issue #414) deploys a testnet-only stand-in stack — canonical, unmodified
+Uniswap contracts, never hand-edited — so that drill can complete:
+
+1. **WETH9** — the canonical WETH9 bytecode, loaded from
+   `@uniswap/v2-periphery`'s published build artifact (the same canonical
+   WETH9 Uniswap itself has reused, unmodified, across every deployment
+   since 2018).
+2. **UniswapV3Factory** — Uniswap V3 Core's canonical factory, loaded from
+   `@uniswap/v3-core`'s published Hardhat artifact.
+3. **NFTDescriptor** (library) and **NonfungibleTokenPositionDescriptor**,
+   then **NonfungiblePositionManager** pointed at the factory and WETH9
+   above — all three from Uniswap V3 Periphery's published Hardhat
+   artifacts (`@uniswap/v3-periphery`).
+
+Every contract is deployed from Uniswap's own compiled bytecode read
+directly out of the installed npm package (`scripts/deploy-uniswap-v3-testnet.ts`'s
+`loadExternalArtifact`) — this repo never recompiles or hand-edits any of
+these sources itself. `lib/uniswap-v3-artifact-linking.ts` holds the one
+piece of real logic involved (patching solc's library-placeholder bytes to
+link NFTDescriptor into the token descriptor, and encoding the native
+currency label), kept dependency-free so it's unit tested directly in
+`tests/uniswap-v3-artifact-linking.test.ts`.
+
+**Package versions.** `package.json` pins `@uniswap/v2-periphery@1.1.0-beta.0`,
+`@uniswap/v3-core@1.0.0`, and `@uniswap/v3-periphery@1.4.4` — the versions
+believed to match Uniswap's own mainnet deployments. These were pinned from
+memory while writing this script, in a sandboxed session with no npm
+registry access to run `npm view` or to `npm install` and inspect the actual
+downloaded artifact files; they were **not verified against the live npm
+registry**. Before running this script for real: confirm each package's
+latest/intended version yourself, run `npm install`, open each artifact file
+`scripts/deploy-uniswap-v3-testnet.ts` points at (the exact paths are
+constants near the top of that file) and confirm it has the `abi`/`bytecode`
+(and, for the token descriptor, `linkReferences`) fields the script expects
+— `loadExternalArtifact` throws a clear error naming the problem if a path
+is wrong or a package version's artifact layout has changed, rather than
+deploying something silently broken.
+
+Deploy once per chain:
+
+```bash
+npm install
+npm run deploy:uniswap-v3:robinhood
+```
+
+Required environment variables (set locally, e.g. in `.env.local`; never
+commit real values):
+
+| Variable | Purpose |
+| --- | --- |
+| `ROBINHOOD_TESTNET_RPC_URL` | RPC endpoint used by the Hardhat network. |
+| `HOODLUMS_UNISWAP_V3_DEPLOYER_PRIVATE_KEY` | Private key of the funded testnet-only account that sends every deployment transaction. Read only by Hardhat at deploy time; never logged, stored, or committed. |
+| `HOODLUMS_UNISWAP_V3_NATIVE_CURRENCY_LABEL` (optional, default `ETH`) | The `NonfungibleTokenPositionDescriptor` native-currency display label (bytes32-encoded, 31 ASCII characters max). |
+
+After deploying, the script itself reads back `factory.owner()` (must equal
+the deployer), `positionManager.factory()` (must equal the deployed
+factory), and `positionManager.WETH9()` (must equal the deployed WETH9), and
+aborts loudly on any mismatch instead of printing addresses that don't
+actually work together. On success it prints the three addresses in exactly
+the env-var format the deployment drill and curve launch pipeline sections
+above read:
+
+```
+HOODLUMS_BONDING_CURVE_POSITION_MANAGER_ADDRESS=0x...
+HOODLUMS_BONDING_CURVE_UNISWAP_V3_FACTORY_ADDRESS=0x...
+HOODLUMS_BONDING_CURVE_WETH9_ADDRESS=0x...
+```
+
+**These are OUR testnet-only deployments, not Uniswap's** — they stand in
+for the official contracts Robinhood Chain Testnet doesn't have. Replace
+them with the official addresses on any chain that documents them (Robinhood
+Chain mainnet, 4663, already does — see the table above); never reuse them
+outside chain 46630.
+
+**Manual smoke test (do this before relying on the deployment).** The
+read-back checks above only prove the three contracts are wired together —
+they don't prove `mint()` actually succeeds on this live testnet. Before the
+pipeline ceremony depends on it, prove a real mint works end to end:
+
+1. Deploy a throwaway token, e.g. `npm run deploy:factory:robinhood` (or any
+   `/testnet` launch) — you only need an ERC-20 balance, it doesn't need to
+   be a real launch.
+2. Using the printed `UniswapV3Factory`/`NonfungiblePositionManager`
+   addresses, either write a short one-off viem/ethers script or use `cast`
+   (Foundry) to: `factory.createPool(token, weth9, 3000)` (or let
+   `positionManager.createAndInitializePoolIfNecessary` do it in one call
+   with an initial `sqrtPriceX96`), then `weth9.deposit{value: ...}()`,
+   `approve` both the token and WETH9 to the position manager, and call
+   `positionManager.mint(...)` with a small full-range-ish position.
+3. Confirm the mint transaction succeeds and returns a non-zero `tokenId` —
+   if it reverts, do not point `HOODLUMS_BONDING_CURVE_POSITION_MANAGER_ADDRESS`
+   at this deployment; something in the stack above is mismatched.
 
 ### Curve launch pipeline deployment
 

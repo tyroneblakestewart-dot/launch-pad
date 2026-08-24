@@ -17,6 +17,7 @@
     "deploy:bonding-curve:robinhood": "hardhat run scripts/deploy-hoodlums-bonding-curve.ts --network robinhoodTestnetBondingCurveDeploy",
     "graduate:bonding-curve:robinhood": "hardhat run scripts/graduate-hoodlums-bonding-curve.ts --network robinhoodTestnetBondingCurveCreator",
     "deploy:curve-launch-pipeline:robinhood": "hardhat run scripts/deploy-hoodlums-curve-launch-pipeline.ts --network robinhoodTestnetCurveLaunchPipelineDeploy",
+    "deploy:uniswap-v3:robinhood": "hardhat run scripts/deploy-uniswap-v3-testnet.ts --network robinhoodTestnetUniswapV3Deploy",
     "db:migrate": "node scripts/migrate-database.mjs"
   },
   "dependencies": {
@@ -30,6 +31,9 @@
   },
   "devDependencies": {
     "@openzeppelin/contracts": "5.6.1",
+    "@uniswap/v2-periphery": "1.1.0-beta.0",
+    "@uniswap/v3-core": "1.0.0",
+    "@uniswap/v3-periphery": "1.4.4",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.20.0",
     "@types/react": "^19.0.0",
