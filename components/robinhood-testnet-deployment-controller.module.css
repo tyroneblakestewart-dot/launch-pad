@@ -196,6 +196,13 @@
   font: 700 9px "IBM Plex Mono", monospace;
 }
 
+.recordWarning {
+  margin: 4px 0 0;
+  color: #f1cf55;
+  font: 10px/1.6 "IBM Plex Mono", monospace;
+  overflow-wrap: anywhere;
+}
+
 .panel footer {
   color: #68736a;
   font: 8px/1.5 "IBM Plex Mono", monospace;

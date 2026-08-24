@@ -591,6 +591,60 @@
   text-align: center;
 }
 
+.feeBreakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 2px 0;
+}
+
+.feeBreakdownRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 500 10.5px/1.5 "JetBrains Mono", monospace;
+  color: #929693;
+}
+
+.feeBreakdownRow b {
+  color: #f4f7f1;
+}
+
+.feePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.feePanelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.feeClaimValue {
+  font-family: "Archivo Black", sans-serif;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+  color: #c6f53e;
+}
+
+.feeWithdrawButton {
+  cursor: pointer;
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 18px;
+  background: linear-gradient(135deg, #c6f53e, #91f0b6);
+  color: #061006;
+  font: 900 12px/1 Archivo, sans-serif;
+}
+
+.feeWithdrawButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .terminalFallback {
   display: flex;
   flex-direction: column;

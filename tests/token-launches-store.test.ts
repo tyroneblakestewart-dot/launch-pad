@@ -59,6 +59,10 @@ function createMemoryTokenLaunchesStore(): TokenLaunchesStore {
       );
     },
 
+    async findByTokenAddress(chainId: number, tokenAddress: string) {
+      return [...launches.values()].find((l) => key(l.chainId, l.tokenAddress) === key(chainId, tokenAddress)) ?? null;
+    },
+
     async markGraduated(chainId: number, tokenAddress: string, graduatedAt: Date) {
       const found = [...launches.values()].find((l) => key(l.chainId, l.tokenAddress) === key(chainId, tokenAddress));
       if (!found || found.graduated) return;
@@ -120,6 +124,14 @@ describe("TokenLaunchesStore contract (via in-memory double)", () => {
     expect(await store.list("bonding", 10)).toHaveLength(1);
   });
 
+  it("finds a launch by (chainId, tokenAddress) case-insensitively", async () => {
+    const store = createMemoryTokenLaunchesStore();
+    await store.record(SAMPLE);
+    const found = await store.findByTokenAddress(SAMPLE.chainId, SAMPLE.tokenAddress.toUpperCase());
+    expect(found?.tokenAddress).toBe(SAMPLE.tokenAddress);
+    expect(await store.findByTokenAddress(SAMPLE.chainId, "0x9999999999999999999999999999999999999")).toBeNull();
+  });
+
   it("markGraduated is a no-op once already graduated", async () => {
     const store = createMemoryTokenLaunchesStore();
     await store.record(SAMPLE);
@@ -150,6 +162,7 @@ describe("getTokenLaunchesStore (unconfigured fallback)", () => {
       const store = getTokenLaunchesStore();
       expect(await store.list("all", 10)).toEqual([]);
       expect(await store.listForAdmin()).toEqual([]);
+      expect(await store.findByTokenAddress(46630, SAMPLE.tokenAddress)).toBeNull();
       expect(await store.countLast24h()).toBe(0);
       expect(await store.tableExists()).toBe(false);
     } finally {

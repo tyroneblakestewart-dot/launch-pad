@@ -10,6 +10,8 @@ import {
 } from "@/lib/server/api-protection";
 import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
 import { runAfterResponse } from "@/lib/server/ai-operation-cost-store";
+import { getCurveProgress } from "@/lib/server/curve-progress-cache";
+import { listLiveGeneratedSites } from "@/lib/server/public-generated-sites";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import {
   authoriseTokenLaunchAction,
@@ -21,17 +23,19 @@ import {
   TokenLaunchesStoreUnavailableError,
   getTokenLaunchesStore,
   type ListTokenLaunchesFilter,
+  type TokenLaunch,
 } from "@/lib/server/token-launches-store";
+import type { TokenLaunchListItem } from "@/lib/token-launch-view";
 
 // Records and lists on-chain token launches (Milestone A, issue #409 Part
-// 2). Recording is wallet-signed (purpose "token-launch:record") AND
-// independently reconciled against a live chain read
+// 2 / #412 Part 1). Recording is wallet-signed (purpose "token-launch:record")
+// AND independently reconciled against a live chain read
 // (lib/server/token-launch-reconciliation.ts) before any row is inserted —
 // the signature establishes which wallet is asking, the chain read is what
-// actually proves the launch happened. Listing is a plain public GET, same
-// shape as the homepage's existing published_sites read: this is the future
-// source of truth for the HOODLUMS TOKENS grid (issue #409 Part 2), though
-// wiring the grid itself is left to a follow-up PR.
+// actually proves the launch happened. Listing is a plain public GET that
+// is the HOODLUMS TOKENS grid's source of truth (issue #412 Part 1): each
+// non-graduated launch is enriched with a cached live graduation-progress
+// read and a linked published site's slug, if any.
 
 export const runtime = "nodejs";
 
@@ -79,6 +83,56 @@ function parseFilter(raw: string | null): ListTokenLaunchesFilter {
   return "all";
 }
 
+type GraduationSync = { chainId: number; tokenAddress: string; tokenName: string };
+
+/**
+ * Attaches live on-chain graduation progress (issue #412 Part 1: "real curve
+ * progress % ... server-side read with caching") and, when one exists, the
+ * slug of a linked published site, to each launch. Reads go through
+ * lib/server/curve-progress-cache.ts's TTL cache so a burst of homepage
+ * polls never becomes a burst of RPC calls. A launch whose live read reports
+ * graduation ahead of the DB row is returned as graduated in this response
+ * and queued for an opportunistic `markGraduated` write — the migration's
+ * own comment names this read API as the intended sync point, not a
+ * separate cron job.
+ */
+async function enrichLaunchesWithProgress(
+  launches: TokenLaunch[],
+): Promise<{ enriched: TokenLaunchListItem[]; graduationsToSync: GraduationSync[] }> {
+  const sites = await listLiveGeneratedSites().catch(() => []);
+  const siteSlugByAddress = new Map(sites.map((site) => [site.contractAddress.toLowerCase(), site.slug]));
+  const graduationsToSync: GraduationSync[] = [];
+
+  const enriched = await Promise.all(
+    launches.map(async (launch): Promise<TokenLaunchListItem> => {
+      const siteSlug = siteSlugByAddress.get(launch.tokenAddress.toLowerCase()) ?? null;
+
+      if (launch.graduated) {
+        return { ...launch, progressBps: "10000", siteSlug };
+      }
+
+      const status = await getCurveProgress(launch.chainId, launch.curveAddress).catch(() => null);
+      if (!status) return { ...launch, siteSlug };
+
+      const nowGraduated = status.state === "graduated";
+      if (nowGraduated) {
+        graduationsToSync.push({ chainId: launch.chainId, tokenAddress: launch.tokenAddress, tokenName: launch.tokenName });
+      }
+
+      return {
+        ...launch,
+        graduated: nowGraduated,
+        progressBps: status.progressBps.toString(),
+        raisedWei: status.raisedWei.toString(),
+        liquidityPool: status.liquidityPool,
+        siteSlug,
+      };
+    }),
+  );
+
+  return { enriched, graduationsToSync };
+}
+
 export async function GET(request: Request) {
   const rate = consumeTokenLaunchReadRateLimit(getClientIp(request));
   const headers = readHeaders(rate);
@@ -96,7 +150,28 @@ export async function GET(request: Request) {
 
   try {
     const launches = await getTokenLaunchesStore().list(filter, limit);
-    return NextResponse.json({ launches }, { status: 200, headers });
+    const { enriched, graduationsToSync } = await enrichLaunchesWithProgress(launches);
+
+    if (graduationsToSync.length > 0) {
+      runAfterResponse(async () => {
+        await Promise.all(
+          graduationsToSync.map(({ chainId, tokenAddress, tokenName }) =>
+            getTokenLaunchesStore()
+              .markGraduated(chainId, tokenAddress, new Date())
+              .then(() =>
+                recordAdminActivityBestEffort({
+                  kind: "token-graduated",
+                  serviceKey: "token-launches",
+                  message: `${tokenName} (${tokenAddress}) graduated.`,
+                }),
+              )
+              .catch((error) => console.error("Opportunistic graduation sync failed.", error)),
+          ),
+        );
+      });
+    }
+
+    return NextResponse.json({ launches: enriched }, { status: 200, headers });
   } catch (error) {
     if (error instanceof TokenLaunchesStoreUnavailableError) return storageUnavailableResponse(headers);
     console.error("Token launch listing failed unexpectedly.", error instanceof Error ? (error.stack ?? error.message) : error);

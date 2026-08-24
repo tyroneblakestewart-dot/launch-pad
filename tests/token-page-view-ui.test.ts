@@ -87,6 +87,47 @@ describe("token page left column (identity + swap panel)", () => {
     expect(component).toContain('method: "eth_requestAccounts"');
     expect(component).toContain('method: "wallet_switchEthereumChain"');
   });
+
+  it("shows an honest 1% fee breakdown before every signature, from pure math for buys and an on-chain read for sells (issue #412 Part 2)", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain(
+      'import { buyNetFromGross, grossNativeInForExactNet, tradingFee } from "@/lib/bonding-curve-fee-math";',
+    );
+    expect(component).toContain("tradingFee(parseEther(amount))");
+    expect(component).toContain('functionName: "quoteSellFee"');
+    expect(component).toContain("Trading fee (1%)");
+  });
+
+  it("reads remainingNativeToGraduate() and displays it, and caps the buy MAX preset at the graduation target", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain('functionName: "remainingNativeToGraduate"');
+    expect(component).toContain("ETH remaining to graduation");
+    expect(component).toContain("grossNativeInForExactNet(curveView.remainingToGraduateWei)");
+  });
+
+  it("blocks submitting a buy that would exceed the graduation target instead of letting it revert", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain("buyNetFromGross(grossWei)");
+    expect(component).toContain("netIn > curveView.remainingToGraduateWei");
+  });
+
+  it("replaces the swap form with an honest trading-closed panel once the curve reports graduated", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain('curveView.kind === "ready" && curveView.graduation.state !== "graduated" ?');
+    expect(component).toContain('curveView.kind === "ready" && curveView.graduation.state === "graduated" ?');
+    expect(component).toContain("Trading closed");
+    expect(component).toContain("View liquidity pool");
+  });
+
+  it("shows a creator fee panel with claimable balance and a withdraw button only for the confirmed on-chain creator", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain('functionName: "creator"');
+    expect(component).toContain('functionName: "claimableFees"');
+    expect(component).toContain('functionName: "withdrawFees"');
+    expect(component).toContain("account.toLowerCase() === curveView.creator.toLowerCase()");
+    expect(component).toContain("{isCreator && curveView.kind === \"ready\" && (");
+    expect(component).toContain("Withdraw fees");
+  });
 });
 
 describe("token page centre column (chart + activity)", () => {

@@ -48,6 +48,8 @@ export interface TokenLaunchesStore {
   record(input: RecordTokenLaunchInput): Promise<TokenLaunch>;
   list(filter: ListTokenLaunchesFilter, limit: number): Promise<TokenLaunch[]>;
   listForAdmin(): Promise<TokenLaunch[]>;
+  /** Case-insensitive lookup of the recorded launch for a given (chainId, tokenAddress), or null if none was recorded — used by the token page to find the curve a specific launch deployed instead of trusting a single chain-wide env var (issue #412 Part 2). */
+  findByTokenAddress(chainId: number, tokenAddress: string): Promise<TokenLaunch | null>;
   /** Marks a launch graduated. A no-op (not an error) once already graduated, so an opportunistic re-check from the read API never double-writes. */
   markGraduated(chainId: number, tokenAddress: string, graduatedAt: Date): Promise<void>;
   countLast24h(): Promise<number>;
@@ -70,6 +72,9 @@ const unconfiguredStore: TokenLaunchesStore = {
   },
   async listForAdmin() {
     return [];
+  },
+  async findByTokenAddress() {
+    return null;
   },
   async markGraduated() {
     // Best-effort refresh; nothing to do without storage configured.
@@ -198,6 +203,15 @@ export function createPostgresTokenLaunchesStore(databaseUrl: string): TokenLaun
         [MAX_ADMIN_TOKEN_LAUNCHES],
       );
       return result.rows.map(launchFromRow);
+    },
+
+    async findByTokenAddress(chainId, tokenAddress) {
+      const result = await pool.query<LaunchRow>(
+        `SELECT ${LAUNCH_COLUMNS} FROM token_launches WHERE chain_id = $1 AND LOWER(token_address) = LOWER($2) LIMIT 1`,
+        [chainId, tokenAddress],
+      );
+      const row = result.rows[0];
+      return row ? launchFromRow(row) : null;
     },
 
     async markGraduated(chainId, tokenAddress, graduatedAt) {

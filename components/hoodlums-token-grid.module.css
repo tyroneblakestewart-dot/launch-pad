@@ -72,6 +72,8 @@
   border: 1px solid rgba(188, 231, 89, 0.1);
   border-radius: 12px;
   background: #0d120e;
+  color: inherit;
+  text-decoration: none;
 }
 
 .art {

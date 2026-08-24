@@ -27,6 +27,7 @@ import {
   SOCIAL_VOICE_PROFILE_LIMIT,
 } from "@/lib/server/api-protection";
 import { getAdminOperationsStore } from "@/lib/server/admin-operations-store";
+import { getCurveProgressCacheHealth, type CurveProgressCacheHealth } from "@/lib/server/curve-progress-cache";
 import { getPostgresPool } from "@/lib/server/postgres";
 import { getSocialXCostStore, readXApiSendCostUsd, readXMonthlyCostCapUsd, type SocialXCostStore } from "@/lib/server/social-x-cost-store";
 import { getTokenLaunchesStore } from "@/lib/server/token-launches-store";
@@ -1755,7 +1756,49 @@ export type TokenLaunchesPipelineDeps = {
   env?: Record<string, string | undefined>;
   getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
   now?: Date;
+  /** Overridable for tests; defaults to lib/server/curve-progress-cache.ts's real cache health. */
+  readCurveProgressCacheHealth?: (now?: number) => CurveProgressCacheHealth;
 };
+
+/**
+ * Reports on lib/server/curve-progress-cache.ts's own health (issue #412
+ * rule 10: "curve-progress-read stage (RPC reachable, cache age)") rather
+ * than duplicating the general RPC-reachability check the "contracts"
+ * pipeline's rpc-reachable stage already covers. Amber until the cache has
+ * ever been warmed — it only warms lazily, on GET /api/token-launches's
+ * first live progress read, so a freshly started server has nothing to
+ * report yet.
+ */
+function curveProgressReadStage(
+  readHealth: (now?: number) => CurveProgressCacheHealth,
+  now: number,
+): AdminPipelineStage {
+  const health = readHealth(now);
+  if (health.lastReadAt === null) {
+    return stage(
+      "curve-progress-read",
+      "Curve progress read call",
+      "amber",
+      "No bonding-curve progress read has been attempted yet — the cache warms on the homepage grid's first request.",
+    );
+  }
+
+  const ageSeconds = Math.max(0, Math.round((health.ageMs ?? 0) / 1000));
+  if (health.lastReadOk) {
+    return stage(
+      "curve-progress-read",
+      "Curve progress read call",
+      "green",
+      `Last successful curve progress read was ${ageSeconds}s ago.`,
+    );
+  }
+  return stage(
+    "curve-progress-read",
+    "Curve progress read call",
+    "red",
+    `The last curve progress read attempt (${ageSeconds}s ago) failed.`,
+  );
+}
 
 /**
  * Confirms HoodlumsCurveLaunchPipeline is configured for Robinhood Chain
@@ -1802,6 +1845,8 @@ export async function buildTokenLaunchesPipeline(
 
   const isolationStage = await chatIsolationStage("token-launches", getServiceControl);
   const configStage = curveDeploymentConfigStage(env);
+  const readCurveProgressCacheHealth = deps.readCurveProgressCacheHealth ?? getCurveProgressCacheHealth;
+  const progressStage = curveProgressReadStage(readCurveProgressCacheHealth, Date.now());
 
   const databaseUrl = env.DATABASE_URL?.trim() ?? "";
   if (!databaseUrl) {
@@ -1814,6 +1859,7 @@ export async function buildTokenLaunchesPipeline(
         configStage,
         stage("launches-table", "token_launches table exists", "amber", message),
         stage("launches-24h", "Launches in the last 24h", "amber", message),
+        progressStage,
       ],
     };
   }
@@ -1851,7 +1897,7 @@ export async function buildTokenLaunchesPipeline(
   return {
     id: "token-launches",
     label: "Token launches",
-    stages: [isolationStage, configStage, tableExistsStage, launches24hStage],
+    stages: [isolationStage, configStage, tableExistsStage, launches24hStage, progressStage],
   };
 }
 
