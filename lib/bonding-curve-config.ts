@@ -22,14 +22,34 @@ export const HOODLUMS_BONDING_CURVE_READ_ABI = parseAbi([
  * tests/bonding-curve-config.test.ts). Used by the token page's swap panel
  * (issue #225) to confirm which token a configured curve trades
  * (`token()`), quote a trade before submitting it, and submit the wallet-
- * signed buy/sell itself.
+ * signed buy/sell itself. `quoteSellFee` and `remainingNativeToGraduate`
+ * were added for issue #412 Part 2's honest fee breakdown and graduation
+ * clamp — a sell's fee depends on the curve's current virtual reserves
+ * (not something the client can derive from `quoteSell`'s net-of-fee
+ * output alone), so it's read directly rather than re-derived client-side;
+ * a buy's fee is a pure function of its gross input and is instead computed
+ * with lib/bonding-curve-fee-math.ts's `tradingFee()`, with no extra call.
  */
 export const HOODLUMS_BONDING_CURVE_TRADE_ABI = parseAbi([
   "function token() view returns (address)",
   "function quoteBuy(uint256 grossNativeIn) view returns (uint256 tokensOut)",
   "function quoteSell(uint256 tokensIn) view returns (uint256 nativeOut)",
+  "function quoteSellFee(uint256 tokensIn) view returns (uint256)",
+  "function remainingNativeToGraduate() view returns (uint256)",
   "function buy(uint256 minTokensOut, uint256 deadline) payable returns (uint256 tokensOut)",
   "function sell(uint256 tokensIn, uint256 minNativeOut, uint256 deadline) returns (uint256 nativeOut)",
+]);
+
+/**
+ * Fee-claim slice of the contract, kept separate from the trade ABI above
+ * since it's used by a distinct piece of UI — the creator fee panel (issue
+ * #412 Part 2) — gated on the connected wallet being the curve's creator,
+ * not on trading state.
+ */
+export const HOODLUMS_BONDING_CURVE_FEES_ABI = parseAbi([
+  "function creator() view returns (address)",
+  "function claimableFees(address recipient) view returns (uint256 amount)",
+  "function withdrawFees() returns (uint256 amount)",
 ]);
 
 /**

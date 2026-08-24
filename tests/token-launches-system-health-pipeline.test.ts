@@ -39,6 +39,9 @@ function fakeStore(overrides: Partial<TokenLaunchesStore> = {}): TokenLaunchesSt
     async listForAdmin() {
       return [];
     },
+    async findByTokenAddress() {
+      return null;
+    },
     async markGraduated() {},
     async countLast24h() {
       return 0;
@@ -117,5 +120,34 @@ describe("buildTokenLaunchesPipeline", () => {
       getServiceControl: async () => activeControl({ isolated: true, reason: "maintenance" }),
     });
     expect(stageById(pipeline, "endpoint-reachable")).toMatchObject({ status: "amber" });
+  });
+
+  it("reports curve-progress-read amber when the cache has never been warmed", async () => {
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: {},
+      getServiceControl: async () => activeControl(),
+      readCurveProgressCacheHealth: () => ({ lastReadAt: null, lastReadOk: null, ageMs: null }),
+    });
+    expect(stageById(pipeline, "curve-progress-read")).toMatchObject({ status: "amber" });
+  });
+
+  it("reports curve-progress-read green with the cache age after a successful read", async () => {
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: {},
+      getServiceControl: async () => activeControl(),
+      readCurveProgressCacheHealth: () => ({ lastReadAt: 1000, lastReadOk: true, ageMs: 5000 }),
+    });
+    const stage = stageById(pipeline, "curve-progress-read");
+    expect(stage.status).toBe("green");
+    expect(stage.message).toContain("5s ago");
+  });
+
+  it("reports curve-progress-read red after a failed read", async () => {
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: { DATABASE_URL: "postgres://test" },
+      getServiceControl: async () => activeControl(),
+      readCurveProgressCacheHealth: () => ({ lastReadAt: 1000, lastReadOk: false, ageMs: 3000 }),
+    });
+    expect(stageById(pipeline, "curve-progress-read")).toMatchObject({ status: "red" });
   });
 });

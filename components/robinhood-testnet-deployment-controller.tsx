@@ -7,14 +7,22 @@ import {
   createWalletClient,
   custom,
   defineChain,
+  parseEventLogs,
   type Address,
   type Hash,
 } from "viem";
+import { ERC20_MIN_ABI } from "@/lib/bonding-curve-config";
 import {
   ROBINHOOD_TESTNET,
   ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL,
   ROBINHOOD_TESTNET_CHAIN_ID_HEX,
 } from "@/lib/chains";
+import {
+  getCurveLaunchPipelineAddress,
+  HOODLUMS_BONDING_CURVE_FUND_ABI,
+  HOODLUMS_CURVE_LAUNCH_PIPELINE_ABI,
+  resolveCurveLaunchParams,
+} from "@/lib/curve-launch-pipeline-config";
 import {
   FIXED_SUPPLY_TOKEN_ABI,
   FIXED_SUPPLY_TOKEN_BYTECODE,
@@ -24,6 +32,7 @@ import {
   parseStoredAccountWallet,
 } from "@/lib/account-wallet-state";
 import { describeWalletMismatch } from "@/lib/social-studio-queue";
+import { notifyTokenLaunchCompleted } from "@/lib/token-launch-events";
 import type { TokenProject } from "@/lib/types";
 import styles from "./robinhood-testnet-deployment-controller.module.css";
 
@@ -43,6 +52,9 @@ type BrowserWindow = Window & {
 type DeploymentResult = {
   contractAddress: Address;
   transactionHash: Hash;
+  curveAddress?: Address;
+  curveFunded?: boolean;
+  recordWarning?: string;
 };
 
 type WalletMismatch = {
@@ -261,6 +273,174 @@ export function RobinhoodTestnetDeploymentController() {
     setStatus("Continuing — the token will belong to the wallet app's active account.");
   }
 
+  /**
+   * Best-effort: tells the server about a just-completed curve-backed launch
+   * so the homepage grid (issue #412 Part 1) can show it without a manual
+   * refresh. Wallet-signed, then independently reconciled against a live
+   * chain read server-side before any row is stored. Mirrors
+   * components/testnet-launcher.tsx's own recordTokenLaunch exactly — kept
+   * as a second, independently testable copy rather than a shared import so
+   * that file's own locked-down source-assertion tests
+   * (tests/testnet-launcher-curve-pipeline.test.ts) are never put at risk by
+   * a refactor here.
+   */
+  async function recordTokenLaunch(
+    walletClient: ReturnType<typeof createWalletClient>,
+    account: Address,
+    launch: {
+      tokenAddress: Address;
+      curveAddress: Address;
+      tokenName: string;
+      ticker: string;
+      decimals: number;
+      wholeTokenSupply: string;
+      graduationTargetWei: bigint;
+    },
+  ): Promise<void> {
+    const walletChainId = await walletClient.getChainId();
+    const payload = {
+      chainId: String(robinhoodTestnet.id),
+      tokenAddress: launch.tokenAddress,
+      curveAddress: launch.curveAddress,
+      tokenName: launch.tokenName,
+      ticker: launch.ticker,
+      decimals: String(launch.decimals),
+      wholeTokenSupply: launch.wholeTokenSupply,
+      graduationTargetWei: launch.graduationTargetWei.toString(),
+    };
+
+    const challengeResponse = await fetch("/api/token-launches/challenge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        walletAddress: account,
+        walletChainId,
+        purpose: "token-launch:record",
+        payload,
+      }),
+    });
+    if (!challengeResponse.ok) throw new Error("Could not start the launch recording request.");
+    const challenge = (await challengeResponse.json()) as { challengeId: string; nonce: string; message: string };
+
+    const signature = await walletClient.signMessage({ account, message: challenge.message });
+
+    const recordResponse = await fetch("/api/token-launches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...payload,
+        challengeId: challenge.challengeId,
+        nonce: challenge.nonce,
+        signature,
+      }),
+    });
+    if (!recordResponse.ok) {
+      const error = (await recordResponse.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(error?.error || "The launch could not be recorded for the homepage.");
+    }
+
+    notifyTokenLaunchCompleted({ tokenAddress: launch.tokenAddress, chainId: walletChainId });
+  }
+
+  /**
+   * Deploys a token AND its bonding curve via HoodlumsCurveLaunchPipeline
+   * (Milestone A, issue #409 Part 1's named follow-up, closed by issue
+   * #412 Part 1: "the studio's launch modal now routes through PR A's
+   * pipeline too"), chaining the three wallet signatures
+   * components/testnet-launcher.tsx already established: deploy, approve,
+   * fundCurve. Falls back to the plain FixedSupplyMemeToken deploy below
+   * when no pipeline is configured for the connected chain.
+   */
+  async function deployWithCurvePipeline(
+    walletClient: ReturnType<typeof createWalletClient>,
+    publicClient: ReturnType<typeof createPublicClient>,
+    account: Address,
+    pipelineAddress: Address,
+    currentProject: TokenProject,
+  ): Promise<DeploymentResult> {
+    const curveParams = resolveCurveLaunchParams(currentProject.decimals);
+
+    setStatus("Step 1 of 3 — deploying token + curve. Check your wallet…");
+    const launchHash = await walletClient.writeContract({
+      account,
+      chain: robinhoodTestnet,
+      address: pipelineAddress,
+      abi: HOODLUMS_CURVE_LAUNCH_PIPELINE_ABI,
+      functionName: "launchTokenWithCurve",
+      args: [
+        currentProject.name.trim(),
+        currentProject.ticker.trim().toUpperCase(),
+        BigInt(currentProject.supply),
+        currentProject.decimals,
+        curveParams.virtualTokenReserveRaw,
+        curveParams.virtualEthReserveWei,
+        curveParams.graduationTargetWei,
+      ],
+    });
+    setStatus(`Step 1 of 3 submitted: ${shortAddress(launchHash)}`);
+    const launchReceipt = await publicClient.waitForTransactionReceipt({ hash: launchHash });
+    const launchEvents = parseEventLogs({
+      abi: HOODLUMS_CURVE_LAUNCH_PIPELINE_ABI,
+      eventName: "TokenAndCurveLaunched",
+      logs: launchReceipt.logs,
+    });
+    const tokenAddress = launchEvents[0]?.args.token;
+    const curveAddress = launchEvents[0]?.args.curve;
+    if (!tokenAddress || !curveAddress) {
+      throw new Error("Launch receipt did not report a token and curve address.");
+    }
+
+    const fullSupplyRaw = BigInt(currentProject.supply) * 10n ** BigInt(currentProject.decimals);
+
+    setStatus("Step 2 of 3 — approving the curve for the full supply. Check your wallet…");
+    const approveHash = await walletClient.writeContract({
+      account,
+      chain: robinhoodTestnet,
+      address: tokenAddress,
+      abi: ERC20_MIN_ABI,
+      functionName: "approve",
+      args: [curveAddress, fullSupplyRaw],
+    });
+    setStatus(`Step 2 of 3 submitted: ${shortAddress(approveHash)}`);
+    await publicClient.waitForTransactionReceipt({ hash: approveHash });
+
+    setStatus("Step 3 of 3 — funding the curve. Check your wallet…");
+    const fundHash = await walletClient.writeContract({
+      account,
+      chain: robinhoodTestnet,
+      address: curveAddress,
+      abi: HOODLUMS_BONDING_CURVE_FUND_ABI,
+      functionName: "fundCurve",
+    });
+    setStatus(`Step 3 of 3 submitted: ${shortAddress(fundHash)}`);
+    await publicClient.waitForTransactionReceipt({ hash: fundHash });
+
+    let recordWarning: string | undefined;
+    try {
+      await recordTokenLaunch(walletClient, account, {
+        tokenAddress,
+        curveAddress,
+        tokenName: currentProject.name.trim(),
+        ticker: currentProject.ticker.trim().toUpperCase(),
+        decimals: currentProject.decimals,
+        wholeTokenSupply: currentProject.supply,
+        graduationTargetWei: curveParams.graduationTargetWei,
+      });
+    } catch (recordError) {
+      // Never fail the launch over this — the token and curve are already
+      // live on-chain. Surfaced only in the result panel, not a thrown error.
+      recordWarning = readError(recordError);
+    }
+
+    return {
+      contractAddress: tokenAddress,
+      transactionHash: launchHash,
+      curveAddress,
+      curveFunded: true,
+      recordWarning,
+    };
+  }
+
   async function deploy() {
     if (!project || busy || !confirmed) return;
     const provider = getProvider();
@@ -301,7 +481,6 @@ export function RobinhoodTestnetDeploymentController() {
         return;
       }
 
-      setStatus("Review and approve the contract deployment in MetaMask…");
       const transport = custom(provider);
       const walletClient = createWalletClient({
         chain: robinhoodTestnet,
@@ -312,32 +491,36 @@ export function RobinhoodTestnetDeploymentController() {
         transport,
       });
 
-      const transactionHash = await walletClient.deployContract({
-        account,
-        abi: FIXED_SUPPLY_TOKEN_ABI,
-        bytecode: FIXED_SUPPLY_TOKEN_BYTECODE,
-        args: [
-          project.name.trim(),
-          project.ticker.trim().toUpperCase(),
-          BigInt(project.supply),
-          project.decimals,
+      const pipelineAddress = getCurveLaunchPipelineAddress(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL);
+      let deploymentResult: DeploymentResult;
+      if (pipelineAddress) {
+        deploymentResult = await deployWithCurvePipeline(walletClient, publicClient, account, pipelineAddress, project);
+      } else {
+        setStatus("Review and approve the contract deployment in MetaMask…");
+        const transactionHash = await walletClient.deployContract({
           account,
-        ],
-      });
+          abi: FIXED_SUPPLY_TOKEN_ABI,
+          bytecode: FIXED_SUPPLY_TOKEN_BYTECODE,
+          args: [
+            project.name.trim(),
+            project.ticker.trim().toUpperCase(),
+            BigInt(project.supply),
+            project.decimals,
+            account,
+          ],
+        });
 
-      setStatus(`Deployment submitted: ${shortAddress(transactionHash)}`);
-      const receipt = await publicClient.waitForTransactionReceipt({
-        hash: transactionHash,
-      });
-      if (!receipt.contractAddress) {
-        throw new Error("The confirmed receipt did not contain a contract address.");
+        setStatus(`Deployment submitted: ${shortAddress(transactionHash)}`);
+        const receipt = await publicClient.waitForTransactionReceipt({
+          hash: transactionHash,
+        });
+        if (!receipt.contractAddress) {
+          throw new Error("The confirmed receipt did not contain a contract address.");
+        }
+        deploymentResult = { contractAddress: receipt.contractAddress, transactionHash };
       }
 
-      const contractAddress: Address = receipt.contractAddress;
-      const deploymentResult: DeploymentResult = {
-        contractAddress,
-        transactionHash,
-      };
+      const { contractAddress } = deploymentResult;
       setResult(deploymentResult);
       updateStoredProject(project, contractAddress);
       updateStudioContractAddress(contractAddress);
@@ -347,7 +530,11 @@ export function RobinhoodTestnetDeploymentController() {
           : current,
       );
       setBypassMismatch(false);
-      setStatus("Token deployed successfully. Mainnet is still blocked.");
+      setStatus(
+        deploymentResult.curveAddress
+          ? "Token and bonding curve deployed successfully. Mainnet is still blocked."
+          : "Token deployed successfully. Mainnet is still blocked.",
+      );
     } catch (error) {
       setStatus(readError(error));
     } finally {
@@ -428,6 +615,17 @@ export function RobinhoodTestnetDeploymentController() {
               View transaction ↗
             </a>
           </div>
+          {result.curveAddress && (
+            <>
+              <b>{result.curveFunded ? "CURVE FUNDED" : "CURVE"}</b>
+              <code>{result.curveAddress}</code>
+            </>
+          )}
+          {result.recordWarning && (
+            <p className={styles.recordWarning}>
+              Launched on-chain, but the homepage listing could not be recorded yet: {result.recordWarning}
+            </p>
+          )}
         </div>
       ) : (
         <button

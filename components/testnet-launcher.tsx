@@ -45,6 +45,7 @@ import {
   parseStoredAccountWallet,
 } from "@/lib/account-wallet-state";
 import { describeWalletMismatch } from "@/lib/social-studio-queue";
+import { notifyTokenLaunchCompleted } from "@/lib/token-launch-events";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./testnet-launcher.module.css";
 
@@ -284,6 +285,10 @@ export function TestnetLauncher() {
       const error = (await recordResponse.json().catch(() => null)) as { error?: string } | null;
       throw new Error(error?.error || "The launch could not be recorded for the homepage.");
     }
+
+    // Lets the homepage grid refetch immediately instead of waiting for its
+    // next poll tick (issue #412 Part 1).
+    notifyTokenLaunchCompleted({ tokenAddress: launch.tokenAddress, chainId: walletChainId });
   }
 
   /**

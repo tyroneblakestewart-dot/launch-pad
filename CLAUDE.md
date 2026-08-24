@@ -813,3 +813,83 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   `AGENTS.md`'s roadmap section has pre-existing drift from CLAUDE.md
   (stops around issue #358) that predates this PR and was not addressed
   here — out of scope for this change.
+- Milestone A "PR B" (issue #412): the homepage grid switches to real
+  launches with live updates, and the token page's trading UI gets an
+  honest fee breakdown, the graduation clamp, a post-graduation state and a
+  creator fee panel — implemented for review, building on PR A (#411).
+  **Part 1** — `GET /api/token-launches` (already rate-limit-sized for this
+  by PR A) now enriches every non-graduated launch with a live graduation-
+  progress read through a new 20s TTL cache, `lib/server/curve-progress-
+  cache.ts` (concurrent misses for the same curve share one in-flight RPC
+  call, so a burst of homepage polls never becomes a burst of RPC calls),
+  and attaches the slug of a linked published site (matched by
+  `contractAddress`) when one exists. A launch whose live read discovers
+  graduation ahead of the DB row is returned graduated in that same
+  response and opportunistically synced via `store.markGraduated()` — the
+  029 migration's own comment named this read API as the intended sync
+  point, and this PR is that caller; a new `token-graduated` Activity log
+  kind (token address, name only) records it. `components/hoodlums-token-
+  grid.tsx` is now a self-fetching client component
+  (`lib/use-token-launches.ts`) instead of rendering `published_sites` as
+  fake 0%-graduation cards: New/Bonding/Graduated map to the `all`/
+  `bonding`/`graduated` filters, live progress bars replace the hardcoded
+  `0%`, and cards link to a linked site when one exists or the token's
+  trade page otherwise. Live updates follow `/support`'s issue #403
+  pattern exactly — a visible-tab-only 30s timer plus a focus/
+  visibilitychange refetch, silent in-place updates, cleaned up on unmount
+  — and a new `lib/token-launch-events.ts` window `CustomEvent`
+  (mirroring `lib/workspace-open-request.ts`'s pattern) triggers an
+  immediate refetch the moment a wallet's own launch is recorded, from
+  both `/testnet` and the studio modal. The studio's own launch modal
+  (`components/robinhood-testnet-deployment-controller.tsx`) — PR A's
+  named follow-up — now also routes through the curve pipeline's
+  3-signature flow (deploy token+curve, approve, fundCurve) when a
+  pipeline is configured, reusing the same wallet-mismatch guard PR A
+  already wired there, and falls back to the plain `FixedSupplyMemeToken`
+  deploy otherwise; this duplicates (rather than imports)
+  `components/testnet-launcher.tsx`'s equivalent flow deliberately, so
+  that file's own locked-down source-assertion tests are never put at risk
+  by a shared-code refactor. **Part 2** — the token page's trading panel
+  (`components/token-page/token-left-column.tsx`, already live since issue
+  #225) now resolves its curve address per-token via a new
+  `lib/server/token-launch-curve-lookup.ts` (looks up the specific curve
+  `token_launches` recorded for this token address, falling back to the
+  legacy single-curve-per-chain env var) instead of trusting one env var
+  for every token on the chain — necessary now that every pipeline launch
+  deploys its own curve. Every quote shows an honest 1% fee breakdown
+  before signing: a buy's fee is computed with the existing pure
+  `lib/bonding-curve-fee-math.ts` mirror (no extra RPC call), a sell's
+  fee comes from a new `quoteSellFee` read (added to
+  `HOODLUMS_BONDING_CURVE_TRADE_ABI`, since it depends on the curve's
+  current reserves). The graduation clamp reads and displays
+  `remainingNativeToGraduate()`, caps the buy `MAX` preset at the exact
+  gross input that nets to that remaining amount
+  (`grossNativeInForExactNet`, already existing pure math), and blocks
+  submitting an over-cap buy client-side instead of letting the contract's
+  `BuyExceedsGraduationTarget` revert be the user's first signal. Once a
+  curve reports graduated, the swap form and mobile quick-buy/sell are
+  replaced by an honest "trading closed" panel with a link to the locked
+  liquidity pool — the contract itself blocks `buy()`/`sell()` post-
+  graduation via the `tradingOpen` modifier, so this UI can never
+  advertise a trade that would only revert. A creator fee panel (claimable
+  balance + a `withdrawFees()` button, both via a new
+  `HOODLUMS_BONDING_CURVE_FEES_ABI`) appears whenever the connected wallet
+  is confirmed on-chain as the curve's `creator()`, before and after
+  graduation, since fees remain withdrawable either way. **Rule 10** —
+  `buildTokenLaunchesPipeline` gained a `curve-progress-read` stage
+  reporting the new cache's own last-read success and age (amber until
+  the cache is warmed by the grid's first request; this is deliberately
+  independent of the `contracts` pipeline's existing general
+  `rpc-reachable` stage). **Deliberately out of scope**, consistent with
+  the issue's own "and/or" framing for where trading UI could live:
+  `/bonding-curve`'s static copy and disabled CTA are unchanged — the
+  token page already carries the full live trading experience, and
+  updating that page's stale copy is left to a follow-up. Not verified on
+  a real mobile Safari device this pass (rule 7) — the grid's card links,
+  the fee-breakdown/graduation-clamp/post-graduation panels and the
+  creator fee panel were checked by reading the CSS against the existing
+  layout and breakpoints, not on-device; flagged for the owner to confirm.
+  `npm install`/`npm test`/`npm run lint`/`npm run build` could not be run
+  in this session (no shell command execution permission was available),
+  so no fresh test/lint/build counts are reported here — flagged for CI or
+  the owner to verify before merge.

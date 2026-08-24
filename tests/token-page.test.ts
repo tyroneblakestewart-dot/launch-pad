@@ -4,6 +4,12 @@ import TokenPage, { generateMetadata } from "@/app/token/[chain]/[address]/page"
 import { TokenPageView, type TokenPageViewProps } from "@/components/token-page/token-page-view";
 import { BONDING_CURVE_ADDRESSES_ENV_VAR } from "@/lib/bonding-curve-config";
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import {
+  resetTokenLaunchesStoreForTests,
+  setTokenLaunchesStoreForTests,
+  type TokenLaunch,
+  type TokenLaunchesStore,
+} from "@/lib/server/token-launches-store";
 
 const ADDRESS = "0x3bf7447cd055f1475a8b09090c7b062abc9d3798";
 const CURVE_ADDRESS = "0x1234567890123456789012345678901234567890";
@@ -11,9 +17,35 @@ const ORIGINAL_CURVE_ENV = process.env[BONDING_CURVE_ADDRESSES_ENV_VAR];
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  resetTokenLaunchesStoreForTests();
   if (ORIGINAL_CURVE_ENV === undefined) delete process.env[BONDING_CURVE_ADDRESSES_ENV_VAR];
   else process.env[BONDING_CURVE_ADDRESSES_ENV_VAR] = ORIGINAL_CURVE_ENV;
 });
+
+function fakeLaunchesStore(overrides: Partial<TokenLaunchesStore> = {}): TokenLaunchesStore {
+  return {
+    async record() {
+      throw new Error("not used");
+    },
+    async list() {
+      return [];
+    },
+    async listForAdmin() {
+      return [];
+    },
+    async findByTokenAddress() {
+      return null;
+    },
+    async markGraduated() {},
+    async countLast24h() {
+      return 0;
+    },
+    async tableExists() {
+      return true;
+    },
+    ...overrides,
+  };
+}
 
 function notFoundDigest(): string {
   try {
@@ -113,6 +145,38 @@ describe("TokenPage", () => {
     const props = await renderTokenPage("robinhood", ADDRESS);
 
     expect(props.curveAddress).toBe(CURVE_ADDRESS);
+  });
+
+  it("prefers the curve recorded in token_launches for this token over the legacy env var (issue #412 Part 2)", async () => {
+    stubFetch();
+    process.env[BONDING_CURVE_ADDRESSES_ENV_VAR] = JSON.stringify({
+      [ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL]: CURVE_ADDRESS,
+    });
+    const recordedCurve = `0x${"9".repeat(40)}`;
+    setTokenLaunchesStoreForTests(
+      fakeLaunchesStore({
+        findByTokenAddress: async () =>
+          ({
+            id: "id-1",
+            chainId: ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL,
+            tokenAddress: ADDRESS,
+            curveAddress: recordedCurve,
+            creatorWalletAddress: "0x4444444444444444444444444444444444444444",
+            tokenName: "Test",
+            ticker: "TEST",
+            decimals: 18,
+            wholeTokenSupply: "1000000",
+            graduationTargetWei: "4000000000000000000",
+            graduated: false,
+            graduatedAt: null,
+            launchedAt: new Date().toISOString(),
+          }) satisfies TokenLaunch,
+      }),
+    );
+
+    const props = await renderTokenPage("robinhood", ADDRESS);
+
+    expect(props.curveAddress).toBe(recordedCurve);
   });
 
   it("never configures a curve for a non-EVM chain, and reports unsupported market stats", async () => {

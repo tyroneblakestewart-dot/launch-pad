@@ -27,6 +27,16 @@ vi.mock("@/lib/server/token-launch-reconciliation", () => ({
   verifyTokenLaunchOnChain: (...args: unknown[]) => verifyMock(...args),
 }));
 
+const getCurveProgressMock = vi.fn(async () => null as null | Record<string, unknown>);
+vi.mock("@/lib/server/curve-progress-cache", () => ({
+  getCurveProgress: (...args: unknown[]) => getCurveProgressMock(...args),
+}));
+
+const listLiveGeneratedSitesMock = vi.fn(async () => [] as Array<{ contractAddress: string; slug: string }>);
+vi.mock("@/lib/server/public-generated-sites", () => ({
+  listLiveGeneratedSites: () => listLiveGeneratedSitesMock(),
+}));
+
 function createMemoryTokenLaunchesStore(): TokenLaunchesStore {
   const launches = new Map<string, TokenLaunch>();
   return {
@@ -52,6 +62,13 @@ function createMemoryTokenLaunchesStore(): TokenLaunchesStore {
     },
     async listForAdmin() {
       return [...launches.values()];
+    },
+    async findByTokenAddress(chainId: number, tokenAddress: string) {
+      return (
+        [...launches.values()].find(
+          (l) => l.chainId === chainId && l.tokenAddress.toLowerCase() === tokenAddress.toLowerCase(),
+        ) ?? null
+      );
     },
     async markGraduated() {},
     async countLast24h() {
@@ -119,6 +136,10 @@ beforeEach(() => {
   setTokenLaunchesStoreForTests(createMemoryTokenLaunchesStore());
   verifyMock.mockClear();
   verifyMock.mockResolvedValue({ ok: true });
+  getCurveProgressMock.mockClear();
+  getCurveProgressMock.mockResolvedValue(null);
+  listLiveGeneratedSitesMock.mockClear();
+  listLiveGeneratedSitesMock.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -235,6 +256,70 @@ describe("GET /api/token-launches", () => {
   it("sets rate-limit response headers", async () => {
     const response = await listLaunches(getRequest("/api/token-launches"));
     expect(response.headers.get("X-RateLimit-Limit")).toBeTruthy();
+  });
+
+  it("attaches live graduation progress from the curve-progress cache to a bonding launch", async () => {
+    await recordLaunch(await signedRecordRequest());
+    getCurveProgressMock.mockResolvedValueOnce({
+      state: "bonding",
+      progressBps: 2500n,
+      raisedWei: 1_000_000_000_000_000_000n,
+      targetWei: 4_000_000_000_000_000_000n,
+      liquidityPool: null,
+    });
+
+    const response = await listLaunches(getRequest("/api/token-launches"));
+    const body = (await response.json()) as { launches: Array<Record<string, unknown>> };
+    expect(body.launches[0]).toMatchObject({ progressBps: "2500", raisedWei: "1000000000000000000" });
+    expect(getCurveProgressMock).toHaveBeenCalledWith(46630, PAYLOAD.curveAddress);
+  });
+
+  it("marks a launch graduated at 100% without a live read, never calling the curve-progress cache for it", async () => {
+    await recordLaunch(await signedRecordRequest());
+    await getTokenLaunchesStore().markGraduated(46630, PAYLOAD.tokenAddress, new Date());
+
+    const response = await listLaunches(getRequest("/api/token-launches"));
+    const body = (await response.json()) as { launches: Array<Record<string, unknown>> };
+    expect(body.launches[0]).toMatchObject({ progressBps: "10000", graduated: true });
+    expect(getCurveProgressMock).not.toHaveBeenCalled();
+  });
+
+  it("reports a launch as graduated in the response and syncs the store when a live read discovers graduation ahead of the DB row", async () => {
+    await recordLaunch(await signedRecordRequest());
+    getCurveProgressMock.mockResolvedValueOnce({
+      state: "graduated",
+      progressBps: 10_000n,
+      raisedWei: 4_000_000_000_000_000_000n,
+      targetWei: 4_000_000_000_000_000_000n,
+      liquidityPool: "0x5555555555555555555555555555555555555555",
+    });
+
+    const response = await listLaunches(getRequest("/api/token-launches"));
+    const body = (await response.json()) as { launches: Array<Record<string, unknown>> };
+    expect(body.launches[0]).toMatchObject({ graduated: true, progressBps: "10000" });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const stored = await getTokenLaunchesStore().list("all", 10);
+    expect(stored[0]?.graduated).toBe(true);
+  });
+
+  it("includes the slug of a linked published site by matching contractAddress, and null when there is none", async () => {
+    await recordLaunch(await signedRecordRequest());
+    listLiveGeneratedSitesMock.mockResolvedValueOnce([
+      { contractAddress: PAYLOAD.tokenAddress.toUpperCase(), slug: "my-linked-site" },
+    ]);
+
+    const response = await listLaunches(getRequest("/api/token-launches"));
+    const body = (await response.json()) as { launches: Array<Record<string, unknown>> };
+    expect(body.launches[0]).toMatchObject({ siteSlug: "my-linked-site" });
+  });
+
+  it("shows siteSlug null when no published site links to the launch's token address", async () => {
+    await recordLaunch(await signedRecordRequest());
+
+    const response = await listLaunches(getRequest("/api/token-launches"));
+    const body = (await response.json()) as { launches: Array<Record<string, unknown>> };
+    expect(body.launches[0]).toMatchObject({ siteSlug: null });
   });
 });
 

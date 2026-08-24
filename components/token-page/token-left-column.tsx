@@ -15,10 +15,12 @@ import {
 } from "viem";
 import {
   ERC20_MIN_ABI,
+  HOODLUMS_BONDING_CURVE_FEES_ABI,
   HOODLUMS_BONDING_CURVE_READ_ABI,
   HOODLUMS_BONDING_CURVE_TRADE_ABI,
 } from "@/lib/bonding-curve-config";
 import { DEFAULT_TOKEN_DECIMALS } from "@/lib/bonding-curve-deploy-config";
+import { buyNetFromGross, grossNativeInForExactNet, tradingFee } from "@/lib/bonding-curve-fee-math";
 import { applySlippageFloor } from "@/lib/bonding-curve-slippage";
 import {
   computeBondingCurveGraduationStatus,
@@ -55,6 +57,9 @@ type CurveView =
       kind: "ready";
       curve: Address;
       decimals: number;
+      creator: Address;
+      /** remainingNativeToGraduate() at load time — 0n once graduated. */
+      remainingToGraduateWei: bigint;
       graduation: ReturnType<typeof computeBondingCurveGraduationStatus>;
     };
 
@@ -84,10 +89,16 @@ type TokenLeftColumnProps = {
  * Left column of the public token page (issue #225): token identity, market
  * stats, live graduation progress, and the buy/sell swap panel — plus the
  * mobile sticky swap bar, which shares this component's wallet/curve state
- * instead of duplicating a second on-chain read. All on-chain state is read
- * from a single configured bonding curve (`lib/bonding-curve-config.ts`);
- * trading only activates once that curve's own `token()` matches this page's
- * address, since one env var currently configures a single curve per chain.
+ * instead of duplicating a second on-chain read. `curveAddress` is resolved
+ * by the server (lib/server/token-launch-curve-lookup.ts, issue #412 Part
+ * 2) from the specific launch that deployed this token, falling back to the
+ * legacy single-curve-per-chain env var; this component still confirms
+ * on-chain that the resolved curve's own `token()` matches this page's
+ * address before showing live swap controls. Once the curve reports
+ * graduated, the swap form is replaced by an honest "trading closed"
+ * panel — the contract itself blocks buy()/sell() post-graduation — and a
+ * creator fee panel appears whenever the connected wallet is confirmed
+ * on-chain as the curve's creator (fees remain withdrawable either way).
  * Anything else (wrong/no curve, non-EVM chain) falls back to the
  * referral-coded "Trade on terminal" links instead of a dead swap form.
  */
@@ -105,33 +116,44 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
   const [nativeBalance, setNativeBalance] = useState<bigint | null>(null);
   const [tokenBalance, setTokenBalance] = useState<bigint | null>(null);
   const [receiveRaw, setReceiveRaw] = useState<bigint | null>(null);
+  const [sellFeeRaw, setSellFeeRaw] = useState<bigint | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [claimableFeeWei, setClaimableFeeWei] = useState<bigint | null>(null);
+  const [feeBusy, setFeeBusy] = useState(false);
+  const [feeStatusMessage, setFeeStatusMessage] = useState("");
 
   const loadCurve = useCallback(async (curve: Address) => {
     setCurveView({ kind: "loading" });
     try {
       const publicClient = createPublicClient({ chain, transport: http(ROBINHOOD_TESTNET.rpcUrls[0]) });
-      const [tokenAddress, funded, graduated, realNativeReserve, graduationTarget, liquidityPool] = await Promise.all([
-        publicClient.readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_TRADE_ABI, functionName: "token" }),
-        publicClient.readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_READ_ABI, functionName: "funded" }),
-        publicClient.readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_READ_ABI, functionName: "graduated" }),
-        publicClient.readContract({
-          address: curve,
-          abi: HOODLUMS_BONDING_CURVE_READ_ABI,
-          functionName: "realNativeReserve",
-        }),
-        publicClient.readContract({
-          address: curve,
-          abi: HOODLUMS_BONDING_CURVE_READ_ABI,
-          functionName: "graduationTarget",
-        }),
-        publicClient.readContract({
-          address: curve,
-          abi: HOODLUMS_BONDING_CURVE_READ_ABI,
-          functionName: "liquidityPool",
-        }),
-      ]);
+      const [tokenAddress, funded, graduated, realNativeReserve, graduationTarget, liquidityPool, remainingToGraduate, creator] =
+        await Promise.all([
+          publicClient.readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_TRADE_ABI, functionName: "token" }),
+          publicClient.readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_READ_ABI, functionName: "funded" }),
+          publicClient.readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_READ_ABI, functionName: "graduated" }),
+          publicClient.readContract({
+            address: curve,
+            abi: HOODLUMS_BONDING_CURVE_READ_ABI,
+            functionName: "realNativeReserve",
+          }),
+          publicClient.readContract({
+            address: curve,
+            abi: HOODLUMS_BONDING_CURVE_READ_ABI,
+            functionName: "graduationTarget",
+          }),
+          publicClient.readContract({
+            address: curve,
+            abi: HOODLUMS_BONDING_CURVE_READ_ABI,
+            functionName: "liquidityPool",
+          }),
+          publicClient.readContract({
+            address: curve,
+            abi: HOODLUMS_BONDING_CURVE_TRADE_ABI,
+            functionName: "remainingNativeToGraduate",
+          }),
+          publicClient.readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_FEES_ABI, functionName: "creator" }),
+        ]);
 
       if ((tokenAddress as string).toLowerCase() !== address.toLowerCase()) {
         setCurveView({ kind: "wrong-token" });
@@ -142,6 +164,8 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
         kind: "ready",
         curve,
         decimals: marketStats.supported && marketStats.decimals !== null ? marketStats.decimals : DEFAULT_TOKEN_DECIMALS,
+        creator,
+        remainingToGraduateWei: remainingToGraduate,
         graduation: computeBondingCurveGraduationStatus({
           funded,
           graduated,
@@ -189,6 +213,67 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
     if (account) void refreshBalances(account);
   }, [account, refreshBalances]);
 
+  // Creator fee panel data (issue #412 Part 2): only meaningful once the
+  // curve is loaded and the connected wallet is confirmed on-chain as its
+  // creator — claimableFees() itself already returns 0 for anyone else, but
+  // checking here avoids showing the panel to every visitor.
+  const isCreator =
+    curveView.kind === "ready" && account !== null && account.toLowerCase() === curveView.creator.toLowerCase();
+
+  const refreshClaimableFee = useCallback(
+    async (wallet: Address, curve: Address) => {
+      try {
+        const publicClient = createPublicClient({ chain, transport: http(ROBINHOOD_TESTNET.rpcUrls[0]) });
+        const amount = await publicClient.readContract({
+          address: curve,
+          abi: HOODLUMS_BONDING_CURVE_FEES_ABI,
+          functionName: "claimableFees",
+          args: [wallet],
+        });
+        setClaimableFeeWei(amount);
+      } catch {
+        // Leaves the last-known claimable amount in place; not fatal.
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (isCreator && account && curveView.kind === "ready") {
+      void refreshClaimableFee(account, curveView.curve);
+    } else {
+      setClaimableFeeWei(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCreator, account, curveView.kind === "ready" ? curveView.curve : null]);
+
+  async function withdrawCreatorFees() {
+    if (curveView.kind !== "ready" || !account) return;
+    setFeeBusy(true);
+    setFeeStatusMessage("");
+    try {
+      const provider = getInjectedEvmProvider();
+      if (!provider) throw new Error("EVM wallet disconnected.");
+      const walletClient = createWalletClient({ chain, transport: custom(provider) });
+      const publicClient = createPublicClient({ chain, transport: http(ROBINHOOD_TESTNET.rpcUrls[0]) });
+      const hash = await walletClient.writeContract({
+        account,
+        address: curveView.curve,
+        abi: HOODLUMS_BONDING_CURVE_FEES_ABI,
+        functionName: "withdrawFees",
+      });
+      setFeeStatusMessage(`Transaction submitted: ${shortenAddress(hash)}`);
+      await publicClient.waitForTransactionReceipt({ hash });
+      setFeeStatusMessage("Fees withdrawn.");
+      void refreshClaimableFee(account, curveView.curve);
+      void refreshBalances(account);
+    } catch (error) {
+      setFeeStatusMessage(readError(error));
+    } finally {
+      setFeeBusy(false);
+    }
+  }
+
   // Debounced live quote as the amount changes, mirroring the design's
   // "You receive" preview. Silently clears on an unparsable/zero amount or a
   // failed on-chain read instead of showing a stale or misleading figure.
@@ -198,6 +283,7 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
     const amountNumber = Number(amount);
     if (!amount || !Number.isFinite(amountNumber) || amountNumber <= 0) {
       setReceiveRaw(null);
+      setSellFeeRaw(null);
       return;
     }
 
@@ -213,18 +299,29 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
             args: [grossWei],
           });
           setReceiveRaw(tokensOut);
+          setSellFeeRaw(null);
         } else {
           const tokensIn = parseUnits(amount, readyCurve.decimals);
-          const nativeOut = await publicClient.readContract({
-            address: readyCurve.curve,
-            abi: HOODLUMS_BONDING_CURVE_TRADE_ABI,
-            functionName: "quoteSell",
-            args: [tokensIn],
-          });
+          const [nativeOut, sellFee] = await Promise.all([
+            publicClient.readContract({
+              address: readyCurve.curve,
+              abi: HOODLUMS_BONDING_CURVE_TRADE_ABI,
+              functionName: "quoteSell",
+              args: [tokensIn],
+            }),
+            publicClient.readContract({
+              address: readyCurve.curve,
+              abi: HOODLUMS_BONDING_CURVE_TRADE_ABI,
+              functionName: "quoteSellFee",
+              args: [tokensIn],
+            }),
+          ]);
           setReceiveRaw(nativeOut);
+          setSellFeeRaw(sellFee);
         }
       } catch {
         setReceiveRaw(null);
+        setSellFeeRaw(null);
       }
     }, 350);
 
@@ -253,7 +350,18 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
   function applyPreset(preset: string) {
     if (side === "buy") {
       if (preset === "MAX") {
-        setAmount(nativeBalance !== null ? formatEther(nativeBalance) : "");
+        // Cap MAX at the exact gross input that nets to exactly
+        // remainingToGraduateWei when that's the binding constraint, so the
+        // curve's buy() call can never revert with BuyExceedsGraduationTarget
+        // (issue #412 Part 2's graduation clamp) — the contract only allows a
+        // buy whose net-of-fee input is <= what's left to reach the target.
+        const balanceCap = nativeBalance ?? 0n;
+        const graduationCap =
+          curveView.kind === "ready" && curveView.remainingToGraduateWei > 0n
+            ? grossNativeInForExactNet(curveView.remainingToGraduateWei)
+            : null;
+        const cap = graduationCap !== null && graduationCap < balanceCap ? graduationCap : balanceCap;
+        setAmount(nativeBalance !== null ? formatEther(cap) : "");
       } else {
         setAmount(preset);
       }
@@ -267,6 +375,23 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
 
   async function submitTrade() {
     if (curveView.kind !== "ready" || !account || receiveRaw === null) return;
+
+    if (side === "buy") {
+      let grossWei: bigint;
+      try {
+        grossWei = parseEther(amount);
+      } catch {
+        return;
+      }
+      const netIn = buyNetFromGross(grossWei);
+      if (netIn > curveView.remainingToGraduateWei) {
+        setStatusMessage(
+          `That buy would exceed the ${formatEther(curveView.remainingToGraduateWei)} ETH remaining to graduation. Use MAX to buy exactly up to the target.`,
+        );
+        return;
+      }
+    }
+
     setBusy(true);
     setStatusMessage("");
     try {
@@ -320,7 +445,9 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
       setStatusMessage("Trade confirmed.");
       setAmount("");
       setReceiveRaw(null);
+      setSellFeeRaw(null);
       void refreshBalances(account);
+      if (isCreator) void refreshClaimableFee(account, curveView.curve);
       if (curveAddress) void loadCurve(curveAddress);
     } catch (error) {
       setStatusMessage(readError(error));
@@ -348,6 +475,11 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
             <span>{formatGraduationProgressPercent(graduation.progressBps)} to Robinhood DEX</span>
             <span>{graduation.state === "graduated" ? "graduated" : "bonding"}</span>
           </div>
+          {graduation.state === "bonding" && (
+            <p className={styles.mutedNote}>
+              {formatEther(curveView.remainingToGraduateWei)} ETH remaining to graduation
+            </p>
+          )}
         </div>
       );
     }
@@ -371,6 +503,21 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
 
   const tradeDisabled = !curveReady || !account || !amount || receiveRaw === null || busy;
   const tradeLabel = !account ? `Connect wallet to ${side}` : busy ? "Submitting…" : side === "buy" ? "Buy" : "Sell";
+
+  // Honest fee breakdown shown before every signature (issue #412 Part 2):
+  // a buy's 1% fee is a pure function of its gross input, computed with the
+  // same mirror used elsewhere (lib/bonding-curve-fee-math.ts); a sell's fee
+  // depends on the curve's current reserves, so it comes from the
+  // quoteSellFee() read fetched alongside the quote above.
+  const buyFeeWei = (() => {
+    if (side !== "buy" || !amount) return null;
+    try {
+      return tradingFee(parseEther(amount));
+    } catch {
+      return null;
+    }
+  })();
+  const feeWei = curveView.kind === "ready" && amount && receiveRaw !== null ? (side === "buy" ? buyFeeWei : sellFeeRaw) : null;
 
   return (
     <>
@@ -428,7 +575,7 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
         {graduationSection}
       </div>
 
-      {curveView.kind === "ready" ? (
+      {curveView.kind === "ready" && curveView.graduation.state !== "graduated" ? (
         <div className={`${styles.panel} ${styles.swapPanel}`}>
           <div className={styles.swapTopRow}>
             <div className={styles.tabGroup}>
@@ -501,6 +648,15 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
             </div>
           </div>
 
+          {feeWei !== null && (
+            <div className={styles.feeBreakdown}>
+              <div className={styles.feeBreakdownRow}>
+                <span>Trading fee (1%)</span>
+                <b>{formatEther(feeWei)} ETH</b>
+              </div>
+            </div>
+          )}
+
           <div className={styles.slippageRow}>
             <span className={styles.slippageLabel}>Slippage</span>
             <div className={styles.slippageGroup}>
@@ -527,6 +683,27 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
           </button>
           {statusMessage ? <p className={styles.tradeHint}>{statusMessage}</p> : null}
         </div>
+      ) : curveView.kind === "ready" && curveView.graduation.state === "graduated" ? (
+        <div className={`${styles.panel} ${styles.swapPanel}`}>
+          <div className={styles.terminalFallback}>
+            <span className={styles.sectionLabel}>Trading closed</span>
+            <p className={styles.terminalFallbackCopy}>
+              This token graduated — its full curve balance moved into a permanently locked Robinhood DEX pool, and
+              buy/sell on the bonding curve is closed for good. Accrued trading fees remain withdrawable by the
+              treasury and creator.
+            </p>
+            {curveView.graduation.liquidityPool && (
+              <a
+                href={`${chainInfo.explorerBaseUrl}${curveView.graduation.liquidityPool}`}
+                target="_blank"
+                rel="noreferrer"
+                className={styles.terminalFallbackLink}
+              >
+                View liquidity pool ↗
+              </a>
+            )}
+          </div>
+        </div>
       ) : (
         <div className={`${styles.panel} ${styles.swapPanel}`}>
           <div className={styles.terminalFallback}>
@@ -551,6 +728,27 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
         </div>
       )}
 
+      {isCreator && curveView.kind === "ready" && (
+        <div className={`${styles.panel} ${styles.feePanel}`}>
+          <span className={styles.sectionLabel}>Creator fees</span>
+          <div className={styles.feePanelRow}>
+            <span className={styles.mutedNote}>Claimable balance</span>
+            <span className={styles.feeClaimValue}>
+              {claimableFeeWei !== null ? `${formatEther(claimableFeeWei)} ETH` : "—"}
+            </span>
+          </div>
+          <button
+            type="button"
+            className={styles.feeWithdrawButton}
+            onClick={withdrawCreatorFees}
+            disabled={feeBusy || claimableFeeWei === null || claimableFeeWei === 0n}
+          >
+            {feeBusy ? "Withdrawing…" : "Withdraw fees"}
+          </button>
+          {feeStatusMessage ? <p className={styles.tradeHint}>{feeStatusMessage}</p> : null}
+        </div>
+      )}
+
       <div className={styles.mobileBar}>
         <div className={styles.mobileBarInfo}>
           <span className={styles.mobileBarTicker}>{displaySymbol || "TOKEN"}</span>
@@ -558,7 +756,7 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
             {formatUsdPrice(marketStats.supported ? marketStats.priceUsd : null)}
           </span>
         </div>
-        {curveView.kind === "ready" ? (
+        {curveView.kind === "ready" && curveView.graduation.state !== "graduated" ? (
           <>
             <button type="button" className={styles.mobileBuyButton} onClick={account ? submitTrade : connectWallet}>
               Buy
@@ -567,6 +765,8 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
               Sell
             </button>
           </>
+        ) : curveView.kind === "ready" && curveView.graduation.state === "graduated" ? (
+          <span className={styles.mobileBarPrice}>Graduated — trading closed</span>
         ) : tradeLinks[0] ? (
           <a
             href={tradeLinks[0].url}

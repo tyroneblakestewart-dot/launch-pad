@@ -123,7 +123,8 @@ export type AdminActivityKind =
   | "slot-registered"
   | "slot-released-by-user"
   | "slot-released-by-admin"
-  | "token-launched";
+  | "token-launched"
+  | "token-graduated";
 
 export type AdminActivityItem = {
   id: string;

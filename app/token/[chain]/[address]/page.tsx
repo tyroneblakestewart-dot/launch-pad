@@ -3,9 +3,9 @@ import { notFound } from "next/navigation";
 import type { Address } from "viem";
 import { TokenPageView } from "@/components/token-page/token-page-view";
 import { CHAIN_CONFIG, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
-import { getBondingCurveAddress } from "@/lib/bonding-curve-config";
 import { isValidDexAddress } from "@/lib/server/dexscreener";
 import { fetchTokenMarketStats } from "@/lib/server/token-market-stats";
+import { resolveTokenCurveAddress } from "@/lib/server/token-launch-curve-lookup";
 import { getTradeTerminalLinks } from "@/lib/trade-terminal-links";
 import type { SupportedChain } from "@/lib/types";
 
@@ -61,12 +61,15 @@ export default async function TokenPage({ params }: TokenPageProps) {
   const tradeLinks = getTradeTerminalLinks(parsedChain, address, chainId);
   const marketStats = await fetchTokenMarketStats(parsedChain, address);
   const chainInfo = CHAIN_CONFIG[parsedChain];
-  // Only one bonding curve is configured per chain today (see
-  // lib/bonding-curve-config.ts), so this reads that single curve's
-  // address; `TokenLeftColumn` confirms on-chain whether it actually
-  // trades *this* token before showing live swap controls.
+  // Every launch through HoodlumsCurveLaunchPipeline deploys its own curve
+  // (Milestone A, issue #409), so this looks up the curve token_launches
+  // recorded for *this* token address, falling back to the legacy
+  // single-curve-per-chain env var for anything launched before that table
+  // existed (see lib/server/token-launch-curve-lookup.ts). `TokenLeftColumn`
+  // still confirms on-chain that the resolved curve actually trades this
+  // token before showing live swap controls.
   const curveAddress: Address | null =
-    parsedChain === "robinhood" ? getBondingCurveAddress(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL) ?? null : null;
+    parsedChain === "robinhood" ? await resolveTokenCurveAddress(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, address) : null;
 
   return (
     <TokenPageView
