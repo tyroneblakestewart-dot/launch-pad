@@ -21,9 +21,11 @@ export function useTokenLaunches(filter: TokenLaunchGridFilter, limit = 24) {
   const [launches, setLaunches] = useState<TokenLaunchListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const filterRef = useRef(filter);
-  filterRef.current = filter;
   const limitRef = useRef(limit);
-  limitRef.current = limit;
+  useEffect(() => {
+    filterRef.current = filter;
+    limitRef.current = limit;
+  }, [filter, limit]);
 
   const load = useCallback(async () => {
     try {
