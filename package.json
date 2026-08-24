@@ -16,6 +16,7 @@
     "deploy:factory:robinhood": "hardhat run scripts/deploy-hoodlums-factory.ts --network robinhoodTestnet",
     "deploy:bonding-curve:robinhood": "hardhat run scripts/deploy-hoodlums-bonding-curve.ts --network robinhoodTestnetBondingCurveDeploy",
     "graduate:bonding-curve:robinhood": "hardhat run scripts/graduate-hoodlums-bonding-curve.ts --network robinhoodTestnetBondingCurveCreator",
+    "deploy:curve-launch-pipeline:robinhood": "hardhat run scripts/deploy-hoodlums-curve-launch-pipeline.ts --network robinhoodTestnetCurveLaunchPipelineDeploy",
     "db:migrate": "node scripts/migrate-database.mjs"
   },
   "dependencies": {

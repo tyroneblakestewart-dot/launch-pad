@@ -454,7 +454,7 @@ describe("checkOperationsCostHealth", () => {
 });
 
 describe("getSystemHealth", () => {
-  it("returns all fourteen checks, one per required area", async () => {
+  it("returns all fifteen checks, one per required area", async () => {
     const checks = await getSystemHealth({
       env: { NODE_ENV: "development" },
       database: { databaseUrl: "" },
@@ -468,6 +468,7 @@ describe("getSystemHealth", () => {
       operationsCost: { databaseUrl: "" },
       contentFilter: { databaseUrl: "" },
       support: { databaseUrl: "" },
+      tokenLaunches: { databaseUrl: "" },
     });
     expect(checks.map((check) => check.id).sort()).toEqual(
       [
@@ -484,6 +485,7 @@ describe("getSystemHealth", () => {
         "subscribers",
         "support",
         "token-chat",
+        "token-launches",
         "website-generation",
       ].sort(),
     );

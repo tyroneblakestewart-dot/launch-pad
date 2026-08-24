@@ -19,6 +19,11 @@ import {
   FIXED_SUPPLY_TOKEN_ABI,
   FIXED_SUPPLY_TOKEN_BYTECODE,
 } from "@/lib/evm-token-artifact";
+import {
+  ACCOUNT_WALLET_STORAGE_KEY,
+  parseStoredAccountWallet,
+} from "@/lib/account-wallet-state";
+import { describeWalletMismatch } from "@/lib/social-studio-queue";
 import type { TokenProject } from "@/lib/types";
 import styles from "./robinhood-testnet-deployment-controller.module.css";
 
@@ -38,6 +43,12 @@ type BrowserWindow = Window & {
 type DeploymentResult = {
   contractAddress: Address;
   transactionHash: Hash;
+};
+
+type WalletMismatch = {
+  activeAccount: string;
+  confirmedAccount: string;
+  message: string;
 };
 
 const STORAGE_KEY = "private-meme-token-studio-projects-v1";
@@ -144,6 +155,8 @@ export function RobinhoodTestnetDeploymentController() {
     "Ready to deploy with test ETH. Mainnet remains blocked.",
   );
   const [result, setResult] = useState<DeploymentResult | null>(null);
+  const [mismatch, setMismatch] = useState<WalletMismatch | null>(null);
+  const [bypassMismatch, setBypassMismatch] = useState(false);
 
   useEffect(() => {
     let activeHost: HTMLElement | null = null;
@@ -179,6 +192,8 @@ export function RobinhoodTestnetDeploymentController() {
         setProject(readPreparedProject());
         setConfirmed(false);
         setResult(null);
+        setMismatch(null);
+        setBypassMismatch(false);
         setStatus("Ready to deploy with test ETH. Mainnet remains blocked.");
       }
     }
@@ -209,6 +224,43 @@ export function RobinhoodTestnetDeploymentController() {
     }
   }, []);
 
+  /**
+   * Compares the wallet app's active account against the account confirmed
+   * on Hoodlums via the Account panel (AccountWalletBridge — the same
+   * `hoodlums.account.wallet` localStorage key). This is the actual bug
+   * report behind issue #409 Part 4: `getProvider()` above prefers
+   * `window.__launchpadEthereum` (the exact provider object
+   * AccountWalletBridge confirmed), but that in-memory reference only
+   * exists for the lifetime of the page that confirmed it — a fresh page
+   * load (a hard refresh, or opening the studio in a new tab) silently
+   * falls back to the bare injected `window.ethereum`, which can have a
+   * different account active than the one actually confirmed, launching
+   * the token under the wrong wallet with no warning. Reuses the
+   * describeWalletMismatch pattern already used by Social Studio (issue
+   * #388) rather than inventing a second mismatch-warning shape. Returns
+   * true when the launch should stop and show the warning.
+   */
+  function checkWalletMismatch(activeAccount: string): boolean {
+    if (bypassMismatch) return false;
+
+    const confirmedAccount = parseStoredAccountWallet(
+      localStorage.getItem(ACCOUNT_WALLET_STORAGE_KEY),
+    )?.account;
+    if (!confirmedAccount) return false;
+
+    const message = describeWalletMismatch(activeAccount, confirmedAccount);
+    if (!message) return false;
+
+    setMismatch({ activeAccount, confirmedAccount, message });
+    return true;
+  }
+
+  function continueWithMismatchedWallet() {
+    setBypassMismatch(true);
+    setMismatch(null);
+    setStatus("Continuing — the token will belong to the wallet app's active account.");
+  }
+
   async function deploy() {
     if (!project || busy || !confirmed) return;
     const provider = getProvider();
@@ -219,6 +271,7 @@ export function RobinhoodTestnetDeploymentController() {
 
     setBusy(true);
     setResult(null);
+    setMismatch(null);
     try {
       const currentChainId = normaliseChainId(
         await provider.request({ method: "eth_chainId" }),
@@ -242,6 +295,11 @@ export function RobinhoodTestnetDeploymentController() {
       })) as string[];
       const account = accounts[0] as Address | undefined;
       if (!account) throw new Error("The selected wallet returned no account.");
+
+      if (checkWalletMismatch(account)) {
+        setStatus("Wallet mismatch — resolve it below before launching.");
+        return;
+      }
 
       setStatus("Review and approve the contract deployment in MetaMask…");
       const transport = custom(provider);
@@ -288,6 +346,7 @@ export function RobinhoodTestnetDeploymentController() {
           ? { ...current, contractAddress, status: "launched" }
           : current,
       );
+      setBypassMismatch(false);
       setStatus("Token deployed successfully. Mainnet is still blocked.");
     } catch (error) {
       setStatus(readError(error));
@@ -331,6 +390,21 @@ export function RobinhoodTestnetDeploymentController() {
           not add liquidity or enable a mainnet launch.
         </span>
       </label>
+
+      {mismatch && (
+        <div className={styles.mismatchWarning}>
+          <strong>Wallet mismatch</strong>
+          <p>{mismatch.message}</p>
+          <div className={styles.mismatchActions}>
+            <button type="button" onClick={() => setMismatch(null)} disabled={busy}>
+              Switch wallet
+            </button>
+            <button type="button" onClick={continueWithMismatchedWallet} disabled={busy}>
+              Continue anyway — belongs to {shortAddress(mismatch.activeAccount)}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className={styles.status}>{status}</div>
 

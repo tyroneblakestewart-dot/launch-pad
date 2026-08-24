@@ -67,5 +67,15 @@ export default defineConfig({
       url: configVariable("ROBINHOOD_TESTNET_RPC_URL"),
       accounts: [configVariable("HOODLUMS_BONDING_CURVE_CREATOR_PRIVATE_KEY")],
     },
+    // Deployment target for scripts/deploy-hoodlums-curve-launch-pipeline.ts
+    // (Milestone A, issue #409). Never deployed automatically — see
+    // README.md "Curve launch pipeline deployment" for the exact command and
+    // required env vars.
+    robinhoodTestnetCurveLaunchPipelineDeploy: {
+      type: "http",
+      chainId: 46630,
+      url: configVariable("ROBINHOOD_TESTNET_RPC_URL"),
+      accounts: [configVariable("HOODLUMS_CURVE_LAUNCH_PIPELINE_DEPLOYER_PRIVATE_KEY")],
+    },
   },
 });

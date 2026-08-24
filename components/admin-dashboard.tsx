@@ -18,6 +18,7 @@ import { AdminStreetTeamSection } from "@/components/admin-street-team-section";
 import { AdminSubscribersSection } from "@/components/admin-subscribers-section";
 import { AdminSupportSection } from "@/components/admin-support-section";
 import { AdminSystemHealth } from "@/components/admin-system-health";
+import { AdminTokenLaunchesSection } from "@/components/admin-token-launches-section";
 import { AdminTestAccessSection } from "@/components/admin-test-access-section";
 import type {
   AdminOperationsSnapshot,
@@ -41,6 +42,7 @@ type SectionId =
   | "street-team"
   | "client-errors"
   | "support"
+  | "token-launches"
   | "system-health";
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
@@ -58,6 +60,7 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "street-team", label: "Street Team" },
   { id: "client-errors", label: "Errors" },
   { id: "support", label: "Support" },
+  { id: "token-launches", label: "Launches" },
   { id: "system-health", label: "System Health" },
 ];
 
@@ -187,7 +190,8 @@ export function AdminDashboard() {
     activeSection === "outreach" ||
     activeSection === "street-team" ||
     activeSection === "client-errors" ||
-    activeSection === "support";
+    activeSection === "support" ||
+    activeSection === "token-launches";
 
   return (
     <main className={styles.dashboard}>
@@ -284,6 +288,7 @@ export function AdminDashboard() {
         {activeSection === "street-team" ? <AdminStreetTeamSection /> : null}
         {activeSection === "client-errors" ? <AdminClientErrorsSection /> : null}
         {activeSection === "support" ? <AdminSupportSection /> : null}
+        {activeSection === "token-launches" ? <AdminTokenLaunchesSection /> : null}
         {activeSection === "system-health" ? <AdminSystemHealth /> : null}
       </section>
     </main>

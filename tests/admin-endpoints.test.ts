@@ -134,6 +134,7 @@ async function expectWorkingSessionAndHealth(loginResponse: Response): Promise<v
       "subscribers",
       "support",
       "token-chat",
+      "token-launches",
       "website-generation",
     ].sort(),
   );

@@ -1,6 +1,7 @@
 import { createPublicClient, http } from "viem";
 import { getBondingCurveAddress, HOODLUMS_BONDING_CURVE_READ_ABI } from "@/lib/bonding-curve-config";
 import { ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import { getCurveLaunchPipelineAddress } from "@/lib/curve-launch-pipeline-config";
 import { getFactoryAddress, HOODLUMS_TOKEN_FACTORY_ABI } from "@/lib/factory-config";
 import { monthlyEquivalentUsd, proratedFixedCostForThisMonthSoFar, utcMonthBounds } from "@/lib/operations-cost-math";
 import { readOperationsCostThresholds } from "@/lib/server/ai-pricing";
@@ -26,7 +27,8 @@ export type SystemHealthCheck = {
     | "client-errors"
     | "operations-cost"
     | "content-filter"
-    | "support";
+    | "support"
+    | "token-launches";
   label: string;
   status: SystemHealthStatus;
   message: string;
@@ -751,6 +753,60 @@ export async function checkSupportHealth(deps: {
   }
 }
 
+export type TokenLaunchesHealthPing = () => Promise<{ count24h: number }>;
+
+/**
+ * Reports whether HoodlumsCurveLaunchPipeline is configured for Robinhood
+ * Chain Testnet (amber if not — the launch flow just falls back to the
+ * token-only path, nothing is broken) and whether the `token_launches` table
+ * is reachable, with a rolling 24h launch count (Milestone A, issue #409).
+ */
+export async function checkTokenLaunchesHealth(deps: {
+  databaseUrl?: string;
+  ping?: TokenLaunchesHealthPing;
+  env?: Record<string, string | undefined>;
+} = {}): Promise<SystemHealthCheck> {
+  const id = "token-launches" as const;
+  const label = "Token launches";
+  const env = deps.env ?? process.env;
+  const pipelineAddress = getCurveLaunchPipelineAddress(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, env);
+  const configNote = pipelineAddress
+    ? `Curve launch pipeline ${pipelineAddress} configured.`
+    : "Curve launch pipeline not configured (NEXT_PUBLIC_HOODLUMS_CURVE_LAUNCH_PIPELINE_ADDRESSES unset) — /testnet falls back to the token-only launch path.";
+
+  const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl && !deps.ping) {
+    return { id, label, status: "red", message: `DATABASE_URL is not configured. ${configNote}` };
+  }
+
+  const ping =
+    deps.ping ??
+    (async () => {
+      const pool = getPostgresPool(databaseUrl);
+      const result = await pool.query<{ count: number | string }>(
+        `SELECT COUNT(*)::int AS count FROM token_launches WHERE launched_at >= NOW() - INTERVAL '24 hours'`,
+      );
+      return { count24h: Number(result.rows[0]?.count ?? 0) };
+    });
+
+  try {
+    const { count24h } = await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, "Token launches health check timed out.");
+    return {
+      id,
+      label,
+      status: pipelineAddress ? "green" : "amber",
+      message: `${count24h} launch(es) in the last 24 hours. ${configNote}`,
+    };
+  } catch {
+    return {
+      id,
+      label,
+      status: "red",
+      message: `The token_launches table is not reachable. Apply migration 029_token_launches.sql. ${configNote}`,
+    };
+  }
+}
+
 export type SystemHealthDeps = {
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
@@ -765,6 +821,7 @@ export type SystemHealthDeps = {
   operationsCost?: Parameters<typeof checkOperationsCostHealth>[0];
   contentFilter?: Parameters<typeof checkContentFilterHealth>[0];
   support?: Parameters<typeof checkSupportHealth>[0];
+  tokenLaunches?: Parameters<typeof checkTokenLaunchesHealth>[0];
 };
 
 /**
@@ -788,6 +845,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     operationsCost,
     contentFilter,
     support,
+    tokenLaunches,
   ] = await Promise.all([
     checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
     checkDatabaseHealth(deps.database),
@@ -803,6 +861,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     checkOperationsCostHealth({ env: deps.env, ...deps.operationsCost }),
     checkContentFilterHealth(deps.contentFilter),
     checkSupportHealth({ env: deps.env, ...deps.support }),
+    checkTokenLaunchesHealth({ env: deps.env, ...deps.tokenLaunches }),
   ]);
   return [
     websiteGeneration,
@@ -819,5 +878,6 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     operationsCost,
     contentFilter,
     support,
+    tokenLaunches,
   ];
 }

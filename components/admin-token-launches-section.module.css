@@ -1,0 +1,125 @@
+.panel {
+  border: 1px solid rgba(188, 231, 89, 0.15);
+  border-radius: 16px;
+  background: rgba(10, 13, 11, 0.88);
+  padding: 18px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: #eef3ea;
+  font-size: 1.05rem;
+}
+
+.sectionIntro {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: rgba(238, 243, 234, 0.62);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.refreshButton {
+  flex: none;
+  box-sizing: border-box;
+  min-height: 44px;
+  border-radius: 9px;
+  border: 1px solid rgba(188, 231, 89, 0.3);
+  background: transparent;
+  color: #bce759;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.refreshButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.error {
+  margin: 0 0 12px;
+  border: 1px solid rgba(255, 119, 119, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 119, 119, 0.08);
+  color: #ff9a9a;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+}
+
+.empty {
+  margin: 12px 0 0;
+  color: rgba(238, 243, 234, 0.55);
+  font-size: 0.85rem;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: rgba(238, 243, 234, 0.55);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid rgba(188, 231, 89, 0.15);
+}
+
+.table td {
+  padding: 10px;
+  color: #eef3ea;
+  border-bottom: 1px solid rgba(188, 231, 89, 0.08);
+  vertical-align: top;
+}
+
+.address {
+  color: rgba(238, 243, 234, 0.6);
+  font-size: 0.76rem;
+}
+
+.badgeGraduated,
+.badgeBonding {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.badgeGraduated {
+  color: #bce759;
+  border: 1px solid rgba(188, 231, 89, 0.4);
+  background: rgba(188, 231, 89, 0.08);
+}
+
+.badgeBonding {
+  color: #eaca4d;
+  border: 1px solid rgba(234, 202, 77, 0.4);
+  background: rgba(234, 202, 77, 0.08);
+}
+
+@media (max-width: 520px) {
+  .sectionHeader {
+    flex-direction: column;
+  }
+  .table {
+    font-size: 0.76rem;
+  }
+}
