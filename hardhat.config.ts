@@ -77,5 +77,16 @@ export default defineConfig({
       url: configVariable("ROBINHOOD_TESTNET_RPC_URL"),
       accounts: [configVariable("HOODLUMS_CURVE_LAUNCH_PIPELINE_DEPLOYER_PRIVATE_KEY")],
     },
+    // Deployment target for scripts/deploy-uniswap-v3-testnet.ts (issue
+    // #414) — a testnet-only Uniswap V3 stack standing in for the absent
+    // official deployment on Robinhood Chain Testnet. Never deployed
+    // automatically — see README.md "Uniswap V3 testnet deployment" for the
+    // exact command and required env vars.
+    robinhoodTestnetUniswapV3Deploy: {
+      type: "http",
+      chainId: 46630,
+      url: configVariable("ROBINHOOD_TESTNET_RPC_URL"),
+      accounts: [configVariable("HOODLUMS_UNISWAP_V3_DEPLOYER_PRIVATE_KEY")],
+    },
   },
 });
