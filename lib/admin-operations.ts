@@ -69,6 +69,13 @@ export const ADMIN_SERVICE_DEFINITIONS = [
       "/api/support/challenge, /api/support/tickets, /api/support/tickets/[id]/reply, /api/support/tickets/[id]/close, /api/admin/support, /api/admin/support/actions",
   },
   {
+    key: "token-launches",
+    label: "Token launches",
+    description:
+      "Wallet-signed recording of on-chain curve-backed token launches (Milestone A, issue #409), reconciled against a live chain read before any row is stored.",
+    affectedRoutes: "/api/token-launches/challenge, /api/token-launches",
+  },
+  {
     key: "test-access",
     label: "Wallet test-access allowlist",
     description:
@@ -115,7 +122,8 @@ export type AdminActivityKind =
   | "ticket-closed-by-user"
   | "slot-registered"
   | "slot-released-by-user"
-  | "slot-released-by-admin";
+  | "slot-released-by-admin"
+  | "token-launched";
 
 export type AdminActivityItem = {
   id: string;
@@ -142,6 +150,7 @@ export const SYSTEM_HEALTH_CHECK_IDS = [
   "operations-cost",
   "content-filter",
   "support",
+  "token-launches",
 ] as const;
 
 export type SystemHealthCheckId = (typeof SYSTEM_HEALTH_CHECK_IDS)[number];

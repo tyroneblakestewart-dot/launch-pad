@@ -735,3 +735,81 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   tells the user plainly that a red dot will appear when there's news, so
   they know they don't need to keep the page open. No admin-side changes —
   this is a pure client-side UX layer over the existing ticket data.
+- Milestone A "PR A" (issue #409): curve deploy pipeline, a server-side
+  launches record, and a wallet-mismatch guard — implemented for review, and
+  deliberately scoped smaller than the full issue per its own suggested
+  "PR A (chain + pipeline) / PR B (UI/grid)" split, stated here as required.
+  **Part 1** — `contracts/HoodlumsCurveLaunchPipeline.sol` deploys a token
+  and a `HoodlumsTestBondingCurve` for it in one transaction (deterministic
+  tests in `contracts/HoodlumsCurveLaunchPipeline.t.sol`; no separate fuzz/
+  invariant suite exists in this repo despite CLAUDE.md/issue references —
+  `test:contracts` runs Hardhat's native `.t.sol` suite only, and these new
+  tests were added to that same suite). It does not modify
+  `FixedSupplyMemeToken` or `HoodlumsTestBondingCurve` and never holds the
+  token or any funds itself, so the curve's existing fee/graduation
+  economics (rule 5) and `fundCurve()`'s `onlyCreator` + complete-supply
+  invariant (rule 6) are unchanged; it also bypasses `HoodlumsTokenFactory`
+  entirely rather than routing through it (routing through it would make
+  the factory's own bookkeeping/`TokenLaunched` event report the pipeline
+  contract as launcher instead of the real wallet, breaking the Part 2
+  reconciliation below). `components/testnet-launcher.tsx`'s Robinhood
+  path now chains three wallet signatures (deploy token+curve, approve,
+  `fundCurve()`) when `NEXT_PUBLIC_HOODLUMS_CURVE_LAUNCH_PIPELINE_ADDRESSES`
+  is configured for the connected chain, falling back to the existing
+  factory/direct-deploy token-only path otherwise; deploy parameters
+  (graduation target, virtual reserves) come from
+  `lib/curve-launch-pipeline-config.ts`, with a low testnet graduation
+  target default (4 native tokens) so a faucet-funded wallet can ride a
+  token to graduation, never inlined. **Part 2 (backend only)** — a
+  `token_launches` table (`db/migrations/029_token_launches.sql`) is
+  written via a wallet-signed `POST /api/token-launches`
+  (`lib/server/token-launch-auth.ts`, reusing `lib/server/chat-auth.ts`'s
+  in-memory challenge primitives — the write is also independently
+  reconciled against a live on-chain read of the curve/token contracts
+  before any row is inserted, `lib/server/token-launch-reconciliation.ts`,
+  so a forged or replayed signature still cannot create a false record;
+  the in-memory (not durable `wallet_nonces`-table) challenge store was
+  chosen as the stated trade-off, since the on-chain reconciliation is
+  the actual security floor here, not the signature's durability). A
+  public `GET /api/token-launches` lists recorded launches
+  (`lib/server/token-launches-store.ts`); `graduated`/`graduated_at`
+  columns exist per the issue's row spec but are not yet kept in sync by
+  any job in this PR — only `store.markGraduated()` exists for a future
+  caller to use. **The homepage grid switch (New/Bonding/Graduated tabs
+  reading from `token_launches` instead of `published_sites`, with live
+  30-60s polling per issue #403's pattern) and Part 3's trading UI
+  (quote/buy/sell, the graduation clamp UI, fee breakdown) are NOT built
+  in this PR** — both are sizeable, mobile-Safari-sensitive UI efforts
+  (rule 7) left to a follow-up "PR B"; the backend above (the read route,
+  rate limits already sized for that future poll cadence) is ready for it.
+  **Part 4** — a wallet-mismatch guard (reusing the `describeWalletMismatch`
+  pattern from issue #388) is wired into both real Robinhood-testnet launch
+  surfaces: `/testnet`'s `TestnetLauncher`, and — identified during this
+  PR as "the tester's real bug today" the issue refers to —
+  `components/robinhood-testnet-deployment-controller.tsx`, the studio's
+  own launch modal (opened from the homepage builder), whose
+  `getProvider()` prefers `window.__launchpadEthereum` (the exact wallet
+  `AccountWalletBridge` confirmed) but silently falls back to the bare
+  `window.ethereum` on any page load where that in-memory reference wasn't
+  set, with no comparison against the wallet actually confirmed via the
+  Account panel until now. Both guards compare the wallet app's active
+  account against `hoodlums.account.wallet` (the only wallet identity a
+  browser-local project draft has, since drafts carry no owner field of
+  their own) and offer explicit "switch wallet" / "continue anyway —
+  belongs to the other wallet" choices naming both addresses before a
+  launch signature is ever requested. The studio launch modal still only
+  deploys a plain `FixedSupplyMemeToken` (Part 1's curve pipeline is not
+  wired into it in this PR — flagged as a named follow-up, since it is a
+  materially different, portal-based component and is the actual primary
+  homepage launch surface, deserving its own careful mobile-Safari pass).
+  **Rule 10** — `/admin` gained a `token-launches` System Health pipeline
+  (isolation, curve-deployment-config, launches-table, launches-24h
+  stages) and service-isolation switch, a `token-launched` Activity log
+  kind (token address, wallet, name only), and a read-only Launches
+  section/list (`GET /api/admin/token-launches`). Not verified on a real
+  mobile Safari device this pass (rule 7) — both wallet-mismatch panels'
+  390px layout was checked by reading the CSS against each surface's
+  existing breakpoint, not on-device; flagged for the owner to confirm.
+  `AGENTS.md`'s roadmap section has pre-existing drift from CLAUDE.md
+  (stops around issue #358) that predates this PR and was not addressed
+  here — out of scope for this change.

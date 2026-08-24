@@ -1,0 +1,121 @@
+import { afterEach, describe, expect, it } from "vitest";
+import type { AdminServiceControl } from "@/lib/admin-operations";
+import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import { CURVE_LAUNCH_PIPELINE_ADDRESSES_ENV_VAR } from "@/lib/curve-launch-pipeline-config";
+import { buildTokenLaunchesPipeline } from "@/lib/server/system-health-pipeline";
+import {
+  resetTokenLaunchesStoreForTests,
+  setTokenLaunchesStoreForTests,
+  type TokenLaunchesStore,
+} from "@/lib/server/token-launches-store";
+
+function stageById(pipeline: { stages: Array<{ id: string }> }, id: string) {
+  const stage = pipeline.stages.find((candidate) => candidate.id === id);
+  if (!stage) throw new Error(`No stage with id ${id}`);
+  return stage;
+}
+
+function activeControl(overrides: Partial<AdminServiceControl> = {}): AdminServiceControl {
+  return {
+    key: "token-launches",
+    label: "Token launches",
+    description: "",
+    affectedRoutes: "",
+    isolated: false,
+    reason: "",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function fakeStore(overrides: Partial<TokenLaunchesStore> = {}): TokenLaunchesStore {
+  return {
+    async record() {
+      throw new Error("not used in this test");
+    },
+    async list() {
+      return [];
+    },
+    async listForAdmin() {
+      return [];
+    },
+    async markGraduated() {},
+    async countLast24h() {
+      return 0;
+    },
+    async tableExists() {
+      return true;
+    },
+    ...overrides,
+  };
+}
+
+const PIPELINE_ADDRESS = "0x1234567890123456789012345678901234567890";
+const CONFIGURED_ENV = {
+  [CURVE_LAUNCH_PIPELINE_ADDRESSES_ENV_VAR]: JSON.stringify({
+    [ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL]: PIPELINE_ADDRESS,
+  }),
+};
+
+afterEach(() => {
+  resetTokenLaunchesStoreForTests();
+});
+
+describe("buildTokenLaunchesPipeline", () => {
+  it("reports the curve-deployment-config stage amber when no pipeline is configured for Robinhood testnet", async () => {
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: {},
+      getServiceControl: async () => activeControl(),
+    });
+    expect(stageById(pipeline, "curve-deployment-config")).toMatchObject({ status: "amber" });
+  });
+
+  it("reports the curve-deployment-config stage green with the graduation target once a pipeline is configured", async () => {
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: CONFIGURED_ENV,
+      getServiceControl: async () => activeControl(),
+    });
+    const stage = stageById(pipeline, "curve-deployment-config");
+    expect(stage.status).toBe("green");
+    expect(stage.message).toContain(PIPELINE_ADDRESS);
+  });
+
+  it("reports the DB-dependent stages amber when DATABASE_URL is not configured", async () => {
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: {},
+      getServiceControl: async () => activeControl(),
+    });
+    expect(stageById(pipeline, "launches-table")).toMatchObject({ status: "amber" });
+    expect(stageById(pipeline, "launches-24h")).toMatchObject({ status: "amber" });
+  });
+
+  it("is green end to end once the table exists with recent launches", async () => {
+    setTokenLaunchesStoreForTests(fakeStore({ tableExists: async () => true, countLast24h: async () => 3 }));
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: { ...CONFIGURED_ENV, DATABASE_URL: "postgres://test" },
+      getServiceControl: async () => activeControl(),
+    });
+    expect(stageById(pipeline, "launches-table")).toMatchObject({ status: "green" });
+    const launches24h = stageById(pipeline, "launches-24h");
+    expect(launches24h.status).toBe("green");
+    expect(launches24h.message).toContain("3 launch(es)");
+  });
+
+  it("is red on launches-table and does not probe the 24h count when the table doesn't exist yet", async () => {
+    setTokenLaunchesStoreForTests(fakeStore({ tableExists: async () => false }));
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: { DATABASE_URL: "postgres://test" },
+      getServiceControl: async () => activeControl(),
+    });
+    expect(stageById(pipeline, "launches-table")).toMatchObject({ status: "red" });
+    expect(stageById(pipeline, "launches-24h")).toMatchObject({ status: "amber" });
+  });
+
+  it("reflects an isolated service on the isolation stage", async () => {
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: {},
+      getServiceControl: async () => activeControl({ isolated: true, reason: "maintenance" }),
+    });
+    expect(stageById(pipeline, "endpoint-reachable")).toMatchObject({ status: "amber" });
+  });
+});

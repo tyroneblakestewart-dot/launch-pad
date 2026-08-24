@@ -8,6 +8,10 @@ import type {
 } from "@/lib/admin-operations";
 import { getBondingCurveAddress, HOODLUMS_BONDING_CURVE_READ_ABI } from "@/lib/bonding-curve-config";
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import {
+  getCurveLaunchPipelineAddress,
+  resolveCurveLaunchParams,
+} from "@/lib/curve-launch-pipeline-config";
 import { getFactoryAddress, HOODLUMS_TOKEN_FACTORY_ABI } from "@/lib/factory-config";
 import { readAiPricingRates, readOperationsCostThresholds, validateAiPricingConfig } from "@/lib/server/ai-pricing";
 import { resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
@@ -25,6 +29,7 @@ import {
 import { getAdminOperationsStore } from "@/lib/server/admin-operations-store";
 import { getPostgresPool } from "@/lib/server/postgres";
 import { getSocialXCostStore, readXApiSendCostUsd, readXMonthlyCostCapUsd, type SocialXCostStore } from "@/lib/server/social-x-cost-store";
+import { getTokenLaunchesStore } from "@/lib/server/token-launches-store";
 import {
   CLIENT_ERRORS_RED_THRESHOLD,
   contractsClient,
@@ -1743,6 +1748,114 @@ export async function buildSupportPipeline(deps: SupportPipelineDeps = {}): Prom
 }
 
 // ---------------------------------------------------------------------------
+// Token launches (Milestone A, issue #409)
+// ---------------------------------------------------------------------------
+
+export type TokenLaunchesPipelineDeps = {
+  env?: Record<string, string | undefined>;
+  getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
+  now?: Date;
+};
+
+/**
+ * Confirms HoodlumsCurveLaunchPipeline is configured for Robinhood Chain
+ * Testnet and that a graduation target resolves without throwing — the
+ * exact two things components/testnet-launcher.tsx needs before it will
+ * offer the curve-backed launch path at all (it silently falls back to the
+ * token-only path otherwise, so this stage is what tells an admin *why* the
+ * curve path is or isn't showing).
+ */
+function curveDeploymentConfigStage(env: Record<string, string | undefined>): AdminPipelineStage {
+  const pipelineAddress = getCurveLaunchPipelineAddress(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, env);
+  if (!pipelineAddress) {
+    return stage(
+      "curve-deployment-config",
+      "Curve deployment pipeline configured",
+      "amber",
+      "NEXT_PUBLIC_HOODLUMS_CURVE_LAUNCH_PIPELINE_ADDRESSES is not set for chain 46630 — /testnet falls back to the token-only launch path.",
+    );
+  }
+  try {
+    const params = resolveCurveLaunchParams(18, env);
+    return stage(
+      "curve-deployment-config",
+      "Curve deployment pipeline configured",
+      "green",
+      `Pipeline ${pipelineAddress} configured; graduation target ${params.graduationTargetWei.toString()} wei.`,
+    );
+  } catch (error) {
+    return stage(
+      "curve-deployment-config",
+      "Curve deployment pipeline configured",
+      "red",
+      `Pipeline ${pipelineAddress} configured, but its deploy parameters are invalid: ${error instanceof Error ? error.message : "unknown error"}.`,
+    );
+  }
+}
+
+export async function buildTokenLaunchesPipeline(
+  deps: TokenLaunchesPipelineDeps = {},
+): Promise<AdminServicePipeline> {
+  const env = deps.env ?? process.env;
+  const getServiceControl =
+    deps.getServiceControl ?? ((key: AdminServiceKey) => getAdminOperationsStore().getServiceControl(key));
+
+  const isolationStage = await chatIsolationStage("token-launches", getServiceControl);
+  const configStage = curveDeploymentConfigStage(env);
+
+  const databaseUrl = env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl) {
+    const message = "DATABASE_URL is not configured.";
+    return {
+      id: "token-launches",
+      label: "Token launches",
+      stages: [
+        isolationStage,
+        configStage,
+        stage("launches-table", "token_launches table exists", "amber", message),
+        stage("launches-24h", "Launches in the last 24h", "amber", message),
+      ],
+    };
+  }
+
+  const store = getTokenLaunchesStore();
+
+  let tableExists = false;
+  let tableExistsStage: AdminPipelineStage;
+  try {
+    tableExists = await withTimeout(store.tableExists(), HEALTH_CHECK_TIMEOUT_MS, "timed out");
+    tableExistsStage = tableExists
+      ? stage("launches-table", "token_launches table exists", "green", "The token_launches table is present.")
+      : stage(
+          "launches-table",
+          "token_launches table exists",
+          "red",
+          "Migration 029_token_launches.sql has not been applied yet.",
+        );
+  } catch {
+    tableExistsStage = stage("launches-table", "token_launches table exists", "red", "Could not check whether the token_launches table exists.");
+  }
+
+  let launches24hStage: AdminPipelineStage;
+  if (!tableExists) {
+    launches24hStage = stage("launches-24h", "Launches in the last 24h", "amber", "Not probed; the token_launches table does not exist yet.");
+  } else {
+    try {
+      const count = await withTimeout(store.countLast24h(), HEALTH_CHECK_TIMEOUT_MS, "timed out");
+      launches24hStage = stage("launches-24h", "Launches in the last 24h", "green", `${count} launch(es) in the last 24 hours.`);
+    } catch {
+      launches24hStage = stage("launches-24h", "Launches in the last 24h", "red", "Could not count recent token launches.");
+    }
+  }
+
+  return {
+    id: "token-launches",
+    label: "Token launches",
+    stages: [isolationStage, configStage, tableExistsStage, launches24hStage],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
 
@@ -1762,6 +1875,7 @@ export type SystemHealthPipelineDeps = {
   operationsCost?: OperationsCostPipelineDeps;
   contentFilter?: ContentFilterPipelineDeps;
   support?: SupportPipelineDeps;
+  tokenLaunches?: TokenLaunchesPipelineDeps;
 };
 
 /** Builds a single service's pipeline on demand — used by the drill-down endpoint. */
@@ -1806,5 +1920,7 @@ export async function buildServicePipeline(
       return buildContentFilterPipeline(deps.contentFilter);
     case "support":
       return buildSupportPipeline({ env: deps.env, ...deps.support });
+    case "token-launches":
+      return buildTokenLaunchesPipeline({ env: deps.env, ...deps.tokenLaunches });
   }
 }

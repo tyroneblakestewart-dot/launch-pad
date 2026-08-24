@@ -235,14 +235,60 @@ Once a curve is deployed, set `NEXT_PUBLIC_HOODLUMS_BONDING_CURVE_ADDRESSES`
 (see "Live graduation status" above) to see its progress and graduation
 state on `/bonding-curve` — neither script does this automatically.
 
+### Curve launch pipeline deployment
+
+Milestone A (issue #409, Part 1) adds `contracts/HoodlumsCurveLaunchPipeline.sol`,
+a small helper that deploys a token AND a `HoodlumsTestBondingCurve` for it in
+one transaction, so `/testnet`'s Robinhood Chain flow only needs three wallet
+signatures total (deploy token+curve, approve, `fundCurve()`) instead of
+separately deploying each contract by hand. It does not modify
+`FixedSupplyMemeToken` or `HoodlumsTestBondingCurve` — it only chains their
+existing constructors — and it never holds the token or any funds itself.
+
+Deploy it once per chain:
+
+```bash
+npm run contracts:compile
+npm run deploy:curve-launch-pipeline:robinhood
+```
+
+Required environment variables — the same treasury/Uniswap V3 addresses as
+the deployment drill above, since every curve this pipeline deploys
+graduates the same way:
+
+| Variable | Purpose |
+| --- | --- |
+| `HOODLUMS_CURVE_LAUNCH_PIPELINE_DEPLOYER_PRIVATE_KEY` | Funded testnet-only deployer key. Never logged, stored, or committed. |
+| `HOODLUMS_BONDING_CURVE_TREASURY_ADDRESS` | Constructor `treasury_`, applied to every curve this pipeline deploys. |
+| `HOODLUMS_BONDING_CURVE_POSITION_MANAGER_ADDRESS` / `HOODLUMS_BONDING_CURVE_UNISWAP_V3_FACTORY_ADDRESS` / `HOODLUMS_BONDING_CURVE_WETH9_ADDRESS` | Same Uniswap V3 addresses as the deployment drill — re-verify independently before deploying, see the caveats above. |
+
+Once verified, set `NEXT_PUBLIC_HOODLUMS_CURVE_LAUNCH_PIPELINE_ADDRESSES` to
+`{"46630":"0xYourDeployedPipeline"}` — `/testnet` only offers the curve-backed
+launch path once this is configured; until then it keeps using the existing
+factory/direct-deploy token-only path. Each launch's graduation target and
+virtual reserves come from `NEXT_PUBLIC_HOODLUMS_CURVE_GRADUATION_TARGET_ETHER`
+/ `NEXT_PUBLIC_HOODLUMS_CURVE_VIRTUAL_ETH_RESERVE_ETHER` /
+`NEXT_PUBLIC_HOODLUMS_CURVE_VIRTUAL_TOKEN_RESERVE_WHOLE` (defaults `4` / `1` /
+`1000000`, matching the deployment drill's own defaults) — a deliberately low
+testnet graduation target so a faucet-funded wallet can ride a token to
+graduation.
+
+A successful curve-backed launch is also recorded server-side (wallet-signed,
+then reconciled against a live on-chain read before being stored — see
+`POST /api/token-launches`), the beginning of a `token_launches` table meant
+to become the homepage HOODLUMS TOKENS grid's source of truth in a follow-up
+PR. Recorded launches are visible today in `/admin`'s Launches section.
+
 ### Wallet-signed token test lab
 
 The `/testnet` route supports two proof-of-launch flows:
 
-- **Robinhood Chain Testnet:** add or switch to chain ID `46630`, then deploy through the live HoodlumsTokenFactory above (paying its current `0` launch fee) or, if no factory is configured for the connected chain, deploy a burnable fixed-supply ERC-20 directly. Either way the contract has no owner or external mint function and the complete supply mints once to the signing wallet.
+- **Robinhood Chain Testnet:** add or switch to chain ID `46630`. If a curve launch pipeline is configured for the connected chain (see above), deploying creates the token AND its bonding curve, then funds it — three wallet signatures. Otherwise it deploys through the live HoodlumsTokenFactory (paying its current `0` launch fee) or, if no factory is configured either, deploys a burnable fixed-supply ERC-20 directly. Every path leaves the token with no owner and no external mint function; the complete supply mints once to the signing wallet. Before requesting a signature, the flow compares the wallet app's active account against whichever wallet was last confirmed via the Account panel and warns on a mismatch, offering "switch wallet" or "continue anyway" rather than silently launching under a different owner.
 - **Solana devnet:** create an SPL mint and associated token account, mint the selected fixed supply to the connected Phantom wallet, and permanently revoke mint authority.
 
-Both flows return a transaction or token address with an explorer link. They do not create metadata, liquidity, a bonding curve, or a public sale. A custom Solana endpoint can be supplied with `NEXT_PUBLIC_SOLANA_DEVNET_RPC`.
+Both flows return a transaction or token address with an explorer link. Neither flow creates metadata or a public sale. A custom Solana endpoint can be supplied with `NEXT_PUBLIC_SOLANA_DEVNET_RPC`.
+
+The studio's own launch modal (`components/robinhood-testnet-deployment-controller.tsx`, opened from the homepage builder) carries the same wallet-mismatch guard as `/testnet` above, but still only deploys a plain `FixedSupplyMemeToken` — wiring the curve launch pipeline into that flow is left to a follow-up PR.
 
 An additional `/monad` test page deploys the same fixed-supply EVM token design on Monad Testnet and blocks deployment unless the wallet reports chain ID `10143`.
 

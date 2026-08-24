@@ -51,6 +51,7 @@ describe("backend test inventory", () => {
       "app/api/admin/support/actions/route.ts",
       "app/api/admin/support/route.ts",
       "app/api/admin/test-access/route.ts",
+      "app/api/admin/token-launches/route.ts",
       "app/api/client-errors/route.ts",
       "app/api/cron/outreach/route.ts",
       "app/api/cron/social-posting/route.ts",
@@ -101,6 +102,8 @@ describe("backend test inventory", () => {
       "app/api/token-chat/challenge/route.ts",
       "app/api/token-chat/messages/route.ts",
       "app/api/token-chat/report/route.ts",
+      "app/api/token-launches/challenge/route.ts",
+      "app/api/token-launches/route.ts",
       "app/api/trending-robinhood/route.ts",
     ]);
 
@@ -138,6 +141,7 @@ describe("backend test inventory", () => {
       "app/api/admin/support/actions/route.ts": ["POST"],
       "app/api/admin/support/route.ts": ["GET"],
       "app/api/admin/test-access/route.ts": ["GET", "PATCH", "POST"],
+      "app/api/admin/token-launches/route.ts": ["GET"],
       "app/api/client-errors/route.ts": ["POST"],
       "app/api/cron/outreach/route.ts": ["GET"],
       "app/api/cron/social-posting/route.ts": ["GET"],
@@ -188,6 +192,8 @@ describe("backend test inventory", () => {
       "app/api/token-chat/challenge/route.ts": ["POST"],
       "app/api/token-chat/messages/route.ts": ["GET", "POST"],
       "app/api/token-chat/report/route.ts": ["POST"],
+      "app/api/token-launches/challenge/route.ts": ["POST"],
+      "app/api/token-launches/route.ts": ["GET", "POST"],
       "app/api/trending-robinhood/route.ts": ["GET"],
     });
   });
@@ -282,6 +288,9 @@ describe("backend test inventory", () => {
       "lib/server/token-chat-creator.ts",
       "lib/server/token-chat-store.ts",
       "lib/server/token-holders.ts",
+      "lib/server/token-launch-auth.ts",
+      "lib/server/token-launch-reconciliation.ts",
+      "lib/server/token-launches-store.ts",
       "lib/server/token-market-stats.ts",
       "lib/server/x-oauth1-signing.ts",
       "lib/server/x-tweets-client.ts",

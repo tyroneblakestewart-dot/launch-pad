@@ -520,3 +520,50 @@ export function isSupportRequestOriginAllowed(request: Request): boolean {
     new URL(request.url).origin;
   return Boolean(origin && origin === configured);
 }
+
+// Token launches (Milestone A, issue #409 Part 2): wallet-signed recording
+// of an on-chain launch, plus a public read the homepage grid will poll
+// (issue #403's live-refresh pattern is the required precedent, even though
+// wiring the grid itself is left to a follow-up PR — this endpoint's rate
+// limit is already sized for that future 30-60s poll so it doesn't need
+// revisiting when the grid lands). "Action" covers the challenge and record
+// endpoints; "read" covers the plain GET list.
+export const TOKEN_LAUNCH_ACTION_LIMIT = 20;
+// Sized for a future 30s visible-tab poll (SUPPORT_READ_LIMIT's own
+// precedent, issue #403): a 30s timer alone is up to 3600/30 = 120 reads/hour
+// from a single open homepage tab, plus a focus/visibilitychange refetch on
+// every refocus (a generous ~20/hour) and a couple of one-off loads (initial
+// mount, the "trigger an immediate refetch after my own launch completes"
+// case from this same issue). 120 + 20 + a handful of one-offs stays
+// comfortably under 300/hour with headroom, matching SUPPORT_READ_LIMIT's
+// same "generous but still bounded, per-IP per-hour" shape.
+export const TOKEN_LAUNCH_READ_LIMIT = 300;
+export const TOKEN_LAUNCH_WINDOW_MS = 60 * 60 * 1000;
+
+export function consumeTokenLaunchActionRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("token-launch-action"), ip, TOKEN_LAUNCH_ACTION_LIMIT, TOKEN_LAUNCH_WINDOW_MS, now);
+}
+
+export function consumeTokenLaunchReadRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("token-launch-read"), ip, TOKEN_LAUNCH_READ_LIMIT, TOKEN_LAUNCH_WINDOW_MS, now);
+}
+
+export function resetTokenLaunchRateLimitsForTests() {
+  ["token-launch-action", "token-launch-read"].forEach((name) => namedRateStore(name).clear());
+}
+
+/**
+ * Same-origin check for token-launch endpoints, mirroring
+ * isSupportRequestOriginAllowed's fallback chain (a dedicated
+ * TOKEN_LAUNCH_ALLOWED_ORIGIN is only needed if it diverges from the shared
+ * publish/generate-site origin config).
+ */
+export function isTokenLaunchRequestOriginAllowed(request: Request): boolean {
+  const origin = request.headers.get("origin") || "";
+  const configured =
+    process.env.TOKEN_LAUNCH_ALLOWED_ORIGIN?.trim() ||
+    process.env.PUBLISH_ALLOWED_ORIGIN?.trim() ||
+    process.env.GENERATE_SITE_STYLE_ALLOWED_ORIGIN?.trim() ||
+    new URL(request.url).origin;
+  return Boolean(origin && origin === configured);
+}
