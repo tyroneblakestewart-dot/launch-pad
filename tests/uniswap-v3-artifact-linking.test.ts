@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import type { Address, Hex } from "viem";
+import { isHex, type Address, type Hex } from "viem";
 import {
   DEFAULT_NATIVE_CURRENCY_LABEL,
   NATIVE_CURRENCY_LABEL_ENV_VAR,
@@ -59,6 +59,26 @@ describe("linkLibraryReferences", () => {
     expect(() =>
       linkLibraryReferences("not-hex" as Hex, {}, {}),
     ).toThrow(/0x-prefixed hex bytecode/);
+  });
+
+  it("links the real NonfungibleTokenPositionDescriptor artifact's NFTDescriptor placeholder end to end", () => {
+    const requireFromHere = createRequire(import.meta.url);
+    const artifactPath = requireFromHere.resolve(
+      "@uniswap/v3-periphery/artifacts/contracts/NonfungibleTokenPositionDescriptor.sol/NonfungibleTokenPositionDescriptor.json",
+    );
+    const artifact = JSON.parse(readFileSync(artifactPath, "utf8")) as {
+      bytecode: string;
+      linkReferences: SolidityLinkReferences;
+    };
+    const dummyLibraryAddress = `0x${"11".repeat(20)}` as Address;
+
+    const linked = linkLibraryReferences(artifact.bytecode as Hex, artifact.linkReferences, {
+      NFTDescriptor: dummyLibraryAddress,
+    });
+
+    expect(isHex(linked, { strict: true })).toBe(true);
+    expect(hasUnresolvedLibraryPlaceholder(linked)).toBe(false);
+    expect(linked.length).toBe(artifact.bytecode.length);
   });
 });
 
