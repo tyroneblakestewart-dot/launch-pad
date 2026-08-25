@@ -273,18 +273,25 @@ currency label), kept dependency-free so it's unit tested directly in
 
 **Package versions.** `package.json` pins `@uniswap/v2-periphery@1.1.0-beta.0`,
 `@uniswap/v3-core@1.0.0`, and `@uniswap/v3-periphery@1.4.4` — the versions
-believed to match Uniswap's own mainnet deployments. These were pinned from
-memory while writing this script, in a sandboxed session with no npm
-registry access to run `npm view` or to `npm install` and inspect the actual
-downloaded artifact files; they were **not verified against the live npm
-registry**. Before running this script for real: confirm each package's
-latest/intended version yourself, run `npm install`, open each artifact file
-`scripts/deploy-uniswap-v3-testnet.ts` points at (the exact paths are
-constants near the top of that file) and confirm it has the `abi`/`bytecode`
-(and, for the token descriptor, `linkReferences`) fields the script expects
-— `loadExternalArtifact` throws a clear error naming the problem if a path
-is wrong or a package version's artifact layout has changed, rather than
-deploying something silently broken.
+believed to match Uniswap's own mainnet deployments. These pins and all five
+artifact paths `scripts/deploy-uniswap-v3-testnet.ts` reads have since been
+verified against the live npm registry (issue #416): every path resolves
+after `npm install` and each artifact has the `abi`/`bytecode` (and, for the
+token descriptor, `linkReferences`) fields the script expects.
+`@uniswap/v2-periphery`'s `WETH9.json` is an older solc artifact whose
+`bytecode` field is plain hex **without** the `0x` prefix, unlike the four
+Hardhat-format V3 artifacts; `loadExternalArtifact`'s
+`normalizeArtifactBytecodeHex` (`lib/uniswap-v3-artifact-linking.ts`) handles
+this automatically, prepending `0x` when it's missing, and separately
+tolerates the one unresolved solc library placeholder present in
+`NonfungibleTokenPositionDescriptor.json`'s bytecode (linked later via
+`linkLibraryReferences`) — so no manual bytecode editing is needed for
+either artifact. If a pin ever changes, re-open each artifact file (the
+exact paths are constants near the top of `deploy-uniswap-v3-testnet.ts`)
+and confirm it still has the fields the script expects —
+`loadExternalArtifact` throws a clear error naming the problem if a path is
+wrong or a package version's artifact layout has changed in some other way,
+rather than deploying something silently broken.
 
 Deploy once per chain:
 

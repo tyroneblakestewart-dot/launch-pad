@@ -1,3 +1,5 @@
+import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Address, Hex } from "viem";
 import {
@@ -6,6 +8,7 @@ import {
   encodeNativeCurrencyLabel,
   hasUnresolvedLibraryPlaceholder,
   linkLibraryReferences,
+  normalizeArtifactBytecodeHex,
   resolveUniswapV3TestnetDeployConfig,
   type SolidityLinkReferences,
 } from "../lib/uniswap-v3-artifact-linking";
@@ -67,6 +70,72 @@ describe("hasUnresolvedLibraryPlaceholder", () => {
 
   it("returns false for fully linked bytecode", () => {
     expect(hasUnresolvedLibraryPlaceholder(`0x${LIBRARY_ADDRESS.slice(2)}` as Hex)).toBe(false);
+  });
+});
+
+describe("normalizeArtifactBytecodeHex", () => {
+  it("accepts unprefixed hex and returns it 0x-prefixed", () => {
+    expect(normalizeArtifactBytecodeHex("60c06040")).toBe("0x60c06040");
+  });
+
+  it("passes already-0x-prefixed hex through unchanged", () => {
+    expect(normalizeArtifactBytecodeHex("0x60c06040")).toBe("0x60c06040");
+  });
+
+  it("accepts 0x-prefixed hex containing one solc library placeholder, returned unchanged with the placeholder intact", () => {
+    const placeholder = `__$${"a".repeat(34)}$__`;
+    const bytecode = `0x1234${placeholder}5678`;
+    expect(normalizeArtifactBytecodeHex(bytecode)).toBe(bytecode);
+  });
+
+  it("accepts unprefixed hex containing a placeholder, returned 0x-prefixed with the placeholder intact", () => {
+    const placeholder = `__$${"a".repeat(34)}$__`;
+    const bytecode = `1234${placeholder}5678`;
+    expect(normalizeArtifactBytecodeHex(bytecode)).toBe(`0x${bytecode}`);
+  });
+
+  it("rejects a placeholder with the wrong inner length", () => {
+    const badPlaceholder = `__$${"a".repeat(33)}$__`;
+    expect(normalizeArtifactBytecodeHex(`0x1234${badPlaceholder}5678`)).toBeNull();
+  });
+
+  it("rejects a placeholder with non-hex inner content", () => {
+    const badPlaceholder = `__$${"z".repeat(34)}$__`;
+    expect(normalizeArtifactBytecodeHex(`0x1234${badPlaceholder}5678`)).toBeNull();
+  });
+
+  it("rejects non-hex garbage", () => {
+    expect(normalizeArtifactBytecodeHex("not hex at all")).toBeNull();
+    expect(normalizeArtifactBytecodeHex("0xnot-hex")).toBeNull();
+  });
+
+  it("rejects a non-string value", () => {
+    expect(normalizeArtifactBytecodeHex(undefined)).toBeNull();
+    expect(normalizeArtifactBytecodeHex(null)).toBeNull();
+    expect(normalizeArtifactBytecodeHex(123)).toBeNull();
+  });
+
+  it("rejects an empty string", () => {
+    expect(normalizeArtifactBytecodeHex("")).toBeNull();
+  });
+
+  it("accepts every real artifact file scripts/deploy-uniswap-v3-testnet.ts loads", () => {
+    const requireFromHere = createRequire(import.meta.url);
+    const artifactPaths = [
+      "@uniswap/v2-periphery/build/WETH9.json",
+      "@uniswap/v3-core/artifacts/contracts/UniswapV3Factory.sol/UniswapV3Factory.json",
+      "@uniswap/v3-periphery/artifacts/contracts/libraries/NFTDescriptor.sol/NFTDescriptor.json",
+      "@uniswap/v3-periphery/artifacts/contracts/NonfungibleTokenPositionDescriptor.sol/NonfungibleTokenPositionDescriptor.json",
+      "@uniswap/v3-periphery/artifacts/contracts/NonfungiblePositionManager.sol/NonfungiblePositionManager.json",
+    ];
+
+    for (const specifier of artifactPaths) {
+      const resolvedPath = requireFromHere.resolve(specifier);
+      const artifact = JSON.parse(readFileSync(resolvedPath, "utf8")) as Record<string, unknown>;
+      const normalized = normalizeArtifactBytecodeHex(artifact.bytecode);
+      expect(normalized, `${specifier} should normalize to valid hex bytecode`).not.toBeNull();
+      expect(normalized).toMatch(/^0x[0-9a-fA-F$_]+$/);
+    }
   });
 });
 

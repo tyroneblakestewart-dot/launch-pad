@@ -15,6 +15,8 @@ export const DEFAULT_NATIVE_CURRENCY_LABEL = "ETH";
 // hex characters, the same width as the 20-byte address it gets replaced
 // with.
 const LIBRARY_PLACEHOLDER_PATTERN = /__\$[0-9a-fA-F]{34}\$__/;
+const LIBRARY_PLACEHOLDER_PATTERN_GLOBAL = /__\$[0-9a-fA-F]{34}\$__/g;
+const PURE_HEX_PATTERN = /^[0-9a-fA-F]+$/;
 
 /**
  * Patches solc's standard unlinked-library placeholder bytes in `bytecode`
@@ -69,6 +71,33 @@ export function linkLibraryReferences(
  */
 export function hasUnresolvedLibraryPlaceholder(bytecode: Hex): boolean {
   return LIBRARY_PLACEHOLDER_PATTERN.test(bytecode);
+}
+
+/**
+ * Validates and normalizes a raw artifact "bytecode" field into a
+ * 0x-prefixed hex string, or returns null if it doesn't look like bytecode
+ * at all. Handles two real-world artifact shapes seen across the packages
+ * this script reads: @uniswap/v2-periphery@1.1.0-beta.0's WETH9 artifact is
+ * an older solc format whose bytecode has no "0x" prefix, while
+ * @uniswap/v3-periphery@1.4.4's NonfungibleTokenPositionDescriptor artifact
+ * is 0x-prefixed but still contains an unresolved solc library placeholder
+ * (linked later by linkLibraryReferences) — a strict hex check on the raw
+ * value would wrongly reject both. Placeholder characters are only
+ * tolerated for the validity check; the returned string keeps the original
+ * placeholder(s) intact, never the dummy substitution.
+ */
+export function normalizeArtifactBytecodeHex(value: unknown): Hex | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const withoutPrefix = value.startsWith("0x") ? value.slice(2) : value;
+  const withPlaceholdersFilled = withoutPrefix.replace(LIBRARY_PLACEHOLDER_PATTERN_GLOBAL, (match) =>
+    "0".repeat(match.length),
+  );
+  if (!PURE_HEX_PATTERN.test(withPlaceholdersFilled)) {
+    return null;
+  }
+  return `0x${withoutPrefix}` as Hex;
 }
 
 /**

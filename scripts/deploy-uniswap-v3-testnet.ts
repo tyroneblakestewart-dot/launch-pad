@@ -32,6 +32,7 @@ import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "../lib/chains";
 import {
   hasUnresolvedLibraryPlaceholder,
   linkLibraryReferences,
+  normalizeArtifactBytecodeHex,
   resolveUniswapV3TestnetDeployConfig,
   type SolidityLinkReferences,
 } from "../lib/uniswap-v3-artifact-linking";
@@ -77,11 +78,13 @@ function loadExternalArtifact(specifier: string): ExternalArtifact {
     throw new Error(`"${specifier}" did not parse to a JSON object.`);
   }
   const artifact = raw as Record<string, unknown>;
-  if (typeof artifact.bytecode !== "string" || !artifact.bytecode.startsWith("0x")) {
+  const bytecode = normalizeArtifactBytecodeHex(artifact.bytecode);
+  if (bytecode === null) {
     throw new Error(
-      `"${specifier}" does not look like a compiled contract artifact (missing a 0x-prefixed ` +
-        '"bytecode" field) — the installed package version may not match the artifact layout this ' +
-        "script expects. Open the file and adjust this script's path/extraction if the shape differs.",
+      `"${specifier}" does not look like a compiled contract artifact (its "bytecode" field is ` +
+        "missing, or isn't hex once any \"0x\" prefix and solc library placeholders are accounted for) " +
+        "— the installed package version may not match the artifact layout this script expects. Open " +
+        "the file and adjust this script's path/extraction if the shape differs.",
     );
   }
   if (!Array.isArray(artifact.abi)) {
@@ -89,7 +92,7 @@ function loadExternalArtifact(specifier: string): ExternalArtifact {
   }
   return {
     abi: artifact.abi as Abi,
-    bytecode: artifact.bytecode as Hex,
+    bytecode,
     linkReferences: artifact.linkReferences as SolidityLinkReferences | undefined,
   };
 }
