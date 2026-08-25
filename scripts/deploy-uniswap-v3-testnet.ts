@@ -32,6 +32,7 @@ import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "../lib/chains";
 import {
   hasUnresolvedLibraryPlaceholder,
   linkLibraryReferences,
+  normalizeArtifactBytecodeHex,
   resolveUniswapV3TestnetDeployConfig,
   type SolidityLinkReferences,
 } from "../lib/uniswap-v3-artifact-linking";
@@ -77,7 +78,12 @@ function loadExternalArtifact(specifier: string): ExternalArtifact {
     throw new Error(`"${specifier}" did not parse to a JSON object.`);
   }
   const artifact = raw as Record<string, unknown>;
-  if (typeof artifact.bytecode !== "string" || !artifact.bytecode.startsWith("0x")) {
+  // Hardhat-format artifacts (the four V3 core/periphery ones) already carry
+  // a 0x-prefixed "bytecode"; @uniswap/v2-periphery@1.1.0-beta.0's
+  // WETH9.json is an older solc-format artifact whose "bytecode" is plain
+  // hex with no prefix — normalize both to the same 0x-prefixed shape.
+  const normalizedBytecode = normalizeArtifactBytecodeHex(artifact.bytecode);
+  if (normalizedBytecode === null) {
     throw new Error(
       `"${specifier}" does not look like a compiled contract artifact (missing a 0x-prefixed ` +
         '"bytecode" field) — the installed package version may not match the artifact layout this ' +
@@ -89,7 +95,7 @@ function loadExternalArtifact(specifier: string): ExternalArtifact {
   }
   return {
     abi: artifact.abi as Abi,
-    bytecode: artifact.bytecode as Hex,
+    bytecode: normalizedBytecode,
     linkReferences: artifact.linkReferences as SolidityLinkReferences | undefined,
   };
 }

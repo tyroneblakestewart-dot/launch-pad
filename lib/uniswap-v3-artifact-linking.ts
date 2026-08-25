@@ -60,6 +60,27 @@ export function linkLibraryReferences(
   return linked as Hex;
 }
 
+const HEX_STRING_PATTERN = /^[0-9a-fA-F]+$/;
+
+/**
+ * Normalizes a raw artifact "bytecode" field to a 0x-prefixed hex string.
+ * Hardhat-format artifacts (the four Uniswap V3 core/periphery ones) already
+ * carry the 0x prefix; @uniswap/v2-periphery@1.1.0-beta.0's WETH9.json is an
+ * older solc-format artifact whose "bytecode" is plain hex with no prefix.
+ * Returns null if `value` isn't a non-empty hex string in either form, so
+ * the caller can produce its own contextual error message.
+ */
+export function normalizeArtifactBytecodeHex(value: unknown): Hex | null {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+  const unprefixed = value.startsWith("0x") ? value.slice(2) : value;
+  if (!HEX_STRING_PATTERN.test(unprefixed)) {
+    return null;
+  }
+  return `0x${unprefixed}` as Hex;
+}
+
 /**
  * Whether `bytecode` still contains an unresolved solc library placeholder
  * — i.e. linkLibraryReferences was skipped, or was given the wrong library

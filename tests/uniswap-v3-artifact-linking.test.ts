@@ -6,6 +6,7 @@ import {
   encodeNativeCurrencyLabel,
   hasUnresolvedLibraryPlaceholder,
   linkLibraryReferences,
+  normalizeArtifactBytecodeHex,
   resolveUniswapV3TestnetDeployConfig,
   type SolidityLinkReferences,
 } from "../lib/uniswap-v3-artifact-linking";
@@ -85,6 +86,30 @@ describe("encodeNativeCurrencyLabel", () => {
 
   it("throws on a label longer than 31 characters", () => {
     expect(() => encodeNativeCurrencyLabel("A".repeat(32))).toThrow(/31 characters or fewer/);
+  });
+});
+
+describe("normalizeArtifactBytecodeHex", () => {
+  it("prepends 0x to unprefixed hex (the @uniswap/v2-periphery WETH9.json shape)", () => {
+    expect(normalizeArtifactBytecodeHex("60c06040")).toBe("0x60c06040");
+  });
+
+  it("passes already-0x-prefixed hex through unchanged (the Hardhat artifact shape)", () => {
+    expect(normalizeArtifactBytecodeHex("0x60c06040")).toBe("0x60c06040");
+  });
+
+  it("returns null for non-hex garbage", () => {
+    expect(normalizeArtifactBytecodeHex("not-hex")).toBeNull();
+    expect(normalizeArtifactBytecodeHex("0xnot-hex")).toBeNull();
+  });
+
+  it("returns null for a non-string value", () => {
+    expect(normalizeArtifactBytecodeHex(undefined)).toBeNull();
+    expect(normalizeArtifactBytecodeHex(1234)).toBeNull();
+  });
+
+  it("returns null for an empty string", () => {
+    expect(normalizeArtifactBytecodeHex("")).toBeNull();
   });
 });
 
