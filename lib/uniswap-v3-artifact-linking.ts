@@ -1,4 +1,4 @@
-import { isHex, stringToHex, type Address, type Hex } from "viem";
+import { stringToHex, type Address, type Hex } from "viem";
 
 // Pure helpers for scripts/deploy-uniswap-v3-testnet.ts (issue #414). Kept
 // free of Hardhat/network/filesystem imports so the bytecode-linking and
@@ -30,10 +30,11 @@ export function linkLibraryReferences(
   linkReferences: SolidityLinkReferences,
   libraries: Record<string, Address>,
 ): Hex {
-  if (!isHex(bytecode)) {
+  const normalized = normalizeArtifactBytecodeHex(bytecode);
+  if (normalized === null) {
     throw new Error("linkLibraryReferences expects a 0x-prefixed hex bytecode string.");
   }
-  let linked: string = bytecode;
+  let linked: string = normalized;
   for (const fileReferences of Object.values(linkReferences)) {
     for (const [libraryName, references] of Object.entries(fileReferences)) {
       const libraryAddress = libraries[libraryName];
