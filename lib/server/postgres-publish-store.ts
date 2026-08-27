@@ -1,4 +1,3 @@
-import type { PoolClient } from "pg";
 import type { PublicGeneratedSite, PublishedSiteVisibility } from "@/lib/public-site";
 import { getPostgresPool } from "@/lib/server/postgres";
 import { createDraftToken, type PublishChallenge } from "@/lib/server/publish-auth";
@@ -19,6 +18,18 @@ import type {
   UpdateContractAddressResult,
 } from "@/lib/server/publish-store";
 import type { ProjectStatus, SupportedChain } from "@/lib/types";
+
+type QueryResult<T> = { rows: T[] };
+
+type PoolClientLike = {
+  query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<QueryResult<T>>;
+  release(): void;
+};
+
+export type PostgresPoolLike = {
+  connect(): Promise<PoolClientLike>;
+  query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<QueryResult<T>>;
+};
 
 type NonceRow = {
   id: string;
@@ -128,7 +139,7 @@ const SITE_COLUMNS = `
   created_at, updated_at
 `;
 
-async function rollback(client: PoolClient): Promise<void> {
+async function rollback(client: PoolClientLike): Promise<void> {
   try {
     await client.query("ROLLBACK");
   } catch {
@@ -136,8 +147,20 @@ async function rollback(client: PoolClient): Promise<void> {
   }
 }
 
-async function insertPublishedSite(
-  client: PoolClient,
+/**
+ * Inserts a new published site, or — when the slug already exists and the
+ * publishing wallet is the row's existing owner — republishes over it. The
+ * `ON CONFLICT ... WHERE` predicate is evaluated against the existing row
+ * and EXCLUDED (the row that would have been inserted): a match lets the
+ * conditional DO UPDATE proceed, a mismatch (a different owner already
+ * holds the slug) leaves the row untouched and RETURNING empty, which the
+ * caller maps to slug_conflict. visibility, draft_token,
+ * owner_wallet_address, lp_locked_at and created_at are deliberately never
+ * touched by the UPDATE SET, so a republish can never flip a live site back
+ * to draft, mint a new draft token, or change ownership/history.
+ */
+async function upsertPublishedSite(
+  client: PoolClientLike,
   site: PublishableSite,
   ownerWalletAddress: string,
 ): Promise<PublishedSiteRow | null> {
@@ -150,7 +173,21 @@ async function insertPublishedSite(
       $1, $2, $3, $4, $5, $6, $7, $8,
       $9, $10, $11, $12, $13, $14, $15, $16, $17
     )
-    ON CONFLICT (slug) DO NOTHING
+    ON CONFLICT (slug) DO UPDATE SET
+      token_name = EXCLUDED.token_name,
+      ticker = EXCLUDED.ticker,
+      description = EXCLUDED.description,
+      supply = EXCLUDED.supply,
+      decimals = EXCLUDED.decimals,
+      chain = EXCLUDED.chain,
+      chain_id = EXCLUDED.chain_id,
+      contract_address = EXCLUDED.contract_address,
+      generated_html = EXCLUDED.generated_html,
+      artwork_reference = EXCLUDED.artwork_reference,
+      x_handle = EXCLUDED.x_handle,
+      telegram = EXCLUDED.telegram,
+      status = EXCLUDED.status
+    WHERE lower(published_sites.owner_wallet_address) = lower(EXCLUDED.owner_wallet_address)
     RETURNING ${SITE_COLUMNS}`,
     [
       site.slug,
@@ -187,8 +224,13 @@ function challengeFailure(
   return null;
 }
 
-export function createPostgresPublishStore(databaseUrl: string): PublishStore {
-  const pool = getPostgresPool(databaseUrl);
+export function createPostgresPublishStore(
+  databaseUrl: string,
+  deps: { getPool?: (databaseUrl: string) => PostgresPoolLike } = {},
+): PublishStore {
+  const pool = (deps.getPool ?? ((url: string) => getPostgresPool(url) as unknown as PostgresPoolLike))(
+    databaseUrl,
+  );
 
   return {
     async createChallenge(input: CreatePublishChallengeInput): Promise<PublishChallenge> {
@@ -254,7 +296,7 @@ export function createPostgresPublishStore(databaseUrl: string): PublishStore {
         }
 
         await client.query("UPDATE wallet_nonces SET used_at = NOW() WHERE id = $1", [challenge.id]);
-        const inserted = await insertPublishedSite(client, input.site, challenge.walletAddress);
+        const inserted = await upsertPublishedSite(client, input.site, challenge.walletAddress);
         await client.query("COMMIT");
 
         if (!inserted) return { status: "slug_conflict" };
