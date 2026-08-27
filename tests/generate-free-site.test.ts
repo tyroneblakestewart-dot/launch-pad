@@ -23,6 +23,17 @@ const VALID_IMAGE = "data:image/png;base64,aGVsbG8=";
 const SHARED_SECRET = "test-free-site-secret";
 const ALLOWED_ORIGIN = "https://hoodlums.dev";
 
+// Issue #422: the route's user-facing error text for every provider failure
+// kind is now a plain-English message naming what happened and what the
+// user can do next (CLAUDE.md's user-facing-error rule), rather than the
+// old bare "(http 500)"/"(timeout)"/"(network)" technical suffix.
+const PROVIDER_REJECTED_MESSAGE =
+  "Site generation failed: the AI provider rejected the request. Try again shortly; if it keeps failing the team has been notified.";
+const PROVIDER_TIMEOUT_MESSAGE =
+  "Site generation failed: the connection to the AI provider timed out. Try again shortly; if it keeps failing the team has been notified.";
+const PROVIDER_NETWORK_MESSAGE =
+  "Site generation failed: the AI provider could not be reached. Try again shortly; if it keeps failing the team has been notified.";
+
 const ARTWORK: ArtworkIdentity = {
   dominantColours:
     "Soft peach, warm cream, cocoa brown, dusty rose and a small mint-green accent.",
@@ -165,6 +176,7 @@ beforeEach(() => {
   delete process.env.VERCEL_OIDC_TOKEN;
   resetGenerateSiteStyleRateLimitForTests();
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
@@ -470,17 +482,18 @@ describe("POST /api/generate-free-site artwork failures", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("does not retry a provider-level artwork failure and reports the http status", async () => {
+  it("does not retry a provider-level artwork failure and reports the plain-English message plus provider status", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response("", { status: 500 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider: { status: number | null; summary: string | null } }>(
+      response,
+    );
 
     expect(response.status).toBe(502);
-    expect(body.error).toBe(
-      "The AI artwork-analysis service could not complete the request (http 500).",
-    );
+    expect(body.error).toBe(PROVIDER_REJECTED_MESSAGE);
+    expect(body.provider).toEqual({ status: 500, summary: null });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -496,9 +509,7 @@ describe("POST /api/generate-free-site artwork failures", () => {
     const body = await responseJson<{ error: string }>(response);
 
     expect(response.status).toBe(502);
-    expect(body.error).toBe(
-      "The AI artwork-analysis service could not complete the request (timeout).",
-    );
+    expect(body.error).toBe(PROVIDER_TIMEOUT_MESSAGE);
   });
 
   it("reports a general artwork network error as network, not timeout", async () => {
@@ -509,9 +520,7 @@ describe("POST /api/generate-free-site artwork failures", () => {
     const body = await responseJson<{ error: string }>(response);
 
     expect(response.status).toBe(502);
-    expect(body.error).toBe(
-      "The AI artwork-analysis service could not complete the request (network).",
-    );
+    expect(body.error).toBe(PROVIDER_NETWORK_MESSAGE);
   });
 });
 
@@ -524,12 +533,13 @@ describe("POST /api/generate-free-site design failures", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider: { status: number | null; summary: string | null } }>(
+      response,
+    );
 
     expect(response.status).toBe(502);
-    expect(body.error).toBe(
-      "The AI free-site design service could not complete the request (http 429).",
-    );
+    expect(body.error).toBe(PROVIDER_REJECTED_MESSAGE);
+    expect(body.provider.status).toBe(429);
   });
 
   it("reports a timed-out design call as timeout after the automatic retry also times out", async () => {
@@ -551,9 +561,91 @@ describe("POST /api/generate-free-site design failures", () => {
 
     expect(response.status).toBe(502);
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(body.error).toBe(
-      "The AI free-site design service could not complete the request (timeout).",
+    expect(body.error).toBe(PROVIDER_TIMEOUT_MESSAGE);
+  });
+});
+
+// Issue #422: previously the provider's non-ok response body was discarded
+// entirely, so a Vercel log for a failed generation carried nothing beyond
+// an HTTP status — the actual reason (bad model, quota, auth) was
+// undiagnosable. requestProvider() now reads, sanitises and logs that body,
+// and surfaces a short version of it to the client alongside the plain
+// user-facing message.
+describe("POST /api/generate-free-site provider error capture (issue #422)", () => {
+  it("logs the sanitised provider error body with the route stage and http status, and never leaks the Authorization header or an api key", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "Invalid Authorization: Bearer sk-live-super-secret-12345 for this model.",
+            type: "invalid_request_error",
+          },
+        }),
+        { status: 400 },
+      ),
     );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{
+      error: string;
+      provider: { status: number | null; summary: string | null };
+    }>(response);
+
+    expect(response.status).toBe(502);
+    expect(body.error).toBe(PROVIDER_REJECTED_MESSAGE);
+    expect(body.provider.status).toBe(400);
+    expect(body.provider.summary).toContain("invalid_request_error");
+    expect(body.provider.summary).not.toContain("sk-live-super-secret-12345");
+    expect(body.provider.summary).toContain("[redacted]");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "AI artwork-analysis request failed through openai",
+      400,
+      expect.stringContaining("invalid_request_error"),
+    );
+    // The route also fail-open logs an unrelated "service isolation state
+    // could not be read" line in this DATABASE_URL-less test environment
+    // (lib/server/service-isolation.ts), so find our specific call rather
+    // than assuming it is the first one logged.
+    const loggedDetail = vi
+      .mocked(console.error)
+      .mock.calls.find((call) => call[0] === "AI artwork-analysis request failed through openai")?.[2] as string;
+    expect(loggedDetail).not.toContain("sk-live-super-secret-12345");
+    expect(loggedDetail).not.toContain("Bearer sk-live-super-secret-12345");
+  });
+
+  it("bounds a very large provider error body before sanitising and logging it", async () => {
+    const hugeBody = JSON.stringify({ error: { message: "x".repeat(10_000) } });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(outputText(ARTWORK))
+      .mockResolvedValueOnce(new Response(hugeBody, { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(request(input()));
+    const body = await responseJson<{ provider: { summary: string | null } }>(response);
+
+    expect(response.status).toBe(502);
+    // sanitiseProviderDetail's own 500-character cap keeps the client-facing
+    // summary well short of the raw 10,000-character body either way.
+    expect(body.provider.summary?.length).toBeLessThanOrEqual(500);
+  });
+
+  it("never logs a provider request failure for a successful generation", async () => {
+    vi.stubGlobal("fetch", providerMock());
+
+    const response = await POST(request(input()));
+    expect(response.status).toBe(200);
+    // The route also fail-open logs an unrelated "service isolation state
+    // could not be read" line in this DATABASE_URL-less test environment
+    // (lib/server/service-isolation.ts) on every request, so assert no
+    // provider-failure line was logged rather than that console.error was
+    // never called at all.
+    const providerFailureLogs = vi
+      .mocked(console.error)
+      .mock.calls.filter((call) => typeof call[0] === "string" && call[0].startsWith("AI "));
+    expect(providerFailureLogs).toHaveLength(0);
   });
 });
 
@@ -619,9 +711,7 @@ describe("POST /api/generate-free-site design retry (issue #330)", () => {
 
     expect(response.status).toBe(502);
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(body.error).toBe(
-      "The AI free-site design service could not complete the request (http 500).",
-    );
+    expect(body.error).toBe(PROVIDER_REJECTED_MESSAGE);
   });
 
   it("does not retry a 4xx design failure", async () => {
@@ -636,9 +726,7 @@ describe("POST /api/generate-free-site design retry (issue #330)", () => {
 
     expect(response.status).toBe(502);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(body.error).toBe(
-      "The AI free-site design service could not complete the request (http 429).",
-    );
+    expect(body.error).toBe(PROVIDER_REJECTED_MESSAGE);
   });
 
   it("does not retry when the design call succeeds but parseFreeSiteDesignResponse rejects it", async () => {
@@ -704,9 +792,7 @@ describe("POST /api/generate-free-site design retry (issue #330)", () => {
 
       expect(response.status).toBe(502);
       expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(body.error).toBe(
-        "The AI free-site design service could not complete the request (http 500).",
-      );
+      expect(body.error).toBe(PROVIDER_REJECTED_MESSAGE);
     } finally {
       vi.useRealTimers();
     }

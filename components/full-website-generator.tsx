@@ -380,7 +380,12 @@ function stageMessage(stage: GenerateSitePageProgressStage, hasInspiration: bool
   }
 }
 
-function setPreviewStatus(mode: PreviewStatus, message: string, headline?: string) {
+function setPreviewStatus(
+  mode: PreviewStatus,
+  message: string,
+  headline?: string,
+  onRetry?: () => void,
+) {
   const site = previewElement();
   let status = site.querySelector<HTMLElement>(".full-generated-page-status");
   if (!status) {
@@ -396,6 +401,22 @@ function setPreviewStatus(mode: PreviewStatus, message: string, headline?: strin
   status.querySelector("strong")!.textContent =
     mode === "generating" ? headline || "Building the finished website…" : "No finished website was produced";
   status.querySelector("p")!.textContent = message;
+
+  // Only a failed status ever gets a retry button; a successful/generating
+  // status never had one, so there is nothing to remove in that branch.
+  let retryButton = status.querySelector<HTMLButtonElement>(".full-generated-page-retry-button");
+  if (mode === "failed" && onRetry) {
+    if (!retryButton) {
+      retryButton = document.createElement("button");
+      retryButton.type = "button";
+      retryButton.className = "full-generated-page-retry-button";
+      retryButton.textContent = "Try again";
+      status.appendChild(retryButton);
+    }
+    retryButton.onclick = onRetry;
+  } else {
+    retryButton?.remove();
+  }
 
   site.classList.toggle("full-page-generating", mode === "generating");
   site.classList.toggle("full-page-failed", mode === "failed");
@@ -885,21 +906,37 @@ export function FullWebsiteGenerator() {
           }),
         );
       } catch (error) {
-        if (currentGeneration !== generationNumber || isAbortError(error)) return;
+        // A real cancellation (a newer generation superseding this one, the
+        // preview closing, or the component unmounting) always bumps
+        // generationNumber before aborting, so it is already filtered out
+        // above. Reaching this line with a matching generation number means
+        // the AbortError (if any) is the synthetic one
+        // generate-site-style-auth-bridge.tsx throws to short-circuit a
+        // bespoke request it has already reported through its own upgrade/
+        // wallet UI (e.g. the 403 bespoke-plan-required upsell) — that error
+        // still needs to stop this panel's own spinner, just without a
+        // second, redundant failure event.
+        if (currentGeneration !== generationNumber) return;
         const message =
           error instanceof Error ? error.message : "The full website could not be generated.";
         setPreviewStatus(
           "failed",
           `${message} The terminal-style base preview has not been accepted as your generated website.`,
+          undefined,
+          () => {
+            void onGenerate(event);
+          },
         );
-        window.dispatchEvent(
-          new CustomEvent("launchpad:site-generation-failed", {
-            detail: {
-              message,
-              previewAvailable: false,
-            },
-          }),
-        );
+        if (!isAbortError(error)) {
+          window.dispatchEvent(
+            new CustomEvent("launchpad:site-generation-failed", {
+              detail: {
+                message,
+                previewAvailable: false,
+              },
+            }),
+          );
+        }
       } finally {
         if (activeController === controller) activeController = null;
       }
@@ -1142,6 +1179,23 @@ export function FullWebsiteGenerator() {
         background: linear-gradient(155deg, #fff8f6, #f7ece8);
       }
       .site-preview.full-page-failed .full-generated-page-status span { color: #a13b29; }
+      .full-generated-page-retry-button {
+        min-height: 44px;
+        padding: 0 22px;
+        border: 1px solid rgba(161, 59, 41, .4);
+        border-radius: 999px;
+        background: #a13b29;
+        color: #fff8f6;
+        font: 800 12px/1 system-ui, sans-serif;
+        letter-spacing: .04em;
+        cursor: pointer;
+        transition: background-color .16s ease, border-color .16s ease;
+      }
+      .full-generated-page-retry-button:hover { background: #8a3121; }
+      .full-generated-page-retry-button:focus-visible {
+        outline: 2px solid #a13b29;
+        outline-offset: 2px;
+      }
       @keyframes hoodlums-page-spin { to { transform: rotate(360deg); } }
       @media (max-width: 767px) {
         .site-preview.full-generated-page {

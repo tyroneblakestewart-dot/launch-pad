@@ -118,10 +118,17 @@ function noStoreHeaders(extra: Record<string, string> = {}) {
   return { "Cache-Control": "no-store", ...extra };
 }
 
+// Bounds how much of a non-ok provider response body is read before it is
+// sanitised (which itself further truncates to 500 characters) — a defensive
+// cap so an unexpectedly large error body is never held in memory just to be
+// thrown away.
+const PROVIDER_ERROR_BODY_MAX_CHARS = 2_000;
+
 async function requestProvider(
   ai: AIResponsesRuntime,
   body: unknown,
   timeoutMs: number,
+  stage: string,
 ): Promise<ProviderResult> {
   let response: Response;
   try {
@@ -135,11 +142,16 @@ async function requestProvider(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
-    return { ok: false, kind: "network", detail: sanitiseProviderDetail(error) };
+    const detail = sanitiseProviderDetail(error);
+    console.error(`AI ${stage} request failed before receiving a response`, detail);
+    return { ok: false, kind: "network", detail };
   }
 
   if (!response.ok) {
-    return { ok: false, kind: "http", status: response.status };
+    const rawText = await response.text().catch(() => "");
+    const detail = sanitiseProviderDetail(rawText.slice(0, PROVIDER_ERROR_BODY_MAX_CHARS));
+    console.error(`AI ${stage} request failed through ${ai.source}`, response.status, detail);
+    return { ok: false, kind: "http", status: response.status, detail };
   }
 
   try {
@@ -147,6 +159,43 @@ async function requestProvider(
   } catch {
     return { ok: false, kind: "invalid" };
   }
+}
+
+// The exact wording matters here: it names what happened (the AI provider,
+// not "the server", rejected the request) and what the user can do next
+// (retry; the team is already notified via the console.error above), per
+// CLAUDE.md's user-facing-error rule. Distinct provider failures still get
+// tailored phrasing because "the provider rejected the request" would be
+// misleading for a connection drop or an unreadable response.
+function userFacingProviderFailureMessage(failure: {
+  kind: "network" | "http" | "invalid";
+  status?: number;
+  detail?: string;
+}): string {
+  if (isTimeoutFailure(failure)) {
+    return "Site generation failed: the connection to the AI provider timed out. Try again shortly; if it keeps failing the team has been notified.";
+  }
+  if (failure.kind === "network") {
+    return "Site generation failed: the AI provider could not be reached. Try again shortly; if it keeps failing the team has been notified.";
+  }
+  if (failure.kind === "invalid") {
+    return "Site generation failed: the AI provider returned an unreadable response. Try again shortly; if it keeps failing the team has been notified.";
+  }
+  return "Site generation failed: the AI provider rejected the request. Try again shortly; if it keeps failing the team has been notified.";
+}
+
+// Safe to return to the client: sanitiseProviderDetail already stripped any
+// Authorization/api-key content before this ever reached ProviderResult, and
+// the provider's own error body is not the user's sensitive content.
+function providerFailureSummary(failure: {
+  kind: "network" | "http" | "invalid";
+  status?: number;
+  detail?: string;
+}): { status: number | null; summary: string | null } {
+  return {
+    status: typeof failure.status === "number" ? failure.status : null,
+    summary: failure.detail || null,
+  };
 }
 
 function isTimeoutFailure(failure: { kind: string; detail?: string }): boolean {
@@ -296,7 +345,7 @@ export async function POST(request: Request) {
   const artworkBody = buildPageArtworkIdentityRequestBody(input, ai.model);
   const artworkResult = await requestArtworkIdentity(
     (stage) =>
-      requestProvider(ai, artworkBody, ARTWORK_TIMEOUT_MS).then((result) => {
+      requestProvider(ai, artworkBody, ARTWORK_TIMEOUT_MS, stage).then((result) => {
         recordFreeSiteCost(
           stage.endsWith("-retry") ? AI_FEATURE_KEYS.FREE_SITE_ARTWORK_IDENTITY_RETRY : AI_FEATURE_KEYS.FREE_SITE_ARTWORK_IDENTITY,
           result,
@@ -310,12 +359,14 @@ export async function POST(request: Request) {
     },
   );
   if (!artworkResult.ok) {
-    const parseFailure = artworkResult.failure.kind === "invalid";
+    const { failure } = artworkResult;
+    const parseFailure = failure.kind === "invalid";
     return NextResponse.json(
       {
         error: parseFailure
           ? "The AI returned an invalid artwork identity."
-          : `The AI artwork-analysis service could not complete the request (${describeProviderFailure(artworkResult.failure)}).`,
+          : userFacingProviderFailureMessage(failure),
+        provider: providerFailureSummary(failure),
       },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
@@ -325,7 +376,7 @@ export async function POST(request: Request) {
   const sections = buildFreeSiteSections(body);
 
   const designBody = buildFreeSiteDesignRequestBody(input, ai.model, artworkIdentity, sections);
-  let designResult = await requestProvider(ai, designBody, DESIGN_TIMEOUT_MS);
+  let designResult = await requestProvider(ai, designBody, DESIGN_TIMEOUT_MS, "free-site-design");
   recordFreeSiteCost(AI_FEATURE_KEYS.FREE_SITE_DESIGN, designResult);
   if (!designResult.ok && isTransientProviderFailure(designResult)) {
     const remainingBudgetMs =
@@ -336,14 +387,15 @@ export async function POST(request: Request) {
         "AI free-site design request failed transiently; retrying once",
         describeProviderFailure(designResult),
       );
-      designResult = await requestProvider(ai, designBody, retryTimeoutMs);
+      designResult = await requestProvider(ai, designBody, retryTimeoutMs, "free-site-design-retry");
       recordFreeSiteCost(AI_FEATURE_KEYS.FREE_SITE_DESIGN_RETRY, designResult);
     }
   }
   if (!designResult.ok) {
     return NextResponse.json(
       {
-        error: `The AI free-site design service could not complete the request (${describeProviderFailure(designResult)}).`,
+        error: userFacingProviderFailureMessage(designResult),
+        provider: providerFailureSummary(designResult),
       },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );

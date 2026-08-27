@@ -146,4 +146,68 @@ describe("free-site vs bespoke generation mode wiring", () => {
     expect(arrayBody).toContain('"/api/generate-site-page"');
     expect(arrayBody).toContain('"/api/generate-free-site"');
   });
+
+  // Issue #422: a failed generation (free-site 502, or the bespoke path's
+  // 403 bespoke-plan-required upsell) used to leave the in-preview status
+  // panel stuck showing "generating" forever, because the catch block
+  // returned early for any AbortError — including the synthetic one
+  // generate-site-style-auth-bridge.tsx throws after it has already shown
+  // its own upgrade UI. It must now always stop the spinner and offer a
+  // retry, and must only skip the *second*, redundant failure-event
+  // dispatch for that synthetic case.
+  describe("spinner-stop and retry on generation failure (issue #422)", () => {
+    it("onGenerate's catch no longer returns early just because the error is an AbortError", async () => {
+      const source = await generatorSource();
+      const catchStart = source.indexOf("} catch (error) {", source.indexOf("async function onGenerate"));
+      const catchEnd = source.indexOf("} finally {", catchStart);
+      expect(catchStart).toBeGreaterThan(-1);
+      expect(catchEnd).toBeGreaterThan(catchStart);
+      const catchBody = source.slice(catchStart, catchEnd);
+
+      // Only a real cancellation (generation superseded) still bails out early.
+      expect(catchBody).toContain("if (currentGeneration !== generationNumber) return;");
+      expect(catchBody).not.toContain(
+        "if (currentGeneration !== generationNumber || isAbortError(error)) return;",
+      );
+      // setPreviewStatus("failed", ...) always runs, regardless of error kind.
+      expect(catchBody).toContain('setPreviewStatus(\n          "failed",');
+      // The launchpad:site-generation-failed event is still skipped for the
+      // synthetic AbortError, since generate-site-style-auth-bridge.tsx
+      // already dispatched it once.
+      expect(catchBody).toContain("if (!isAbortError(error)) {");
+      const dispatchIndex = catchBody.indexOf('new CustomEvent("launchpad:site-generation-failed"');
+      const guardIndex = catchBody.indexOf("if (!isAbortError(error)) {");
+      expect(dispatchIndex).toBeGreaterThan(guardIndex);
+    });
+
+    it("setPreviewStatus wires an onRetry callback into a visible retry button, and the failure catch passes one that re-runs onGenerate", async () => {
+      const source = await generatorSource();
+
+      const setStatusStart = source.indexOf("function setPreviewStatus(");
+      const setStatusEnd = source.indexOf("function clearPreviewStatus(");
+      expect(setStatusStart).toBeGreaterThan(-1);
+      const setStatusBody = source.slice(setStatusStart, setStatusEnd);
+
+      expect(setStatusBody).toContain("onRetry?: () => void,");
+      expect(setStatusBody).toContain('mode === "failed" && onRetry');
+      expect(setStatusBody).toContain('retryButton.className = "full-generated-page-retry-button";');
+      expect(setStatusBody).toContain("retryButton.onclick = onRetry;");
+      // A non-failed or retry-less call removes any stale button instead of
+      // leaving a dead "Try again" control behind.
+      expect(setStatusBody).toContain("retryButton?.remove();");
+
+      const catchStart = source.indexOf("} catch (error) {", source.indexOf("async function onGenerate"));
+      const catchEnd = source.indexOf("} finally {", catchStart);
+      const catchBody = source.slice(catchStart, catchEnd);
+      expect(catchBody).toContain("() => {\n            void onGenerate(event);\n          }");
+    });
+
+    it("gives the retry button a real, styled, touch-sized target", async () => {
+      const source = await generatorSource();
+      expect(source).toContain(".full-generated-page-retry-button {");
+      const styleStart = source.indexOf(".full-generated-page-retry-button {");
+      const styleBlock = source.slice(styleStart, styleStart + 300);
+      expect(styleBlock).toMatch(/min-height:\s*44px/);
+    });
+  });
 });
