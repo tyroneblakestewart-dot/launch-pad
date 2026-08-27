@@ -83,14 +83,14 @@ export function parseCurveLaunchPipelineAddressMap(
  */
 export function getCurveLaunchPipelineAddress(
   chainId: number,
-  env: Record<string, string | undefined> = process.env,
+  env: Record<string, string | undefined> = DEFAULT_ENV,
 ): `0x${string}` | undefined {
   return parseCurveLaunchPipelineAddressMap(env[CURVE_LAUNCH_PIPELINE_ADDRESSES_ENV_VAR])[chainId];
 }
 
 /** Convenience accessor for the chain the pipeline is being prepared for. */
 export function getRobinhoodTestnetCurveLaunchPipelineAddress(
-  env: Record<string, string | undefined> = process.env,
+  env: Record<string, string | undefined> = DEFAULT_ENV,
 ): `0x${string}` | undefined {
   return getCurveLaunchPipelineAddress(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, env);
 }
@@ -105,6 +105,27 @@ export function getRobinhoodTestnetCurveLaunchPipelineAddress(
 export const GRADUATION_TARGET_ETHER_ENV_VAR = "NEXT_PUBLIC_HOODLUMS_CURVE_GRADUATION_TARGET_ETHER";
 export const VIRTUAL_ETH_RESERVE_ETHER_ENV_VAR = "NEXT_PUBLIC_HOODLUMS_CURVE_VIRTUAL_ETH_RESERVE_ETHER";
 export const VIRTUAL_TOKEN_RESERVE_WHOLE_ENV_VAR = "NEXT_PUBLIC_HOODLUMS_CURVE_VIRTUAL_TOKEN_RESERVE_WHOLE";
+
+/**
+ * Next.js only inlines NEXT_PUBLIC_ vars into client bundles when the access
+ * is a static literal (process.env.NEXT_PUBLIC_X) — a dynamic lookup like
+ * `process.env[someVar]` compiles to an empty object in the browser, so it
+ * silently resolves to undefined client-side even though the var is set in
+ * the deployment environment (issue #423). Every accessor below defaults to
+ * this object instead of `process.env` directly so the browser actually
+ * receives these values; tests keep injecting their own `env` object
+ * unaffected.
+ */
+const DEFAULT_ENV: Record<string, string | undefined> = {
+  NEXT_PUBLIC_HOODLUMS_CURVE_LAUNCH_PIPELINE_ADDRESSES:
+    process.env.NEXT_PUBLIC_HOODLUMS_CURVE_LAUNCH_PIPELINE_ADDRESSES,
+  NEXT_PUBLIC_HOODLUMS_CURVE_GRADUATION_TARGET_ETHER:
+    process.env.NEXT_PUBLIC_HOODLUMS_CURVE_GRADUATION_TARGET_ETHER,
+  NEXT_PUBLIC_HOODLUMS_CURVE_VIRTUAL_ETH_RESERVE_ETHER:
+    process.env.NEXT_PUBLIC_HOODLUMS_CURVE_VIRTUAL_ETH_RESERVE_ETHER,
+  NEXT_PUBLIC_HOODLUMS_CURVE_VIRTUAL_TOKEN_RESERVE_WHOLE:
+    process.env.NEXT_PUBLIC_HOODLUMS_CURVE_VIRTUAL_TOKEN_RESERVE_WHOLE,
+};
 
 export const DEFAULT_GRADUATION_TARGET_ETHER = "4";
 export const DEFAULT_VIRTUAL_ETH_RESERVE_ETHER = "1";
@@ -143,7 +164,7 @@ function resolvePositiveEtherAmount(
  */
 export function resolveCurveLaunchParams(
   tokenDecimals: number,
-  env: Record<string, string | undefined> = process.env,
+  env: Record<string, string | undefined> = DEFAULT_ENV,
 ): CurveLaunchParams {
   const graduationTargetWei = resolvePositiveEtherAmount(
     env,
