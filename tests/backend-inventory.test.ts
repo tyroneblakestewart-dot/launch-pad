@@ -104,6 +104,7 @@ describe("backend test inventory", () => {
       "app/api/token-chat/report/route.ts",
       "app/api/token-launches/challenge/route.ts",
       "app/api/token-launches/route.ts",
+      "app/api/token-trades/route.ts",
       "app/api/trending-robinhood/route.ts",
     ]);
 
@@ -194,6 +195,7 @@ describe("backend test inventory", () => {
       "app/api/token-chat/report/route.ts": ["POST"],
       "app/api/token-launches/challenge/route.ts": ["POST"],
       "app/api/token-launches/route.ts": ["GET", "POST"],
+      "app/api/token-trades/route.ts": ["GET"],
       "app/api/trending-robinhood/route.ts": ["GET"],
     });
   });
@@ -294,6 +296,7 @@ describe("backend test inventory", () => {
       "lib/server/token-launch-reconciliation.ts",
       "lib/server/token-launches-store.ts",
       "lib/server/token-market-stats.ts",
+      "lib/server/token-trades-rpc.ts",
       "lib/server/x-oauth1-signing.ts",
       "lib/server/x-tweets-client.ts",
     ]);

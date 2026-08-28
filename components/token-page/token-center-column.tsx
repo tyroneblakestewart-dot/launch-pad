@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { TokenChatPanel } from "@/components/token-page/token-chat-panel";
-import { formatHolderPercent, shortenAddress } from "@/lib/token-page-format";
+import { TokenTradeChart } from "@/components/token-page/token-trade-chart";
+import { formatHolderPercent, formatTimeAgoSeconds, shortenAddress } from "@/lib/token-page-format";
+import { useTokenTrades } from "@/lib/use-token-trades";
 import type { TokenMarketStats } from "@/lib/server/token-market-stats";
 import type { SupportedChain } from "@/lib/types";
 import styles from "./token-page.module.css";
@@ -24,34 +26,43 @@ function formatTokenAmount(amountRaw: string, decimals: number | null): string {
 /**
  * Centre column of the public token page (issue #225). The price/24h-change
  * header moved up to the shared topbar (issue #427) so it reads as part of
- * the token's identity everywhere, not just here. Issue #427 also removes
- * the embedded Dexscreener chart entirely — Dexscreener can't index this
- * chain, so it only ever showed a "chart doesn't work here" message in the
- * page's prime real estate — leaving a clearly-marked placeholder for part
- * 2's live chart instead, plus the "Recent trades" / "Holders" /
- * "Hoodchat" tabs.
+ * the token's identity everywhere, not just here. Issue #427 removed the
+ * embedded Dexscreener chart entirely — Dexscreener can't index this chain,
+ * so it only ever showed a "chart doesn't work here" message in the page's
+ * prime real estate — leaving a placeholder for part 2's live chart. Issue
+ * #430 fills that in for real: `useTokenTrades` reads the resolved bonding
+ * curve's own on-chain trade history (GET /api/token-trades) once, shared by
+ * both the candlestick chart and the Recent trades tab so there is exactly
+ * one poll driving both, not two. The old `marketStats.trades` field (a
+ * Blockscout LP-transfer heuristic that only ever worked for a token with a
+ * Dexscreener-indexed pool, never a still-bonding curve token) is no longer
+ * used here.
  */
 export function TokenCenterColumn({
   chain,
   address,
   marketStats,
+  curveAddress,
+  explorerBaseUrl,
 }: {
   chain: SupportedChain;
   address: string;
   marketStats: TokenMarketStats;
+  curveAddress: string | null;
+  explorerBaseUrl: string;
 }) {
   const [tab, setTab] = useState<ActivityTab>("trades");
+  const { trades, error: tradesError } = useTokenTrades(curveAddress);
 
-  const trades = marketStats.supported ? marketStats.trades : [];
   const holders = marketStats.supported ? marketStats.holders : [];
   const decimals = marketStats.supported ? marketStats.decimals : null;
   const symbol = marketStats.supported && marketStats.symbol ? marketStats.symbol : null;
+  const explorerTxBaseUrl = explorerBaseUrl.replace("/address/", "/tx/");
 
   return (
     <>
-      <div className={styles.chartPlaceholder} data-token-chart-placeholder="true">
-        <span className={styles.chartPlaceholderLabel}>Live chart</span>
-        <p className={styles.chartPlaceholderCopy}>Coming soon — trade activity and price history will render here.</p>
+      <div className={styles.chartPlaceholder} data-token-chart="true">
+        <TokenTradeChart trades={trades} decimals={decimals} error={tradesError} />
       </div>
 
       <div className={styles.activityPanel}>
@@ -69,7 +80,11 @@ export function TokenCenterColumn({
         </div>
 
         {tab === "trades" ? (
-          trades.length === 0 ? (
+          tradesError ? (
+            <p className={styles.emptyState}>{tradesError}</p>
+          ) : trades === null ? (
+            <p className={styles.emptyState}>Loading trade history…</p>
+          ) : trades.length === 0 ? (
             <p className={styles.emptyState}>No trades recorded yet.</p>
           ) : (
             <div>
@@ -80,13 +95,20 @@ export function TokenCenterColumn({
                 <span style={{ textAlign: "right" }}>Time</span>
               </div>
               {trades.map((trade) => (
-                <div key={`${trade.txHash}-${trade.wallet}`} className={`${styles.activityRow} ${styles.tradesGridCols}`}>
-                  <span className={trade.type === "buy" ? styles.tradeTypeBuy : styles.tradeTypeSell}>
-                    {trade.type === "buy" ? "▲ BUY" : "▼ SELL"}
+                <div key={`${trade.txHash}-${trade.logIndex}`} className={`${styles.activityRow} ${styles.tradesGridCols}`}>
+                  <span className={trade.direction === "buy" ? styles.tradeTypeBuy : styles.tradeTypeSell}>
+                    {trade.direction === "buy" ? "▲ BUY" : "▼ SELL"}
                   </span>
                   <span className={styles.dimText}>{shortenAddress(trade.wallet)}</span>
-                  <span className={styles.bodyText}>{formatTokenAmount(trade.amountRaw, decimals)}</span>
-                  <span className={styles.faintText}>{trade.time}</span>
+                  <span className={styles.bodyText}>{formatTokenAmount(trade.tokenAmountRaw, decimals)}</span>
+                  <a
+                    className={styles.faintText}
+                    href={`${explorerTxBaseUrl}${trade.txHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {formatTimeAgoSeconds(trade.blockTimestamp)}
+                  </a>
                 </div>
               ))}
             </div>

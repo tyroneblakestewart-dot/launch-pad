@@ -43,6 +43,23 @@ export function formatUsdPrice(value: number | null): string {
   return `$${value.toFixed(decimals)}`;
 }
 
+/**
+ * Formats a unix-seconds timestamp as a short "time ago" label (e.g. `4m`,
+ * `2h`), matching lib/server/token-market-stats.ts's `relativeTime` style
+ * but for the epoch-seconds timestamps real on-chain trades carry (issue
+ * #430) instead of an ISO string.
+ */
+export function formatTimeAgoSeconds(unixSeconds: number): string {
+  if (!Number.isFinite(unixSeconds)) return "";
+  const diffSeconds = Math.max(0, Math.floor(Date.now() / 1000) - unixSeconds);
+  if (diffSeconds < 60) return `${diffSeconds}s`;
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes}m`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h`;
+  return `${Math.floor(diffHours / 24)}d`;
+}
+
 /** Formats a 24h percent change with an up/down arrow, e.g. `▲ 34.7%` / `▼ 4.2%`. */
 export function formatPriceChange(percent: number | null): { label: string; up: boolean } | null {
   if (percent === null || !Number.isFinite(percent)) return null;

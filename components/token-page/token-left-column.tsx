@@ -27,6 +27,7 @@ import {
   formatGraduationProgressPercent,
 } from "@/lib/bonding-curve-status";
 import { CHAIN_CONFIG, ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import { notifyTokenTradeConfirmed } from "@/lib/token-trade-events";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import { formatCompactUsd, formatHolderCount, shortenAddress } from "@/lib/token-page-format";
 import type { TradeTerminalLink } from "@/lib/trade-terminal-links";
@@ -214,6 +215,57 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
 
   useEffect(() => {
     if (curveAddress) void loadCurve(curveAddress);
+  }, [curveAddress, loadCurve]);
+
+  // Live graduation progress/stats (issue #430 requirement 4): other
+  // wallets' trades don't otherwise reach this page without a manual
+  // refresh, so this re-reads the curve every 12s while the tab is visible,
+  // following lib/use-token-trades.ts's same visible-tab-only pattern —
+  // paused on a hidden tab, refetched immediately on focus/visibilitychange.
+  // The connected wallet's own trade already refetches directly inside
+  // submitTrade() below; this timer covers everyone else's trades too.
+  useEffect(() => {
+    if (!curveAddress) return;
+    const resolvedCurveAddress = curveAddress;
+    let timer: number | null = null;
+
+    function isPageVisible(): boolean {
+      try {
+        return document.visibilityState === "visible";
+      } catch {
+        return true;
+      }
+    }
+
+    function startTimer() {
+      if (timer !== null) return;
+      timer = window.setInterval(() => void loadCurve(resolvedCurveAddress), 12_000);
+    }
+
+    function stopTimer() {
+      if (timer === null) return;
+      window.clearInterval(timer);
+      timer = null;
+    }
+
+    function handleBecameVisible() {
+      if (!isPageVisible()) {
+        stopTimer();
+        return;
+      }
+      void loadCurve(resolvedCurveAddress);
+      startTimer();
+    }
+
+    if (isPageVisible()) startTimer();
+    document.addEventListener("visibilitychange", handleBecameVisible);
+    window.addEventListener("focus", handleBecameVisible);
+
+    return () => {
+      stopTimer();
+      document.removeEventListener("visibilitychange", handleBecameVisible);
+      window.removeEventListener("focus", handleBecameVisible);
+    };
   }, [curveAddress, loadCurve]);
 
   const curveReady = curveView.kind === "ready";
@@ -498,6 +550,7 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
         setTradeError(describeRevertedTrade(hash));
       } else {
         setStatusMessage("Trade confirmed.");
+        notifyTokenTradeConfirmed({ curveAddress: curveView.curve });
         setAmount("");
         setReceiveRaw(null);
         setSellFeeRaw(null);
