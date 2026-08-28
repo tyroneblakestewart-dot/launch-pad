@@ -66,6 +66,7 @@
 }
 
 .card {
+  position: relative;
   display: grid;
   gap: 4px;
   padding: 12px;
@@ -77,6 +78,7 @@
 }
 
 .art {
+  position: relative;
   display: grid;
   place-items: center;
   height: 96px;
@@ -92,6 +94,92 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.artInitial {
+  position: relative;
+  z-index: 1;
+  opacity: 0.55;
+}
+
+/* Mini sparkline (issue #436): drawn over the art initial, inside the
+   thumbnail region only — never taller than `.art`, so it never shifts the
+   card's own layout. */
+.sparklineMini {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+}
+
+/* Hover/focus expansion (issue #436). A pure-CSS overlay sized to the whole
+   card (`inset: 0` on the `.card`-positioned parent), not a layout
+   participant — it can never shift sibling grid cards, and
+   `pointer-events: none` means it can never intercept the card anchor's own
+   click-through navigation, in any state. */
+.sparklineExpanded {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #0d120e;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transform: scale(0.98);
+  transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+}
+
+.sparklineExpandedSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sparklineExpandedMeta {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  color: #929693;
+  font: 700 10px var(--mono);
+}
+
+.sparklineUp {
+  color: #91f0b6;
+}
+
+.sparklineDown {
+  color: #ff5f56;
+}
+
+.card:focus .sparklineExpanded,
+.card:focus-within .sparklineExpanded {
+  opacity: 1;
+  transform: none;
+}
+
+/* Touch devices get no hover state — mini chart only, per issue #436. */
+@media (hover: hover) and (pointer: fine) {
+  .card:hover .sparklineExpanded {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sparklineExpanded {
+    transition: none;
+  }
 }
 
 .cardName {
