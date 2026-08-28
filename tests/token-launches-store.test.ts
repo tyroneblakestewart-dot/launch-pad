@@ -63,6 +63,10 @@ function createMemoryTokenLaunchesStore(): TokenLaunchesStore {
       return [...launches.values()].find((l) => key(l.chainId, l.tokenAddress) === key(chainId, tokenAddress)) ?? null;
     },
 
+    async findTokenLaunchCreatedAtByCurveAddress() {
+      return null;
+    },
+
     async markGraduated(chainId: number, tokenAddress: string, graduatedAt: Date) {
       const found = [...launches.values()].find((l) => key(l.chainId, l.tokenAddress) === key(chainId, tokenAddress));
       if (!found || found.graduated) return;

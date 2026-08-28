@@ -27,6 +27,9 @@ function fakeStore(overrides: Partial<TokenLaunchesStore> = {}): TokenLaunchesSt
     async findByTokenAddress() {
       return null;
     },
+    async findTokenLaunchCreatedAtByCurveAddress() {
+      return null;
+    },
     async markGraduated() {},
     async countLast24h() {
       return 0;
