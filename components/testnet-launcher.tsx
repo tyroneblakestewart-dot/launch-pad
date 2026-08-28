@@ -41,6 +41,10 @@ import {
   resolveCurveLaunchParams,
 } from "@/lib/curve-launch-pipeline-config";
 import {
+  LaunchLookupError,
+  resolvePipelineLaunchByTokenAddress,
+} from "@/lib/curve-launch-pipeline-lookup";
+import {
   ACCOUNT_WALLET_STORAGE_KEY,
   parseStoredAccountWallet,
 } from "@/lib/account-wallet-state";
@@ -69,6 +73,22 @@ type WalletMismatch = {
   activeAccount: string;
   confirmedAccount: string;
   message: string;
+};
+
+/**
+ * Everything recordTokenLaunch needs to retry, held in state from the
+ * moment the on-chain launch succeeds (issue #425) — a retry never redoes
+ * any on-chain step, it only requests a fresh challenge and signature over
+ * these already-known facts.
+ */
+type PendingRecord = {
+  tokenAddress: Address;
+  curveAddress: Address;
+  tokenName: string;
+  ticker: string;
+  decimals: number;
+  wholeTokenSupply: string;
+  graduationTargetWei: bigint;
 };
 
 const robinhoodTestnet = defineChain({
@@ -125,7 +145,13 @@ export function TestnetLauncher() {
   const [result, setResult] = useState<LaunchResult | null>(null);
   const [mismatch, setMismatch] = useState<WalletMismatch | null>(null);
   const [bypassMismatch, setBypassMismatch] = useState(false);
+  const [pendingRecord, setPendingRecord] = useState<PendingRecord | null>(null);
+  const [recordRetryBusy, setRecordRetryBusy] = useState(false);
+  const [existingLaunchAddress, setExistingLaunchAddress] = useState("");
+  const [existingLaunchBusy, setExistingLaunchBusy] = useState(false);
+  const [existingLaunchStatus, setExistingLaunchStatus] = useState<string | null>(null);
 
+  const pipelineAddress = getCurveLaunchPipelineAddress(robinhoodTestnet.id);
   const maxDecimals = network === "solana-devnet" ? 9 : 18;
   const valid =
     name.trim().length >= 2 &&
@@ -308,7 +334,7 @@ export function TestnetLauncher() {
     walletClient: ReturnType<typeof createWalletClient>,
     publicClient: ReturnType<typeof createPublicClient>,
     account: Address,
-    pipelineAddress: Address,
+    pipelineContractAddress: Address,
   ): Promise<LaunchResult> {
     const curveParams = resolveCurveLaunchParams(decimals);
 
@@ -316,7 +342,7 @@ export function TestnetLauncher() {
     const launchHash = await walletClient.writeContract({
       account,
       chain: robinhoodTestnet,
-      address: pipelineAddress,
+      address: pipelineContractAddress,
       abi: HOODLUMS_CURVE_LAUNCH_PIPELINE_ABI,
       functionName: "launchTokenWithCurve",
       args: [
@@ -367,20 +393,26 @@ export function TestnetLauncher() {
     setStatus(`Step 3 of 3 submitted: ${shortAddress(fundHash)}`);
     await publicClient.waitForTransactionReceipt({ hash: fundHash });
 
+    const pending: PendingRecord = {
+      tokenAddress,
+      curveAddress,
+      tokenName: name.trim(),
+      ticker: symbol.trim().toUpperCase(),
+      decimals,
+      wholeTokenSupply: supply,
+      graduationTargetWei: curveParams.graduationTargetWei,
+    };
+    setPendingRecord(pending);
+
     let recordWarning: string | undefined;
     try {
-      await recordTokenLaunch(walletClient, account, {
-        tokenAddress,
-        curveAddress,
-        tokenName: name.trim(),
-        ticker: symbol.trim().toUpperCase(),
-        decimals,
-        wholeTokenSupply: supply,
-        graduationTargetWei: curveParams.graduationTargetWei,
-      });
+      await recordTokenLaunch(walletClient, account, pending);
+      setPendingRecord(null);
     } catch (recordError) {
       // Never fail the launch over this — the token and curve are already
       // live on-chain. Surfaced only in the result panel, not a thrown error.
+      // pendingRecord stays set so the "Record listing" retry button can
+      // resubmit without redoing any on-chain step.
       recordWarning = readError(recordError);
     }
 
@@ -404,7 +436,6 @@ export function TestnetLauncher() {
     const [account] = await walletClient.getAddresses();
     if (!account) throw new Error("No connected EVM account.");
 
-    const pipelineAddress = getCurveLaunchPipelineAddress(robinhoodTestnet.id);
     if (pipelineAddress) {
       return deployRobinhoodTokenWithCurve(walletClient, publicClient, account, pipelineAddress);
     }
@@ -553,6 +584,7 @@ export function TestnetLauncher() {
     setBusy(true);
     setResult(null);
     setMismatch(null);
+    setPendingRecord(null);
     setStatus("Waiting for your wallet signature…");
     try {
       const launchResult =
@@ -572,6 +604,71 @@ export function TestnetLauncher() {
   function continueWithMismatchedWallet() {
     setBypassMismatch(true);
     setStatus("Continuing — the token will belong to the wallet app's active account.");
+  }
+
+  /**
+   * Re-runs recordTokenLaunch for the just-launched token/curve with a
+   * brand-new challenge — never reuses the one whose 5-minute window already
+   * expired (issue #425). Retryable any number of times; nothing on-chain is
+   * redone since `pendingRecord` already holds every fact the payload needs.
+   */
+  async function retryRecordListing() {
+    if (!pendingRecord) return;
+    setRecordRetryBusy(true);
+    try {
+      const provider = getInjectedEvmProvider();
+      if (!provider) throw new Error("EVM wallet disconnected.");
+      const transport = custom(provider);
+      const walletClient = createWalletClient({ chain: robinhoodTestnet, transport });
+      const [account] = await walletClient.getAddresses();
+      if (!account) throw new Error("No connected EVM account.");
+
+      await recordTokenLaunch(walletClient, account, pendingRecord);
+      setPendingRecord(null);
+      setResult((previous) => (previous ? { ...previous, recordWarning: undefined } : previous));
+    } catch (error) {
+      setResult((previous) => (previous ? { ...previous, recordWarning: readError(error) } : previous));
+    } finally {
+      setRecordRetryBusy(false);
+    }
+  }
+
+  /**
+   * The minimal honest recovery path for a launch whose record attempt was
+   * never retried before the panel closed (issue #425): given just the token
+   * address, look up its curve and launch facts from the pipeline's own
+   * event log and the token contract, then record it through the same
+   * wallet-signed, server-verified flow. The server independently confirms
+   * everything on-chain before inserting a row — this never bypasses that.
+   */
+  async function recordExistingLaunch() {
+    if (!pipelineAddress || !existingLaunchAddress.trim()) return;
+    setExistingLaunchBusy(true);
+    setExistingLaunchStatus(null);
+    try {
+      const provider = getInjectedEvmProvider();
+      if (!provider) throw new Error("Connect a Robinhood Chain wallet first.");
+      const transport = custom(provider);
+      const walletClient = createWalletClient({ chain: robinhoodTestnet, transport });
+      const publicClient = createPublicClient({ chain: robinhoodTestnet, transport });
+      const [account] = await walletClient.getAddresses();
+      if (!account) throw new Error("Connect a Robinhood Chain wallet first.");
+
+      const resolved = await resolvePipelineLaunchByTokenAddress(
+        publicClient,
+        pipelineAddress,
+        existingLaunchAddress,
+      );
+      await recordTokenLaunch(walletClient, account, resolved);
+      setExistingLaunchAddress("");
+      setExistingLaunchStatus("Listing recorded — it will appear on the homepage grid shortly.");
+    } catch (error) {
+      setExistingLaunchStatus(
+        error instanceof LaunchLookupError ? error.message : readError(error),
+      );
+    } finally {
+      setExistingLaunchBusy(false);
+    }
   }
 
   return (
@@ -700,10 +797,37 @@ export function TestnetLauncher() {
                 </>
               )}
               {result.recordWarning && (
-                <p className={styles.recordWarning}>
-                  Launched on-chain, but the homepage listing could not be recorded yet: {result.recordWarning}
-                </p>
+                <div className={styles.recordWarningBox}>
+                  <p>
+                    Launched on-chain, but the homepage listing could not be recorded: {result.recordWarning}
+                  </p>
+                  <p>Sign the listing request within 5 minutes. You can retry now.</p>
+                  <button onClick={retryRecordListing} disabled={recordRetryBusy}>
+                    {recordRetryBusy ? "Check your wallet…" : "Record listing"}
+                  </button>
+                </div>
               )}
+            </div>
+          )}
+
+          {network === "robinhood-testnet" && pipelineAddress && (
+            <div className={styles.existingLaunch}>
+              <span>Already launched a token that isn&apos;t listed?</span>
+              <div className={styles.existingLaunchRow}>
+                <input
+                  placeholder="0xTokenAddress"
+                  value={existingLaunchAddress}
+                  onChange={(event) => setExistingLaunchAddress(event.target.value)}
+                  disabled={existingLaunchBusy}
+                />
+                <button
+                  onClick={recordExistingLaunch}
+                  disabled={existingLaunchBusy || !existingLaunchAddress.trim()}
+                >
+                  {existingLaunchBusy ? "Looking up…" : "Record an existing launch"}
+                </button>
+              </div>
+              {existingLaunchStatus && <p className={styles.existingLaunchStatus}>{existingLaunchStatus}</p>}
             </div>
           )}
         </div>
