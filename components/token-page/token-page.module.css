@@ -174,12 +174,20 @@
   padding: 4px 8px;
 }
 
-/* ---- grid (mobile-first, issue #427) ----
-   Base rules below target the 390px primary target: a single stacked
-   column with the trade panel pulled directly under the identity+price
-   header via `order`, ahead of stats/graduation. Wider breakpoints
-   (min-width, not max-width) progressively restore the multi-column
-   desktop layout and reset those `order` overrides back to source order. */
+/* ---- grid (mobile-first, issue #427; rearranged for desktop by #429) ----
+   Every panel below is a direct grid item of `.grid` — there are no
+   per-column wrapper divs — because the identity/about panels have to sit
+   in a different desktop column than the swap/creator-fee panels while
+   *still* interleaving between them in #427's required mobile order (swap →
+   identity/stats → creator fees → trade terminals → about → chart →
+   activity). A nested flex column per side can only reorder items within
+   its own box; it can't relocate one of its items into a different visual
+   column at a wider breakpoint without moving markup between components, so
+   column placement is resolved entirely here via `grid-column` and `order`
+   on each panel's own class. Base rules below target the 390px primary
+   target: a single stacked column in the order above. Wider breakpoints
+   (min-width, not max-width) progressively assign each panel to its #429
+   desktop column and reset `order` to the column-local sequence. */
 
 .grid {
   display: grid;
@@ -187,43 +195,50 @@
   gap: 14px;
 }
 
-.left,
-.center,
-.right {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+.grid > * {
   min-width: 0;
 }
 
-/* Mobile stacking order: left (swap pulled to the front within it) →
-   right (about) → centre (chart placeholder + trades/holders/hoodchat). */
-.left {
+/* Wraps the swap panel (or its graduated/fallback variant) + creator-fee
+   panel so they can move and stick together as one desktop column (#429)
+   while staying invisible to layout on mobile — `display: contents` makes
+   `.swapPanel`/`.feePanel` behave as direct grid-item siblings of
+   `.identityPanel`, so the mobile order below still interleaves them
+   correctly even though they're nested one level deeper in the DOM. */
+.leftGroup {
+  display: contents;
+}
+
+.leftGroup > * {
+  min-width: 0;
+}
+
+.swapPanel {
   order: 1;
 }
 
-.right {
+.identityPanel {
   order: 2;
 }
 
-.center {
+.feePanel {
   order: 3;
 }
 
-/* Within `.left`, the swap panel (or its graduated/fallback variant — both
-   carry `.swapPanel`) is pulled ahead of the identity/stats/graduation
-   panel so it's "immediately visible" right after the topbar, per the
-   issue, instead of requiring a scroll or a separate compact bar. */
-.left > .swapPanel {
-  order: -1;
+.terminalPanel {
+  order: 4;
 }
 
-.left > .identityPanel {
-  order: 0;
+.aboutPanel {
+  order: 5;
 }
 
-.left > .feePanel {
-  order: 1;
+.chartPlaceholder {
+  order: 6;
+}
+
+.activityPanel {
+  order: 7;
 }
 
 @media (min-width: 881px) {
@@ -231,26 +246,63 @@
     grid-template-columns: 280px minmax(0, 1fr);
     align-items: start;
   }
-  .right {
-    grid-column: 1 / -1;
-    order: initial;
-  }
-  .left,
-  .center {
-    order: initial;
-  }
-  .left > .swapPanel,
-  .left > .identityPanel,
-  .left > .feePanel {
-    order: initial;
-  }
-  /* Trade panel stays reachable while scrolling (issue #427) — `.grid`'s
-     own `align-items: start` (set just above) keeps this from stretching
-     to the tallest sibling, which sticky positioning requires. */
-  .left {
+
+  /* `.leftGroup` stops being transparent to layout and becomes the actual
+     sticky left column instead — issue #429 moves the identity panel out
+     of this column, but the swap + creator-fee panels stay reachable while
+     scrolling exactly as the old `.left` column was (issue #427). `.grid`'s
+     own `align-items: start` (set just above) keeps this from stretching to
+     the tallest sibling, which sticky positioning requires. */
+  .leftGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    grid-column: 1;
     position: sticky;
     top: 14px;
     align-self: start;
+  }
+
+  .swapPanel,
+  .feePanel {
+    order: initial;
+  }
+
+  .chartPlaceholder,
+  .activityPanel {
+    grid-column: 2;
+  }
+
+  .chartPlaceholder {
+    order: 1;
+  }
+
+  .activityPanel {
+    order: 2;
+  }
+
+  /* Identity card + About panel move to the right column (issue #429),
+     directly adjacent to each other; trade-terminal links (not part of the
+     issue's named arrangement) follow underneath rather than sitting
+     between them. Below the three-column breakpoint there's no third
+     column yet, so this group spans full width in its own row underneath
+     the swap/chart row, matching the old `.right` column's behaviour. */
+  .identityPanel,
+  .aboutPanel,
+  .terminalPanel {
+    grid-column: 1 / -1;
+  }
+
+  .identityPanel {
+    order: 3;
+  }
+
+  .aboutPanel {
+    order: 4;
+  }
+
+  .terminalPanel {
+    order: 5;
   }
 }
 
@@ -258,8 +310,14 @@
   .grid {
     grid-template-columns: 300px minmax(0, 1fr) 330px;
   }
-  .right {
-    grid-column: auto;
+
+  /* True three-column layout (issue #429): identity card + About + trade
+     terminals move into their own right-hand column instead of spanning
+     full width below. */
+  .identityPanel,
+  .aboutPanel,
+  .terminalPanel {
+    grid-column: 3;
   }
 }
 

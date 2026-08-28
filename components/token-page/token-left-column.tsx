@@ -100,12 +100,22 @@ type TokenLeftColumnProps = {
 };
 
 /**
- * Left column of the public token page (issue #225): token identity, market
- * stats, live graduation progress, and the buy/sell swap panel. On mobile
- * the swap panel is pulled directly above the stats/graduation panel via
- * CSS `order` (`token-page.module.css`, issue #427) instead of the old
- * separate below-880px sticky bottom bar — the full trade panel is always
- * inline now, not a compact bar behind an extra tap. `curveAddress` is
+ * Renders the token identity/stats/graduation card plus the buy/sell swap
+ * panel and creator-fee panel (issue #225). Despite the name, this no longer
+ * maps to a single visual "left column" — issue #429 moves the identity card
+ * to the desktop right column (alongside About) while keeping the swap and
+ * creator-fee panels on the left; all three panels returned here are direct
+ * grid items of the shared `.grid` in `token-page-view.tsx`; column
+ * placement is resolved purely in CSS (`token-page.module.css`) via each
+ * panel's own class, not by this component's structure. The swap and fee
+ * panels are wrapped in `.leftGroup`, which is invisible to layout on mobile
+ * (`display: contents`, letting the identity panel interleave between the
+ * swap and creator-fee panels per #427's required order) and becomes the
+ * actual sticky flex column at desktop widths. On mobile the swap panel is
+ * pulled directly above the stats/graduation panel via CSS `order`
+ * (issue #427) instead of the old separate below-880px sticky bottom bar —
+ * the full trade panel is always inline now, not a compact bar behind an
+ * extra tap. `curveAddress` is
  * resolved by the server (lib/server/token-launch-curve-lookup.ts, issue
  * #412 Part 2) from the specific launch that deployed this token, falling
  * back to the legacy single-curve-per-chain env var; this component still
@@ -619,191 +629,198 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
         {graduationSection}
       </div>
 
-      {curveView.kind === "ready" && curveView.graduation.state !== "graduated" ? (
-        <div className={`${styles.panel} ${styles.swapPanel}`}>
-          <div className={styles.swapTopRow}>
-            <div className={styles.tabGroup}>
+      {/* Swap + creator-fee panels move and stick together as one desktop
+          column (issue #429) — `.leftGroup` is `display: contents` on
+          mobile so these panels stay direct grid siblings of the identity
+          panel above, preserving #427's mobile order, and becomes the real
+          sticky flex column at desktop widths (`token-page.module.css`). */}
+      <div className={styles.leftGroup}>
+        {curveView.kind === "ready" && curveView.graduation.state !== "graduated" ? (
+          <div className={`${styles.panel} ${styles.swapPanel}`}>
+            <div className={styles.swapTopRow}>
+              <div className={styles.tabGroup}>
+                <button
+                  type="button"
+                  className={`${styles.pillButton} ${styles.buySellTab} ${side === "buy" ? styles.pillButtonActive : ""}`}
+                  onClick={() => setSide("buy")}
+                >
+                  Buy
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.pillButton} ${styles.buySellTab} ${side === "sell" ? styles.pillButtonActive : ""}`}
+                  onClick={() => setSide("sell")}
+                >
+                  Sell
+                </button>
+              </div>
               <button
                 type="button"
-                className={`${styles.pillButton} ${styles.buySellTab} ${side === "buy" ? styles.pillButtonActive : ""}`}
-                onClick={() => setSide("buy")}
+                className={`${styles.walletButton} ${account ? styles.walletButtonConnected : ""}`}
+                onClick={connectWallet}
               >
-                Buy
+                {account ? shortenAddress(account) : "Connect wallet"}
               </button>
-              <button
-                type="button"
-                className={`${styles.pillButton} ${styles.buySellTab} ${side === "sell" ? styles.pillButtonActive : ""}`}
-                onClick={() => setSide("sell")}
-              >
-                Sell
-              </button>
+            </div>
+
+            <div className={styles.fieldBox}>
+              <div className={styles.fieldHeaderRow}>
+                <span className={styles.fieldLabel}>{side === "buy" ? "You pay" : "You sell"}</span>
+                <span className={styles.fieldBalance}>
+                  bal{" "}
+                  {side === "buy"
+                    ? nativeBalance !== null
+                      ? `${formatEther(nativeBalance)} ETH`
+                      : "—"
+                    : tokenBalance !== null
+                      ? `${formatUnits(tokenBalance, curveView.decimals)} ${payTicker}`
+                      : "—"}
+                </span>
+              </div>
+              <div className={styles.amountRow}>
+                <input
+                  className={styles.amountInput}
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ""))}
+                  inputMode="decimal"
+                  placeholder="0.0"
+                />
+                <span className={styles.tickerPill}>{payTicker}</span>
+              </div>
+              <div className={styles.presetRow}>
+                {(side === "buy" ? BUY_PRESETS : SELL_PRESETS).map((preset) => (
+                  <button key={preset} type="button" className={styles.presetButton} onClick={() => applyPreset(preset)}>
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className={styles.swapDivider}>
+              <span className={styles.swapDividerIcon}>↓</span>
+            </div>
+
+            <div className={styles.fieldBox}>
+              <span className={styles.fieldLabel}>You receive</span>
+              <div className={styles.amountRow}>
+                <span className={styles.amountValue}>{receiveDisplay}</span>
+                <span className={`${styles.tickerPill} ${styles.tickerPillAccent}`}>{receiveTicker}</span>
+              </div>
+            </div>
+
+            {feeWei !== null && (
+              <div className={styles.feeBreakdown}>
+                <div className={styles.feeBreakdownRow}>
+                  <span>Trading fee (1%)</span>
+                  <b>{formatEther(feeWei)} ETH</b>
+                </div>
+              </div>
+            )}
+
+            <div className={styles.slippageRow}>
+              <span className={styles.slippageLabel}>Slippage</span>
+              <div className={styles.slippageGroup}>
+                {SLIPPAGE_OPTIONS_BPS.map((bps) => (
+                  <button
+                    key={bps}
+                    type="button"
+                    className={`${styles.pillButton} ${styles.slippageButton} ${slippageBps === bps ? styles.pillButtonActive : ""}`}
+                    onClick={() => setSlippageBps(bps)}
+                  >
+                    {formatSlippageLabel(bps)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className={`${styles.tradeButton} ${side === "buy" ? styles.tradeButtonBuy : styles.tradeButtonSell}`}
+              disabled={account ? tradeDisabled : false}
+              onClick={account ? submitTrade : connectWallet}
+            >
+              {tradeLabel}
+            </button>
+            {tradeError ? (
+              <p className={styles.tradeErrorText} role="alert">
+                {tradeError}
+              </p>
+            ) : statusMessage ? (
+              <p className={styles.tradeHint}>{statusMessage}</p>
+            ) : null}
+          </div>
+        ) : curveView.kind === "ready" && curveView.graduation.state === "graduated" ? (
+          <div className={`${styles.panel} ${styles.swapPanel}`}>
+            <div className={styles.terminalFallback}>
+              <span className={styles.sectionLabel}>Trading closed</span>
+              <p className={styles.terminalFallbackCopy}>
+                This token graduated — its full curve balance moved into a permanently locked Robinhood DEX pool, and
+                buy/sell on the bonding curve is closed for good. Accrued trading fees remain withdrawable by the
+                treasury and creator.
+              </p>
+              {curveView.graduation.liquidityPool && (
+                <a
+                  href={`${chainInfo.explorerBaseUrl}${curveView.graduation.liquidityPool}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={styles.terminalFallbackLink}
+                >
+                  View liquidity pool ↗
+                </a>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className={`${styles.panel} ${styles.swapPanel}`}>
+            <div className={styles.terminalFallback}>
+              <span className={styles.sectionLabel}>Trade {displaySymbol || "this token"}</span>
+              <p className={styles.terminalFallbackCopy}>
+                {curveView.kind === "loading"
+                  ? "Checking whether a bonding curve is live for this token…"
+                  : tradeLinks.length > 0
+                    ? "No bonding curve is active for this token yet. Trade it on a terminal instead."
+                    : "No bonding curve is active for this token yet."}
+              </p>
+              {tradeLinks.length > 0 && (
+                <div className={styles.terminalFallbackLinks}>
+                  {tradeLinks.map((link) => (
+                    <a key={link.id} href={link.url} target="_blank" rel="noreferrer" className={styles.terminalFallbackLink}>
+                      {link.label}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isCreator && curveView.kind === "ready" && (
+          <div className={`${styles.panel} ${styles.feePanel}`}>
+            <span className={styles.sectionLabel}>Creator fees</span>
+            <div className={styles.feePanelRow}>
+              <span className={styles.mutedNote}>Claimable balance</span>
+              <span className={styles.feeClaimValue}>
+                {claimableFeeWei !== null ? `${formatEther(claimableFeeWei)} ETH` : "—"}
+              </span>
             </div>
             <button
               type="button"
-              className={`${styles.walletButton} ${account ? styles.walletButtonConnected : ""}`}
-              onClick={connectWallet}
+              className={styles.feeWithdrawButton}
+              onClick={withdrawCreatorFees}
+              disabled={feeBusy || claimableFeeWei === null || claimableFeeWei === 0n}
             >
-              {account ? shortenAddress(account) : "Connect wallet"}
+              {feeBusy ? "Withdrawing…" : "Withdraw fees"}
             </button>
+            {feeError ? (
+              <p className={styles.tradeErrorText} role="alert">
+                {feeError}
+              </p>
+            ) : feeStatusMessage ? (
+              <p className={styles.tradeHint}>{feeStatusMessage}</p>
+            ) : null}
           </div>
-
-          <div className={styles.fieldBox}>
-            <div className={styles.fieldHeaderRow}>
-              <span className={styles.fieldLabel}>{side === "buy" ? "You pay" : "You sell"}</span>
-              <span className={styles.fieldBalance}>
-                bal{" "}
-                {side === "buy"
-                  ? nativeBalance !== null
-                    ? `${formatEther(nativeBalance)} ETH`
-                    : "—"
-                  : tokenBalance !== null
-                    ? `${formatUnits(tokenBalance, curveView.decimals)} ${payTicker}`
-                    : "—"}
-              </span>
-            </div>
-            <div className={styles.amountRow}>
-              <input
-                className={styles.amountInput}
-                value={amount}
-                onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ""))}
-                inputMode="decimal"
-                placeholder="0.0"
-              />
-              <span className={styles.tickerPill}>{payTicker}</span>
-            </div>
-            <div className={styles.presetRow}>
-              {(side === "buy" ? BUY_PRESETS : SELL_PRESETS).map((preset) => (
-                <button key={preset} type="button" className={styles.presetButton} onClick={() => applyPreset(preset)}>
-                  {preset}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className={styles.swapDivider}>
-            <span className={styles.swapDividerIcon}>↓</span>
-          </div>
-
-          <div className={styles.fieldBox}>
-            <span className={styles.fieldLabel}>You receive</span>
-            <div className={styles.amountRow}>
-              <span className={styles.amountValue}>{receiveDisplay}</span>
-              <span className={`${styles.tickerPill} ${styles.tickerPillAccent}`}>{receiveTicker}</span>
-            </div>
-          </div>
-
-          {feeWei !== null && (
-            <div className={styles.feeBreakdown}>
-              <div className={styles.feeBreakdownRow}>
-                <span>Trading fee (1%)</span>
-                <b>{formatEther(feeWei)} ETH</b>
-              </div>
-            </div>
-          )}
-
-          <div className={styles.slippageRow}>
-            <span className={styles.slippageLabel}>Slippage</span>
-            <div className={styles.slippageGroup}>
-              {SLIPPAGE_OPTIONS_BPS.map((bps) => (
-                <button
-                  key={bps}
-                  type="button"
-                  className={`${styles.pillButton} ${styles.slippageButton} ${slippageBps === bps ? styles.pillButtonActive : ""}`}
-                  onClick={() => setSlippageBps(bps)}
-                >
-                  {formatSlippageLabel(bps)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className={`${styles.tradeButton} ${side === "buy" ? styles.tradeButtonBuy : styles.tradeButtonSell}`}
-            disabled={account ? tradeDisabled : false}
-            onClick={account ? submitTrade : connectWallet}
-          >
-            {tradeLabel}
-          </button>
-          {tradeError ? (
-            <p className={styles.tradeErrorText} role="alert">
-              {tradeError}
-            </p>
-          ) : statusMessage ? (
-            <p className={styles.tradeHint}>{statusMessage}</p>
-          ) : null}
-        </div>
-      ) : curveView.kind === "ready" && curveView.graduation.state === "graduated" ? (
-        <div className={`${styles.panel} ${styles.swapPanel}`}>
-          <div className={styles.terminalFallback}>
-            <span className={styles.sectionLabel}>Trading closed</span>
-            <p className={styles.terminalFallbackCopy}>
-              This token graduated — its full curve balance moved into a permanently locked Robinhood DEX pool, and
-              buy/sell on the bonding curve is closed for good. Accrued trading fees remain withdrawable by the
-              treasury and creator.
-            </p>
-            {curveView.graduation.liquidityPool && (
-              <a
-                href={`${chainInfo.explorerBaseUrl}${curveView.graduation.liquidityPool}`}
-                target="_blank"
-                rel="noreferrer"
-                className={styles.terminalFallbackLink}
-              >
-                View liquidity pool ↗
-              </a>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className={`${styles.panel} ${styles.swapPanel}`}>
-          <div className={styles.terminalFallback}>
-            <span className={styles.sectionLabel}>Trade {displaySymbol || "this token"}</span>
-            <p className={styles.terminalFallbackCopy}>
-              {curveView.kind === "loading"
-                ? "Checking whether a bonding curve is live for this token…"
-                : tradeLinks.length > 0
-                  ? "No bonding curve is active for this token yet. Trade it on a terminal instead."
-                  : "No bonding curve is active for this token yet."}
-            </p>
-            {tradeLinks.length > 0 && (
-              <div className={styles.terminalFallbackLinks}>
-                {tradeLinks.map((link) => (
-                  <a key={link.id} href={link.url} target="_blank" rel="noreferrer" className={styles.terminalFallbackLink}>
-                    {link.label}
-                  </a>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {isCreator && curveView.kind === "ready" && (
-        <div className={`${styles.panel} ${styles.feePanel}`}>
-          <span className={styles.sectionLabel}>Creator fees</span>
-          <div className={styles.feePanelRow}>
-            <span className={styles.mutedNote}>Claimable balance</span>
-            <span className={styles.feeClaimValue}>
-              {claimableFeeWei !== null ? `${formatEther(claimableFeeWei)} ETH` : "—"}
-            </span>
-          </div>
-          <button
-            type="button"
-            className={styles.feeWithdrawButton}
-            onClick={withdrawCreatorFees}
-            disabled={feeBusy || claimableFeeWei === null || claimableFeeWei === 0n}
-          >
-            {feeBusy ? "Withdrawing…" : "Withdraw fees"}
-          </button>
-          {feeError ? (
-            <p className={styles.tradeErrorText} role="alert">
-              {feeError}
-            </p>
-          ) : feeStatusMessage ? (
-            <p className={styles.tradeHint}>{feeStatusMessage}</p>
-          ) : null}
-        </div>
-      )}
+        )}
+      </div>
     </>
   );
 }
