@@ -4,6 +4,7 @@ import { TokenCenterColumn } from "./token-center-column";
 import { TokenLeftColumn } from "./token-left-column";
 import { TokenRightColumn } from "./token-right-column";
 import type { TokenMarketStats } from "@/lib/server/token-market-stats";
+import { formatPriceChange, formatUsdPrice } from "@/lib/token-page-format";
 import type { TradeTerminalLink } from "@/lib/trade-terminal-links";
 import type { SupportedChain } from "@/lib/types";
 import styles from "./token-page.module.css";
@@ -26,19 +27,23 @@ export type TokenPageViewProps = {
 
 /**
  * Full pixel-accurate layout from public/design-refs/hoodlums-token-page.html
- * (issue #225): a three-column desktop grid — identity+swap / chart+activity
+ * (issue #225), reworked mobile-first for issue #427: a three-column desktop
+ * grid — sticky trade column (left) / identity+future-chart-slot+activity
  * (activity now includes the Hoodchat tab, issue #237) / trade terminals+about
- * — that stacks to a single column on mobile,
- * with the swap panel replaced by a sticky bottom bar below 880px (handled
- * in `token-page.module.css`, matching the design reference's own
- * `.hd-swap` / `.hd-mobilebar` breakpoint). A server component: the only
- * interactive pieces (copy button, swap panel, chart tabs) are isolated in
- * their own client-only children.
+ * (right) — that stacks to a single column on mobile with the swap panel
+ * pulled immediately after the identity+price header via CSS `order`
+ * (`token-page.module.css`), replacing the old below-880px sticky bottom bar
+ * so the full trade panel — not a compact bar — is what's "immediately
+ * visible" on a phone. A server component: the only interactive pieces
+ * (copy button, swap panel, chart tabs) are isolated in their own
+ * client-only children.
  */
 export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLinks, curveAddress }: TokenPageViewProps) {
   const name = (marketStats.supported && marketStats.name) || `${address.slice(0, 6)}…${address.slice(-4)}`;
   const symbol = marketStats.supported && marketStats.symbol ? marketStats.symbol : null;
   const dexPairUrl = marketStats.supported && marketStats.chart.found ? marketStats.chart.pairUrl : null;
+  const priceUsd = marketStats.supported ? marketStats.priceUsd : null;
+  const priceChange = formatPriceChange(marketStats.supported ? marketStats.priceChange24hPercent : null);
 
   return (
     <main className={styles.page}>
@@ -48,13 +53,23 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
             <Link href="/" className={styles.backLink} aria-label="Back">
               ←
             </Link>
-            <div className={styles.titleRow}>
-              <h1 className={styles.tokenName}>{name}</h1>
-              {symbol ? <span className={styles.tokenTicker}>${symbol}</span> : null}
-              <span className={styles.liveBadge}>
-                <span className={styles.liveDot} />
-                Live
-              </span>
+            <div className={styles.topbarIdentity}>
+              <div className={styles.titleRow}>
+                <h1 className={styles.tokenName}>{name}</h1>
+                {symbol ? <span className={styles.tokenTicker}>${symbol}</span> : null}
+                <span className={styles.liveBadge}>
+                  <span className={styles.liveDot} />
+                  Live
+                </span>
+              </div>
+              <div className={styles.priceRow}>
+                <span className={styles.priceValue}>{formatUsdPrice(priceUsd)}</span>
+                {priceChange ? (
+                  <span className={`${styles.priceChange} ${priceChange.up ? styles.priceChangeUp : styles.priceChangeDown}`}>
+                    {priceChange.label}
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
           <div className={styles.topbarLinks}>

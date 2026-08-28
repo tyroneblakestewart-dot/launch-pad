@@ -1,14 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
 import { TokenChatPanel } from "@/components/token-page/token-chat-panel";
-import {
-  formatHolderPercent,
-  formatPriceChange,
-  formatUsdPrice,
-  shortenAddress,
-} from "@/lib/token-page-format";
+import { formatHolderPercent, shortenAddress } from "@/lib/token-page-format";
 import type { TokenMarketStats } from "@/lib/server/token-market-stats";
 import type { SupportedChain } from "@/lib/types";
 import styles from "./token-page.module.css";
@@ -28,13 +22,14 @@ function formatTokenAmount(amountRaw: string, decimals: number | null): string {
 }
 
 /**
- * Centre column of the public token page (issue #225): the live Dexscreener
- * chart — reused verbatim from `PublicDexscreenerSection` (PR #180) rather
- * than rebuilt, per the issue — under a price/24h-change header sourced
- * from the same market snapshot as the left column's stats, plus the
- * "Recent trades" / "Holders" tabs the issue calls for in this column.
- * `PublicDexscreenerSection` keeps its own chrome/styling since it's shared
- * with `app/[slug]/page.tsx`'s public generated site.
+ * Centre column of the public token page (issue #225). The price/24h-change
+ * header moved up to the shared topbar (issue #427) so it reads as part of
+ * the token's identity everywhere, not just here. Issue #427 also removes
+ * the embedded Dexscreener chart entirely — Dexscreener can't index this
+ * chain, so it only ever showed a "chart doesn't work here" message in the
+ * page's prime real estate — leaving a clearly-marked placeholder for part
+ * 2's live chart instead, plus the "Recent trades" / "Holders" /
+ * "Hoodchat" tabs.
  */
 export function TokenCenterColumn({
   chain,
@@ -47,8 +42,6 @@ export function TokenCenterColumn({
 }) {
   const [tab, setTab] = useState<ActivityTab>("trades");
 
-  const priceUsd = marketStats.supported ? marketStats.priceUsd : null;
-  const priceChange = formatPriceChange(marketStats.supported ? marketStats.priceChange24hPercent : null);
   const trades = marketStats.supported ? marketStats.trades : [];
   const holders = marketStats.supported ? marketStats.holders : [];
   const decimals = marketStats.supported ? marketStats.decimals : null;
@@ -56,23 +49,9 @@ export function TokenCenterColumn({
 
   return (
     <>
-      <div className={styles.chartPanel}>
-        <div className={styles.chartHeader}>
-          <div>
-            <div className={styles.priceLabel}>Price</div>
-            <div className={styles.priceRow}>
-              <span className={styles.priceValue}>{formatUsdPrice(priceUsd)}</span>
-              {priceChange ? (
-                <span className={`${styles.priceChange} ${priceChange.up ? styles.priceChangeUp : styles.priceChangeDown}`}>
-                  {priceChange.label}
-                </span>
-              ) : null}
-            </div>
-          </div>
-        </div>
-        <div className={styles.chartEmbedShell}>
-          <PublicDexscreenerSection address={address} />
-        </div>
+      <div className={styles.chartPlaceholder} data-token-chart-placeholder="true">
+        <span className={styles.chartPlaceholderLabel}>Live chart</span>
+        <p className={styles.chartPlaceholderCopy}>Coming soon — trade activity and price history will render here.</p>
       </div>
 
       <div className={styles.activityPanel}>
