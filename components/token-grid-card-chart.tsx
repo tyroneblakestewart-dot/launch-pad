@@ -21,7 +21,15 @@ import styles from "./hoodlums-token-grid.module.css";
  * the same pure `buildSparkline` output at different sizes, so there is only
  * ever one shape of "no data yet" (a flat baseline, not an error box).
  */
-export function TokenGridCardChart({ tokenName, curveAddress }: { tokenName: string; curveAddress: string }) {
+export function TokenGridCardChart({
+  tokenName,
+  curveAddress,
+  artworkThumbnail,
+}: {
+  tokenName: string;
+  curveAddress: string;
+  artworkThumbnail?: string | null;
+}) {
   const { ref, inView } = useInView<HTMLDivElement>();
   const { trades } = useGridTokenTrades(curveAddress, inView);
   const sparkline = buildSparkline(trades ?? []);
@@ -33,7 +41,11 @@ export function TokenGridCardChart({ tokenName, curveAddress }: { tokenName: str
   return (
     <>
       <div ref={ref} className={styles.art} data-token-grid-chart="true">
-        <span className={styles.artInitial}>{letter}</span>
+        {artworkThumbnail ? (
+          <img className={styles.artImage} src={artworkThumbnail} alt="" />
+        ) : (
+          <span className={styles.artInitial}>{letter}</span>
+        )}
         <svg
           className={styles.sparklineMini}
           viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`}

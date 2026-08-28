@@ -94,6 +94,33 @@
   font-size: 0.76rem;
 }
 
+.tokenCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thumbnail,
+.thumbnailFallback {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+}
+
+.thumbnail {
+  object-fit: cover;
+}
+
+.thumbnailFallback {
+  display: grid;
+  place-items: center;
+  background: rgba(188, 231, 89, 0.1);
+  color: #bce759;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
 .badgeGraduated,
 .badgeBonding {
   display: inline-block;

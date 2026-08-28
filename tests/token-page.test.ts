@@ -173,6 +173,7 @@ describe("TokenPage", () => {
             graduated: false,
             graduatedAt: null,
             launchedAt: new Date().toISOString(),
+            artworkThumbnail: null,
           }) satisfies TokenLaunch,
       }),
     );

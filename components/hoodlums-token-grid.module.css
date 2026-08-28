@@ -90,7 +90,13 @@
   overflow: hidden;
 }
 
-.art img {
+/* Recorded launch artwork (issue #438): sits behind both the letter-initial
+   fallback (never rendered at the same time) and the #436 sparkline overlay
+   above it, filling the art region edge to edge. */
+.artImage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;

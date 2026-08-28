@@ -952,3 +952,47 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   — the chart/tab layout and the compact interval selector were checked by
   reading the CSS against the existing breakpoints, not on-device; flagged
   for the owner to confirm by trading on a live bonding-curve token.
+- Token artwork is captured at launch and shown on the homepage grid (issue
+  #438) — `token_launches` carried no artwork reference at all, so every
+  card fell back to a letter initial even though the studio project's
+  `heroImage` was already in memory at record time. `lib/token-artwork-
+  thumbnail.ts` is a pure, unit-tested square-cover-crop/quality-stepping
+  helper (max 512x512, WEBP with a JPEG fallback when a browser can't
+  encode WEBP, ~0.8 quality stepped down up to twice, giving up rather than
+  send anything over 120KB) composed with a thin, untested canvas/Image
+  driver in the same file — the same tested-pure/untested-DOM split as
+  `lib/artwork-compression.ts` and `components/artwork-upload-controller.tsx`.
+  `components/robinhood-testnet-deployment-controller.tsx` reads
+  `currentProject.heroImage` once, downscales it, and discards it — never
+  holding the full-size artwork in React state or a prop, per CLAUDE.md's
+  PR #118 iPhone Safari memory rule. The resulting thumbnail rides as an
+  optional `artworkThumbnail` field alongside the wallet-signed record
+  request, deliberately outside the signed challenge payload, since artwork
+  is cosmetic, non-authoritative data. `lib/server/token-launch-artwork-
+  validation.ts` validates it server-side before every insert — optional;
+  must decode (via the existing `decodeArtworkDataUrl` magic-byte sniffer)
+  to a genuine WEBP, JPEG or PNG; 400 above 160,000 decoded bytes — so
+  nothing unvalidated is ever stored. Migration `030_token_launch_artwork.sql`
+  adds a nullable `artwork_thumbnail` column with a generous defence-in-depth
+  `octet_length` CHECK; a double-submitted record fills in missing artwork
+  via `COALESCE` without ever overwriting artwork already recorded, so the
+  `/testnet` "Record listing" retry and "Record an existing launch" (#425)
+  recovery paths can carry art too even though `components/testnet-
+  launcher.tsx`'s own standalone form has no `heroImage` of its own to send.
+  `GET /api/token-launches` and the admin list both return `artworkThumbnail`
+  (null when absent) as part of the existing `TokenLaunch`/`TokenLaunchListItem`
+  shape. The homepage grid (`components/token-grid-card-chart.tsx`) renders
+  it as the card's edge-to-edge `object-fit: cover` thumbnail, positioned
+  behind the existing #436 sparkline overlay and only ever shown in place of
+  (never alongside) the letter-initial fallback; `/admin`'s Launches table
+  shows the same thumbnail per row. No token page, `/api/token-trades`, or
+  #436 sparkline-maths changes; the card visual redesign the issue explicitly
+  deferred was not attempted. Validated this session: `npm run test:app` —
+  278 test files / 2942 tests passing. `npm run lint` — 0 errors (12
+  warnings: the 10 pre-existing plus 2 new `no-img-element` warnings on the
+  two new `<img>` thumbnails, consistent with every other data-URL artwork
+  `<img>` already in this codebase). `npm run build` — succeeds. Not
+  verified on a real mobile Safari device this pass (rule 7) — the grid
+  card and admin row thumbnail styling were checked by reading the CSS
+  against the existing layout, not on-device; flagged for the owner to
+  confirm.

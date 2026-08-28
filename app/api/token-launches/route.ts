@@ -18,6 +18,7 @@ import {
   type AuthoriseTokenLaunchActionResult,
 } from "@/lib/server/token-launch-auth";
 import { verifyTokenLaunchOnChain } from "@/lib/server/token-launch-reconciliation";
+import { validateTokenLaunchArtworkThumbnail } from "@/lib/server/token-launch-artwork-validation";
 import {
   MAX_TOKEN_LAUNCHES_PER_PAGE,
   TokenLaunchesStoreUnavailableError,
@@ -206,6 +207,14 @@ export async function POST(request: Request) {
   const nonce = typeof body?.nonce === "string" ? body.nonce.trim() : "";
   const signature = typeof body?.signature === "string" ? body.signature.trim() : "";
 
+  // Deliberately read from the raw body, not the signed `payload` below —
+  // artwork is cosmetic, non-authoritative data and must never be part of
+  // the wallet-signed challenge message (issue #438).
+  const artworkValidation = validateTokenLaunchArtworkThumbnail(body?.artworkThumbnail);
+  if (!artworkValidation.valid) {
+    return NextResponse.json({ error: artworkValidation.reason }, { status: 400, headers });
+  }
+
   if (!Number.isSafeInteger(chainId) || chainId <= 0) {
     return NextResponse.json({ error: "A valid chain ID is required." }, { status: 400, headers });
   }
@@ -275,6 +284,7 @@ export async function POST(request: Request) {
       decimals,
       wholeTokenSupply,
       graduationTargetWei,
+      artworkThumbnail: artworkValidation.artworkThumbnail,
     });
 
     runAfterResponse(() =>

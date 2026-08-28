@@ -22,6 +22,7 @@ type TokenLaunch = {
   graduated: boolean;
   graduatedAt: string | null;
   launchedAt: string;
+  artworkThumbnail: string | null;
 };
 
 async function readError(response: Response, fallback: string): Promise<string> {
@@ -106,9 +107,20 @@ export function AdminTokenLaunchesSection() {
               {launches.map((launch) => (
                 <tr key={launch.id}>
                   <td>
-                    <strong>{launch.tokenName}</strong> ({launch.ticker})
-                    <br />
-                    <code className={styles.address}>{truncateAddress(launch.tokenAddress)}</code>
+                    <div className={styles.tokenCell}>
+                      {launch.artworkThumbnail ? (
+                        <img className={styles.thumbnail} src={launch.artworkThumbnail} alt="" />
+                      ) : (
+                        <span className={styles.thumbnailFallback} aria-hidden="true">
+                          {launch.tokenName.trim().slice(0, 1).toUpperCase() || "?"}
+                        </span>
+                      )}
+                      <div>
+                        <strong>{launch.tokenName}</strong> ({launch.ticker})
+                        <br />
+                        <code className={styles.address}>{truncateAddress(launch.tokenAddress)}</code>
+                      </div>
+                    </div>
                   </td>
                   <td>
                     <code className={styles.address}>{truncateAddress(launch.creatorWalletAddress)}</code>

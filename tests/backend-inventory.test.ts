@@ -291,6 +291,7 @@ describe("backend test inventory", () => {
       "lib/server/token-chat-creator.ts",
       "lib/server/token-chat-store.ts",
       "lib/server/token-holders.ts",
+      "lib/server/token-launch-artwork-validation.ts",
       "lib/server/token-launch-auth.ts",
       "lib/server/token-launch-curve-lookup.ts",
       "lib/server/token-launch-reconciliation.ts",

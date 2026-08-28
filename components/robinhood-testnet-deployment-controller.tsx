@@ -32,6 +32,7 @@ import {
   parseStoredAccountWallet,
 } from "@/lib/account-wallet-state";
 import { describeWalletMismatch } from "@/lib/social-studio-queue";
+import { captureTokenArtworkThumbnail } from "@/lib/token-artwork-thumbnail";
 import { notifyTokenLaunchCompleted } from "@/lib/token-launch-events";
 import type { TokenProject } from "@/lib/types";
 import styles from "./robinhood-testnet-deployment-controller.module.css";
@@ -296,6 +297,7 @@ export function RobinhoodTestnetDeploymentController() {
       wholeTokenSupply: string;
       graduationTargetWei: bigint;
     },
+    artworkThumbnail: string | null,
   ): Promise<void> {
     const walletChainId = await walletClient.getChainId();
     const payload = {
@@ -324,6 +326,9 @@ export function RobinhoodTestnetDeploymentController() {
 
     const signature = await walletClient.signMessage({ account, message: challenge.message });
 
+    // artworkThumbnail rides alongside the signed payload, not inside it —
+    // it is cosmetic, non-authoritative data (issue #438) and keeps the
+    // wallet signature message small and human-readable.
     const recordResponse = await fetch("/api/token-launches", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -332,6 +337,7 @@ export function RobinhoodTestnetDeploymentController() {
         challengeId: challenge.challengeId,
         nonce: challenge.nonce,
         signature,
+        artworkThumbnail,
       }),
     });
     if (!recordResponse.ok) {
@@ -415,17 +421,27 @@ export function RobinhoodTestnetDeploymentController() {
     setStatus(`Step 3 of 3 submitted: ${shortAddress(fundHash)}`);
     await publicClient.waitForTransactionReceipt({ hash: fundHash });
 
+    // Downscaled and discarded here — never stored in React state or
+    // threaded through props (CLAUDE.md's PR #118 iPhone Safari memory
+    // rule; issue #438).
+    const artworkThumbnail = await captureTokenArtworkThumbnail(currentProject.heroImage).catch(() => null);
+
     let recordWarning: string | undefined;
     try {
-      await recordTokenLaunch(walletClient, account, {
-        tokenAddress,
-        curveAddress,
-        tokenName: currentProject.name.trim(),
-        ticker: currentProject.ticker.trim().toUpperCase(),
-        decimals: currentProject.decimals,
-        wholeTokenSupply: currentProject.supply,
-        graduationTargetWei: curveParams.graduationTargetWei,
-      });
+      await recordTokenLaunch(
+        walletClient,
+        account,
+        {
+          tokenAddress,
+          curveAddress,
+          tokenName: currentProject.name.trim(),
+          ticker: currentProject.ticker.trim().toUpperCase(),
+          decimals: currentProject.decimals,
+          wholeTokenSupply: currentProject.supply,
+          graduationTargetWei: curveParams.graduationTargetWei,
+        },
+        artworkThumbnail,
+      );
     } catch (recordError) {
       // Never fail the launch over this — the token and curve are already
       // live on-chain. Surfaced only in the result panel, not a thrown error.
