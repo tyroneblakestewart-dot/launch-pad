@@ -275,11 +275,15 @@ describe("token page mobile-first layout (issue #427)", () => {
     expect(css).toContain("@media (min-width: 1181px)");
   });
 
-  it("pulls the swap panel ahead of the identity/stats panel within the mobile-base left column, resetting to source order on desktop", async () => {
+  it("pulls the swap panel ahead of the identity/stats panel in the mobile-base order, resetting once desktop gives it its own sticky column (issue #429)", async () => {
     const css = await source("components/token-page/token-page.module.css");
-    expect(css).toContain(".left > .swapPanel {\n  order: -1;\n}");
+    const firstMediaIndex = css.indexOf("@media");
+    const baseCss = css.slice(0, firstMediaIndex);
+    expect(baseCss).toContain(".swapPanel {\n  order: 1;\n}");
+    expect(baseCss).toContain(".identityPanel {\n  order: 2;\n}");
+    expect(baseCss).toContain(".feePanel {\n  order: 3;\n}");
     const desktopBlockStart = css.indexOf("@media (min-width: 881px)");
-    const resetIndex = css.indexOf(".left > .swapPanel,", desktopBlockStart);
+    const resetIndex = css.indexOf(".swapPanel,\n  .feePanel {\n    order: initial;\n  }", desktopBlockStart);
     expect(resetIndex).toBeGreaterThan(desktopBlockStart);
   });
 
@@ -323,5 +327,72 @@ describe("token page mobile-first layout (issue #427)", () => {
     const css = await source("components/token-page/token-page.module.css");
     const pageRuleEnd = css.indexOf("}");
     expect(css.slice(0, pageRuleEnd)).toContain("overflow-x: hidden;");
+  });
+});
+
+describe("token page desktop layout: swap left, chart centre, identity+about right (issue #429)", () => {
+  it("renders every column component directly inside the shared grid, with no per-column wrapper divs — column placement is resolved purely in CSS", async () => {
+    const view = await source("components/token-page/token-page-view.tsx");
+    expect(view).not.toContain("styles.left}");
+    expect(view).not.toContain("styles.center}");
+    expect(view).not.toContain("styles.right}");
+    const gridIndex = view.indexOf("styles.grid}");
+    expect(gridIndex).toBeGreaterThan(-1);
+    expect(view.indexOf("<TokenLeftColumn", gridIndex)).toBeGreaterThan(gridIndex);
+    expect(view.indexOf("<TokenCenterColumn", gridIndex)).toBeGreaterThan(gridIndex);
+    expect(view.indexOf("<TokenRightColumn", gridIndex)).toBeGreaterThan(gridIndex);
+  });
+
+  it("groups the swap panel and creator-fee panel behind a display:contents wrapper, so they can share one sticky desktop column while still interleaving with identity on mobile", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    const groupStart = component.indexOf("<div className={styles.leftGroup}>");
+    expect(groupStart).toBeGreaterThan(-1);
+    const swapIndex = component.indexOf("styles.swapPanel", groupStart);
+    const feeIndex = component.indexOf("styles.feePanel", groupStart);
+    expect(swapIndex).toBeGreaterThan(groupStart);
+    expect(feeIndex).toBeGreaterThan(swapIndex);
+  });
+
+  it("marks the trade-terminal and about panels distinctly so CSS can place identity directly above about in the desktop right column", async () => {
+    const component = await source("components/token-page/token-right-column.tsx");
+    expect(component).toContain("`${styles.panel} ${styles.terminalPanel}`");
+    expect(component).toContain("`${styles.panel} ${styles.aboutPanel}`");
+  });
+
+  it("puts the sticky swap/fee column on the left and the chart/activity column in the centre at the two-column desktop breakpoint", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const blockStart = css.indexOf("@media (min-width: 881px)");
+    const blockEnd = css.indexOf("@media (min-width: 1181px)");
+    const block = css.slice(blockStart, blockEnd);
+    expect(block).toContain(".leftGroup {\n    display: flex;");
+    expect(block).toContain("grid-column: 1;");
+    expect(block).toContain("position: sticky;");
+    expect(block).toContain(".chartPlaceholder,\n  .activityPanel {\n    grid-column: 2;\n  }");
+  });
+
+  it("moves the identity card directly above the About panel in the right column (trade terminals following underneath), at both desktop breakpoints", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const mediumBlockStart = css.indexOf("@media (min-width: 881px)");
+    const mediumBlockEnd = css.indexOf("@media (min-width: 1181px)");
+    const mediumBlock = css.slice(mediumBlockStart, mediumBlockEnd);
+
+    expect(mediumBlock).toContain(".identityPanel,\n  .aboutPanel,\n  .terminalPanel {\n    grid-column: 1 / -1;\n  }");
+    const identityOrder = mediumBlock.indexOf(".identityPanel {\n    order: 3;\n  }");
+    const aboutOrder = mediumBlock.indexOf(".aboutPanel {\n    order: 4;\n  }");
+    const terminalOrder = mediumBlock.indexOf(".terminalPanel {\n    order: 5;\n  }");
+    expect(identityOrder).toBeGreaterThan(-1);
+    expect(identityOrder).toBeLessThan(aboutOrder);
+    expect(aboutOrder).toBeLessThan(terminalOrder);
+
+    const wideBlock = css.slice(css.indexOf("@media (min-width: 1181px)"));
+    expect(wideBlock).toContain(".identityPanel,\n  .aboutPanel,\n  .terminalPanel {\n    grid-column: 3;\n  }");
+  });
+
+  it("does not touch the token page's data-flow, trade logic or error surfacing (issue #427) while rearranging layout", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain('receipt.status === "reverted"');
+    expect(component).toContain("describeRevertedTrade(hash)");
+    expect(component).toContain("void refreshBalances(account);");
+    expect(component).toContain("if (curveAddress) void loadCurve(curveAddress);");
   });
 });
