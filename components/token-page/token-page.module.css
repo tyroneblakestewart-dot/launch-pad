@@ -4,11 +4,15 @@
 
 .page {
   min-height: 100vh;
-  padding: 14px 16px 90px;
+  padding: 14px 16px 32px;
   background: #0a0b09;
   background-image: radial-gradient(90% 55% at 50% -8%, rgba(198, 245, 62, 0.1), transparent 62%);
   color: #f4f7f1;
   font-family: Archivo, system-ui, sans-serif;
+  /* Safety net matching the generated-site pattern (issue #323/#427): the
+     mobile-first single-column layout below must never force the 390px
+     viewport to scroll horizontally, independent of any one child's sizing. */
+  overflow-x: hidden;
 }
 
 .shell {
@@ -17,6 +21,17 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
+}
+
+/* Consistent, visible keyboard focus ring across every interactive control
+   on the page (issue #427) — the design's dark panels have no border by
+   default to hang a browser's native focus outline on. */
+.shell a:focus-visible,
+.shell button:focus-visible,
+.shell input:focus-visible {
+  outline: 2px solid #c6f53e;
+  outline-offset: 2px;
 }
 
 /* ---- top bar ---- */
@@ -41,8 +56,8 @@
 }
 
 .backLink {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   flex: none;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -57,6 +72,13 @@
 .backLink:hover {
   border-color: rgba(198, 245, 62, 0.5);
   color: #c6f53e;
+}
+
+.topbarIdentity {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
 .titleRow {
@@ -122,6 +144,9 @@
 }
 
 .topbarLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   font: 500 12px/1 "JetBrains Mono", monospace;
   color: #a8aaa9;
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -136,23 +161,34 @@
   color: #c6f53e;
 }
 
-/* ---- grid ---- */
+/* Price sits beside the name/ticker/live badge as one identity header
+   (issue #427) instead of the old large centred price panel this reuses
+   `.priceRow`/`.priceValue`/`.priceChange` from — sized down for the
+   topbar's compact context. */
+.topbarIdentity .priceValue {
+  font-size: 22px;
+}
+
+.topbarIdentity .priceChange {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+/* ---- grid (mobile-first, issue #427) ----
+   Base rules below target the 390px primary target: a single stacked
+   column with the trade panel pulled directly under the identity+price
+   header via `order`, ahead of stats/graduation. Wider breakpoints
+   (min-width, not max-width) progressively restore the multi-column
+   desktop layout and reset those `order` overrides back to source order. */
 
 .grid {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr) 330px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
-  align-items: start;
 }
 
 .left,
-.center {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-}
-
+.center,
 .right {
   display: flex;
   flex-direction: column;
@@ -160,28 +196,70 @@
   min-width: 0;
 }
 
-@media (max-width: 1180px) {
+/* Mobile stacking order: left (swap pulled to the front within it) →
+   right (about) → centre (chart placeholder + trades/holders/hoodchat). */
+.left {
+  order: 1;
+}
+
+.right {
+  order: 2;
+}
+
+.center {
+  order: 3;
+}
+
+/* Within `.left`, the swap panel (or its graduated/fallback variant — both
+   carry `.swapPanel`) is pulled ahead of the identity/stats/graduation
+   panel so it's "immediately visible" right after the topbar, per the
+   issue, instead of requiring a scroll or a separate compact bar. */
+.left > .swapPanel {
+  order: -1;
+}
+
+.left > .identityPanel {
+  order: 0;
+}
+
+.left > .feePanel {
+  order: 1;
+}
+
+@media (min-width: 881px) {
   .grid {
     grid-template-columns: 280px minmax(0, 1fr);
+    align-items: start;
   }
   .right {
     grid-column: 1 / -1;
+    order: initial;
+  }
+  .left,
+  .center {
+    order: initial;
+  }
+  .left > .swapPanel,
+  .left > .identityPanel,
+  .left > .feePanel {
+    order: initial;
+  }
+  /* Trade panel stays reachable while scrolling (issue #427) — `.grid`'s
+     own `align-items: start` (set just above) keeps this from stretching
+     to the tallest sibling, which sticky positioning requires. */
+  .left {
+    position: sticky;
+    top: 14px;
+    align-self: start;
   }
 }
 
-@media (max-width: 880px) {
+@media (min-width: 1181px) {
   .grid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 300px minmax(0, 1fr) 330px;
   }
-  .right,
-  .left {
+  .right {
     grid-column: auto;
-  }
-  .swapPanel {
-    display: none !important;
-  }
-  .mobileBar {
-    display: flex !important;
   }
 }
 
@@ -254,6 +332,7 @@
   justify-content: space-between;
   gap: 10px;
   width: 100%;
+  min-height: 44px;
   cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.09);
   background: rgba(255, 255, 255, 0.03);
@@ -382,6 +461,10 @@
 }
 
 .pillButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
   cursor: pointer;
   border: 1px solid transparent;
   background: transparent;
@@ -406,6 +489,9 @@
 }
 
 .walletButton {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   cursor: pointer;
   border-radius: 999px;
   padding: 9px 14px;
@@ -429,6 +515,13 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* The amount input has no border of its own to hang a focus ring on
+   (`.amountInput` sets `outline: none` since it's borderless-by-design),
+   so its focus state lives on the surrounding field instead. */
+.fieldBox:focus-within {
+  border-color: rgba(198, 245, 62, 0.5);
 }
 
 .fieldHeaderRow {
@@ -499,7 +592,11 @@
 }
 
 .presetButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: 1;
+  min-height: 44px;
   cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.09);
   background: rgba(255, 255, 255, 0.03);
@@ -591,6 +688,20 @@
   text-align: center;
 }
 
+/* Visible error state (issue #427) — a reverted/failed trade must never
+   fall back to the same muted, easy-to-miss `.tradeHint` styling a normal
+   "submitted"/"confirmed" status uses. */
+.tradeErrorText {
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 95, 86, 0.35);
+  border-radius: 10px;
+  background: rgba(42, 18, 21, 0.6);
+  color: #ff8a80;
+  font: 600 11px/1.5 "JetBrains Mono", monospace;
+  text-align: center;
+}
+
 .feeBreakdown {
   display: flex;
   flex-direction: column;
@@ -631,6 +742,7 @@
 }
 
 .feeWithdrawButton {
+  min-height: 44px;
   cursor: pointer;
   border: 0;
   border-radius: 999px;
@@ -667,8 +779,12 @@
 }
 
 .terminalFallbackLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: 1;
   min-width: 120px;
+  min-height: 44px;
   text-align: center;
   cursor: pointer;
   border-radius: 999px;
@@ -679,29 +795,35 @@
   text-decoration: none;
 }
 
-/* ---- chart / activity panel (centre column) ---- */
+/* ---- chart placeholder (centre column) ----
+   The embedded Dexscreener chart is removed (issue #427): Dexscreener
+   can't index this chain, so it only ever showed a "chart doesn't work
+   here" message in the page's prime real estate. This is a clearly-marked
+   placeholder for part 2's live chart, not the chart itself. */
 
-.chartPanel {
-  border: 1px solid rgba(255, 255, 255, 0.09);
+.chartPlaceholder {
+  border: 1px dashed rgba(198, 245, 62, 0.28);
   border-radius: 20px;
-  background: rgba(18, 21, 19, 0.99);
-  overflow: hidden;
-}
-
-.chartHeader {
-  padding: 16px 18px 4px;
+  background: rgba(198, 245, 62, 0.03);
+  padding: 28px 18px;
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
-.priceLabel {
-  font: 500 9.5px/1 "JetBrains Mono", monospace;
+.chartPlaceholderLabel {
+  font: 700 9.5px/1 "JetBrains Mono", monospace;
   letter-spacing: 0.18em;
   text-transform: uppercase;
+  color: #c6f53e;
+}
+
+.chartPlaceholderCopy {
+  margin: 0;
   color: #929693;
+  font-size: 12.5px;
+  line-height: 1.6;
 }
 
 .priceRow {
@@ -736,13 +858,6 @@
   border: 1px solid rgba(255, 95, 86, 0.28);
 }
 
-.chartEmbedShell {
-  margin: 10px 14px 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  overflow: hidden;
-}
-
 /* ---- activity tabs (recent trades / holders) ---- */
 
 .activityPanel {
@@ -761,6 +876,9 @@
 }
 
 .activityTab {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   cursor: pointer;
   flex: none;
   border-radius: 12px;
@@ -1102,70 +1220,3 @@
   cursor: pointer;
 }
 
-/* ---- mobile sticky swap bar ---- */
-
-.mobileBar {
-  display: none;
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 20;
-  padding: 12px 14px 16px;
-  background: linear-gradient(180deg, rgba(6, 8, 7, 0) 0%, rgba(6, 8, 7, 0.92) 30%, rgba(6, 8, 7, 0.99) 100%);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid rgba(198, 245, 62, 0.2);
-  align-items: center;
-  gap: 10px;
-}
-
-.mobileBarInfo {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-
-.mobileBarTicker {
-  font: 500 9.5px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #929693;
-}
-
-.mobileBarPrice {
-  font-family: "Archivo Black", sans-serif;
-  font-size: 16px;
-  letter-spacing: -0.03em;
-}
-
-.mobileBuyButton {
-  min-height: 52px;
-  border: 0;
-  cursor: pointer;
-  border-radius: 999px;
-  padding: 0 30px;
-  background: linear-gradient(135deg, #c6f53e, #91f0b6);
-  color: #061006;
-  font-size: 16px;
-  font-weight: 900;
-}
-
-.mobileTradeLink {
-  text-decoration: none;
-  display: grid;
-  place-items: center;
-}
-
-.mobileSellButton {
-  min-height: 52px;
-  cursor: pointer;
-  border-radius: 999px;
-  padding: 0 22px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  color: #d4d8d3;
-  font-size: 15px;
-  font-weight: 700;
-}

@@ -28,7 +28,7 @@ import {
 } from "@/lib/bonding-curve-status";
 import { CHAIN_CONFIG, ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
-import { formatCompactUsd, formatHolderCount, formatUsdPrice, shortenAddress } from "@/lib/token-page-format";
+import { formatCompactUsd, formatHolderCount, shortenAddress } from "@/lib/token-page-format";
 import type { TradeTerminalLink } from "@/lib/trade-terminal-links";
 import type { TokenMarketStats } from "@/lib/server/token-market-stats";
 import type { SupportedChain } from "@/lib/types";
@@ -73,6 +73,20 @@ function readError(error: unknown): string {
   return "The transaction failed.";
 }
 
+// Trade UX correctness fix (issue #427): a thrown error (wallet rejection,
+// RPC failure, disconnect) never reached the chain, so nothing was sent.
+function describeTradeSubmissionFailure(error: unknown): string {
+  return `${readError(error)} Nothing was sent — you can try again.`;
+}
+
+// viem's waitForTransactionReceipt() resolves normally even for a reverted
+// transaction (it only throws on a genuine RPC/timeout failure), so a plain
+// try/catch around it silently reported "Trade confirmed." for a trade that
+// actually failed on-chain. Every receipt's own `status` must be checked.
+function describeRevertedTrade(hash: `0x${string}`): string {
+  return `Transaction reverted on-chain (${shortenAddress(hash)}) — no funds were moved. Try again with a smaller amount or more slippage.`;
+}
+
 function formatSlippageLabel(bps: number): string {
   return `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 1)}%`;
 }
@@ -87,18 +101,24 @@ type TokenLeftColumnProps = {
 
 /**
  * Left column of the public token page (issue #225): token identity, market
- * stats, live graduation progress, and the buy/sell swap panel — plus the
- * mobile sticky swap bar, which shares this component's wallet/curve state
- * instead of duplicating a second on-chain read. `curveAddress` is resolved
- * by the server (lib/server/token-launch-curve-lookup.ts, issue #412 Part
- * 2) from the specific launch that deployed this token, falling back to the
- * legacy single-curve-per-chain env var; this component still confirms
- * on-chain that the resolved curve's own `token()` matches this page's
- * address before showing live swap controls. Once the curve reports
+ * stats, live graduation progress, and the buy/sell swap panel. On mobile
+ * the swap panel is pulled directly above the stats/graduation panel via
+ * CSS `order` (`token-page.module.css`, issue #427) instead of the old
+ * separate below-880px sticky bottom bar — the full trade panel is always
+ * inline now, not a compact bar behind an extra tap. `curveAddress` is
+ * resolved by the server (lib/server/token-launch-curve-lookup.ts, issue
+ * #412 Part 2) from the specific launch that deployed this token, falling
+ * back to the legacy single-curve-per-chain env var; this component still
+ * confirms on-chain that the resolved curve's own `token()` matches this
+ * page's address before showing live swap controls. Once the curve reports
  * graduated, the swap form is replaced by an honest "trading closed"
  * panel — the contract itself blocks buy()/sell() post-graduation — and a
  * creator fee panel appears whenever the connected wallet is confirmed
  * on-chain as the curve's creator (fees remain withdrawable either way).
+ * Both the swap and fee-withdraw flows check the transaction receipt's own
+ * `status` (issue #427) — a reverted-but-mined transaction is not the same
+ * as a successful one, and viem's `waitForTransactionReceipt()` does not
+ * throw for a reverted receipt on its own.
  * Anything else (wrong/no curve, non-EVM chain) falls back to the
  * referral-coded "Trade on terminal" links instead of a dead swap form.
  */
@@ -119,9 +139,11 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
   const [sellFeeRaw, setSellFeeRaw] = useState<bigint | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [tradeError, setTradeError] = useState("");
   const [claimableFeeWei, setClaimableFeeWei] = useState<bigint | null>(null);
   const [feeBusy, setFeeBusy] = useState(false);
   const [feeStatusMessage, setFeeStatusMessage] = useState("");
+  const [feeError, setFeeError] = useState("");
 
   const loadCurve = useCallback(async (curve: Address) => {
     setCurveView({ kind: "loading" });
@@ -251,6 +273,7 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
     if (curveView.kind !== "ready" || !account) return;
     setFeeBusy(true);
     setFeeStatusMessage("");
+    setFeeError("");
     try {
       const provider = getInjectedEvmProvider();
       if (!provider) throw new Error("EVM wallet disconnected.");
@@ -263,12 +286,18 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
         functionName: "withdrawFees",
       });
       setFeeStatusMessage(`Transaction submitted: ${shortenAddress(hash)}`);
-      await publicClient.waitForTransactionReceipt({ hash });
-      setFeeStatusMessage("Fees withdrawn.");
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status === "reverted") {
+        setFeeStatusMessage("");
+        setFeeError(describeRevertedTrade(hash));
+      } else {
+        setFeeStatusMessage("Fees withdrawn.");
+      }
       void refreshClaimableFee(account, curveView.curve);
       void refreshBalances(account);
     } catch (error) {
-      setFeeStatusMessage(readError(error));
+      setFeeStatusMessage("");
+      setFeeError(describeTradeSubmissionFailure(error));
     } finally {
       setFeeBusy(false);
     }
@@ -385,7 +414,7 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
       }
       const netIn = buyNetFromGross(grossWei);
       if (netIn > curveView.remainingToGraduateWei) {
-        setStatusMessage(
+        setTradeError(
           `That buy would exceed the ${formatEther(curveView.remainingToGraduateWei)} ETH remaining to graduation. Use MAX to buy exactly up to the target.`,
         );
         return;
@@ -394,6 +423,7 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
 
     setBusy(true);
     setStatusMessage("");
+    setTradeError("");
     try {
       const provider = getInjectedEvmProvider();
       if (!provider) throw new Error("EVM wallet disconnected.");
@@ -441,16 +471,30 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
       }
 
       setStatusMessage(`Transaction submitted: ${shortenAddress(hash)}`);
-      await publicClient.waitForTransactionReceipt({ hash });
-      setStatusMessage("Trade confirmed.");
-      setAmount("");
-      setReceiveRaw(null);
-      setSellFeeRaw(null);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+      // Every confirmed trade — success or revert — spent gas and can move
+      // balances, so the curve/balance refetch always runs; only a genuine
+      // success clears the input and reports it as such (issue #427: a
+      // reverted transaction previously fell through to "Trade confirmed."
+      // unchallenged, since waitForTransactionReceipt() only throws on an
+      // RPC/timeout failure, never on a mined-but-reverted receipt).
       void refreshBalances(account);
       if (isCreator) void refreshClaimableFee(account, curveView.curve);
       if (curveAddress) void loadCurve(curveAddress);
+
+      if (receipt.status === "reverted") {
+        setStatusMessage("");
+        setTradeError(describeRevertedTrade(hash));
+      } else {
+        setStatusMessage("Trade confirmed.");
+        setAmount("");
+        setReceiveRaw(null);
+        setSellFeeRaw(null);
+      }
     } catch (error) {
-      setStatusMessage(readError(error));
+      setStatusMessage("");
+      setTradeError(describeTradeSubmissionFailure(error));
     } finally {
       setBusy(false);
     }
@@ -521,7 +565,7 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
 
   return (
     <>
-      <div className={styles.panel}>
+      <div className={`${styles.panel} ${styles.identityPanel}`}>
         <div className={styles.artwork}>Drop token art</div>
 
         <div className={styles.identityHeader}>
@@ -681,7 +725,13 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
           >
             {tradeLabel}
           </button>
-          {statusMessage ? <p className={styles.tradeHint}>{statusMessage}</p> : null}
+          {tradeError ? (
+            <p className={styles.tradeErrorText} role="alert">
+              {tradeError}
+            </p>
+          ) : statusMessage ? (
+            <p className={styles.tradeHint}>{statusMessage}</p>
+          ) : null}
         </div>
       ) : curveView.kind === "ready" && curveView.graduation.state === "graduated" ? (
         <div className={`${styles.panel} ${styles.swapPanel}`}>
@@ -745,39 +795,15 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
           >
             {feeBusy ? "Withdrawing…" : "Withdraw fees"}
           </button>
-          {feeStatusMessage ? <p className={styles.tradeHint}>{feeStatusMessage}</p> : null}
+          {feeError ? (
+            <p className={styles.tradeErrorText} role="alert">
+              {feeError}
+            </p>
+          ) : feeStatusMessage ? (
+            <p className={styles.tradeHint}>{feeStatusMessage}</p>
+          ) : null}
         </div>
       )}
-
-      <div className={styles.mobileBar}>
-        <div className={styles.mobileBarInfo}>
-          <span className={styles.mobileBarTicker}>{displaySymbol || "TOKEN"}</span>
-          <span className={styles.mobileBarPrice}>
-            {formatUsdPrice(marketStats.supported ? marketStats.priceUsd : null)}
-          </span>
-        </div>
-        {curveView.kind === "ready" && curveView.graduation.state !== "graduated" ? (
-          <>
-            <button type="button" className={styles.mobileBuyButton} onClick={account ? submitTrade : connectWallet}>
-              Buy
-            </button>
-            <button type="button" className={styles.mobileSellButton} onClick={() => setSide("sell")}>
-              Sell
-            </button>
-          </>
-        ) : curveView.kind === "ready" && curveView.graduation.state === "graduated" ? (
-          <span className={styles.mobileBarPrice}>Graduated — trading closed</span>
-        ) : tradeLinks[0] ? (
-          <a
-            href={tradeLinks[0].url}
-            target="_blank"
-            rel="noreferrer"
-            className={`${styles.mobileBuyButton} ${styles.mobileTradeLink}`}
-          >
-            Trade
-          </a>
-        ) : null}
-      </div>
     </>
   );
 }
