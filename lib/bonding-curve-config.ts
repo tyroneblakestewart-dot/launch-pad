@@ -41,6 +41,17 @@ export const HOODLUMS_BONDING_CURVE_TRADE_ABI = parseAbi([
 ]);
 
 /**
+ * Trade event signatures from contracts/HoodlumsTestBondingCurve.sol, used
+ * to scan a curve's on-chain buy/sell history for the token page's Recent
+ * trades tab and candlestick chart (issue #430). Kept separate from the
+ * function ABIs above since `getLogs` needs event fragments, not functions.
+ */
+export const HOODLUMS_BONDING_CURVE_TRADE_EVENTS_ABI = parseAbi([
+  "event TokensPurchased(address indexed buyer, uint256 grossNativeIn, uint256 netNativeIn, uint256 tokensOut, uint256 feeCharged, uint256 virtualTokenReserve, uint256 virtualEthReserve)",
+  "event TokensSold(address indexed seller, uint256 tokensIn, uint256 grossNativeOut, uint256 netNativeOut, uint256 feeCharged, uint256 virtualTokenReserve, uint256 virtualEthReserve)",
+]);
+
+/**
  * Fee-claim slice of the contract, kept separate from the trade ABI above
  * since it's used by a distinct piece of UI — the creator fee panel (issue
  * #412 Part 2) — gated on the connected wallet being the curve's creator,

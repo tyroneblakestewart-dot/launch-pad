@@ -29,10 +29,14 @@ import {
 import { CHAIN_CONFIG, ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import { formatCompactUsd, formatHolderCount, shortenAddress } from "@/lib/token-page-format";
+import { notifyTokenTradeConfirmed } from "@/lib/token-trade-events";
 import type { TradeTerminalLink } from "@/lib/trade-terminal-links";
 import type { TokenMarketStats } from "@/lib/server/token-market-stats";
 import type { SupportedChain } from "@/lib/types";
 import styles from "./token-page.module.css";
+
+/** Visible-tab-only live refresh of curve state (issue #430 item 4: "poll ... curve state every ~12s while the page is visible"). */
+const CURVE_STATE_POLL_INTERVAL_MS = 12_000;
 
 const chain = defineChain({
   id: ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL,
@@ -204,6 +208,53 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
 
   useEffect(() => {
     if (curveAddress) void loadCurve(curveAddress);
+  }, [curveAddress, loadCurve]);
+
+  // Live graduation-progress/stats refresh with no manual reload (issue
+  // #430 item 4), mirroring lib/use-token-launches.ts's visible-tab-only
+  // poll: paused while the tab is hidden, resumed (with an immediate
+  // refetch) on focus/visibilitychange.
+  useEffect(() => {
+    if (!curveAddress) return;
+    let timer: number | null = null;
+
+    function isPageVisible(): boolean {
+      try {
+        return document.visibilityState === "visible";
+      } catch {
+        return true;
+      }
+    }
+
+    function startTimer() {
+      if (timer !== null) return;
+      timer = window.setInterval(() => void loadCurve(curveAddress as Address), CURVE_STATE_POLL_INTERVAL_MS);
+    }
+
+    function stopTimer() {
+      if (timer === null) return;
+      window.clearInterval(timer);
+      timer = null;
+    }
+
+    function handleBecameVisible() {
+      if (!isPageVisible()) {
+        stopTimer();
+        return;
+      }
+      void loadCurve(curveAddress as Address);
+      startTimer();
+    }
+
+    if (isPageVisible()) startTimer();
+    document.addEventListener("visibilitychange", handleBecameVisible);
+    window.addEventListener("focus", handleBecameVisible);
+
+    return () => {
+      stopTimer();
+      document.removeEventListener("visibilitychange", handleBecameVisible);
+      window.removeEventListener("focus", handleBecameVisible);
+    };
   }, [curveAddress, loadCurve]);
 
   const curveReady = curveView.kind === "ready";
@@ -491,6 +542,10 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
         setAmount("");
         setReceiveRaw(null);
         setSellFeeRaw(null);
+        // Only a genuine (non-reverted) trade actually emitted a
+        // TokensPurchased/TokensSold event, so this is the one case worth
+        // telling the trades tab/chart to refetch immediately (issue #430).
+        if (curveAddress) notifyTokenTradeConfirmed({ curveAddress, chainId: ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL });
       }
     } catch (error) {
       setStatusMessage("");

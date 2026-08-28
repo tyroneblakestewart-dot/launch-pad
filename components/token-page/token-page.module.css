@@ -795,35 +795,68 @@
   text-decoration: none;
 }
 
-/* ---- chart placeholder (centre column) ----
+/* ---- live candlestick chart (centre column, issue #430) ----
    The embedded Dexscreener chart is removed (issue #427): Dexscreener
    can't index this chain, so it only ever showed a "chart doesn't work
-   here" message in the page's prime real estate. This is a clearly-marked
-   placeholder for part 2's live chart, not the chart itself. */
+   here" message in the page's prime real estate. This is the real live
+   chart, built on lightweight-charts and bucketed from on-chain trades. */
 
-.chartPlaceholder {
-  border: 1px dashed rgba(198, 245, 62, 0.28);
+.chartPanel {
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 20px;
-  background: rgba(198, 245, 62, 0.03);
-  padding: 28px 18px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 14px 14px 8px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
 }
 
-.chartPlaceholderLabel {
-  font: 700 9.5px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+.chartToolbar {
+  display: flex;
+  gap: 6px;
+}
+
+.chartIntervalButton {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: #929693;
+  font: 700 11px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.chartIntervalButtonActive {
+  border-color: #c6f53e;
   color: #c6f53e;
+  background: rgba(198, 245, 62, 0.08);
 }
 
-.chartPlaceholderCopy {
-  margin: 0;
+.chartCanvasWrap {
+  position: relative;
+}
+
+.chartCanvas {
+  width: 100%;
+  height: 280px;
+}
+
+.chartEmptyOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 24px;
+  pointer-events: none;
   color: #929693;
   font-size: 12.5px;
   line-height: 1.6;
+  background: rgba(11, 12, 11, 0.45);
+  border-radius: 12px;
 }
 
 .priceRow {

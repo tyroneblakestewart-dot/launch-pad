@@ -567,3 +567,22 @@ export function isTokenLaunchRequestOriginAllowed(request: Request): boolean {
     new URL(request.url).origin;
   return Boolean(origin && origin === configured);
 }
+
+// Token trade history (issue #430): a plain public GET, read-only like
+// GET /api/token-launches, so no origin check is needed — only rate
+// limiting. Sized for the ~12s visible-tab poll lib/use-token-trades.ts
+// actually uses (TOKEN_LAUNCH_READ_LIMIT's own precedent, issue #412 Part
+// 1): a 12s timer alone is up to 3600/12 = 300 reads/hour from a single
+// open token page tab, plus a focus/visibilitychange refetch on every
+// refocus and the occasional own-trade-confirmed refetch. 600/hour keeps a
+// full 2x headroom over the timer floor while still bounding abuse.
+export const TOKEN_TRADES_READ_LIMIT = 600;
+export const TOKEN_TRADES_WINDOW_MS = 60 * 60 * 1000;
+
+export function consumeTokenTradesReadRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("token-trades-read"), ip, TOKEN_TRADES_READ_LIMIT, TOKEN_TRADES_WINDOW_MS, now);
+}
+
+export function resetTokenTradesRateLimitsForTests() {
+  namedRateStore("token-trades-read").clear();
+}

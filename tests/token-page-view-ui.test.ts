@@ -208,6 +208,26 @@ describe("token page trade UX correctness (issue #427)", () => {
     expect(component).toContain("setFeeError(describeRevertedTrade(hash))");
     expect(component).toContain("setFeeError(describeTradeSubmissionFailure(error))");
   });
+
+  it("notifies the trades tab/chart only on a genuine (non-reverted) confirmed trade (issue #430)", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain('import { notifyTokenTradeConfirmed } from "@/lib/token-trade-events"');
+    const successBranchStart = component.indexOf('setStatusMessage("Trade confirmed.")');
+    const revertedBranchStart = component.indexOf('setTradeError(describeRevertedTrade(hash));');
+    const notifyIndex = component.indexOf("notifyTokenTradeConfirmed({ curveAddress, chainId: ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL })");
+    expect(notifyIndex).toBeGreaterThan(successBranchStart);
+    expect(revertedBranchStart).toBeLessThan(successBranchStart);
+    expect(notifyIndex).toBeGreaterThan(revertedBranchStart);
+  });
+
+  it("polls curve state every ~12s while the tab is visible, matching the token-launches grid's live-refresh pattern (issue #430)", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain("CURVE_STATE_POLL_INTERVAL_MS = 12_000");
+    expect(component).toContain("document.visibilityState === \"visible\"");
+    expect(component).toContain("window.setInterval(() => void loadCurve(curveAddress as Address), CURVE_STATE_POLL_INTERVAL_MS)");
+    expect(component).toContain('document.addEventListener("visibilitychange", handleBecameVisible)');
+    expect(component).toContain('window.addEventListener("focus", handleBecameVisible)');
+  });
 });
 
 describe("token page centre column (chart + activity)", () => {
@@ -217,19 +237,32 @@ describe("token page centre column (chart + activity)", () => {
     expect(component).not.toContain("public-dexscreener-section");
   });
 
-  it("leaves a clearly-marked placeholder region for part 2's live chart", async () => {
+  it("renders the real live chart, not a placeholder (issue #430)", async () => {
     const component = await source("components/token-page/token-center-column.tsx");
-    expect(component).toContain("styles.chartPlaceholder");
-    expect(component).toContain('data-token-chart-placeholder="true"');
-    expect(component).toContain("Live chart");
+    expect(component).not.toContain("chartPlaceholder");
+    expect(component).toContain('import { TokenChart } from "@/components/token-page/token-chart"');
+    expect(component).toContain("<TokenChart trades={trades} />");
   });
 
-  it("renders Recent trades and Holders tabs with graceful empty states", async () => {
+  it("shares one useTokenTrades poll between the chart and the Recent trades tab", async () => {
+    const component = await source("components/token-page/token-center-column.tsx");
+    expect(component).toContain('import { useTokenTrades } from "@/lib/use-token-trades"');
+    expect(component).toContain("useTokenTrades(curveAddress, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL)");
+  });
+
+  it("renders Recent trades and Holders tabs with graceful empty states, distinct from a load failure", async () => {
     const component = await source("components/token-page/token-center-column.tsx");
     expect(component).toContain("Recent trades");
     expect(component).toContain("Holders");
     expect(component).toContain("No trades recorded yet.");
     expect(component).toContain("No holder data found for this token yet.");
+    expect(component).toContain("recentTradesDescending === null");
+    expect(component).toContain("tradesError");
+  });
+
+  it("links each trade's time to its explorer transaction page", async () => {
+    const component = await source("components/token-page/token-center-column.tsx");
+    expect(component).toContain('href={`${explorerTxBaseUrl}${trade.txHash}`}');
   });
 
   it("excludes the LP pool address from the holders list, matching the existing pattern", async () => {

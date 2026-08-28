@@ -114,7 +114,7 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
           </div>
 
           <div className={styles.center}>
-            <TokenCenterColumn chain={chain} address={address} marketStats={marketStats} />
+            <TokenCenterColumn chain={chain} address={address} marketStats={marketStats} curveAddress={curveAddress} />
           </div>
 
           <div className={styles.right}>
