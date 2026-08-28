@@ -1,5 +1,6 @@
 import { createPublicClient, http, parseAbiItem, type Address, type PublicClient } from "viem";
 import { ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import { getTokenLaunchesStore } from "@/lib/server/token-launches-store";
 import type { TokenTrade } from "@/lib/token-trade-types";
 
 /**
@@ -12,6 +13,22 @@ import type { TokenTrade } from "@/lib/token-trade-types";
  * (post-fee) are used as each trade's native amount because that's the
  * amount that actually priced the trade against the curve's reserves,
  * matching quoteBuy()/quoteSell()'s own math.
+ *
+ * issue #433: the original implementation derived a curve's creation block
+ * via binary search on historical `eth_getCode`. Robinhood Chain Testnet's
+ * RPC (https://rpc.testnet.chain.robinhood.com) is a PRUNED node — it only
+ * serves `eth_getCode` at/near `latest` and errors on any historical state
+ * call, so every read 502'd in production. Block HEADERS remain available
+ * at any height on a pruned node, so the start block is now derived from
+ * `token_launches.created_at` (via
+ * lib/server/token-launches-store.ts's `findTokenLaunchCreatedAtByCurveAddress`)
+ * binary-searched against `eth_getBlockByNumber` timestamps instead — zero
+ * historical-state calls. A curve with no usable launch record (a legacy
+ * manually-deployed curve, or a DB read failure) falls back to a bounded
+ * scan of the latest `LEGACY_FALLBACK_BLOCK_RANGE` blocks rather than block
+ * 0. `eth_getLogs` is chunked into sequential inclusive
+ * `LOG_CHUNK_BLOCK_SPAN`-block ranges, conservative against published
+ * Robinhood RPC provider limits on a single call's block span.
  */
 const TOKENS_PURCHASED_EVENT = parseAbiItem(
   "event TokensPurchased(address indexed buyer, uint256 grossNativeIn, uint256 netNativeIn, uint256 tokensOut, uint256 feeCharged, uint256 virtualTokenReserve, uint256 virtualEthReserve)",
@@ -22,11 +39,20 @@ const TOKENS_SOLD_EVENT = parseAbiItem(
 
 const TRADES_CACHE_TTL_MS = 10_000;
 
-export type TokenTradesReadClient = Pick<PublicClient, "getLogs" | "getBlockNumber" | "getBlock" | "getCode">;
+/** Subtracted from a launch's recorded `created_at` before searching for the start block, so minor clock skew between the DB write and the chain never skips the launch's own earliest trades. */
+const CREATION_SAFETY_MARGIN_MS = 10 * 60 * 1000;
+/** Bounded scan window used when no usable launch record exists for a curve — never block 0. */
+const LEGACY_FALLBACK_BLOCK_RANGE = 200_000n;
+/** Conservative vs published Robinhood RPC provider limits on a single eth_getLogs call's block span. */
+const LOG_CHUNK_BLOCK_SPAN = 10_000n;
+
+export type TokenTradesReadClient = Pick<PublicClient, "getLogs" | "getBlockNumber" | "getBlock">;
 
 export type TokenTradesDeps = {
   client?: TokenTradesReadClient;
   now?: number;
+  /** Overridable for tests; defaults to a real lookup via lib/server/token-launches-store.ts. */
+  findLaunchCreatedAt?: (chainId: number, curveAddress: string) => Promise<Date | null>;
 };
 
 export class TokenTradesReadError extends Error {}
@@ -43,6 +69,10 @@ function defaultClient(): TokenTradesReadClient {
   });
 }
 
+async function defaultFindLaunchCreatedAt(chainId: number, curveAddress: string): Promise<Date | null> {
+  return getTokenLaunchesStore().findTokenLaunchCreatedAtByCurveAddress(chainId, curveAddress);
+}
+
 function cacheKey(chainId: number, curveAddress: string): string {
   return `${chainId}:${curveAddress.toLowerCase()}`;
 }
@@ -53,48 +83,119 @@ const tradesCache = new Map<string, TradesCacheEntry>();
 const tradesInflight = new Map<string, Promise<TokenTrade[]>>();
 // Cached indefinitely per curve: a contract's deployment block never
 // changes, so once resolved it never needs re-deriving.
-const creationBlockCache = new Map<string, bigint>();
+const fromBlockCache = new Map<string, bigint>();
 let lastReadAt: number | null = null;
 let lastReadOk: boolean | null = null;
 
+function legacyFallbackBlock(latest: bigint): bigint {
+  return latest > LEGACY_FALLBACK_BLOCK_RANGE ? latest - LEGACY_FALLBACK_BLOCK_RANGE : 0n;
+}
+
 /**
- * Derives a curve's real deployment block via binary search on
- * `eth_getCode` (bytecode is absent before deployment, present at/after) —
- * no launch record stores a block number today, and this works for a
- * legacy manually-deployed curve too, not just ones recorded in
- * token_launches. Never scans event logs from block 0.
+ * Derives the block to start scanning trade events from, using only block
+ * HEADERS (`eth_getBlockByNumber`) — never historical state calls a pruned
+ * node can't serve. Binary-searches for the first block whose timestamp is
+ * >= the curve's recorded launch time (minus a safety margin). Falls back
+ * to a bounded recent-block window, never block 0, whenever there's no
+ * usable launch record or the sampled headers can't be trusted.
  */
-async function resolveCreationBlock(client: TokenTradesReadClient, curveAddress: Address): Promise<bigint> {
-  const key = curveAddress.toLowerCase();
-  const cached = creationBlockCache.get(key);
+async function resolveFromBlock(
+  client: TokenTradesReadClient,
+  chainId: number,
+  curveAddress: Address,
+  latest: bigint,
+  findLaunchCreatedAt: (chainId: number, curveAddress: string) => Promise<Date | null>,
+): Promise<bigint> {
+  const key = cacheKey(chainId, curveAddress);
+  const cached = fromBlockCache.get(key);
   if (cached !== undefined) return cached;
 
-  const latest = await client.getBlockNumber();
-  const codeAtLatest = await client.getCode({ address: curveAddress, blockNumber: latest });
-  if (!codeAtLatest || codeAtLatest === "0x") {
-    // No code even at the latest block — nothing to scan; treat "now" as
-    // the creation block so a subsequent real deployment gets picked up
-    // once this cache entry naturally falls out of use (it is never
-    // invalidated automatically, but an address with no code isn't a real
-    // curve to poll repeatedly in practice).
-    creationBlockCache.set(key, latest);
+  let createdAt: Date | null;
+  try {
+    createdAt = await findLaunchCreatedAt(chainId, curveAddress);
+  } catch {
+    createdAt = null;
+  }
+
+  if (createdAt === null) {
+    const fallback = legacyFallbackBlock(latest);
+    fromBlockCache.set(key, fallback);
+    return fallback;
+  }
+
+  const targetTimestamp = Math.max(0, Math.floor((createdAt.getTime() - CREATION_SAFETY_MARGIN_MS) / 1000));
+
+  const latestBlock = await client.getBlock({ blockNumber: latest });
+  const latestTimestamp = Number(latestBlock.timestamp);
+
+  // The launch is newer than the latest observed block's own timestamp
+  // (clock skew, or the RPC node lagging) — nothing before "latest" could
+  // possibly match, so start there rather than guessing further back.
+  if (targetTimestamp >= latestTimestamp) {
+    fromBlockCache.set(key, latest);
     return latest;
+  }
+
+  const samples: { block: bigint; timestamp: number }[] = [{ block: latest, timestamp: latestTimestamp }];
+  function violatesMonotonicity(block: bigint, timestamp: number): boolean {
+    return samples.some(
+      (sample) =>
+        (sample.block < block && sample.timestamp > timestamp) ||
+        (sample.block > block && sample.timestamp < timestamp),
+    );
   }
 
   let low = 0n;
   let high = latest;
   while (low < high) {
     const mid = low + (high - low) / 2n;
-    const code = await client.getCode({ address: curveAddress, blockNumber: mid });
-    if (code && code !== "0x") {
+    const block = await client.getBlock({ blockNumber: mid });
+    const timestamp = Number(block.timestamp);
+
+    if (violatesMonotonicity(mid, timestamp)) {
+      // The RPC returned headers that aren't consistent with block number
+      // order — the binary search invariant no longer holds. Fall back to
+      // the same bounded window used for "no usable launch record" rather
+      // than trusting a potentially wrong result.
+      const fallback = legacyFallbackBlock(latest);
+      fromBlockCache.set(key, fallback);
+      return fallback;
+    }
+    samples.push({ block: mid, timestamp });
+
+    if (timestamp >= targetTimestamp) {
       high = mid;
     } else {
       low = mid + 1n;
     }
   }
 
-  creationBlockCache.set(key, low);
+  fromBlockCache.set(key, low);
   return low;
+}
+
+/** Sequential (never concurrent) chunked eth_getLogs reads, merged before normalisation — conservative against provider block-span limits and RPC load. */
+async function fetchLogsChunked(
+  client: TokenTradesReadClient,
+  curveAddress: Address,
+  fromBlock: bigint,
+  toBlock: bigint,
+) {
+  const allLogs: Awaited<ReturnType<TokenTradesReadClient["getLogs"]>> = [];
+  let chunkStart = fromBlock;
+  while (chunkStart <= toBlock) {
+    const chunkEndCandidate = chunkStart + LOG_CHUNK_BLOCK_SPAN - 1n;
+    const chunkEnd = chunkEndCandidate > toBlock ? toBlock : chunkEndCandidate;
+    const chunkLogs = await client.getLogs({
+      address: curveAddress,
+      events: [TOKENS_PURCHASED_EVENT, TOKENS_SOLD_EVENT],
+      fromBlock: chunkStart,
+      toBlock: chunkEnd,
+    });
+    allLogs.push(...chunkLogs);
+    chunkStart = chunkEnd + 1n;
+  }
+  return allLogs;
 }
 
 function normalizeTradeLog(
@@ -172,16 +273,13 @@ export async function getTokenTrades(
   if (existingInflight) return existingInflight;
 
   const client = deps.client ?? defaultClient();
+  const findLaunchCreatedAt = deps.findLaunchCreatedAt ?? defaultFindLaunchCreatedAt;
 
   const readPromise = (async (): Promise<TokenTrade[]> => {
     try {
-      const fromBlock = await resolveCreationBlock(client, curveAddress);
-      const logs = await client.getLogs({
-        address: curveAddress,
-        events: [TOKENS_PURCHASED_EVENT, TOKENS_SOLD_EVENT],
-        fromBlock,
-        toBlock: "latest",
-      });
+      const latest = await client.getBlockNumber();
+      const fromBlock = await resolveFromBlock(client, chainId, curveAddress, latest, findLaunchCreatedAt);
+      const logs = await fetchLogsChunked(client, curveAddress, fromBlock, latest);
 
       const blockNumbers = [...new Set(logs.map((log) => log.blockNumber).filter((value): value is bigint => value !== null))];
       const blocks = await Promise.all(blockNumbers.map((blockNumber) => client.getBlock({ blockNumber })));
@@ -229,7 +327,7 @@ export function getTokenTradesReadHealth(now = Date.now()): TokenTradesReadHealt
 export function resetTokenTradesRpcForTests(): void {
   tradesCache.clear();
   tradesInflight.clear();
-  creationBlockCache.clear();
+  fromBlockCache.clear();
   lastReadAt = null;
   lastReadOk = null;
 }

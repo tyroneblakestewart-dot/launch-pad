@@ -63,6 +63,13 @@ function createMemoryTokenLaunchesStore(): TokenLaunchesStore {
       return [...launches.values()].find((l) => key(l.chainId, l.tokenAddress) === key(chainId, tokenAddress)) ?? null;
     },
 
+    async findTokenLaunchCreatedAtByCurveAddress(chainId: number, curveAddress: string) {
+      const matches = [...launches.values()]
+        .filter((l) => l.chainId === chainId && l.curveAddress.toLowerCase() === curveAddress.toLowerCase())
+        .sort((a, b) => new Date(a.launchedAt).getTime() - new Date(b.launchedAt).getTime());
+      return matches[0] ? new Date(matches[0].launchedAt) : null;
+    },
+
     async markGraduated(chainId: number, tokenAddress: string, graduatedAt: Date) {
       const found = [...launches.values()].find((l) => key(l.chainId, l.tokenAddress) === key(chainId, tokenAddress));
       if (!found || found.graduated) return;
@@ -132,6 +139,14 @@ describe("TokenLaunchesStore contract (via in-memory double)", () => {
     expect(await store.findByTokenAddress(SAMPLE.chainId, "0x9999999999999999999999999999999999999")).toBeNull();
   });
 
+  it("finds a launch's created timestamp by (chainId, curveAddress) case-insensitively", async () => {
+    const store = createMemoryTokenLaunchesStore();
+    await store.record(SAMPLE);
+    const found = await store.findTokenLaunchCreatedAtByCurveAddress(SAMPLE.chainId, SAMPLE.curveAddress.toUpperCase());
+    expect(found).toBeInstanceOf(Date);
+    expect(await store.findTokenLaunchCreatedAtByCurveAddress(SAMPLE.chainId, "0x9999999999999999999999999999999999999")).toBeNull();
+  });
+
   it("markGraduated is a no-op once already graduated", async () => {
     const store = createMemoryTokenLaunchesStore();
     await store.record(SAMPLE);
@@ -163,6 +178,7 @@ describe("getTokenLaunchesStore (unconfigured fallback)", () => {
       expect(await store.list("all", 10)).toEqual([]);
       expect(await store.listForAdmin()).toEqual([]);
       expect(await store.findByTokenAddress(46630, SAMPLE.tokenAddress)).toBeNull();
+      expect(await store.findTokenLaunchCreatedAtByCurveAddress(46630, SAMPLE.curveAddress)).toBeNull();
       expect(await store.countLast24h()).toBe(0);
       expect(await store.tableExists()).toBe(false);
     } finally {

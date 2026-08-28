@@ -70,6 +70,12 @@ function createMemoryTokenLaunchesStore(): TokenLaunchesStore {
         ) ?? null
       );
     },
+    async findTokenLaunchCreatedAtByCurveAddress(chainId: number, curveAddress: string) {
+      const match = [...launches.values()].find(
+        (l) => l.chainId === chainId && l.curveAddress.toLowerCase() === curveAddress.toLowerCase(),
+      );
+      return match ? new Date(match.launchedAt) : null;
+    },
     async markGraduated(chainId: number, tokenAddress: string, graduatedAt: Date) {
       const match = [...launches.values()].find(
         (l) => l.chainId === chainId && l.tokenAddress.toLowerCase() === tokenAddress.toLowerCase(),
