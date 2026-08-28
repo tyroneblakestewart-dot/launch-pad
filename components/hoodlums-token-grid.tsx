@@ -6,6 +6,7 @@ import type { PublicGeneratedSite } from "@/lib/public-site";
 import type { TokenLaunchGridFilter, TokenLaunchListItem } from "@/lib/token-launch-view";
 import { useTokenLaunches } from "@/lib/use-token-launches";
 import { requestWorkspaceOpen } from "@/lib/workspace-open-request";
+import { TokenGridCardChart } from "./token-grid-card-chart";
 import styles from "./hoodlums-token-grid.module.css";
 
 type Tab = "bonding" | "graduated" | "new";
@@ -21,10 +22,6 @@ const TAB_TO_FILTER: Record<Tab, TokenLaunchGridFilter> = {
   bonding: "bonding",
   graduated: "graduated",
 };
-
-function initial(name: string): string {
-  return name.trim().slice(0, 1).toUpperCase() || "?";
-}
 
 function progressPercentLabel(launch: TokenLaunchListItem): string {
   if (launch.graduated) return "100%";
@@ -125,9 +122,7 @@ export function HoodlumsTokenGrid({ liveSites }: { liveSites: PublicGeneratedSit
         <div className={styles.grid}>
           {launches.map((launch) => (
             <a key={launch.id} href={cardHref(launch)} className={styles.card}>
-              <div className={styles.art}>
-                <span>{initial(launch.tokenName)}</span>
-              </div>
+              <TokenGridCardChart tokenName={launch.tokenName} curveAddress={launch.curveAddress} />
               <b className={styles.cardName}>{launch.tokenName}</b>
               <span className={styles.cardTicker}>${launch.ticker}</span>
               <b className={styles.cardCap}>—</b>
