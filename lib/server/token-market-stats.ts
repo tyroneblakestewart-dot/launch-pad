@@ -13,15 +13,6 @@ import {
 } from "./dexscreener";
 
 const STATS_TIMEOUT_MS = 6_000;
-const MAX_TRADES = 12;
-
-export type TokenTrade = {
-  type: "buy" | "sell";
-  wallet: string;
-  amountRaw: string;
-  time: string;
-  txHash: string;
-};
 
 export type TokenChartInfo =
   | { found: false }
@@ -42,85 +33,27 @@ export type TokenMarketStats =
       holderCount: number | null;
       holders: TokenHolder[];
       lpAddress: string | null;
-      trades: TokenTrade[];
       chart: TokenChartInfo;
       error?: string;
     };
 
-type BlockscoutTransferItem = {
-  from?: { hash?: string };
-  to?: { hash?: string };
-  timestamp?: string;
-  tx_hash?: string;
-  total?: { value?: string };
-};
-type BlockscoutTransfersPage = { items?: BlockscoutTransferItem[] };
-
-function relativeTime(isoTimestamp: string | undefined): string {
-  if (!isoTimestamp) return "";
-  const then = new Date(isoTimestamp).getTime();
-  if (!Number.isFinite(then)) return "";
-  const diffSeconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (diffSeconds < 60) return `${diffSeconds}s`;
-  const diffMinutes = Math.floor(diffSeconds / 60);
-  if (diffMinutes < 60) return `${diffMinutes}m`;
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}h`;
-  return `${Math.floor(diffHours / 24)}d`;
-}
-
-/**
- * Classifies raw Blockscout token-transfer items into buy/sell rows relative
- * to the token's LP pool address: a transfer OUT of the pool is a buy (the
- * pool sent tokens to a wallet), a transfer IN to the pool is a sell.
- * Wallet-to-wallet transfers that never touch the pool aren't trades and are
- * dropped. Pure function so classification is unit-testable without a
- * network call, mirroring `lib/bonding-curve-status.ts`'s pure-mapper style.
- */
-export function classifyTrades(
-  items: BlockscoutTransferItem[],
-  lpAddress: string | null,
-): TokenTrade[] {
-  if (!lpAddress) return [];
-  const lower = lpAddress.toLowerCase();
-
-  const trades: TokenTrade[] = [];
-  for (const item of items) {
-    const from = item.from?.hash?.toLowerCase();
-    const to = item.to?.hash?.toLowerCase();
-    if (from === lower && to) {
-      trades.push({
-        type: "buy",
-        wallet: to,
-        amountRaw: item.total?.value || "0",
-        time: relativeTime(item.timestamp),
-        txHash: item.tx_hash || "",
-      });
-    } else if (to === lower && from) {
-      trades.push({
-        type: "sell",
-        wallet: from,
-        amountRaw: item.total?.value || "0",
-        time: relativeTime(item.timestamp),
-        txHash: item.tx_hash || "",
-      });
-    }
-    if (trades.length >= MAX_TRADES) break;
-  }
-  return trades;
-}
-
 /**
  * Aggregated market snapshot for the public token page (issue #225): token
- * identity, market cap, liquidity, 24h volume, holders and recent trades.
- * Holder/LP-exclusion logic is reused from `fetchTokenHolderStats` rather
- * than duplicated; identity and market cap primarily read the same
- * Blockscout endpoint that function already calls, and liquidity/volume/
- * price/chart data come from the Dexscreener pair also already fetched
- * there for LP-address detection. Only wired up for `robinhood` today,
- * matching `fetchTokenHolderStats`'s chain support. Never throws — any
- * failure resolves to a result with empty/null fields and an `error`
- * message so the page always degrades gracefully instead of breaking.
+ * identity, market cap, liquidity, 24h volume and holders. Holder/LP-
+ * exclusion logic is reused from `fetchTokenHolderStats` rather than
+ * duplicated; identity and market cap primarily read the same Blockscout
+ * endpoint that function already calls, and liquidity/volume/price/chart
+ * data come from the Dexscreener pair also already fetched there for
+ * LP-address detection. Only wired up for `robinhood` today, matching
+ * `fetchTokenHolderStats`'s chain support. Never throws — any failure
+ * resolves to a result with empty/null fields and an `error` message so the
+ * page always degrades gracefully instead of breaking. Recent trades used to
+ * live here too (a Blockscout LP-transfer heuristic that only ever worked
+ * once a token had a Dexscreener-indexed pool, never a still-bonding curve
+ * token) — issue #430 replaced it with a real on-chain read of the bonding
+ * curve's own trade events (lib/server/token-trades-rpc.ts), so the
+ * Blockscout `/transfers` fetch and its classifier were removed here rather
+ * than left as a dead, wasted request on every page load.
  */
 export async function fetchTokenMarketStats(
   chain: SupportedChain,
@@ -131,17 +64,13 @@ export async function fetchTokenMarketStats(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), STATS_TIMEOUT_MS);
   try {
-    const [holderStats, info, pairs, transfers] = await Promise.all([
+    const [holderStats, info, pairs] = await Promise.all([
       fetchTokenHolderStats(chain, address),
       fetchJson<BlockscoutTokenInfo>(
         `${BLOCKSCOUT_API_BASE}/tokens/${encodeURIComponent(address)}`,
         controller.signal,
       ),
       fetchDexPairsForAddress(address),
-      fetchJson<BlockscoutTransfersPage>(
-        `${BLOCKSCOUT_API_BASE}/tokens/${encodeURIComponent(address)}/transfers`,
-        controller.signal,
-      ),
     ]);
 
     const pair = selectBestPair(pairs);
@@ -156,7 +85,6 @@ export async function fetchTokenMarketStats(
       : { found: false };
 
     const lpAddress = pair?.pairAddress ? pair.pairAddress.toLowerCase() : null;
-    const trades = classifyTrades(Array.isArray(transfers?.items) ? transfers.items : [], lpAddress);
 
     const priceFromPair = pair?.priceUsd ? Number(pair.priceUsd) : null;
     const priceFromBlockscout = info?.exchange_rate ? Number(info.exchange_rate) : null;
@@ -191,7 +119,6 @@ export async function fetchTokenMarketStats(
       holderCount: holderStats.supported ? holderStats.holderCount : null,
       holders: holderStats.supported ? holderStats.holders : [],
       lpAddress,
-      trades,
       chart,
       error: holderStats.supported ? holderStats.error : undefined,
     };
@@ -209,7 +136,6 @@ export async function fetchTokenMarketStats(
       holderCount: null,
       holders: [],
       lpAddress: null,
-      trades: [],
       chart: { found: false },
       error: "Market data lookup failed.",
     };

@@ -29,6 +29,7 @@ import {
 import { getAdminOperationsStore } from "@/lib/server/admin-operations-store";
 import { getCurveProgressCacheHealth, type CurveProgressCacheHealth } from "@/lib/server/curve-progress-cache";
 import { getPostgresPool } from "@/lib/server/postgres";
+import { getTokenTradesReadHealth, type TokenTradesReadHealth } from "@/lib/server/token-trades-rpc";
 import { getSocialXCostStore, readXApiSendCostUsd, readXMonthlyCostCapUsd, type SocialXCostStore } from "@/lib/server/social-x-cost-store";
 import { getTokenLaunchesStore } from "@/lib/server/token-launches-store";
 import {
@@ -1758,6 +1759,8 @@ export type TokenLaunchesPipelineDeps = {
   now?: Date;
   /** Overridable for tests; defaults to lib/server/curve-progress-cache.ts's real cache health. */
   readCurveProgressCacheHealth?: (now?: number) => CurveProgressCacheHealth;
+  /** Overridable for tests; defaults to lib/server/token-trades-rpc.ts's real read health. */
+  readTokenTradesReadHealth?: (now?: number) => TokenTradesReadHealth;
 };
 
 /**
@@ -1797,6 +1800,43 @@ function curveProgressReadStage(
     "Curve progress read call",
     "red",
     `The last curve progress read attempt (${ageSeconds}s ago) failed.`,
+  );
+}
+
+/**
+ * Reports on lib/server/token-trades-rpc.ts's own health (issue #430's own
+ * "trades-read stage" requirement), mirroring curveProgressReadStage's
+ * shape exactly. Amber until the cache has ever been warmed — it only warms
+ * lazily, on GET /api/token-trades's first read for some curve.
+ */
+function tradesReadStage(
+  readHealth: (now?: number) => TokenTradesReadHealth,
+  now: number,
+): AdminPipelineStage {
+  const health = readHealth(now);
+  if (health.lastReadAt === null) {
+    return stage(
+      "trades-read",
+      "Trade history read call",
+      "amber",
+      "No trade history read has been attempted yet — the cache warms on the token page's first request.",
+    );
+  }
+
+  const ageSeconds = Math.max(0, Math.round((health.ageMs ?? 0) / 1000));
+  if (health.lastReadOk) {
+    return stage(
+      "trades-read",
+      "Trade history read call",
+      "green",
+      `Last successful trade history read was ${ageSeconds}s ago.`,
+    );
+  }
+  return stage(
+    "trades-read",
+    "Trade history read call",
+    "red",
+    `The last trade history read attempt (${ageSeconds}s ago) failed.`,
   );
 }
 
@@ -1847,6 +1887,8 @@ export async function buildTokenLaunchesPipeline(
   const configStage = curveDeploymentConfigStage(env);
   const readCurveProgressCacheHealth = deps.readCurveProgressCacheHealth ?? getCurveProgressCacheHealth;
   const progressStage = curveProgressReadStage(readCurveProgressCacheHealth, Date.now());
+  const readTokenTradesReadHealth = deps.readTokenTradesReadHealth ?? getTokenTradesReadHealth;
+  const tradesStage = tradesReadStage(readTokenTradesReadHealth, Date.now());
 
   const databaseUrl = env.DATABASE_URL?.trim() ?? "";
   if (!databaseUrl) {
@@ -1860,6 +1902,7 @@ export async function buildTokenLaunchesPipeline(
         stage("launches-table", "token_launches table exists", "amber", message),
         stage("launches-24h", "Launches in the last 24h", "amber", message),
         progressStage,
+        tradesStage,
       ],
     };
   }
@@ -1897,7 +1940,7 @@ export async function buildTokenLaunchesPipeline(
   return {
     id: "token-launches",
     label: "Token launches",
-    stages: [isolationStage, configStage, tableExistsStage, launches24hStage, progressStage],
+    stages: [isolationStage, configStage, tableExistsStage, launches24hStage, progressStage, tradesStage],
   };
 }
 

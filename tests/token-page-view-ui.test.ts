@@ -217,19 +217,22 @@ describe("token page centre column (chart + activity)", () => {
     expect(component).not.toContain("public-dexscreener-section");
   });
 
-  it("leaves a clearly-marked placeholder region for part 2's live chart", async () => {
+  it("renders the real candlestick chart inside the same chart region, sharing one trades poll with the tab below (issue #430)", async () => {
     const component = await source("components/token-page/token-center-column.tsx");
     expect(component).toContain("styles.chartPlaceholder");
-    expect(component).toContain('data-token-chart-placeholder="true"');
-    expect(component).toContain("Live chart");
+    expect(component).toContain('data-token-chart="true"');
+    expect(component).toContain("<TokenTradeChart");
+    expect(component).toContain('import { useTokenTrades } from "@/lib/use-token-trades"');
+    expect(component).toContain("useTokenTrades(curveAddress)");
   });
 
-  it("renders Recent trades and Holders tabs with graceful empty states", async () => {
+  it("renders Recent trades and Holders tabs with graceful empty states, sourced from real on-chain trade data (issue #430)", async () => {
     const component = await source("components/token-page/token-center-column.tsx");
     expect(component).toContain("Recent trades");
     expect(component).toContain("Holders");
     expect(component).toContain("No trades recorded yet.");
     expect(component).toContain("No holder data found for this token yet.");
+    expect(component).toContain("trade.direction === \"buy\"");
   });
 
   it("excludes the LP pool address from the holders list, matching the existing pattern", async () => {

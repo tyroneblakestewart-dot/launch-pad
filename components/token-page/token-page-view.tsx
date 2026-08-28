@@ -121,7 +121,13 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
             tradeLinks={tradeLinks}
           />
 
-          <TokenCenterColumn chain={chain} address={address} marketStats={marketStats} />
+          <TokenCenterColumn
+            chain={chain}
+            address={address}
+            marketStats={marketStats}
+            curveAddress={curveAddress}
+            explorerBaseUrl={chainInfo.explorerBaseUrl}
+          />
 
           <TokenRightColumn tradeLinks={tradeLinks} />
         </div>

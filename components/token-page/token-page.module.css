@@ -853,21 +853,24 @@
   text-decoration: none;
 }
 
-/* ---- chart placeholder (centre column) ----
-   The embedded Dexscreener chart is removed (issue #427): Dexscreener
+/* ---- live chart (centre column) ----
+   The embedded Dexscreener chart was removed (issue #427): Dexscreener
    can't index this chain, so it only ever showed a "chart doesn't work
-   here" message in the page's prime real estate. This is a clearly-marked
-   placeholder for part 2's live chart, not the chart itself. */
+   here" message in the page's prime real estate, leaving a placeholder for
+   part 2's live chart. Issue #430 fills that placeholder region in with a
+   real candlestick chart (components/token-page/token-trade-chart.tsx) — the
+   `.chartPlaceholder` class name stays, since it's still the same grid-
+   placement anchor used above (`order`/`grid-column`), only its contents
+   changed from static copy to the live chart. */
 
 .chartPlaceholder {
-  border: 1px dashed rgba(198, 245, 62, 0.28);
+  border: 1px solid rgba(198, 245, 62, 0.2);
   border-radius: 20px;
   background: rgba(198, 245, 62, 0.03);
-  padding: 28px 18px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
 }
 
 .chartPlaceholderLabel {
@@ -877,11 +880,68 @@
   color: #c6f53e;
 }
 
-.chartPlaceholderCopy {
+.chartHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chartIntervalGroup {
+  display: flex;
+  gap: 4px;
+}
+
+.chartIntervalButton {
+  min-height: 32px;
+  min-width: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: transparent;
+  color: #929693;
+  font: 700 11px/1 "JetBrains Mono", monospace;
+  cursor: pointer;
+  transition: all 0.14s;
+}
+
+.chartIntervalButtonActive {
+  border-color: rgba(198, 245, 62, 0.5);
+  background: rgba(198, 245, 62, 0.09);
+  color: #c6f53e;
+}
+
+.chartCanvasWrap {
+  position: relative;
+  width: 100%;
+  height: 260px;
+}
+
+.chartCanvas {
+  width: 100%;
+  height: 100%;
+}
+
+.chartEmptyOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  pointer-events: none;
+  background: rgba(11, 13, 12, 0.55);
+  border-radius: 12px;
+}
+
+.chartEmptyCopy {
   margin: 0;
   color: #929693;
   font-size: 12.5px;
   line-height: 1.6;
+  max-width: 32ch;
 }
 
 .priceRow {

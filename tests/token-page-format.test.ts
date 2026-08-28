@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   formatCompactUsd,
   formatHolderCount,
   formatHolderPercent,
   formatPriceChange,
+  formatTimeAgoSeconds,
   formatUsdPrice,
   shortenAddress,
 } from "@/lib/token-page-format";
@@ -81,5 +82,24 @@ describe("formatPriceChange", () => {
 
   it("returns null for missing data", () => {
     expect(formatPriceChange(null)).toBeNull();
+  });
+});
+
+describe("formatTimeAgoSeconds", () => {
+  it("formats seconds, minutes, hours and days relative to now", () => {
+    const nowSeconds = 1_700_000_000;
+    vi.useFakeTimers();
+    vi.setSystemTime(nowSeconds * 1000);
+
+    expect(formatTimeAgoSeconds(nowSeconds - 30)).toBe("30s");
+    expect(formatTimeAgoSeconds(nowSeconds - 5 * 60)).toBe("5m");
+    expect(formatTimeAgoSeconds(nowSeconds - 3 * 3600)).toBe("3h");
+    expect(formatTimeAgoSeconds(nowSeconds - 2 * 86_400)).toBe("2d");
+
+    vi.useRealTimers();
+  });
+
+  it("returns an empty string for non-finite input", () => {
+    expect(formatTimeAgoSeconds(Number.NaN)).toBe("");
   });
 });

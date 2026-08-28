@@ -150,4 +150,33 @@ describe("buildTokenLaunchesPipeline", () => {
     });
     expect(stageById(pipeline, "curve-progress-read")).toMatchObject({ status: "red" });
   });
+
+  it("reports trades-read amber when the cache has never been warmed", async () => {
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: {},
+      getServiceControl: async () => activeControl(),
+      readTokenTradesReadHealth: () => ({ lastReadAt: null, lastReadOk: null, ageMs: null }),
+    });
+    expect(stageById(pipeline, "trades-read")).toMatchObject({ status: "amber" });
+  });
+
+  it("reports trades-read green with the read age after a successful read", async () => {
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: {},
+      getServiceControl: async () => activeControl(),
+      readTokenTradesReadHealth: () => ({ lastReadAt: 1000, lastReadOk: true, ageMs: 5000 }),
+    });
+    const stage = stageById(pipeline, "trades-read");
+    expect(stage.status).toBe("green");
+    expect(stage.message).toContain("5s ago");
+  });
+
+  it("reports trades-read red after a failed read", async () => {
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: { DATABASE_URL: "postgres://test" },
+      getServiceControl: async () => activeControl(),
+      readTokenTradesReadHealth: () => ({ lastReadAt: 1000, lastReadOk: false, ageMs: 3000 }),
+    });
+    expect(stageById(pipeline, "trades-read")).toMatchObject({ status: "red" });
+  });
 });

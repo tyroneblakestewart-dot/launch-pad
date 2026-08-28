@@ -893,3 +893,62 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   in this session (no shell command execution permission was available),
   so no fresh test/lint/build counts are reported here — flagged for CI or
   the owner to verify before merge.
+- Token page v2 part 2 (issue #430): real trade activity, a live candlestick
+  chart and live updates, built fresh on top of #429/#431's already-merged
+  desktop column-container rearrangement (no per-column wrapper divs; column
+  placement resolved purely in CSS on each panel's own class) rather than the
+  abandoned pre-#429 branch this issue's thread started from. **Trade data
+  source** — `GET /api/token-trades?curve=0x...`
+  (`lib/server/token-trades-rpc.ts`) reads `TokensPurchased`/`TokensSold`
+  straight off `contracts/HoodlumsTestBondingCurve.sol`'s own events via the
+  same Robinhood-testnet RPC config `curve-progress-cache.ts` and
+  `token-launch-reconciliation.ts` already use — no new env vars. No launch
+  record stores a block number, so the scan's start block is derived for
+  real via binary search on `eth_getCode` (bytecode absent before
+  deployment, present at/after), cached indefinitely per curve, never
+  scanning from block 0. Reads are cached ~10s server-side and shared/
+  deduped across concurrent viewers; a genuine RPC failure returns `502`
+  with no `trades` key, never an empty array, so it can never be confused
+  with a real zero-trade token. Each normalized trade's native amount is the
+  post-fee amount (`netNativeIn`/`netNativeOut`) — what actually priced the
+  trade against the curve's reserves. **Recent trades tab**
+  (`components/token-page/token-center-column.tsx`) now renders this real
+  data — newest first, buy/sell badge, wallet, amount, time-ago linking out
+  to the explorer tx page — replacing the old `TokenMarketStats.trades`
+  field, a Blockscout LP-transfer heuristic that only ever worked once a
+  token had a Dexscreener-indexed pool and never for a still-bonding curve
+  token; that dead fetch/classifier was removed from
+  `lib/server/token-market-stats.ts` entirely rather than left as a wasted
+  request on every page load. **Candlestick chart**
+  (`components/token-page/token-trade-chart.tsx`) is built on the one new
+  pinned dependency, `lightweight-charts@4.1.3`; candles bucket from trades
+  via the pure `lib/candle-bucketing.ts` with a 1m/5m/15m/1h selector
+  (default 5m). Per the owner's explicit requirement, `createChart`/
+  `addCandlestickSeries` mount unconditionally on render, independent of
+  trade count, with only a text overlay layered on top for the empty/error
+  state — never a placeholder box. **Live updates** — `lib/use-token-trades.ts`
+  shares one 12s visible-tab poll (paused hidden, refetched on focus/
+  visibilitychange) between the chart and the trades tab, following
+  `use-token-launches.ts`'s issue #403 pattern exactly; a new
+  `lib/token-trade-events.ts` window `CustomEvent`, dispatched from
+  `TokenLeftColumn` only on a genuine non-reverted trade confirmation,
+  triggers an immediate refetch for the connected wallet's own trade.
+  Because the identity/stats/graduation panel is still rendered by
+  `TokenLeftColumn` itself (CSS-placed into the visual right column by
+  #429/#431, not lifted into a separate `rightGroup` component with props as
+  earlier issue-thread comments assumed before the code was actually read),
+  graduation progress and stats for *other* wallets' trades are kept fresh
+  by a second, separate 12s visible-tab timer added directly to
+  `TokenLeftColumn`'s existing `loadCurve`, independent of the trades poll.
+  **Rule 10** — `buildTokenLaunchesPipeline` gained a `trades-read` stage
+  (`lib/server/token-trades-rpc.ts`'s own read health), mirroring
+  `curve-progress-read`'s shape exactly; the route reuses the existing
+  `token-launches` service-isolation switch rather than adding a new one.
+  Validated this session: `npm run test:app` — 272 test files / 2873 tests
+  passing. `npm run lint` — 0 errors (10 pre-existing unrelated warnings).
+  `npm run build` — succeeds, `/api/token-trades` listed in the route
+  output. `npm run test:contracts` — 65 passing (untouched, no contract
+  changes). Not verified on a real mobile Safari device this pass (rule 7)
+  — the chart/tab layout and the compact interval selector were checked by
+  reading the CSS against the existing breakpoints, not on-device; flagged
+  for the owner to confirm by trading on a live bonding-curve token.

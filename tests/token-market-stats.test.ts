@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { classifyTrades, fetchTokenMarketStats } from "@/lib/server/token-market-stats";
+import { fetchTokenMarketStats } from "@/lib/server/token-market-stats";
 
 const ADDRESS = "0x3bf7447cd055f1475a8b09090c7b062abc9d3798";
 const LP_ADDRESS = "0xLPPOOL0000000000000000000000000000000001";
@@ -11,11 +11,10 @@ afterEach(() => {
 function makeFetchMock(options: {
   info?: Record<string, unknown> | null;
   holders?: Array<{ address?: { hash?: string }; value?: string }> | null;
-  transfers?: Array<Record<string, unknown>> | null;
   pairs?: unknown[];
   reject?: boolean;
 }) {
-  const { info, holders, transfers, pairs = [], reject = false } = options;
+  const { info, holders, pairs = [], reject = false } = options;
   return vi.fn(async (input: RequestInfo | URL) => {
     if (reject) throw new Error("network down");
     const url = String(input);
@@ -25,11 +24,6 @@ function makeFetchMock(options: {
     if (url.endsWith("/holders")) {
       return new Response(holders === undefined || holders === null ? null : JSON.stringify({ items: holders }), {
         status: holders === undefined || holders === null ? 404 : 200,
-      });
-    }
-    if (url.endsWith("/transfers")) {
-      return new Response(transfers === undefined || transfers === null ? null : JSON.stringify({ items: transfers }), {
-        status: transfers === undefined || transfers === null ? 404 : 200,
       });
     }
     return new Response(info === undefined || info === null ? null : JSON.stringify(info), {
@@ -53,7 +47,6 @@ describe("fetchTokenMarketStats", () => {
       makeFetchMock({
         info: { name: "Sheriff Money", symbol: "SHRF", decimals: "18" },
         holders: [{ address: { hash: "0xWhale1" }, value: "100" }],
-        transfers: [],
         pairs: [
           {
             chainId: "robinhood",
@@ -95,7 +88,6 @@ describe("fetchTokenMarketStats", () => {
       makeFetchMock({
         info: { name: "Sheriff Money", symbol: "SHRF", decimals: "18", circulating_market_cap: "12000" },
         holders: [],
-        transfers: [],
         pairs: [],
       }),
     );
@@ -116,47 +108,8 @@ describe("fetchTokenMarketStats", () => {
     vi.stubGlobal("fetch", makeFetchMock({ reject: true }));
 
     const stats = await fetchTokenMarketStats("robinhood", ADDRESS);
-    expect(stats).toMatchObject({ supported: true, chart: { found: false }, holders: [], trades: [] });
+    expect(stats).toMatchObject({ supported: true, chart: { found: false }, holders: [] });
     if (!stats.supported) throw new Error("expected supported stats");
     expect(stats.error).toBeTruthy();
-  });
-});
-
-describe("classifyTrades", () => {
-  const LP = "0xLpPool0000000000000000000000000000000001";
-
-  it("returns no trades when there is no LP address (no live pair yet)", () => {
-    expect(classifyTrades([{ from: { hash: "0xA" }, to: { hash: "0xB" } }], null)).toEqual([]);
-  });
-
-  it("classifies a transfer OUT of the pool as a buy", () => {
-    const trades = classifyTrades(
-      [{ from: { hash: LP }, to: { hash: "0xBuyer" }, total: { value: "1000" }, tx_hash: "0xTX1" }],
-      LP,
-    );
-    expect(trades).toEqual([{ type: "buy", wallet: "0xbuyer", amountRaw: "1000", time: "", txHash: "0xTX1" }]);
-  });
-
-  it("classifies a transfer IN to the pool as a sell", () => {
-    const trades = classifyTrades(
-      [{ from: { hash: "0xSeller" }, to: { hash: LP }, total: { value: "500" }, tx_hash: "0xTX2" }],
-      LP,
-    );
-    expect(trades).toEqual([{ type: "sell", wallet: "0xseller", amountRaw: "500", time: "", txHash: "0xTX2" }]);
-  });
-
-  it("drops wallet-to-wallet transfers that never touch the pool", () => {
-    const trades = classifyTrades([{ from: { hash: "0xA" }, to: { hash: "0xB" }, total: { value: "1" } }], LP);
-    expect(trades).toEqual([]);
-  });
-
-  it("caps the returned trade list at 12 entries", () => {
-    const items = Array.from({ length: 20 }, (_, index) => ({
-      from: { hash: LP },
-      to: { hash: `0xBuyer${index}` },
-      total: { value: "1" },
-      tx_hash: `0xTX${index}`,
-    }));
-    expect(classifyTrades(items, LP)).toHaveLength(12);
   });
 });
