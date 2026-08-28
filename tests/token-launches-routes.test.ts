@@ -11,7 +11,7 @@ import {
   setAdminSessionStoreForTests,
 } from "@/lib/server/admin-session-store";
 import { resetTokenLaunchRateLimitsForTests } from "@/lib/server/api-protection";
-import { resetChatChallengesForTests } from "@/lib/server/chat-auth";
+import { CHAT_NONCE_TTL_MS, resetChatChallengesForTests } from "@/lib/server/chat-auth";
 import {
   getTokenLaunchesStore,
   resetTokenLaunchesStoreForTests,
@@ -249,6 +249,59 @@ describe("POST /api/token-launches", () => {
     const response = await recordLaunch(request);
     const body = (await response.json()) as { launch: TokenLaunch };
     expect(body.launch.creatorWalletAddress).toBe(ACCOUNT.address);
+  });
+
+  it("rejects a wrong-wallet record attempt — a wallet other than the curve's on-chain creator", async () => {
+    verifyMock.mockResolvedValueOnce({
+      ok: false,
+      reason: "The curve's creator does not match the wallet recording this launch.",
+    });
+    const request = await signedRecordRequest();
+    const response = await recordLaunch(request);
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain("does not match the wallet");
+    expect(await getTokenLaunchesStore().list("all", 10)).toEqual([]);
+  });
+
+  it("is race-safe under a duplicate record attempt for an already-recorded launch: the second attempt returns the same row rather than a second one", async () => {
+    const first = await recordLaunch(await signedRecordRequest());
+    expect(first.status).toBe(201);
+    const firstBody = (await first.json()) as { launch: TokenLaunch };
+
+    const second = await recordLaunch(await signedRecordRequest());
+    expect(second.status).toBe(201);
+    const secondBody = (await second.json()) as { launch: TokenLaunch };
+    expect(secondBody.launch.id).toBe(firstBody.launch.id);
+
+    const store = getTokenLaunchesStore();
+    expect(await store.list("all", 10)).toHaveLength(1);
+  });
+
+  it("returns a clean error for an expired challenge (issue #425), and a retry with a fresh challenge succeeds and is listed", async () => {
+    vi.useFakeTimers();
+    try {
+      const staleRequest = await signedRecordRequest();
+      vi.advanceTimersByTime(CHAT_NONCE_TTL_MS + 1_000);
+
+      const expiredResponse = await recordLaunch(staleRequest);
+      expect(expiredResponse.status).toBe(410);
+      const expiredBody = (await expiredResponse.json()) as { error: string };
+      expect(expiredBody.error).toContain("expired");
+      expect(await getTokenLaunchesStore().list("all", 10)).toEqual([]);
+
+      // Retrying fetches a brand-new challenge rather than reusing the
+      // expired one — this is exactly what the /testnet "Record listing"
+      // retry button and "Record an existing launch" affordance rely on.
+      const retryResponse = await recordLaunch(await signedRecordRequest());
+      expect(retryResponse.status).toBe(201);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const listResponse = await listLaunches(getRequest("/api/token-launches"));
+    const listBody = (await listResponse.json()) as { launches: TokenLaunch[] };
+    expect(listBody.launches).toHaveLength(1);
   });
 });
 
