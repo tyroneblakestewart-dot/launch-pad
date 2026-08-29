@@ -6,6 +6,7 @@ import { CHAIN_CONFIG, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { isValidDexAddress } from "@/lib/server/dexscreener";
 import { fetchTokenMarketStats } from "@/lib/server/token-market-stats";
 import { resolveTokenCurveAddress } from "@/lib/server/token-launch-curve-lookup";
+import { getTokenLaunchesStore, type TokenLaunch } from "@/lib/server/token-launches-store";
 import { getTradeTerminalLinks } from "@/lib/trade-terminal-links";
 import type { SupportedChain } from "@/lib/types";
 
@@ -71,6 +72,20 @@ export default async function TokenPage({ params }: TokenPageProps) {
   const curveAddress: Address | null =
     parsedChain === "robinhood" ? await resolveTokenCurveAddress(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, address) : null;
 
+  // The launch record (issue #443 part 1) is the authoritative source for
+  // the header band's name/ticker/artwork/launch-age and the Stats panel's
+  // audit verification — a storage error degrades to null (unverified/no
+  // art) rather than breaking the public token page, matching
+  // resolveTokenCurveAddress's own fallback discipline just above.
+  let launch: TokenLaunch | null = null;
+  if (parsedChain === "robinhood") {
+    try {
+      launch = await getTokenLaunchesStore().findByTokenAddress(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, address);
+    } catch {
+      launch = null;
+    }
+  }
+
   return (
     <TokenPageView
       chain={parsedChain}
@@ -79,6 +94,7 @@ export default async function TokenPage({ params }: TokenPageProps) {
       marketStats={marketStats}
       tradeLinks={tradeLinks}
       curveAddress={curveAddress}
+      launch={launch}
     />
   );
 }

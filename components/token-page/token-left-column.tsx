@@ -16,20 +16,26 @@ import {
 import {
   ERC20_MIN_ABI,
   HOODLUMS_BONDING_CURVE_FEES_ABI,
-  HOODLUMS_BONDING_CURVE_READ_ABI,
   HOODLUMS_BONDING_CURVE_TRADE_ABI,
 } from "@/lib/bonding-curve-config";
 import { DEFAULT_TOKEN_DECIMALS } from "@/lib/bonding-curve-deploy-config";
-import { buyNetFromGross, grossNativeInForExactNet, tradingFee } from "@/lib/bonding-curve-fee-math";
-import { applySlippageFloor } from "@/lib/bonding-curve-slippage";
 import {
-  computeBondingCurveGraduationStatus,
-  formatGraduationProgressPercent,
-} from "@/lib/bonding-curve-status";
+  CREATOR_FEE_SHARE_BPS,
+  PROTOCOL_FEE_SHARE_BPS,
+  TRADING_FEE_BPS,
+  buyNetFromGross,
+  grossNativeInForExactNet,
+  tradingFee,
+} from "@/lib/bonding-curve-fee-math";
+import { applySlippageFloor } from "@/lib/bonding-curve-slippage";
+import type { BondingCurveGraduationStatus } from "@/lib/bonding-curve-status";
 import { CHAIN_CONFIG, ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { notifyTokenTradeConfirmed } from "@/lib/token-trade-events";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
-import { formatCompactUsd, formatHolderCount, shortenAddress } from "@/lib/token-page-format";
+import { formatFeeNote, shortenAddress } from "@/lib/token-page-format";
+import type { TokenTrade } from "@/lib/token-trade-types";
+import type { TokenCurveStatus } from "@/lib/use-token-curve-status";
+import { TokenStatsAuditPanel } from "./token-stats-audit-panel";
 import type { TradeTerminalLink } from "@/lib/trade-terminal-links";
 import type { TokenMarketStats } from "@/lib/server/token-market-stats";
 import type { SupportedChain } from "@/lib/types";
@@ -59,10 +65,29 @@ type CurveView =
       curve: Address;
       decimals: number;
       creator: Address;
-      /** remainingNativeToGraduate() at load time — 0n once graduated. */
+      /** remainingNativeToGraduate() as of the shared curve status's last read — 0n once graduated. */
       remainingToGraduateWei: bigint;
-      graduation: ReturnType<typeof computeBondingCurveGraduationStatus>;
+      graduation: BondingCurveGraduationStatus;
     };
+
+/**
+ * Derives this panel's local `CurveView` shape from the page-level shared
+ * `TokenCurveStatus` (issue #444) plus this panel's own resolved decimals —
+ * the two types otherwise carry the same fields, since
+ * `lib/use-token-curve-status.ts` is a superset read covering both this
+ * swap panel and the header band.
+ */
+function toCurveView(curveStatus: TokenCurveStatus, decimals: number): CurveView {
+  if (curveStatus.kind !== "ready") return curveStatus;
+  return {
+    kind: "ready",
+    curve: curveStatus.curve,
+    decimals,
+    creator: curveStatus.creator,
+    remainingToGraduateWei: curveStatus.remainingToGraduateWei,
+    graduation: curveStatus.graduation,
+  };
+}
 
 type Side = "buy" | "sell";
 
@@ -96,30 +121,33 @@ type TokenLeftColumnProps = {
   chainId: SupportedChain;
   address: string;
   marketStats: TokenMarketStats;
-  curveAddress: Address | null;
   tradeLinks: TradeTerminalLink[];
+  /** Whether a token_launches row exists for this token — drives the Stats/Audit panel's verified vs unverified treatment (issue #443 part 1). */
+  factoryMinted: boolean;
+  /** The page-level shared curve-status poll (issue #444) — also fed to the header band, so both panels always agree. */
+  curveStatus: TokenCurveStatus;
+  /** The page-level shared trades poll (issue #444), forwarded straight through to the Stats/Audit panel. */
+  trades: TokenTrade[] | null;
 };
 
 /**
- * Renders the token identity/stats/graduation card plus the buy/sell swap
- * panel and creator-fee panel (issue #225). Despite the name, this no longer
- * maps to a single visual "left column" — issue #429 moves the identity card
- * to the desktop right column (alongside About) while keeping the swap and
- * creator-fee panels on the left; all three panels returned here are direct
- * grid items of the shared `.grid` in `token-page-view.tsx`; column
- * placement is resolved purely in CSS (`token-page.module.css`) via each
- * panel's own class, not by this component's structure. The swap and fee
- * panels are wrapped in `.leftGroup`, which is invisible to layout on mobile
- * (`display: contents`, letting the identity panel interleave between the
- * swap and creator-fee panels per #427's required order) and becomes the
- * actual sticky flex column at desktop widths. On mobile the swap panel is
- * pulled directly above the stats/graduation panel via CSS `order`
- * (issue #427) instead of the old separate below-880px sticky bottom bar —
- * the full trade panel is always inline now, not a compact bar behind an
- * extra tap. `curveAddress` is
- * resolved by the server (lib/server/token-launch-curve-lookup.ts, issue
- * #412 Part 2) from the specific launch that deployed this token, falling
- * back to the legacy single-curve-per-chain env var; this component still
+ * Renders the buy/sell swap panel, the Stats/Audit panel and the
+ * creator-fee panel (issue #443 part 1 supersedes issue #429's identity
+ * card here — identity, graduation and price now live in the header band,
+ * `components/token-page/token-header-band.tsx`). All three panels are
+ * wrapped in `.leftGroup`, which is invisible to layout on mobile
+ * (`display: contents`, letting the chart panel interleave between the
+ * swap and stats panels per the new "header → swap → chart → stats → tabs"
+ * mobile order) and becomes the actual sticky flex column at desktop
+ * widths, in swap → stats → fees order. `curveStatus` is the page-level
+ * shared on-chain curve read (issue #444, lib/use-token-curve-status.ts) —
+ * previously this component ran its own independent `loadCurve` poll
+ * against the same curve the header band was also independently polling;
+ * both now read the one shared result, derived into this panel's own
+ * `CurveView` shape by `toCurveView`. That shared status is itself resolved
+ * by the server (lib/server/token-launch-curve-lookup.ts, issue #412
+ * Part 2) from the specific launch that deployed this token, falling back
+ * to the legacy single-curve-per-chain env var; this component still
  * confirms on-chain that the resolved curve's own `token()` matches this
  * page's address before showing live swap controls. Once the curve reports
  * graduated, the swap form is replaced by an honest "trading closed"
@@ -133,13 +161,20 @@ type TokenLeftColumnProps = {
  * Anything else (wrong/no curve, non-EVM chain) falls back to the
  * referral-coded "Trade on terminal" links instead of a dead swap form.
  */
-export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, tradeLinks }: TokenLeftColumnProps) {
+export function TokenLeftColumn({
+  chainId,
+  address,
+  marketStats,
+  tradeLinks,
+  factoryMinted,
+  curveStatus,
+  trades,
+}: TokenLeftColumnProps) {
   const chainInfo = CHAIN_CONFIG[chainId];
-  const displayName = (marketStats.supported && marketStats.name) || shortenAddress(address);
   const displaySymbol = marketStats.supported && marketStats.symbol ? marketStats.symbol : null;
+  const resolvedDecimals = marketStats.supported && marketStats.decimals !== null ? marketStats.decimals : DEFAULT_TOKEN_DECIMALS;
 
-  const [copied, setCopied] = useState(false);
-  const [curveView, setCurveView] = useState<CurveView>(curveAddress ? { kind: "loading" } : { kind: "no-address" });
+  const curveView = toCurveView(curveStatus, resolvedDecimals);
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("");
   const [slippageBps, setSlippageBps] = useState<number>(100);
@@ -155,118 +190,6 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
   const [feeBusy, setFeeBusy] = useState(false);
   const [feeStatusMessage, setFeeStatusMessage] = useState("");
   const [feeError, setFeeError] = useState("");
-
-  const loadCurve = useCallback(async (curve: Address) => {
-    setCurveView({ kind: "loading" });
-    try {
-      const publicClient = createPublicClient({ chain, transport: http(ROBINHOOD_TESTNET.rpcUrls[0]) });
-      const [tokenAddress, funded, graduated, realNativeReserve, graduationTarget, liquidityPool, remainingToGraduate, creator] =
-        await Promise.all([
-          publicClient.readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_TRADE_ABI, functionName: "token" }),
-          publicClient.readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_READ_ABI, functionName: "funded" }),
-          publicClient.readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_READ_ABI, functionName: "graduated" }),
-          publicClient.readContract({
-            address: curve,
-            abi: HOODLUMS_BONDING_CURVE_READ_ABI,
-            functionName: "realNativeReserve",
-          }),
-          publicClient.readContract({
-            address: curve,
-            abi: HOODLUMS_BONDING_CURVE_READ_ABI,
-            functionName: "graduationTarget",
-          }),
-          publicClient.readContract({
-            address: curve,
-            abi: HOODLUMS_BONDING_CURVE_READ_ABI,
-            functionName: "liquidityPool",
-          }),
-          publicClient.readContract({
-            address: curve,
-            abi: HOODLUMS_BONDING_CURVE_TRADE_ABI,
-            functionName: "remainingNativeToGraduate",
-          }),
-          publicClient.readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_FEES_ABI, functionName: "creator" }),
-        ]);
-
-      if ((tokenAddress as string).toLowerCase() !== address.toLowerCase()) {
-        setCurveView({ kind: "wrong-token" });
-        return;
-      }
-
-      setCurveView({
-        kind: "ready",
-        curve,
-        decimals: marketStats.supported && marketStats.decimals !== null ? marketStats.decimals : DEFAULT_TOKEN_DECIMALS,
-        creator,
-        remainingToGraduateWei: remainingToGraduate,
-        graduation: computeBondingCurveGraduationStatus({
-          funded,
-          graduated,
-          realNativeReserveWei: realNativeReserve,
-          graduationTargetWei: graduationTarget,
-          liquidityPool,
-        }),
-      });
-    } catch (error) {
-      setCurveView({ kind: "error", message: readError(error) });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address]);
-
-  useEffect(() => {
-    if (curveAddress) void loadCurve(curveAddress);
-  }, [curveAddress, loadCurve]);
-
-  // Live graduation progress/stats (issue #430 requirement 4): other
-  // wallets' trades don't otherwise reach this page without a manual
-  // refresh, so this re-reads the curve every 12s while the tab is visible,
-  // following lib/use-token-trades.ts's same visible-tab-only pattern —
-  // paused on a hidden tab, refetched immediately on focus/visibilitychange.
-  // The connected wallet's own trade already refetches directly inside
-  // submitTrade() below; this timer covers everyone else's trades too.
-  useEffect(() => {
-    if (!curveAddress) return;
-    const resolvedCurveAddress = curveAddress;
-    let timer: number | null = null;
-
-    function isPageVisible(): boolean {
-      try {
-        return document.visibilityState === "visible";
-      } catch {
-        return true;
-      }
-    }
-
-    function startTimer() {
-      if (timer !== null) return;
-      timer = window.setInterval(() => void loadCurve(resolvedCurveAddress), 12_000);
-    }
-
-    function stopTimer() {
-      if (timer === null) return;
-      window.clearInterval(timer);
-      timer = null;
-    }
-
-    function handleBecameVisible() {
-      if (!isPageVisible()) {
-        stopTimer();
-        return;
-      }
-      void loadCurve(resolvedCurveAddress);
-      startTimer();
-    }
-
-    if (isPageVisible()) startTimer();
-    document.addEventListener("visibilitychange", handleBecameVisible);
-    window.addEventListener("focus", handleBecameVisible);
-
-    return () => {
-      stopTimer();
-      document.removeEventListener("visibilitychange", handleBecameVisible);
-      window.removeEventListener("focus", handleBecameVisible);
-    };
-  }, [curveAddress, loadCurve]);
 
   const curveReady = curveView.kind === "ready";
 
@@ -319,7 +242,7 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
         // Leaves the last-known claimable amount in place; not fatal.
       }
     },
-    [],
+    [setClaimableFeeWei],
   );
 
   useEffect(() => {
@@ -535,15 +458,19 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
       setStatusMessage(`Transaction submitted: ${shortenAddress(hash)}`);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
-      // Every confirmed trade — success or revert — spent gas and can move
-      // balances, so the curve/balance refetch always runs; only a genuine
-      // success clears the input and reports it as such (issue #427: a
-      // reverted transaction previously fell through to "Trade confirmed."
-      // unchallenged, since waitForTransactionReceipt() only throws on an
-      // RPC/timeout failure, never on a mined-but-reverted receipt).
+      // Every confirmed trade — success or revert — spent gas, so the
+      // balance refetch always runs; only a genuine success clears the
+      // input and reports it as such (issue #427: a reverted transaction
+      // previously fell through to "Trade confirmed." unchallenged, since
+      // waitForTransactionReceipt() only throws on an RPC/timeout failure,
+      // never on a mined-but-reverted receipt). A reverted trade never
+      // moved the curve's own reserves, so only a genuine success needs to
+      // refresh curve state — it does so by firing
+      // TOKEN_TRADE_CONFIRMED_EVENT (issue #444), the same event the page's
+      // shared curve-status and trades polls both already listen for, so
+      // this component no longer refetches the curve directly.
       void refreshBalances(account);
       if (isCreator) void refreshClaimableFee(account, curveView.curve);
-      if (curveAddress) void loadCurve(curveAddress);
 
       if (receipt.status === "reverted") {
         setStatusMessage("");
@@ -562,42 +489,6 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
       setBusy(false);
     }
   }
-
-  const graduationSection = (() => {
-    if (curveView.kind === "ready") {
-      const { graduation } = curveView;
-      const widthPercent = Number(graduation.progressBps) / 100;
-      return (
-        <div className={styles.graduation}>
-          <div className={styles.graduationHeader}>
-            <span className={styles.graduationLabel}>Graduation</span>
-            <span className={styles.graduationValue}>
-              {formatEther(graduation.raisedWei)} / {formatEther(graduation.targetWei)} ETH
-            </span>
-          </div>
-          <div className={styles.track}>
-            <div className={styles.fill} style={{ width: `${widthPercent}%` }} />
-          </div>
-          <div className={styles.graduationFooter}>
-            <span>{formatGraduationProgressPercent(graduation.progressBps)} to Robinhood DEX</span>
-            <span>{graduation.state === "graduated" ? "graduated" : "bonding"}</span>
-          </div>
-          {graduation.state === "bonding" && (
-            <p className={styles.mutedNote}>
-              {formatEther(curveView.remainingToGraduateWei)} ETH remaining to graduation
-            </p>
-          )}
-        </div>
-      );
-    }
-    if (curveView.kind === "loading") {
-      return <p className={styles.mutedNote}>Reading live curve state…</p>;
-    }
-    if (curveView.kind === "error") {
-      return <p className={styles.mutedNote}>Curve state unavailable: {curveView.message}</p>;
-    }
-    return <p className={styles.mutedNote}>No bonding curve is configured for this token yet.</p>;
-  })();
 
   const payTicker = side === "buy" ? "ETH" : displaySymbol || "TOKEN";
   const receiveTicker = side === "buy" ? displaySymbol || "TOKEN" : "ETH";
@@ -628,65 +519,12 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
 
   return (
     <>
-      <div className={`${styles.panel} ${styles.identityPanel}`}>
-        <div className={styles.artwork}>Drop token art</div>
-
-        <div className={styles.identityHeader}>
-          <div className={styles.identityTopRow}>
-            <span className={styles.identityName}>{displayName}</span>
-            <span className={styles.chainBadge}>{chainInfo.shortLabel}</span>
-          </div>
-          <button
-            type="button"
-            className={styles.copyButton}
-            onClick={() => {
-              if (typeof navigator !== "undefined" && navigator.clipboard) {
-                void navigator.clipboard.writeText(address);
-              }
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1400);
-            }}
-          >
-            <span>{shortenAddress(address)}</span>
-            <span className={styles.copyButtonLabel}>{copied ? "copied" : "copy"}</span>
-          </button>
-        </div>
-
-        <div className={styles.statsGrid}>
-          <div className={styles.statCell}>
-            <span className={styles.statLabel}>Market cap</span>
-            <span className={styles.statValue}>
-              {formatCompactUsd(marketStats.supported ? marketStats.marketCapUsd : null)}
-            </span>
-          </div>
-          <div className={styles.statCell}>
-            <span className={styles.statLabel}>Liquidity</span>
-            <span className={styles.statValue}>
-              {formatCompactUsd(marketStats.supported ? marketStats.liquidityUsd : null)}
-            </span>
-          </div>
-          <div className={styles.statCell}>
-            <span className={styles.statLabel}>24h volume</span>
-            <span className={styles.statValue}>
-              {formatCompactUsd(marketStats.supported ? marketStats.volume24hUsd : null)}
-            </span>
-          </div>
-          <div className={styles.statCell}>
-            <span className={styles.statLabel}>Holders</span>
-            <span className={styles.statValue}>
-              {formatHolderCount(marketStats.supported ? marketStats.holderCount : null)}
-            </span>
-          </div>
-        </div>
-
-        {graduationSection}
-      </div>
-
-      {/* Swap + creator-fee panels move and stick together as one desktop
-          column (issue #429) — `.leftGroup` is `display: contents` on
-          mobile so these panels stay direct grid siblings of the identity
-          panel above, preserving #427's mobile order, and becomes the real
-          sticky flex column at desktop widths (`token-page.module.css`). */}
+      {/* Swap, Stats/Audit and creator-fee panels move and stick together
+          as one desktop column (issue #443 part 1) — `.leftGroup` is
+          `display: contents` on mobile so these panels stay direct grid
+          siblings of the chart panel, which interleaves between swap and
+          stats per the new mobile order, and becomes the real sticky flex
+          column at desktop widths (`token-page.module.css`). */}
       <div className={styles.leftGroup}>
         {curveView.kind === "ready" && curveView.graduation.state !== "graduated" ? (
           <div className={`${styles.panel} ${styles.swapPanel}`}>
@@ -801,6 +639,7 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
             ) : statusMessage ? (
               <p className={styles.tradeHint}>{statusMessage}</p>
             ) : null}
+            <p className={styles.feeNote}>{formatFeeNote(TRADING_FEE_BPS, PROTOCOL_FEE_SHARE_BPS, CREATOR_FEE_SHARE_BPS, false)}</p>
           </div>
         ) : curveView.kind === "ready" && curveView.graduation.state === "graduated" ? (
           <div className={`${styles.panel} ${styles.swapPanel}`}>
@@ -821,6 +660,7 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
                   View liquidity pool ↗
                 </a>
               )}
+              <p className={styles.feeNote}>{formatFeeNote(TRADING_FEE_BPS, PROTOCOL_FEE_SHARE_BPS, CREATOR_FEE_SHARE_BPS, true)}</p>
             </div>
           </div>
         ) : (
@@ -846,6 +686,13 @@ export function TokenLeftColumn({ chainId, address, marketStats, curveAddress, t
             </div>
           </div>
         )}
+
+        <TokenStatsAuditPanel
+          trades={trades}
+          decimals={resolvedDecimals}
+          holderCount={marketStats.supported ? marketStats.holderCount : null}
+          factoryMinted={factoryMinted}
+        />
 
         {isCreator && curveView.kind === "ready" && (
           <div className={`${styles.panel} ${styles.feePanel}`}>

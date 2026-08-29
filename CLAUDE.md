@@ -996,3 +996,72 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   card and admin row thumbnail styling were checked by reading the CSS
   against the existing layout, not on-device; flagged for the owner to
   confirm.
+- Token page v2, part 1 of 3 (issue #443): full-screen layout, header band,
+  price/mcap toggle and a new Stats/Audit panel, built against the
+  owner-approved reference at `design/token-page-v2/`. Part 2 (chart
+  internals/live-update rebuild) and part 3 (a holder-stats route for
+  Top 10 %/Dev %/Snipers %) are explicitly not attempted here.
+  `app/token/[chain]/[address]/layout.tsx` no longer mounts the desktop
+  `AppNavigation` sidebar on this route (keeping `AccountOverlayShell` and
+  `MobileBottomNavigation`); since that sidebar's own CSS module still sets
+  a global `body { padding-left: 238px }` desktop offset regardless of
+  whether the component itself is rendered (it's bundled via the still-used
+  `MobileBottomNavigation` import), a plain marker class,
+  `token-page-full-screen`, on the page's `<main>` nulls that out via
+  `:global(body:has(.token-page-full-screen))`, matching the existing
+  `:has(.public-generated-site)` pattern. The new
+  `components/token-page/token-header-band.tsx` replaces the old `.topbar`:
+  artwork (from the launch record's `artworkThumbnail`, falling back to an
+  initial-letter tile), name/ticker (preferring the launch record over
+  Blockscout), a LIVE pill gated on the curve reporting `bonding`, holder
+  count/launch age/chain badge, a graduation block, the price/mcap toggle
+  and Contract/Pool link chips (Pool disabled with an "after graduation"
+  note until `liquidityPool` is set). It reads its own independent curve
+  state via a new `lib/use-token-curve-status.ts` hook (a dedicated
+  `HOODLUMS_BONDING_CURVE_HEADER_ABI` in `lib/bonding-curve-config.ts`) and
+  its own `useTokenTrades` poll, rather than sharing state with
+  `token-left-column.tsx`'s swap panel — a deliberate trade-off (two
+  independent curve polls instead of one) since this issue scopes the swap
+  panel as "unchanged internally" and its state is already extensively
+  pinned by existing tests. The big figure and change pill both derive from
+  `tradePriceNativePerToken` (`lib/candle-bucketing.ts`) over the same
+  loaded trades — one shared price source, never a second formula — falling
+  back to a starting price computed from the curve's
+  `initialVirtualTokenReserve`/`initialVirtualEthReserve` before any trade
+  exists. `token-left-column.tsx`'s old identity/stats-USD card (market
+  cap/liquidity/24h volume in USD) is removed entirely — no USD anywhere on
+  this page — replaced by the header band plus a new
+  `components/token-page/token-stats-audit-panel.tsx` (Stats/Audit tabs, a
+  5M/1H/24H window selector distinct from the chart's own timeframe rail,
+  paired rows with split bars computed by a new pure
+  `lib/token-trade-stats.ts` over the trades `useTokenTrades` already
+  holds — no second fetch/route — plus a collapsible Holder breakdown and a
+  static Audit checklist that renders unverified/dimmed when the token has
+  no factory launch record). The swap panel gained one small addition: a
+  real fee note under the CTA, built from the curve's actual fee constants
+  (`TRADING_FEE_BPS`/`PROTOCOL_FEE_SHARE_BPS`/`CREATOR_FEE_SHARE_BPS`, the
+  latter two newly exported from `lib/bonding-curve-fee-math.ts`) via a new
+  `formatFeeNote` in `lib/token-page-format.ts`, never a hard-coded string.
+  `components/token-page/token-right-column.tsx` is deleted outright — its
+  About content moved into a fourth tab (`Recent trades / Holders /
+  Hoodchat / About`) on the centre column, and its other content (referral
+  trade-terminal links) was dead code on the only chain this page supports
+  today. The desktop grid drops the old three-column layout (#429) for a
+  simple two-column one (swap → Stats/Audit → creator fees, sticky, on the
+  left; the chart and its tabs filling the rest), since identity/about no
+  longer need a column of their own; mobile stacks header → swap → chart →
+  stats → tabs. `lib/token-trade-types.ts`'s `TokenTrade` gained two new
+  optional fields, `grossNativeAmountRaw` and `feeChargedRaw`, populated by
+  `lib/server/token-trades-rpc.ts` from data the `TokensPurchased`/
+  `TokensSold` events already emit — needed for the Stats panel's sell
+  volume and total-fees figures, which use a different accounting basis
+  than the existing `nativeAmountRaw`; both fields are optional so every
+  pre-existing `TokenTrade` test fixture across the repo keeps compiling
+  unchanged. Validated this session: `npm run test:app` — 281 test files /
+  3022 tests passing. `npm run lint` — 0 errors (12 pre-existing warnings
+  only). `npm run build` — succeeds. `npm run test:contracts` — 65 passing
+  (untouched, no contract changes). No visual pass was run this session —
+  the owner reviews the deployed page against the committed design, per
+  this issue's own instruction; new/changed CSS was checked only by
+  reading it against the existing breakpoints, not on-device or in a
+  browser.

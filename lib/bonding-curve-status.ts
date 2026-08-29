@@ -1,4 +1,4 @@
-import type { Address } from "viem";
+import { formatEther, type Address } from "viem";
 
 // Pure re-implementation of the display model derived from
 // contracts/HoodlumsTestBondingCurve.sol's public state. Progress mirrors
@@ -78,4 +78,24 @@ export function formatGraduationProgressPercent(progressBps: bigint): string {
   const clamped =
     progressBps < 0n ? 0n : progressBps > GRADUATION_PROGRESS_BPS_MAX ? GRADUATION_PROGRESS_BPS_MAX : progressBps;
   return `${(Number(clamped) / 100).toFixed(1)}%`;
+}
+
+/**
+ * Formats the token page v2 header band's graduation summary (issue #443
+ * part 1), e.g. "3.12 / 4.0 ETH · 78%" — raised at 2dp, target at 1dp,
+ * progress at 0dp, matching design/token-page-v2/token-page-data-inventory.md
+ * section 1.
+ */
+export function formatGraduationSummary(raisedWei: bigint, targetWei: bigint, progressBps: bigint): string {
+  const clampedBps =
+    progressBps < 0n ? 0n : progressBps > GRADUATION_PROGRESS_BPS_MAX ? GRADUATION_PROGRESS_BPS_MAX : progressBps;
+  const raised = Number(formatEther(raisedWei)).toFixed(2);
+  const target = Number(formatEther(targetWei)).toFixed(1);
+  const pct = (Number(clampedBps) / 100).toFixed(0);
+  return `${raised} / ${target} ETH · ${pct}%`;
+}
+
+/** Formats the header band's "x.xx ETH remaining" line (issue #443 part 1). */
+export function formatGraduationRemainingLabel(remainingWei: bigint): string {
+  return `${Number(formatEther(remainingWei)).toFixed(2)} ETH remaining`;
 }

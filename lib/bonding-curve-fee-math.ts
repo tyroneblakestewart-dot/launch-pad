@@ -8,6 +8,10 @@
 
 export const BPS = 10_000n;
 export const TRADING_FEE_BPS = 100n;
+/** Mirrors the contract's `PROTOCOL_FEE_SHARE_BPS` (issue #112) — the treasury's share of every trading fee. */
+export const PROTOCOL_FEE_SHARE_BPS = 6_000n;
+/** Mirrors the contract's `CREATOR_FEE_SHARE_BPS` (issue #112) — the creator's share of every trading fee. */
+export const CREATOR_FEE_SHARE_BPS = 4_000n;
 
 function mulDivCeil(a: bigint, b: bigint, c: bigint): bigint {
   return (a * b + c - 1n) / c;

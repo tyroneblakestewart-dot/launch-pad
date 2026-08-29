@@ -196,6 +196,63 @@ describe("TokenPage", () => {
     expect(props.tradeLinks).toEqual([]);
   });
 
+  it("passes the recorded launch through to the header band when one exists for this token (issue #443 part 1)", async () => {
+    stubFetch();
+    const launch: TokenLaunch = {
+      id: "id-1",
+      chainId: ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL,
+      tokenAddress: ADDRESS,
+      curveAddress: CURVE_ADDRESS,
+      creatorWalletAddress: "0x4444444444444444444444444444444444444444",
+      tokenName: "Test",
+      ticker: "TEST",
+      decimals: 18,
+      wholeTokenSupply: "1000000",
+      graduationTargetWei: "4000000000000000000",
+      graduated: false,
+      graduatedAt: null,
+      launchedAt: new Date().toISOString(),
+      artworkThumbnail: null,
+    };
+    setTokenLaunchesStoreForTests(fakeLaunchesStore({ findByTokenAddress: async () => launch }));
+
+    const props = await renderTokenPage("robinhood", ADDRESS);
+
+    expect(props.launch).toEqual(launch);
+  });
+
+  it("passes a null launch when no token_launches row exists for this token", async () => {
+    stubFetch();
+    setTokenLaunchesStoreForTests(fakeLaunchesStore());
+
+    const props = await renderTokenPage("robinhood", ADDRESS);
+
+    expect(props.launch).toBeNull();
+  });
+
+  it("degrades to a null launch instead of breaking the page when the launches store throws", async () => {
+    stubFetch();
+    setTokenLaunchesStoreForTests(
+      fakeLaunchesStore({
+        findByTokenAddress: async () => {
+          throw new Error("Postgres unreachable");
+        },
+      }),
+    );
+
+    const props = await renderTokenPage("robinhood", ADDRESS);
+
+    expect(props.launch).toBeNull();
+  });
+
+  it("never looks up a launch for a non-EVM chain", async () => {
+    stubFetch();
+
+    const props = await renderTokenPage("solana", "So11111111111111111111111111111111111111112");
+
+    expect(props.launch).toBeNull();
+  });
+
   it("calls notFound() for an unsupported chain segment", async () => {
     const digest = notFoundDigest();
 

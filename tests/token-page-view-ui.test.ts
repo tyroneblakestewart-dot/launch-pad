@@ -14,37 +14,47 @@ async function source(file: string): Promise<string> {
   return readFile(path.join(ROOT, file), "utf8");
 }
 
-describe("token page view composition", () => {
-  it("is a server component composing the three interactive/static column islands", async () => {
+describe("token page view composition (issue #443 part 1)", () => {
+  it("is a client component composing the header band, left column and centre column, owning the one shared trades/curve poll (issue #444)", async () => {
     const view = await source("components/token-page/token-page-view.tsx");
-    expect(view).not.toContain('"use client"');
+    expect(view).toContain('"use client"');
+    expect(view).toContain("<TokenHeaderBand");
     expect(view).toContain("<TokenLeftColumn");
     expect(view).toContain("<TokenCenterColumn");
-    expect(view).toContain("<TokenRightColumn");
+    expect(view).toContain("useTokenCurveStatus(address, curveAddress, decimals)");
+    expect(view).toContain("useTokenTrades(curveAddress)");
   });
 
-  it("links out to Dexscreener, the contract explorer and (when known) the pool explorer (issue #427 item 3)", async () => {
+  it("no longer renders a separate right column — About moved into the centre column's tabs", async () => {
     const view = await source("components/token-page/token-page-view.tsx");
-    expect(view).toContain("Dexscreener ↗");
-    expect(view).toContain("Contract ↗");
-    expect(view).toContain("Pool ↗");
-    expect(view).toContain("chainInfo.explorerBaseUrl");
+    expect(view).not.toContain("TokenRightColumn");
   });
 
-  it("shows the price and 24h change as part of the identity header, next to name/ticker/live badge (issue #427)", async () => {
+  it("carries the plain marker class the CSS uses to null out AppNavigation's sidebar offset", async () => {
     const view = await source("components/token-page/token-page-view.tsx");
-    expect(view).toContain('import { formatPriceChange, formatUsdPrice } from "@/lib/token-page-format"');
-    expect(view).toContain("styles.topbarIdentity");
-    expect(view.indexOf("styles.titleRow")).toBeLessThan(view.indexOf("styles.priceRow"));
-    expect(view.indexOf("styles.priceRow")).toBeLessThan(view.indexOf("styles.grid"));
+    expect(view).toContain("token-page-full-screen");
+  });
+
+  it("passes the launch record through to the header band and derives factoryMinted for the left column", async () => {
+    const view = await source("components/token-page/token-page-view.tsx");
+    expect(view).toContain("launch={launch}");
+    expect(view).toContain("factoryMinted={Boolean(launch)}");
   });
 });
 
-describe("token page site chrome (issue #427)", () => {
-  it("mounts the same AppNavigation/MobileBottomNavigation the rest of the site uses, not a copy", async () => {
+describe("token page site chrome (issue #443 part 1 — full-screen route)", () => {
+  it("no longer mounts the desktop AppNavigation sidebar on this route", async () => {
     const layout = await source("app/token/[chain]/[address]/layout.tsx");
-    expect(layout).toContain('import { AppNavigation, MobileBottomNavigation } from "@/components/app-navigation"');
-    expect(layout).toContain("<AppNavigation />");
+    expect(layout).not.toContain("<AppNavigation");
+    expect(layout).not.toContain("{ AppNavigation");
+    expect(layout).not.toContain("{ AppNavigation, MobileBottomNavigation }");
+  });
+
+  it("still mounts AccountOverlayShell and MobileBottomNavigation", async () => {
+    const layout = await source("app/token/[chain]/[address]/layout.tsx");
+    expect(layout).toContain('import { AccountOverlayShell } from "@/components/account-overlay-shell"');
+    expect(layout).toContain('import { MobileBottomNavigation } from "@/components/app-navigation"');
+    expect(layout).toContain("<AccountOverlayShell />");
     expect(layout).toContain("<MobileBottomNavigation />");
   });
 
@@ -54,15 +64,139 @@ describe("token page site chrome (issue #427)", () => {
     expect(layout).not.toContain('"../ambient-glow.css"');
     expect(layout).not.toContain('"../globals.css"');
   });
+
+  it("nulls out AppNavigation's desktop sidebar padding-left offset via a plain body:has() marker, since removing the JSX alone doesn't remove that shared CSS module's global rule", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    expect(css).toContain(":global(body:has(.token-page-full-screen))");
+    expect(css).toContain("padding-left: 0 !important;");
+  });
 });
 
-describe("token page left column (identity + swap panel)", () => {
-  it("only activates live swap controls once the configured curve's own token() matches this page", async () => {
+describe("token page header band (issue #443 part 1)", () => {
+  it("is a client component receiving curve status and trades as props from the page's one shared poll (issue #444)", async () => {
+    const component = await source("components/token-page/token-header-band.tsx");
+    expect(component).toContain('"use client"');
+    expect(component).not.toContain("useTokenCurveStatus(");
+    expect(component).not.toContain("useTokenTrades(");
+    expect(component).toContain("curveStatus: TokenCurveStatus");
+    expect(component).toContain("trades: TokenTrade[] | null");
+  });
+
+  it("renders the back link, artwork tile, name/ticker, holders, launch age and chain badge", async () => {
+    const component = await source("components/token-page/token-header-band.tsx");
+    expect(component).toContain('href="/"');
+    expect(component).toContain("styles.headerArtworkTile");
+    expect(component).toContain("{displayName}");
+    expect(component).toContain("{ticker}");
+    expect(component).toContain("{holderCountLabel}");
+    expect(component).toContain("LAUNCHED {launchAgeLabel}");
+    expect(component).toContain("{chainInfo.shortLabel}");
+  });
+
+  it("shows the LIVE pill only while the curve reports bonding, never on load/error/graduated", async () => {
+    const component = await source("components/token-page/token-header-band.tsx");
+    expect(component).toContain('curveStatus.kind === "ready" && curveStatus.graduation.state === "bonding"');
+    expect(component).toContain("{tradingOpen ? (");
+  });
+
+  it("shows the DROP ART affordance only for the confirmed on-chain creator with no artwork set, and is otherwise display-only", async () => {
+    const component = await source("components/token-page/token-header-band.tsx");
+    expect(component).toContain("account.toLowerCase() === curveStatus.creator.toLowerCase()");
+    expect(component).toContain("const showDropArt = isCreator && !launch?.artworkThumbnail");
+    const dropArtStart = component.indexOf("<button type=\"button\" className={styles.headerDropArt}>");
+    expect(dropArtStart).toBeGreaterThan(-1);
+    expect(component.slice(dropArtStart, dropArtStart + 120)).not.toContain("onClick");
+  });
+
+  it("reads the connected account passively (eth_accounts), never prompting a connect popup on load", async () => {
+    const component = await source("components/token-page/token-header-band.tsx");
+    expect(component).toContain('method: "eth_accounts"');
+    expect(component).not.toContain('method: "eth_requestAccounts"');
+  });
+
+  it("toggles between price and mcap on click, with the label flipping to match", async () => {
+    const component = await source("components/token-page/token-header-band.tsx");
+    expect(component).toContain('const [mode, setMode] = useState<"price" | "mcap">("price")');
+    expect(component).toContain('setMode((current) => (current === "price" ? "mcap" : "price"))');
+    expect(component).toContain('"PRICE · TAP FOR MCAP"');
+    expect(component).toContain('"MCAP · TAP FOR PRICE"');
+  });
+
+  it("derives price mode from the one shared tradePriceNativePerToken helper over the loaded trades, falling back to the curve's starting price before any trade exists", async () => {
+    const component = await source("components/token-page/token-header-band.tsx");
+    expect(component).toContain('import { tradePriceNativePerToken } from "@/lib/candle-bucketing"');
+    expect(component).toContain("tradePriceNativePerToken(lastTrade, decimals)");
+    expect(component).toContain("curveStatus.startingPriceNativePerToken");
+  });
+
+  it("derives market cap as last price times total supply, never a second price source", async () => {
+    const component = await source("components/token-page/token-header-band.tsx");
+    expect(component).toContain("curveStatus.totalSupplyRaw");
+    expect(component).toContain("lastPrice * totalSupplyWhole");
+  });
+
+  it("renders the graduation block from graduationProgressBps/nativeReserve/remainingNativeToGraduate/graduationTarget via the shared pure formatters", async () => {
+    const component = await source("components/token-page/token-header-band.tsx");
+    expect(component).toContain(
+      'import { formatGraduationRemainingLabel, formatGraduationSummary } from "@/lib/bonding-curve-status"',
+    );
+    expect(component).toContain("formatGraduationSummary(");
+    expect(component).toContain("curveStatus.remainingToGraduateWei");
+    expect(component).toContain("formatGraduationRemainingLabel(curveStatus.remainingToGraduateWei)");
+  });
+
+  it("always shows a Contract link chip, and a disabled Pool chip with an after-graduation note until liquidityPool is set", async () => {
+    const component = await source("components/token-page/token-header-band.tsx");
+    expect(component).toContain("Contract ↗");
+    expect(component).toContain("chainInfo.explorerBaseUrl}${address}");
+    expect(component).toContain("const poolAddress = curveStatus.kind === \"ready\" ? curveStatus.graduation.liquidityPool : null");
+    expect(component).toContain("after graduation");
+    expect(component).toContain("styles.headerLinkChipDisabled");
+  });
+
+  it("prefers the launch record's name/ticker over Blockscout market-stats data", async () => {
+    const component = await source("components/token-page/token-header-band.tsx");
+    expect(component).toContain("launch?.tokenName ||");
+    expect(component).toContain("launch?.ticker ||");
+  });
+});
+
+describe("token page left column (swap panel, unchanged internally) + Stats/Audit + creator fees", () => {
+  it("no longer renders the old identity/stats-USD card — that content moved to the header band", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).not.toContain("styles.identityPanel");
+    expect(component).not.toContain("styles.artwork");
+    expect(component).not.toContain("styles.copyButton");
+    expect(component).not.toContain("formatCompactUsd");
+  });
+
+  it("renders the new Stats/Audit panel inside the same sticky left column as swap and fees", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain('import { TokenStatsAuditPanel } from "./token-stats-audit-panel"');
+    const groupStart = component.indexOf("<div className={styles.leftGroup}>");
+    const statsIndex = component.indexOf("<TokenStatsAuditPanel", groupStart);
+    const feeIndex = component.indexOf("styles.feePanel}`}>", groupStart);
+    expect(groupStart).toBeGreaterThan(-1);
+    expect(statsIndex).toBeGreaterThan(groupStart);
+    expect(statsIndex).toBeLessThan(feeIndex);
+  });
+
+  it("passes factoryMinted through to the Stats/Audit panel for the audit's verified/unverified treatment", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain("factoryMinted={factoryMinted}");
+    expect(component).toContain("factoryMinted: boolean;");
+  });
+
+  it("only activates live swap controls once the configured curve's own token() matches this page (check now lives in the shared curve-status hook, issue #444)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
     expect(component).toContain('"use client"');
-    expect(component).toContain('functionName: "token"');
-    expect(component).toContain('(tokenAddress as string).toLowerCase() !== address.toLowerCase()');
-    expect(component).toContain('{ kind: "wrong-token" }');
+    expect(component).toContain('curveStatus.kind !== "ready"');
+    expect(component).toContain("return curveStatus;");
+
+    const hook = await source("lib/use-token-curve-status.ts");
+    expect(hook).toContain('functionName: "token"');
+    expect(hook).toContain('(token as string).toLowerCase() !== tokenAddress.toLowerCase()');
+    expect(hook).toContain('{ kind: "wrong-token" }');
   });
 
   it("falls back to the referral trade-terminal links when no curve is configured or reading it fails", async () => {
@@ -87,16 +221,11 @@ describe("token page left column (identity + swap panel)", () => {
     expect(component).toContain('functionName: "sell"');
   });
 
-  it("reads the graduation target from the shared pure status module, not ad-hoc math", async () => {
+  it("derives its local curve view from the page's shared curve status (issue #444) rather than computing graduation state itself", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
-    expect(component).toContain("computeBondingCurveGraduationStatus({");
-    expect(component).toContain("formatGraduationProgressPercent(graduation.progressBps)");
-  });
-
-  it("renders a copy-to-clipboard address control", async () => {
-    const component = await source("components/token-page/token-left-column.tsx");
-    expect(component).toContain("navigator.clipboard.writeText(address)");
-    expect(component).toContain('copied ? "copied" : "copy"');
+    expect(component).toContain("function toCurveView(curveStatus: TokenCurveStatus, decimals: number): CurveView {");
+    expect(component).toContain("const curveView = toCurveView(curveStatus, resolvedDecimals);");
+    expect(component).toContain('curveView.graduation.state !== "graduated"');
   });
 
   it("no longer renders a separate mobile sticky swap bar — the full panel is pulled inline via CSS order instead (issue #427)", async () => {
@@ -106,9 +235,8 @@ describe("token page left column (identity + swap panel)", () => {
     expect(component).not.toContain("styles.mobileSellButton");
   });
 
-  it("marks the identity/stats panel distinctly from the swap panel so CSS can reorder them for mobile (issue #427)", async () => {
+  it("marks the swap panel distinctly so CSS can reorder it for mobile (issue #427)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
-    expect(component).toContain("`${styles.panel} ${styles.identityPanel}`");
     expect(component).toContain("`${styles.panel} ${styles.swapPanel}`");
   });
 
@@ -121,19 +249,26 @@ describe("token page left column (identity + swap panel)", () => {
 
   it("shows an honest 1% fee breakdown before every signature, from pure math for buys and an on-chain read for sells (issue #412 Part 2)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
-    expect(component).toContain(
-      'import { buyNetFromGross, grossNativeInForExactNet, tradingFee } from "@/lib/bonding-curve-fee-math";',
-    );
     expect(component).toContain("tradingFee(parseEther(amount))");
     expect(component).toContain('functionName: "quoteSellFee"');
     expect(component).toContain("Trading fee (1%)");
   });
 
-  it("reads remainingNativeToGraduate() and displays it, and caps the buy MAX preset at the graduation target", async () => {
+  it("shows the real fee note under the swap CTA, derived from the curve's fee constants rather than a hard-coded string (issue #443 part 1 item 6)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
-    expect(component).toContain('functionName: "remainingNativeToGraduate"');
-    expect(component).toContain("ETH remaining to graduation");
+    expect(component).toContain(
+      'import { formatFeeNote, shortenAddress } from "@/lib/token-page-format"',
+    );
+    expect(component).toContain("formatFeeNote(TRADING_FEE_BPS, PROTOCOL_FEE_SHARE_BPS, CREATOR_FEE_SHARE_BPS, false)");
+    expect(component).toContain("formatFeeNote(TRADING_FEE_BPS, PROTOCOL_FEE_SHARE_BPS, CREATOR_FEE_SHARE_BPS, true)");
+  });
+
+  it("reads remainingNativeToGraduate() via the shared curve-status hook and caps the buy MAX preset at the graduation target", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
     expect(component).toContain("grossNativeInForExactNet(curveView.remainingToGraduateWei)");
+
+    const hook = await source("lib/use-token-curve-status.ts");
+    expect(hook).toContain('functionName: "remainingNativeToGraduate"');
   });
 
   it("blocks submitting a buy that would exceed the graduation target instead of letting it revert", async () => {
@@ -150,14 +285,16 @@ describe("token page left column (identity + swap panel)", () => {
     expect(component).toContain("View liquidity pool");
   });
 
-  it("shows a creator fee panel with claimable balance and a withdraw button only for the confirmed on-chain creator", async () => {
+  it("shows a creator fee panel with claimable balance and a withdraw button only for the confirmed on-chain creator (creator itself resolved by the shared curve-status hook, issue #444)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
-    expect(component).toContain('functionName: "creator"');
     expect(component).toContain('functionName: "claimableFees"');
     expect(component).toContain('functionName: "withdrawFees"');
     expect(component).toContain("account.toLowerCase() === curveView.creator.toLowerCase()");
     expect(component).toContain("{isCreator && curveView.kind === \"ready\" && (");
     expect(component).toContain("Withdraw fees");
+
+    const hook = await source("lib/use-token-curve-status.ts");
+    expect(hook).toContain('functionName: "creator"');
   });
 });
 
@@ -184,22 +321,25 @@ describe("token page trade UX correctness (issue #427)", () => {
     expect(component).toContain('setAmount("");\n        setReceiveRaw(null);\n        setSellFeeRaw(null);');
   });
 
-  it("refetches curve state and balances after every confirmed trade so MAX and the progress bar are never stale (issue #427 item 4b)", async () => {
+  it("refetches balances after every confirmed trade, and refreshes the page's shared curve state via TOKEN_TRADE_CONFIRMED_EVENT on a genuine success so MAX and the progress bar are never stale (issue #427 item 4b, issue #444)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
     const submitTradeStart = component.indexOf("async function submitTrade()");
-    const submitTradeEnd = component.indexOf("const graduationSection", submitTradeStart);
+    const submitTradeEnd = component.indexOf("const payTicker", submitTradeStart);
     expect(submitTradeStart).toBeGreaterThan(-1);
     expect(submitTradeEnd).toBeGreaterThan(submitTradeStart);
     const submitTrade = component.slice(submitTradeStart, submitTradeEnd);
 
     expect(submitTrade).toContain("void refreshBalances(account);");
-    expect(submitTrade).toContain("if (curveAddress) void loadCurve(curveAddress);");
-    // The refetch runs before branching on success/revert, so it happens
-    // for both outcomes (a reverted tx still spent gas) — not just success.
+    expect(submitTrade).not.toContain("loadCurve");
+    expect(submitTrade).toContain("notifyTokenTradeConfirmed({ curveAddress: curveView.curve });");
     const refetchIndex = submitTrade.indexOf("void refreshBalances(account);", submitTrade.indexOf("waitForTransactionReceipt({ hash });"));
     const branchIndex = submitTrade.indexOf('receipt.status === "reverted"');
+    const notifyIndex = submitTrade.indexOf("notifyTokenTradeConfirmed({ curveAddress: curveView.curve });");
     expect(refetchIndex).toBeGreaterThan(-1);
     expect(refetchIndex).toBeLessThan(branchIndex);
+    // Only the genuine-success branch fires the shared refetch event — a
+    // reverted trade never moved the curve's own reserves.
+    expect(notifyIndex).toBeGreaterThan(branchIndex);
   });
 
   it("applies the same reverted/thrown-error handling to the creator fee withdraw flow", async () => {
@@ -210,6 +350,56 @@ describe("token page trade UX correctness (issue #427)", () => {
   });
 });
 
+describe("token page Stats/Audit panel (issue #443 part 1)", () => {
+  it("is a client component receiving trades as a prop from the page's one shared poll (issue #444), computed with the pure lib/token-trade-stats.ts helpers", async () => {
+    const component = await source("components/token-page/token-stats-audit-panel.tsx");
+    expect(component).toContain('"use client"');
+    expect(component).not.toContain("useTokenTrades(");
+    expect(component).toContain("trades: TokenTrade[] | null");
+    expect(component).toContain("computeTradeWindowStats(");
+    expect(component).toContain("computeTotalFeesNative(");
+  });
+
+  it("defaults to the Stats tab and the 24H window", async () => {
+    const component = await source("components/token-page/token-stats-audit-panel.tsx");
+    expect(component).toContain('useState<StatsTab>("stats")');
+    expect(component).toContain('useState<TradeStatsWindowKey>("24h")');
+  });
+
+  it("renders the four paired rows with split bars, filtered by the panel's own TF selector, distinct from the chart's own timeframe rail", async () => {
+    const component = await source("components/token-page/token-stats-audit-panel.tsx");
+    expect(component).toContain("PRICE CHANGE");
+    expect(component).toContain("VOLUME");
+    expect(component).toContain('"BUYS"');
+    expect(component).toContain('"SELLS"');
+    expect(component).toContain("BUY VOL");
+    expect(component).toContain("SELL VOL");
+    expect(component).toContain('"BUYERS"');
+    expect(component).toContain('"SELLERS"');
+    expect(component).toContain("styles.statsSplitBarTrack");
+  });
+
+  it("renders the collapsible HOLDER BREAKDOWN with holders/top10/dev/snipers/total-fees, snipers and top10/dev rendering em dashes in this part", async () => {
+    const component = await source("components/token-page/token-stats-audit-panel.tsx");
+    expect(component).toContain("HOLDER BREAKDOWN");
+    expect(component).toContain("TOP 10 %");
+    expect(component).toContain("DEV %");
+    expect(component).toContain("SNIPERS % ⓘ");
+    expect(component).toContain("Wallets that bought within the first 10 blocks after launch");
+    expect(component).toContain("TOTAL FEES");
+  });
+
+  it("renders the audit checklist with a verified/unverified treatment driven by factoryMinted", async () => {
+    const component = await source("components/token-page/token-stats-audit-panel.tsx");
+    expect(component).toContain('"0% tax"');
+    expect(component).toContain('"No mint function"');
+    expect(component).toContain('"No owner"');
+    expect(component).toContain('"LP locked at graduation"');
+    expect(component).toContain("Guaranteed by the Hoodlums factory contract");
+    expect(component).toContain("styles.auditRowUnverified");
+  });
+});
+
 describe("token page centre column (chart + activity)", () => {
   it("no longer embeds the Dexscreener chart — it can't index this chain and only ever showed a broken-chart message (issue #427)", async () => {
     const component = await source("components/token-page/token-center-column.tsx");
@@ -217,13 +407,14 @@ describe("token page centre column (chart + activity)", () => {
     expect(component).not.toContain("public-dexscreener-section");
   });
 
-  it("renders the real candlestick chart inside the same chart region, sharing one trades poll with the tab below (issue #430)", async () => {
+  it("renders the real candlestick chart inside the same chart region, sharing the page's one trades poll with the tab below (issue #430, lifted further in issue #444)", async () => {
     const component = await source("components/token-page/token-center-column.tsx");
     expect(component).toContain("styles.chartPlaceholder");
     expect(component).toContain('data-token-chart="true"');
     expect(component).toContain("<TokenTradeChart");
-    expect(component).toContain('import { useTokenTrades } from "@/lib/use-token-trades"');
-    expect(component).toContain("useTokenTrades(curveAddress)");
+    expect(component).not.toContain("useTokenTrades(");
+    expect(component).toContain("trades: TokenTrade[] | null");
+    expect(component).toContain("tradesError: string | null");
   });
 
   it("renders Recent trades and Holders tabs with graceful empty states, sourced from real on-chain trade data (issue #430)", async () => {
@@ -245,27 +436,17 @@ describe("token page centre column (chart + activity)", () => {
     expect(component).toContain('{ id: "hoodchat", label: "Hoodchat" }');
     expect(component).toContain("<TokenChatPanel");
   });
-});
 
-describe("token page right column (trade terminals, about, chat)", () => {
-  it("is a static server component — no wallet or live state needed", async () => {
-    const component = await source("components/token-page/token-right-column.tsx");
-    expect(component).not.toContain('"use client"');
-  });
-
-  it("no longer shows a coming-soon chat placeholder now that live Hoodchat lives in the centre column", async () => {
-    const component = await source("components/token-page/token-right-column.tsx");
-    expect(component).not.toContain("Coming soon");
-  });
-
-  it("degrades gracefully instead of inventing a description for tokens with no published copy", async () => {
-    const component = await source("components/token-page/token-right-column.tsx");
+  it("adds an About tab, moved here from the removed right column (issue #443 part 1)", async () => {
+    const component = await source("components/token-page/token-center-column.tsx");
+    expect(component).toContain('{ id: "about", label: "About" }');
     expect(component).toContain("No description has been published for this token yet.");
+    expect(component).toContain("Bonding curve launch");
   });
 });
 
-describe("token page mobile-first layout (issue #427)", () => {
-  it("stacks to a single column with no query, only progressively restoring columns at min-width breakpoints (mobile-first)", async () => {
+describe("token page mobile-first layout (issue #443 part 1: header → swap → chart → stats → tabs)", () => {
+  it("stacks to a single column with no query, only progressively restoring columns at a min-width breakpoint (mobile-first)", async () => {
     const css = await source("components/token-page/token-page.module.css");
     const gridRuleIndex = css.indexOf(".grid {");
     const firstMediaQueryIndex = css.indexOf("@media");
@@ -273,20 +454,29 @@ describe("token page mobile-first layout (issue #427)", () => {
     expect(gridRuleIndex).toBeLessThan(firstMediaQueryIndex);
     expect(css).toContain("grid-template-columns: minmax(0, 1fr);");
     expect(css).not.toContain("max-width: 880px");
-    expect(css).not.toContain("max-width: 1180px");
     expect(css).toContain("@media (min-width: 881px)");
-    expect(css).toContain("@media (min-width: 1181px)");
   });
 
-  it("pulls the swap panel ahead of the identity/stats panel in the mobile-base order, resetting once desktop gives it its own sticky column (issue #429)", async () => {
+  it("no longer has a third desktop breakpoint — the old three-column layout (#429) is gone now that identity/about have no column of their own", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    expect(css).not.toContain("@media (min-width: 1181px)");
+  });
+
+  it("orders the mobile stack as swap, chart, stats, fees, then the tabs panel", async () => {
     const css = await source("components/token-page/token-page.module.css");
     const firstMediaIndex = css.indexOf("@media");
     const baseCss = css.slice(0, firstMediaIndex);
     expect(baseCss).toContain(".swapPanel {\n  order: 1;\n}");
-    expect(baseCss).toContain(".identityPanel {\n  order: 2;\n}");
-    expect(baseCss).toContain(".feePanel {\n  order: 3;\n}");
+    expect(baseCss).toContain(".chartPlaceholder {\n  order: 2;\n}");
+    expect(baseCss).toContain(".statsPanel {\n  order: 3;\n}");
+    expect(baseCss).toContain(".feePanel {\n  order: 4;\n}");
+    expect(baseCss).toContain(".activityPanel {\n  order: 5;\n}");
+  });
+
+  it("resets swap/stats/fees to natural document order once desktop gives them their own sticky column, in swap → stats → fees order", async () => {
+    const css = await source("components/token-page/token-page.module.css");
     const desktopBlockStart = css.indexOf("@media (min-width: 881px)");
-    const resetIndex = css.indexOf(".swapPanel,\n  .feePanel {\n    order: initial;\n  }", desktopBlockStart);
+    const resetIndex = css.indexOf(".swapPanel,\n  .statsPanel,\n  .feePanel {\n    order: initial;\n  }", desktopBlockStart);
     expect(resetIndex).toBeGreaterThan(desktopBlockStart);
   });
 
@@ -296,18 +486,20 @@ describe("token page mobile-first layout (issue #427)", () => {
     expect(css).toContain("align-self: start;");
   });
 
-  it("gives every interactive control in the swap panel and topbar a >=44px touch target", async () => {
+  it("gives every interactive control in the header band and swap panel a >=44px touch target", async () => {
     const css = await source("components/token-page/token-page.module.css");
     for (const selector of [
       ".backLink",
-      ".topbarLink",
-      ".copyButton",
+      ".headerLinkChip",
+      ".headerFigureToggle",
+      ".headerDropArt",
       ".pillButton",
       ".walletButton",
       ".presetButton",
       ".activityTab",
       ".feeWithdrawButton",
       ".terminalFallbackLink",
+      ".holderBreakdownHeader",
     ]) {
       const ruleStart = css.indexOf(`${selector} {`);
       expect(ruleStart, `expected a rule for ${selector}`).toBeGreaterThan(-1);
@@ -333,8 +525,8 @@ describe("token page mobile-first layout (issue #427)", () => {
   });
 });
 
-describe("token page desktop layout: swap left, chart centre, identity+about right (issue #429)", () => {
-  it("renders every column component directly inside the shared grid, with no per-column wrapper divs — column placement is resolved purely in CSS", async () => {
+describe("token page desktop layout: swap + stats + fees left, chart + tabs fill the rest (issue #443 part 1)", () => {
+  it("renders every panel directly inside the shared grid or its leftGroup wrapper, with no dedicated per-column wrapper divs for the chart/activity columns", async () => {
     const view = await source("components/token-page/token-page-view.tsx");
     expect(view).not.toContain("styles.left}");
     expect(view).not.toContain("styles.center}");
@@ -343,59 +535,92 @@ describe("token page desktop layout: swap left, chart centre, identity+about rig
     expect(gridIndex).toBeGreaterThan(-1);
     expect(view.indexOf("<TokenLeftColumn", gridIndex)).toBeGreaterThan(gridIndex);
     expect(view.indexOf("<TokenCenterColumn", gridIndex)).toBeGreaterThan(gridIndex);
-    expect(view.indexOf("<TokenRightColumn", gridIndex)).toBeGreaterThan(gridIndex);
   });
 
-  it("groups the swap panel and creator-fee panel behind a display:contents wrapper, so they can share one sticky desktop column while still interleaving with identity on mobile", async () => {
+  it("groups the swap panel, Stats/Audit panel and creator-fee panel behind a display:contents wrapper, so they can share one sticky desktop column while still interleaving with the chart on mobile", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
     const groupStart = component.indexOf("<div className={styles.leftGroup}>");
     expect(groupStart).toBeGreaterThan(-1);
     const swapIndex = component.indexOf("styles.swapPanel", groupStart);
+    const statsIndex = component.indexOf("<TokenStatsAuditPanel", groupStart);
     const feeIndex = component.indexOf("styles.feePanel", groupStart);
     expect(swapIndex).toBeGreaterThan(groupStart);
-    expect(feeIndex).toBeGreaterThan(swapIndex);
+    expect(statsIndex).toBeGreaterThan(swapIndex);
+    expect(feeIndex).toBeGreaterThan(statsIndex);
   });
 
-  it("marks the trade-terminal and about panels distinctly so CSS can place identity directly above about in the desktop right column", async () => {
-    const component = await source("components/token-page/token-right-column.tsx");
-    expect(component).toContain("`${styles.panel} ${styles.terminalPanel}`");
-    expect(component).toContain("`${styles.panel} ${styles.aboutPanel}`");
-  });
-
-  it("puts the sticky swap/fee column on the left and the chart/activity column in the centre at the two-column desktop breakpoint", async () => {
+  it("puts the sticky swap/stats/fee column on the left and the chart/activity column in the rest of the width at the two-column desktop breakpoint", async () => {
     const css = await source("components/token-page/token-page.module.css");
     const blockStart = css.indexOf("@media (min-width: 881px)");
-    const blockEnd = css.indexOf("@media (min-width: 1181px)");
-    const block = css.slice(blockStart, blockEnd);
+    const block = css.slice(blockStart);
     expect(block).toContain(".leftGroup {\n    display: flex;");
     expect(block).toContain("grid-column: 1;");
     expect(block).toContain("position: sticky;");
     expect(block).toContain(".chartPlaceholder,\n  .activityPanel {\n    grid-column: 2;\n  }");
   });
 
-  it("moves the identity card directly above the About panel in the right column (trade terminals following underneath), at both desktop breakpoints", async () => {
-    const css = await source("components/token-page/token-page.module.css");
-    const mediumBlockStart = css.indexOf("@media (min-width: 881px)");
-    const mediumBlockEnd = css.indexOf("@media (min-width: 1181px)");
-    const mediumBlock = css.slice(mediumBlockStart, mediumBlockEnd);
-
-    expect(mediumBlock).toContain(".identityPanel,\n  .aboutPanel,\n  .terminalPanel {\n    grid-column: 1 / -1;\n  }");
-    const identityOrder = mediumBlock.indexOf(".identityPanel {\n    order: 3;\n  }");
-    const aboutOrder = mediumBlock.indexOf(".aboutPanel {\n    order: 4;\n  }");
-    const terminalOrder = mediumBlock.indexOf(".terminalPanel {\n    order: 5;\n  }");
-    expect(identityOrder).toBeGreaterThan(-1);
-    expect(identityOrder).toBeLessThan(aboutOrder);
-    expect(aboutOrder).toBeLessThan(terminalOrder);
-
-    const wideBlock = css.slice(css.indexOf("@media (min-width: 1181px)"));
-    expect(wideBlock).toContain(".identityPanel,\n  .aboutPanel,\n  .terminalPanel {\n    grid-column: 3;\n  }");
-  });
-
-  it("does not touch the token page's data-flow, trade logic or error surfacing (issue #427) while rearranging layout", async () => {
+  it("does not touch the token page's trade logic or error surfacing (issue #427) while rearranging layout and deduplicating polling (issue #444)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
     expect(component).toContain('receipt.status === "reverted"');
     expect(component).toContain("describeRevertedTrade(hash)");
     expect(component).toContain("void refreshBalances(account);");
-    expect(component).toContain("if (curveAddress) void loadCurve(curveAddress);");
+  });
+});
+
+describe("token page polling is deduplicated to one shared poll per data source (issue #444)", () => {
+  // Before this fix, token-center-column.tsx, token-header-band.tsx and
+  // token-stats-audit-panel.tsx each called useTokenTrades independently
+  // (three 12s /api/token-trades pollers on one open tab — ~900 requests/hour
+  // against the 600/hour/IP limit the homepage grid also shares), and
+  // token-left-column.tsx and lib/use-token-curve-status.ts each polled the
+  // same on-chain curve independently. A rendered token page must issue
+  // exactly one /api/token-trades request and one curve-status read per poll
+  // cycle, from exactly one call site each, both owned by token-page-view.tsx
+  // and threaded down as props — matching this repo's established
+  // source-pattern-assertion approach for interactive components (see this
+  // file's own top-of-file rationale comment; the Vitest suite runs with no
+  // jsdom, so there is no rendered DOM to dispatch a real fetch against).
+  const consumers = [
+    "components/token-page/token-header-band.tsx",
+    "components/token-page/token-center-column.tsx",
+    "components/token-page/token-stats-audit-panel.tsx",
+    "components/token-page/token-left-column.tsx",
+  ];
+
+  it("calls useTokenTrades exactly once across the whole page, in token-page-view.tsx", async () => {
+    const view = await source("components/token-page/token-page-view.tsx");
+    expect(view).toContain("useTokenTrades(curveAddress)");
+
+    for (const file of consumers) {
+      const component = await source(file);
+      expect(component, `${file} must not call useTokenTrades directly`).not.toContain("useTokenTrades(");
+    }
+  });
+
+  it("calls useTokenCurveStatus exactly once across the whole page, in token-page-view.tsx", async () => {
+    const view = await source("components/token-page/token-page-view.tsx");
+    expect(view).toContain("useTokenCurveStatus(address, curveAddress, decimals)");
+
+    for (const file of consumers) {
+      const component = await source(file);
+      expect(component, `${file} must not call useTokenCurveStatus directly`).not.toContain("useTokenCurveStatus(");
+    }
+  });
+
+  it("passes the same trades/tradesError and curveStatus values down to every consumer that needs them", async () => {
+    const view = await source("components/token-page/token-page-view.tsx");
+    expect(view).toContain("curveStatus={curveStatus}");
+    expect(view).toContain("trades={trades}");
+    expect(view).toContain("tradesError={tradesError}");
+  });
+
+  it("no longer justifies independent per-panel polling copies in a doc comment", async () => {
+    for (const file of [...consumers, "lib/use-token-curve-status.ts", "lib/use-token-trades.ts"]) {
+      const component = await source(file);
+      expect(component, `${file} must not claim a deliberate independent poll`).not.toContain("deliberate duplication");
+      expect(component, `${file} must not claim a deliberate independent poll`).not.toContain("Deliberately NOT shared");
+      expect(component, `${file} must not claim an owned independent copy`).not.toContain("owns an independent copy");
+      expect(component, `${file} must not claim two independent 12s polls`).not.toContain("two independent 12s polls");
+    }
   });
 });

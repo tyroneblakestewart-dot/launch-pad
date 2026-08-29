@@ -1,25 +1,24 @@
 import type { ReactNode } from "react";
 import { AccountOverlayShell } from "@/components/account-overlay-shell";
-import { AppNavigation, MobileBottomNavigation } from "@/components/app-navigation";
+import { MobileBottomNavigation } from "@/components/app-navigation";
 
 /**
- * Wires in the same site chrome every other route uses (issue #427) — the
- * token page previously rendered with no way back to the homepage, Hoodchat
- * or Support. Reuses `AppNavigation`/`MobileBottomNavigation` verbatim
- * (same components `app/(app)/layout.tsx` mounts) rather than duplicating
- * nav markup; their own CSS module already targets `body:has(.public-*)` /
- * `.full-generated-page-container` escape hatches for pages that must stay
- * chrome-free, so this route isn't one of those and just gets the standard
- * fixed sidebar / mobile header / bottom pill nav. Deliberately does not
- * pull in the rest of `app/(app)/layout.tsx` (its global theme CSS,
- * `WalletProviderSelector`, ambient glow, etc.) — the token page keeps its
- * own bespoke design system (`token-page-reset.css`, Archivo/JetBrains Mono
- * fonts) from `app/token/layout.tsx`, only the navigation itself is shared.
+ * Wires in the same account overlay and mobile bottom nav every other route
+ * uses (issue #427), but NOT the desktop `AppNavigation` sidebar — issue
+ * #443 part 1 makes this route full-screen so the header band can span the
+ * entire viewport width with the v2 design's own margins, matching
+ * `design/token-page-v2/hoodlums-token-page-v2.html`. Mobile keeps its
+ * bottom pill nav (there's no competing full-width chrome to conflict with
+ * on a phone). Deliberately does not pull in the rest of
+ * `app/(app)/layout.tsx` (its global theme CSS, `WalletProviderSelector`,
+ * ambient glow, etc.) — the token page keeps its own bespoke design system
+ * (`token-page-reset.css`, Archivo/JetBrains Mono fonts) from
+ * `app/token/layout.tsx`, only the account overlay and mobile nav are
+ * shared.
  */
 export default function TokenPageLayout({ children }: { children: ReactNode }) {
   return (
     <>
-      <AppNavigation />
       <AccountOverlayShell />
       {children}
       <MobileBottomNavigation />

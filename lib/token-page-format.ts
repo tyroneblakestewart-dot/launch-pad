@@ -81,3 +81,70 @@ export function formatPriceChange(percent: number | null): { label: string; up: 
   const up = percent >= 0;
   return { label: `${up ? "▲" : "▼"} ${Math.abs(percent).toFixed(1)}%`, up };
 }
+
+/**
+ * Formats a native-currency price (ETH per token) at exactly six
+ * significant figures, e.g. `0.0000359717` or `1.00000`, with no unit
+ * suffix — the token page v2 header band's big figure and the Stats panel
+ * (issue #443 part 1) both need this exact precision regardless of
+ * magnitude. `null`/non-finite/negative inputs return `"—"`.
+ */
+export function formatNativePriceSixSigFigs(value: number | null): string {
+  if (value === null || !Number.isFinite(value) || value < 0) return "—";
+  if (value === 0) return (0).toFixed(6);
+  const exponent = Math.floor(Math.log10(Math.abs(value)));
+  const decimals = Math.max(0, 6 - 1 - exponent);
+  return value.toFixed(decimals);
+}
+
+/** Formats a native-currency amount at a fixed decimal count, or `"—"` when unavailable. */
+export function formatNativeFixed(value: number | null, decimals: number): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+  return value.toFixed(decimals);
+}
+
+/** Formats a signed percentage at a fixed decimal count, e.g. `+11.92%` / `-4.20%`, or `"—"` when unavailable. */
+export function formatSignedPercent(value: number | null, decimals: number): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "+";
+  return `${sign}${Math.abs(value).toFixed(decimals)}%`;
+}
+
+/**
+ * Formats how long ago an ISO timestamp was, as the header band's coarse
+ * single-unit "LAUNCHED xD AGO" duration (issue #443 part 1) — matching
+ * `formatTimeAgoSeconds`'s m/h/d scale but for an ISO launch timestamp and
+ * with no seconds tier (a token is never "launched Ns ago" in this design;
+ * anything under a minute reads "JUST NOW"). Invalid/missing input: `"—"`.
+ */
+export function formatLaunchAge(launchedAtIso: string | null): string {
+  if (!launchedAtIso) return "—";
+  const launchedAt = new Date(launchedAtIso);
+  if (Number.isNaN(launchedAt.getTime())) return "—";
+  const diffSeconds = Math.max(0, Math.floor((Date.now() - launchedAt.getTime()) / 1000));
+  if (diffSeconds < 60) return "JUST NOW";
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes}M AGO`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}H AGO`;
+  return `${Math.floor(diffHours / 24)}D AGO`;
+}
+
+/**
+ * Builds the swap panel's fee note (issue #443 part 1 item 6) from the
+ * curve's real fee constants instead of a hard-coded string, e.g.
+ * `"1% fee · 60% treasury / 40% creator · bonding"`. `graduated` flips the
+ * trailing phase word to `"graduated"`.
+ */
+export function formatFeeNote(
+  tradingFeeBps: bigint,
+  protocolShareBps: bigint,
+  creatorShareBps: bigint,
+  graduated: boolean,
+): string {
+  const feePercent = Number(tradingFeeBps) / 100;
+  const protocolPercent = Number(protocolShareBps) / 100;
+  const creatorPercent = Number(creatorShareBps) / 100;
+  const phase = graduated ? "graduated" : "bonding";
+  return `${feePercent}% fee · ${protocolPercent}% treasury / ${creatorPercent}% creator · ${phase}`;
+}

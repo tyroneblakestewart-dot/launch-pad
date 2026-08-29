@@ -21,6 +21,16 @@ export type TokenTrade = {
   blockTimestamp: number;
   txHash: Hash;
   logIndex: number;
+  /**
+   * Gross native amount (grossNativeIn for a buy, grossNativeOut for a
+   * sell) — issue #443 part 1's Stats panel needs the gross side for sell
+   * volume specifically, distinct from `nativeAmountRaw`'s post-fee amount.
+   * Optional so every pre-existing trade fixture across this repo's test
+   * suite keeps compiling unchanged; real reads always populate it.
+   */
+  grossNativeAmountRaw?: string;
+  /** Protocol fee charged on this trade, in wei. Optional for the same reason as `grossNativeAmountRaw`. */
+  feeChargedRaw?: string;
 };
 
 export type TokenTradesResponse = { trades: TokenTrade[] };
