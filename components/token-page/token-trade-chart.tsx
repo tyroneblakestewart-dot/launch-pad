@@ -102,26 +102,38 @@ function formatUtcTime(unixSeconds: number): string {
  * box — with only a text overlay layered on top for the empty/error states.
  *
  * `series.setData()` (which resets the visible range) only ever runs on the
- * very first load and on a timeframe change; every other update diffs the
- * freshly-rebucketed candles/MAs/volume against what's already rendered
- * (lib/candle-bucketing.ts's diffCandles/diffTimeSeries) and calls
- * `series.update()` for just the mutated last bar and any newly appended
- * ones — `update()` extends the series without touching the current visible
- * range, which is what keeps a scrolled-back user's view stable while still
- * following the latest bar for a viewer already at the right edge. Sizing is
- * driven by a manually guarded ResizeObserver instead of `autoSize: true`:
- * the deployed page's ~1s candle jump traced back to that option's own
- * observer re-firing on sub-pixel layout noise and feeding straight back
- * into another reflow — resizing only when the rounded pixel size actually
- * changes breaks that loop.
+ * very first load, on a timeframe change, and in one crash-safe fallback
+ * (below); every other update diffs the freshly-rebucketed candles/MAs/
+ * volume against what's already rendered (lib/candle-bucketing.ts's
+ * diffCandles/diffTimeSeries) and calls `series.update()` for just the
+ * mutated last bar and any newly appended ones — `update()` extends the
+ * series without touching the current visible range, which is what keeps a
+ * scrolled-back user's view stable while still following the latest bar for
+ * a viewer already at the right edge. Sizing is driven by a manually
+ * guarded ResizeObserver instead of `autoSize: true`: the deployed page's
+ * ~1s candle jump traced back to that option's own observer re-firing on
+ * sub-pixel layout noise and feeding straight back into another reflow —
+ * resizing only when the rounded pixel size actually changes breaks that
+ * loop.
  *
  * Bar width (issue #449 item 2): the time scale's own `barSpacing`/
  * `minBarSpacing` are fixed constants, so pixel width per candle stays
- * constant regardless of chart width or candle count — no code path ever
- * calls `setVisibleLogicalRange` or `fitContent` to force a window (the
- * deployed bug: forcing a 120-bar window on a low-trade-count token spread
- * candles to ~3x the design's width). `scrollToRealTime()` after
+ * constant regardless of chart width or candle count — no normal code path
+ * ever calls `setVisibleLogicalRange` or `fitContent` to force a window
+ * (the deployed bug: forcing a 120-bar window on a low-trade-count token
+ * spread candles to ~3x the design's width). `scrollToRealTime()` after
  * `setData()` is what puts the latest bar at the right edge instead.
+ *
+ * Out-of-order update crash (issue #451 follow-up): the whitespace
+ * timeline's tail advances on its own clock, independent of when a trade is
+ * fetched, so a trade landing in a bucket that tail has already moved past
+ * produces an `update()` target that's no longer the last bar —
+ * lightweight-charts throws "Cannot update oldest data" for that. The
+ * incremental branch below detects this (and catches any update() throw it
+ * doesn't anticipate) and falls back to a full `setData()` for every series,
+ * the one exception to the no-forced-range rule above: it reads
+ * `getVisibleLogicalRange()` first and restores it right after, so the
+ * user's view still doesn't jump.
  */
 export function TokenTradeChart({
   trades,
@@ -387,23 +399,62 @@ export function TokenTradeChart({
       chartRef.current?.timeScale().scrollToRealTime();
     } else {
       const pointsDiff = diffChartSeriesPoints(renderedPointsRef.current, points);
-      for (const point of [...pointsDiff.updated, ...pointsDiff.appended]) {
-        candleSeries.update(pointToSeriesDatum(point));
-      }
-
       const candleDiff = diffCandles(renderedCandlesRef.current, candles);
-      for (const candle of [...candleDiff.updated, ...candleDiff.appended]) {
-        volumeSeries.update({ time: candle.time as UTCTimestamp, value: candle.volume, color: volumeBarColor(candle) });
-      }
-
       const ma20Diff = diffTimeSeries(renderedMa20Ref.current, ma20, (a, b) => a.value === b.value);
-      for (const point of [...ma20Diff.updated, ...ma20Diff.appended]) {
-        ma20Series.update({ time: point.time as UTCTimestamp, value: point.value });
+      const ma50Diff = diffTimeSeries(renderedMa50Ref.current, ma50, (a, b) => a.value === b.value);
+
+      // The whitespace timeline's tail advances on its own clock (the
+      // 30s nowTick above), independent of when a trade is actually
+      // fetched. A trade whose block time falls in a bucket the tail has
+      // already moved past — any trade near a bucket boundary that's
+      // polled after that boundary passes — produces an "updated" point
+      // that is no longer the chart's last rendered bar.
+      // lightweight-charts' series.update() only accepts the last bar or a
+      // genuinely newer one; anything older throws "Cannot update oldest
+      // data", which would otherwise break this whole effect. A pre-check
+      // routes the obvious case straight to a full resync, and a try/catch
+      // around the incremental path itself catches anything that check
+      // doesn't anticipate — both fall back the same way.
+      const lastRenderedTime =
+        renderedPointsRef.current.length > 0 ? renderedPointsRef.current[renderedPointsRef.current.length - 1].time : null;
+      const hasOutOfOrderUpdate =
+        lastRenderedTime !== null && pointsDiff.updated.some((point) => point.time < lastRenderedTime);
+
+      let needsFullResync = hasOutOfOrderUpdate;
+      if (!needsFullResync) {
+        try {
+          for (const point of [...pointsDiff.updated, ...pointsDiff.appended]) {
+            candleSeries.update(pointToSeriesDatum(point));
+          }
+          for (const candle of [...candleDiff.updated, ...candleDiff.appended]) {
+            volumeSeries.update({ time: candle.time as UTCTimestamp, value: candle.volume, color: volumeBarColor(candle) });
+          }
+          for (const point of [...ma20Diff.updated, ...ma20Diff.appended]) {
+            ma20Series.update({ time: point.time as UTCTimestamp, value: point.value });
+          }
+          for (const point of [...ma50Diff.updated, ...ma50Diff.appended]) {
+            ma50Series.update({ time: point.time as UTCTimestamp, value: point.value });
+          }
+        } catch {
+          needsFullResync = true;
+        }
       }
 
-      const ma50Diff = diffTimeSeries(renderedMa50Ref.current, ma50, (a, b) => a.value === b.value);
-      for (const point of [...ma50Diff.updated, ...ma50Diff.appended]) {
-        ma50Series.update({ time: point.time as UTCTimestamp, value: point.value });
+      if (needsFullResync) {
+        // Only this fallback ever forces the visible range — reading it
+        // right before setData and restoring it right after keeps the
+        // chart from jumping, while leaving the "never force a range on a
+        // normal update" rule (issue #449 item 2) untouched everywhere else.
+        const visibleLogicalRange = chartRef.current?.timeScale().getVisibleLogicalRange() ?? null;
+        candleSeries.setData(points.map(pointToSeriesDatum));
+        ma20Series.setData(ma20.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })));
+        ma50Series.setData(ma50.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })));
+        volumeSeries.setData(
+          candles.map((candle) => ({ time: candle.time as UTCTimestamp, value: candle.volume, color: volumeBarColor(candle) })),
+        );
+        if (visibleLogicalRange) {
+          chartRef.current?.timeScale().setVisibleLogicalRange(visibleLogicalRange);
+        }
       }
     }
 

@@ -124,11 +124,48 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain('all: "ALL"');
   });
 
-  it("never calls fitContent or setVisibleLogicalRange to force a visible window — bar width is fixed via barSpacing instead (issue #449 item 2: the 3x-wide-candle defect)", async () => {
+  it("never calls fitContent to force a visible window — bar width is fixed via barSpacing instead (issue #449 item 2: the 3x-wide-candle defect)", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).not.toContain("fitContent(");
-    expect(component).not.toContain("setVisibleLogicalRange(");
     expect(component).not.toContain("resolveInitialVisibleRange");
+  });
+
+  it("only calls setVisibleLogicalRange once, to restore the user's prior view immediately after the crash-safe full-resync fallback — never on the normal setData or incremental-update paths (issue #451 follow-up)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    const occurrences = component.match(/setVisibleLogicalRange\(/g) ?? [];
+    expect(occurrences.length).toBe(1);
+
+    const resyncStart = component.indexOf("if (needsFullResync) {");
+    expect(resyncStart).toBeGreaterThan(-1);
+    const readIndex = component.indexOf(
+      "const visibleLogicalRange = chartRef.current?.timeScale().getVisibleLogicalRange() ?? null;",
+    );
+    const restoreIndex = component.indexOf("chartRef.current?.timeScale().setVisibleLogicalRange(visibleLogicalRange);");
+    expect(readIndex).toBeGreaterThan(resyncStart);
+    expect(restoreIndex).toBeGreaterThan(readIndex);
+  });
+
+  it("routes a trade landing in a bucket older than the whitespace timeline's current tail to a full resync instead of an out-of-order series.update() (issue #451 follow-up crash fix)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain(
+      "renderedPointsRef.current.length > 0 ? renderedPointsRef.current[renderedPointsRef.current.length - 1].time : null",
+    );
+    expect(component).toContain(
+      "lastRenderedTime !== null && pointsDiff.updated.some((point) => point.time < lastRenderedTime)",
+    );
+    expect(component).toContain("let needsFullResync = hasOutOfOrderUpdate;");
+  });
+
+  it("also catches an update() throw the pre-check doesn't anticipate and falls back the same way, instead of letting it break the effect", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    const elseStart = component.indexOf("if (!needsFullResync) {");
+    expect(elseStart).toBeGreaterThan(-1);
+    const tryStart = component.indexOf("try {", elseStart);
+    const catchIndex = component.indexOf("} catch {", tryStart);
+    const resyncFlagSet = component.indexOf("needsFullResync = true;", catchIndex);
+    expect(tryStart).toBeGreaterThan(elseStart);
+    expect(catchIndex).toBeGreaterThan(tryStart);
+    expect(resyncFlagSet).toBeGreaterThan(catchIndex);
   });
 
   it("only calls series.setData on first load or a timeframe change; every other update diffs and calls series.update over the whitespace-inclusive timeline (issue #451 item 2)", async () => {

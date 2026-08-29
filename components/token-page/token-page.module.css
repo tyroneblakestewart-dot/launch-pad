@@ -58,16 +58,21 @@
    min-width canvas.
 
    The design reference sizes its price-figure and link-chip controls at
-   26-34px tall (issue #451's own header markup). This codebase's
-   `.headerFigureToggle`/`.headerLinkChip`/`.backLink` are locked at a
-   >=44px touch target by tests/token-page-view-ui.test.ts's own
-   accessibility assertion, predating this issue — per CLAUDE.md rule 8 that
-   test is left alone rather than loosened to match the design exactly.
-   Stacking two 44px-tall rows (price figure, then link chips beneath, as
-   the design shows) can't shrink meaningfully, so `.headerFigureBlock`
-   below places them side by side in one row instead — the biggest lever
-   left for hitting "about 35% shorter" without weakening that touch-target
-   rule. */
+   26-34px tall (issue #451's own header markup). Per review of issue #451's
+   PR, the earlier >=44px-unconditionally rule (which forced the price
+   figure and link chips into one side-by-side row to avoid doubling the
+   band's height) is now scoped to a pointer-coarse query only, at the
+   bottom of this file (deliberately kept out of this comment block's own
+   text so a plain string search for the layout breakpoints below still
+   finds those first) — a mouse/trackpad ("fine" pointer) desktop uses the
+   design's compact stacked proportions directly on `.backLink`/
+   `.headerLinkChip`/`.headerFigureToggle`, while a touch device (mobile
+   Safari, CLAUDE.md rule 7's primary target, always reports a coarse
+   pointer) still gets a real >=44px tap target and the side-by-side
+   `.headerFigureBlock` layout that keeps that larger sizing from doubling
+   the header's height. tests/token-page-view-ui.test.ts's accessibility
+   assertion checks these three selectors inside that query instead of
+   unconditionally. */
 
 .headerBand {
   display: flex;
@@ -207,11 +212,9 @@
    targets don't stack into ~100px of height. */
 .headerFigureBlock {
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
   margin-left: auto;
 }
 
@@ -229,7 +232,6 @@
   background: none;
   padding: 0;
   cursor: pointer;
-  min-height: 44px;
 }
 
 .headerFigureLabel {
@@ -258,12 +260,11 @@
 .headerLinkChip {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
   font: 600 9.5px/1 "JetBrains Mono", monospace;
   color: #a8aaa9;
   border: 1px solid rgba(255, 255, 255, 0.09);
   background: rgba(255, 255, 255, 0.03);
-  padding: 0 10px;
+  padding: 8px 10px;
   border-radius: 7px;
   text-decoration: none;
 }
@@ -291,16 +292,16 @@
 }
 
 .backLink {
-  width: 44px;
-  height: 44px;
+  width: 32px;
+  height: 32px;
   flex: none;
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   background: rgba(255, 255, 255, 0.03);
   color: #a8aaa9;
   display: grid;
   place-items: center;
-  font-size: 17px;
+  font-size: 15px;
   text-decoration: none;
 }
 
@@ -1687,5 +1688,39 @@
   font: 700 11px "JetBrains Mono", monospace;
   letter-spacing: 0.03em;
   cursor: pointer;
+}
+
+/* Touch-only >=44px targets for the header band (issue #451 follow-up):
+   scoped to (pointer: coarse) so a real touch device (mobile Safari,
+   CLAUDE.md rule 7's primary target) keeps a safe tap area, while a
+   mouse/trackpad ("fine" pointer) desktop uses the design's compact
+   proportions set on `.backLink`/`.headerLinkChip`/`.headerFigureToggle`
+   above. `.headerFigureBlock` also goes back to a side-by-side row here
+   specifically, since stacking two 44px-tall rows would double the band's
+   height on the exact devices this rule targets. Placed at the end of the
+   file, after every `(min-width: ...)` layout breakpoint, so it never
+   changes which media query the mobile-first layout tests treat as "the
+   first breakpoint". */
+@media (pointer: coarse) {
+  .backLink {
+    width: 44px;
+    height: 44px;
+  }
+
+  .headerLinkChip {
+    min-height: 44px;
+  }
+
+  .headerFigureToggle {
+    min-height: 44px;
+  }
+
+  .headerFigureBlock {
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
 }
 
