@@ -32,7 +32,7 @@ import type { BondingCurveGraduationStatus } from "@/lib/bonding-curve-status";
 import { CHAIN_CONFIG, ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { notifyTokenTradeConfirmed } from "@/lib/token-trade-events";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
-import { formatFeeNote, shortenAddress } from "@/lib/token-page-format";
+import { formatFeeNote, formatNativeAmountSixSigFigsTrimmed, shortenAddress } from "@/lib/token-page-format";
 import type { TokenTrade } from "@/lib/token-trade-types";
 import type { TokenCurveStatus } from "@/lib/use-token-curve-status";
 import { TokenStatsAuditPanel } from "./token-stats-audit-panel";
@@ -366,6 +366,22 @@ export function TokenLeftColumn({
     }
   }
 
+  // A past trade's "Trade confirmed." hint is only meaningful for the trade
+  // it was reported for — once the user changes the side or the amount
+  // (typing, a preset, or a new quote it triggers), it stops describing
+  // what's on screen and must clear (issue #451 item 5). `submitTrade`
+  // itself still sets `amount` directly (not through this helper) after a
+  // genuine success, so the just-shown confirmation survives that reset.
+  function updateAmount(next: string) {
+    setAmount(next);
+    setStatusMessage("");
+  }
+
+  function changeSide(next: Side) {
+    setSide(next);
+    setStatusMessage("");
+  }
+
   function applyPreset(preset: string) {
     if (side === "buy") {
       if (preset === "MAX") {
@@ -380,16 +396,16 @@ export function TokenLeftColumn({
             ? grossNativeInForExactNet(curveView.remainingToGraduateWei)
             : null;
         const cap = graduationCap !== null && graduationCap < balanceCap ? graduationCap : balanceCap;
-        setAmount(nativeBalance !== null ? formatEther(cap) : "");
+        updateAmount(nativeBalance !== null ? formatEther(cap) : "");
       } else {
-        setAmount(preset);
+        updateAmount(preset);
       }
       return;
     }
     if (tokenBalance === null || curveView.kind !== "ready") return;
     const percent = preset === "MAX" ? 100 : Number(preset.replace("%", ""));
     const portion = (tokenBalance * BigInt(percent)) / 100n;
-    setAmount(formatUnits(portion, curveView.decimals));
+    updateAmount(formatUnits(portion, curveView.decimals));
   }
 
   async function submitTrade() {
@@ -539,14 +555,14 @@ export function TokenLeftColumn({
                 <button
                   type="button"
                   className={`${styles.pillButton} ${styles.buySellTab} ${side === "buy" ? styles.pillButtonActive : ""}`}
-                  onClick={() => setSide("buy")}
+                  onClick={() => changeSide("buy")}
                 >
                   Buy
                 </button>
                 <button
                   type="button"
                   className={`${styles.pillButton} ${styles.buySellTab} ${side === "sell" ? styles.pillButtonActive : ""}`}
-                  onClick={() => setSide("sell")}
+                  onClick={() => changeSide("sell")}
                 >
                   Sell
                 </button>
@@ -578,7 +594,7 @@ export function TokenLeftColumn({
                 <input
                   className={styles.amountInput}
                   value={amount}
-                  onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ""))}
+                  onChange={(event) => updateAmount(event.target.value.replace(/[^0-9.]/g, ""))}
                   inputMode="decimal"
                   placeholder="0.0"
                 />
@@ -711,7 +727,9 @@ export function TokenLeftColumn({
               <div className={styles.feePanelRow}>
                 <span className={styles.mutedNote}>Claimable balance</span>
                 <span className={styles.feeClaimValue}>
-                  {claimableFeeWei !== null ? `${formatEther(claimableFeeWei)} ETH` : "—"}
+                  {claimableFeeWei !== null
+                    ? `${formatNativeAmountSixSigFigsTrimmed(Number(formatEther(claimableFeeWei)))} ETH`
+                    : "—"}
                 </span>
               </div>
               <button

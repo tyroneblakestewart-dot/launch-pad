@@ -131,16 +131,23 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).not.toContain("resolveInitialVisibleRange");
   });
 
-  it("only calls series.setData on first load or a timeframe change; every other update diffs and calls series.update", async () => {
+  it("only calls series.setData on first load or a timeframe change; every other update diffs and calls series.update over the whitespace-inclusive timeline (issue #451 item 2)", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain("resolveChartInterval(timeframe, trades, decimals ?? DEFAULT_TOKEN_DECIMALS)");
     expect(component).toContain("bucketTradesIntoCandles(trades, resolvedInterval, decimals ?? DEFAULT_TOKEN_DECIMALS)");
-    expect(component).toContain(
-      "renderedCandlesRef.current.length === 0 || renderedTimeframeRef.current !== timeframe",
-    );
-    expect(component).toContain("candleSeries.setData(candles.map(candleToBar));");
+    expect(component).toContain("buildChartSeriesPoints(candles, resolvedInterval, nowTick)");
+    expect(component).toContain("!hasRenderedOnceRef.current || renderedTimeframeRef.current !== timeframe");
+    expect(component).toContain("candleSeries.setData(points.map(pointToSeriesDatum));");
+    expect(component).toContain("diffChartSeriesPoints(renderedPointsRef.current, points)");
+    expect(component).toContain("candleSeries.update(pointToSeriesDatum(point));");
+    // Volume stays keyed off real candles only, unaffected by whitespace.
     expect(component).toContain("diffCandles(renderedCandlesRef.current, candles)");
-    expect(component).toContain("candleSeries.update(candleToBar(candle));");
+  });
+
+  it("advances the whitespace-inclusive timeline with the clock via a coarse timer, independent of new trades arriving", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain("useState(() => Math.floor(Date.now() / 1000))");
+    expect(component).toContain("window.setInterval(() => setNowTick(Math.floor(Date.now() / 1000)), 30_000)");
   });
 
   it("scrolls to real time after setData instead of forcing a visible logical range (issue #449 item 2)", async () => {
@@ -168,6 +175,18 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain('import { formatNativePriceSixSigFigs, formatSignedPercent } from "@/lib/token-page-format"');
     expect(component).toContain('type: "custom"');
     expect(component).toContain("formatter: (price: number) => formatNativePriceSixSigFigs(price)");
+  });
+
+  it("re-derives minMove from the data's own magnitude and re-applies it only when it changes, instead of a fixed value below real testnet prices (issue #451 item 1)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain("computeChartMinMove,");
+    expect(component).toContain('from "@/lib/token-chart-tools"');
+    expect(component).toContain(
+      "candles.length > 0 ? Math.max(...candles.map((candle) => candle.high)) : startingPriceNativePerToken",
+    );
+    expect(component).toContain("computeChartMinMove(maxPrice)");
+    expect(component).toContain("if (minMove !== appliedMinMoveRef.current) {");
+    expect(component).toContain("candleSeries.applyOptions({");
   });
 
   it("draws a dashed lime last-price line via the series' built-in price line, so the crosshair/axis tag share one formatter automatically", async () => {

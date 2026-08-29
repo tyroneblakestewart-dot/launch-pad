@@ -142,6 +142,77 @@ export function diffCandles(previous: readonly Candle[], next: readonly Candle[]
   );
 }
 
+/** A gap bucket with no trade — lightweight-charts' WhitespaceData shape (time only, no OHLC). */
+export type ChartWhitespacePoint = { time: number };
+
+/** What the chart's candlestick series actually renders: a real candle, or a whitespace gap-filler. */
+export type ChartSeriesPoint = Candle | ChartWhitespacePoint;
+
+export function isCandlePoint(point: ChartSeriesPoint): point is Candle {
+  return "open" in point;
+}
+
+/** How many whitespace bars to pad in before the first real candle, so the axis has real structure on first load even with very few trades (issue #451 item 2). */
+const PRE_TRADE_PADDING_BARS = 100;
+
+/**
+ * Builds the exact linear timeline the chart's candlestick series should
+ * render (issue #451 item 2): every real candle from `bucketTradesIntoCandles`
+ * in its own slot, plus a whitespace point for every bucket that has no
+ * trade — from ~`PRE_TRADE_PADDING_BARS` bars before the first real candle
+ * (or before "now" when there is no trade yet) through the current bucket,
+ * so a trade from an hour ago is never placed directly beside a trade from
+ * seconds ago (which previously collapsed the time axis to a single label),
+ * and the still-open current bucket is always present even with zero trades
+ * in it. Never synthesizes a price — a gap bucket is whitespace, not a
+ * flat/interpolated candle. `nowUnixSeconds` is a parameter rather than this
+ * pure function reaching for the system clock, so the caller controls when
+ * "now" advances.
+ */
+export function buildChartSeriesPoints(
+  candles: readonly Candle[],
+  interval: CandleInterval,
+  nowUnixSeconds: number,
+): ChartSeriesPoint[] {
+  const intervalSeconds = CANDLE_INTERVAL_SECONDS[interval];
+  const currentBucketTime = Math.floor(nowUnixSeconds / intervalSeconds) * intervalSeconds;
+
+  const candleByTime = new Map(candles.map((candle) => [candle.time, candle]));
+  const earliestTime = candles.length > 0 ? candles[0].time : currentBucketTime;
+  const latestCandleTime = candles.length > 0 ? candles[candles.length - 1].time : currentBucketTime;
+  const startTime = earliestTime - PRE_TRADE_PADDING_BARS * intervalSeconds;
+  const endTime = Math.max(currentBucketTime, latestCandleTime);
+
+  const points: ChartSeriesPoint[] = [];
+  for (let time = startTime; time <= endTime; time += intervalSeconds) {
+    points.push(candleByTime.get(time) ?? { time });
+  }
+  return points;
+}
+
+/**
+ * diffTimeSeries specialised for the whitespace-inclusive chart timeline
+ * (issue #451 item 2). A whitespace-to-candle transition (a trade lands in a
+ * bucket that was previously empty) always counts as a change — it's
+ * reported as `updated` when the slot already existed in `previous`, so the
+ * chart's live-update path calls `series.update()` on that slot the same
+ * way it would for a mutated real candle.
+ */
+export function diffChartSeriesPoints(
+  previous: readonly ChartSeriesPoint[],
+  next: readonly ChartSeriesPoint[],
+): { updated: ChartSeriesPoint[]; appended: ChartSeriesPoint[] } {
+  return diffTimeSeries(previous, next, chartSeriesPointsEqual);
+}
+
+function chartSeriesPointsEqual(a: ChartSeriesPoint, b: ChartSeriesPoint): boolean {
+  const aIsCandle = isCandlePoint(a);
+  const bIsCandle = isCandlePoint(b);
+  if (aIsCandle !== bIsCandle) return false;
+  if (!aIsCandle || !bIsCandle) return true;
+  return a.open === b.open && a.high === b.high && a.low === b.low && a.close === b.close && a.volume === b.volume;
+}
+
 export type MovingAveragePoint = { time: number; value: number };
 
 /**
