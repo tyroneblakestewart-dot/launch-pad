@@ -24,6 +24,20 @@
   min-width: 0;
 }
 
+/* Full-screen route (issue #443 part 1): AppNavigation's sidebar itself is
+   no longer mounted on this route (app/token/[chain]/[address]/layout.tsx),
+   but its CSS module is still bundled here via the shared
+   MobileBottomNavigation import, including its `body { padding-left: 238px
+   }` desktop-sidebar offset — that rule targets `body` globally, not a
+   conditionally-rendered component, so removing the JSX alone doesn't
+   remove it. `.token-page-full-screen` is a deliberately plain (non-module)
+   marker class on this page's `<main>`, matching the `:has(.public-
+   generated-site)` / `:has(.full-generated-page-container)` pattern
+   components/app-navigation.module.css already uses for the same problem. */
+:global(body:has(.token-page-full-screen)) {
+  padding-left: 0 !important;
+}
+
 /* Consistent, visible keyboard focus ring across every interactive control
    on the page (issue #427) — the design's dark panels have no border by
    default to hang a browser's native focus outline on. */
@@ -34,13 +48,18 @@
   outline-offset: 2px;
 }
 
-/* ---- top bar ---- */
+/* ---- header band (issue #443 part 1) ----
+   Full-width band replacing the old `.topbar`: back link, artwork, name/
+   ticker/live/holders/age/chain, the graduation block, then the price/mcap
+   toggle and link chips. Wraps to multiple rows below the design's 1120px
+   reference width instead of clipping — this app's primary target is
+   mobile Safari (CLAUDE.md rule 7), unlike the design reference's fixed
+   min-width canvas. */
 
-.topbar {
+.headerBand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 14px;
   flex-wrap: wrap;
   padding: 10px 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -48,11 +67,209 @@
   background: rgba(18, 21, 19, 0.99);
 }
 
-.topbarLeft {
+.headerArtworkTile {
+  position: relative;
+  width: 50px;
+  height: 50px;
+  flex: none;
+  border-radius: 11px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  place-items: center;
+}
+
+.headerArtworkImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.headerArtworkInitial {
+  font-family: "Archivo Black", sans-serif;
+  font-size: 20px;
+  color: #4a4f49;
+}
+
+.headerDropArt {
+  min-height: 44px;
+  cursor: pointer;
+  border: 1px dashed rgba(198, 245, 62, 0.4);
+  border-radius: 11px;
+  background: rgba(198, 245, 62, 0.06);
+  color: #c6f53e;
+  font: 700 10px/1.4 "JetBrains Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.headerIdentity {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.headerTitleRow {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
+  flex-wrap: wrap;
   min-width: 0;
+}
+
+.headerName {
+  font-family: "Archivo Black", sans-serif;
+  font-size: 20px;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.headerTicker {
+  font: 700 12px/1 "JetBrains Mono", monospace;
+  color: #929693;
+  letter-spacing: 0.04em;
+}
+
+.headerMetaRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  font: 600 10px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.06em;
+  color: #929693;
+  text-transform: uppercase;
+}
+
+.headerMetaDot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #4a4f49;
+  flex: none;
+}
+
+.headerGraduation {
+  flex: 1;
+  min-width: 190px;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.headerGraduationTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.headerGraduationLabel {
+  font: 700 9px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #929693;
+}
+
+.headerGraduationValue {
+  font: 700 10.5px/1 "JetBrains Mono", monospace;
+  color: #c6f53e;
+  white-space: nowrap;
+}
+
+.headerGraduationRemaining {
+  font: 600 9.5px/1 "JetBrains Mono", monospace;
+  color: #6f746e;
+}
+
+.headerFigureBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.headerFigureRow {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.headerFigureToggle {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.headerFigureLabel {
+  font: 700 8.5px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.1em;
+  color: #929693;
+  white-space: nowrap;
+}
+
+.headerFigureValue {
+  font-family: "Archivo Black", sans-serif;
+  font-size: 21px;
+  letter-spacing: -0.02em;
+  color: #f4f7f1;
+  white-space: nowrap;
+}
+
+.headerLinkChips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.headerLinkChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font: 600 10.5px/1 "JetBrains Mono", monospace;
+  color: #a8aaa9;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 6px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+}
+
+.headerLinkChip:hover {
+  border-color: rgba(198, 245, 62, 0.5);
+  color: #c6f53e;
+}
+
+.headerLinkChipDisabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.headerLinkChipDisabledGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.headerLinkChipNote {
+  font: 600 8px/1 "JetBrains Mono", monospace;
+  color: #6f746e;
 }
 
 .backLink {
@@ -72,36 +289,6 @@
 .backLink:hover {
   border-color: rgba(198, 245, 62, 0.5);
   color: #c6f53e;
-}
-
-.topbarIdentity {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.titleRow {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.tokenName {
-  margin: 0;
-  font-family: "Archivo Black", sans-serif;
-  font-size: 26px;
-  letter-spacing: -0.04em;
-  text-transform: uppercase;
-  line-height: 1;
-}
-
-.tokenTicker {
-  font: 700 13px/1 "JetBrains Mono", monospace;
-  color: #c6f53e;
-  letter-spacing: 0.06em;
 }
 
 .liveBadge {
@@ -136,58 +323,21 @@
   }
 }
 
-.topbarLinks {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.topbarLink {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  font: 500 12px/1 "JetBrains Mono", monospace;
-  color: #a8aaa9;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.03);
-  padding: 9px 12px;
-  border-radius: 10px;
-  text-decoration: none;
-}
-
-.topbarLink:hover {
-  border-color: rgba(198, 245, 62, 0.5);
-  color: #c6f53e;
-}
-
-/* Price sits beside the name/ticker/live badge as one identity header
-   (issue #427) instead of the old large centred price panel this reuses
-   `.priceRow`/`.priceValue`/`.priceChange` from — sized down for the
-   topbar's compact context. */
-.topbarIdentity .priceValue {
-  font-size: 22px;
-}
-
-.topbarIdentity .priceChange {
-  font-size: 12px;
-  padding: 4px 8px;
-}
-
-/* ---- grid (mobile-first, issue #427; rearranged for desktop by #429) ----
+/* ---- grid (mobile-first, issue #427; rearranged for #443 part 1) ----
    Every panel below is a direct grid item of `.grid` — there are no
-   per-column wrapper divs — because the identity/about panels have to sit
-   in a different desktop column than the swap/creator-fee panels while
-   *still* interleaving between them in #427's required mobile order (swap →
-   identity/stats → creator fees → trade terminals → about → chart →
-   activity). A nested flex column per side can only reorder items within
-   its own box; it can't relocate one of its items into a different visual
-   column at a wider breakpoint without moving markup between components, so
-   column placement is resolved entirely here via `grid-column` and `order`
-   on each panel's own class. Base rules below target the 390px primary
-   target: a single stacked column in the order above. Wider breakpoints
-   (min-width, not max-width) progressively assign each panel to its #429
-   desktop column and reset `order` to the column-local sequence. */
+   per-column wrapper divs — because the chart has to interleave between the
+   swap and stats panels in the mobile order (header → swap → chart → stats
+   → tabs) even though swap/stats/fees share one sticky desktop column. A
+   nested flex column per side can only reorder items within its own box; it
+   can't relocate one of its items into a different visual column at a wider
+   breakpoint without moving markup between components, so column placement
+   is resolved entirely here via `grid-column` and `order` on each panel's
+   own class. Base rules below target the 390px primary target: a single
+   stacked column in the order above. The wider (min-width, not max-width)
+   breakpoint assigns swap/stats/fees to the sticky left column and the
+   chart+tabs to the rest — issue #443 part 1 removes the old three-column
+   (#429) desktop layout entirely, since identity/about no longer have a
+   column of their own. */
 
 .grid {
   display: grid;
@@ -199,12 +349,13 @@
   min-width: 0;
 }
 
-/* Wraps the swap panel (or its graduated/fallback variant) + creator-fee
-   panel so they can move and stick together as one desktop column (#429)
-   while staying invisible to layout on mobile — `display: contents` makes
-   `.swapPanel`/`.feePanel` behave as direct grid-item siblings of
-   `.identityPanel`, so the mobile order below still interleaves them
-   correctly even though they're nested one level deeper in the DOM. */
+/* Wraps the swap panel (or its graduated/fallback variant), the Stats/Audit
+   panel and the creator-fee panel so they can move and stick together as
+   one desktop column while staying invisible to layout on mobile —
+   `display: contents` makes them behave as direct grid-item siblings of
+   `.chartPlaceholder`, so the mobile order below still interleaves the
+   chart between swap and stats even though they're nested one level deeper
+   in the DOM. */
 .leftGroup {
   display: contents;
 }
@@ -217,42 +368,35 @@
   order: 1;
 }
 
-.identityPanel {
+.chartPlaceholder {
   order: 2;
 }
 
-.feePanel {
+.statsPanel {
   order: 3;
 }
 
-.terminalPanel {
+.feePanel {
   order: 4;
 }
 
-.aboutPanel {
-  order: 5;
-}
-
-.chartPlaceholder {
-  order: 6;
-}
-
 .activityPanel {
-  order: 7;
+  order: 5;
 }
 
 @media (min-width: 881px) {
   .grid {
-    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-columns: 300px minmax(0, 1fr);
     align-items: start;
   }
 
   /* `.leftGroup` stops being transparent to layout and becomes the actual
-     sticky left column instead — issue #429 moves the identity panel out
-     of this column, but the swap + creator-fee panels stay reachable while
-     scrolling exactly as the old `.left` column was (issue #427). `.grid`'s
-     own `align-items: start` (set just above) keeps this from stretching to
-     the tallest sibling, which sticky positioning requires. */
+     sticky left column instead, in swap → stats → fees order (issue #443
+     part 1 item 4) — the chart and its tabs fill the rest of the width the
+     old three-column (#429) layout split between a centre and a right
+     column. `.grid`'s own `align-items: start` (set just above) keeps this
+     from stretching to the tallest sibling, which sticky positioning
+     requires. */
   .leftGroup {
     display: flex;
     flex-direction: column;
@@ -264,6 +408,7 @@
   }
 
   .swapPanel,
+  .statsPanel,
   .feePanel {
     order: initial;
   }
@@ -280,45 +425,6 @@
   .activityPanel {
     order: 2;
   }
-
-  /* Identity card + About panel move to the right column (issue #429),
-     directly adjacent to each other; trade-terminal links (not part of the
-     issue's named arrangement) follow underneath rather than sitting
-     between them. Below the three-column breakpoint there's no third
-     column yet, so this group spans full width in its own row underneath
-     the swap/chart row, matching the old `.right` column's behaviour. */
-  .identityPanel,
-  .aboutPanel,
-  .terminalPanel {
-    grid-column: 1 / -1;
-  }
-
-  .identityPanel {
-    order: 3;
-  }
-
-  .aboutPanel {
-    order: 4;
-  }
-
-  .terminalPanel {
-    order: 5;
-  }
-}
-
-@media (min-width: 1181px) {
-  .grid {
-    grid-template-columns: 300px minmax(0, 1fr) 330px;
-  }
-
-  /* True three-column layout (issue #429): identity card + About + trade
-     terminals move into their own right-hand column instead of spanning
-     full width below. */
-  .identityPanel,
-  .aboutPanel,
-  .terminalPanel {
-    grid-column: 3;
-  }
 }
 
 /* ---- generic panel chrome ---- */
@@ -333,44 +439,7 @@
   gap: 14px;
 }
 
-/* ---- identity panel ---- */
-
-.artwork {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  border-radius: 16px;
-  overflow: hidden;
-  border: 1px solid rgba(198, 245, 62, 0.22);
-  box-shadow: inset 0 0 34px rgba(198, 245, 62, 0.05);
-  display: grid;
-  place-items: center;
-  background: rgba(255, 255, 255, 0.02);
-  color: #6f746e;
-  font: 500 11px "JetBrains Mono", monospace;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-.identityHeader {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.identityTopRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.identityName {
-  font-family: "Archivo Black", sans-serif;
-  font-size: 18px;
-  letter-spacing: -0.03em;
-  text-transform: uppercase;
-}
+/* ---- header band identity chips (issue #443 part 1) ---- */
 
 .chainBadge {
   font: 500 10px/1 "JetBrains Mono", monospace;
@@ -382,90 +451,6 @@
   padding: 6px 8px;
   border-radius: 999px;
   white-space: nowrap;
-}
-
-.copyButton {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  min-height: 44px;
-  cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 12px;
-  padding: 10px 12px;
-  font: 500 12px/1 "JetBrains Mono", monospace;
-  color: #a8aaa9;
-}
-
-.copyButton:hover {
-  border-color: rgba(198, 245, 62, 0.5);
-  color: #c6f53e;
-}
-
-.copyButtonLabel {
-  color: #c6f53e;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.statsGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1px;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 14px;
-  overflow: hidden;
-}
-
-.statCell {
-  background: rgba(10, 11, 9, 0.75);
-  padding: 11px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.statLabel {
-  font: 500 9.5px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #929693;
-}
-
-.statValue {
-  font-family: "Archivo Black", sans-serif;
-  font-size: 17px;
-  letter-spacing: -0.03em;
-}
-
-.graduation {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-
-.graduationHeader {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.graduationLabel {
-  font: 500 9.5px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #929693;
-}
-
-.graduationValue {
-  font: 700 12px/1 "JetBrains Mono", monospace;
-  color: #c6f53e;
 }
 
 .track {
@@ -480,15 +465,6 @@
   height: 100%;
   background: linear-gradient(90deg, #c6f53e, #91f0b6);
   box-shadow: 0 0 18px rgba(198, 245, 62, 0.4);
-}
-
-.graduationFooter {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font: 500 11px/1 "JetBrains Mono", monospace;
-  color: #929693;
 }
 
 .mutedNote {
@@ -853,6 +829,201 @@
   text-decoration: none;
 }
 
+.feeNote {
+  margin: 0;
+  text-align: center;
+  font: 600 10px/1.5 "JetBrains Mono", monospace;
+  color: #6f746e;
+}
+
+/* ---- Stats/Audit panel (issue #443 part 1) ---- */
+
+.statsPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.statsWindowGroup {
+  display: flex;
+  gap: 4px;
+}
+
+.statsBody {
+  display: flex;
+  flex-direction: column;
+}
+
+.statsPairRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.statsPairSide {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.statsPairSideRight {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.statsPairLabel {
+  font: 700 8.5px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #929693;
+}
+
+.statsPairValueLime {
+  font: 700 13px/1 "JetBrains Mono", monospace;
+  color: #c6f53e;
+}
+
+.statsPairValueDown {
+  font: 700 13px/1 "JetBrains Mono", monospace;
+  color: #ff5f56;
+}
+
+.statsPairValueNeutral {
+  font: 700 13px/1 "JetBrains Mono", monospace;
+  color: #e6ebe4;
+}
+
+.statsSplitBarTrack {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 3px;
+  height: 3px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.statsSplitBarLeft {
+  display: block;
+  height: 100%;
+  background: #c6f53e;
+}
+
+.statsSplitBarRight {
+  display: block;
+  height: 100%;
+  background: #ff5f56;
+}
+
+.holderBreakdown {
+  margin-top: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(10, 11, 9, 0.5);
+  overflow: hidden;
+}
+
+.holderBreakdownHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 11px 13px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.holderBreakdownSummary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 700 11px/1 "JetBrains Mono", monospace;
+  color: #e6ebe4;
+}
+
+.chevron,
+.chevronOpen {
+  display: inline-block;
+  color: #929693;
+  transition: transform 0.14s;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+.holderBreakdownRows {
+  padding: 0 13px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+}
+
+.holderBreakdownRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 0;
+}
+
+.auditBody {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.auditRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 12.5px;
+  color: #d9dfd6;
+}
+
+.auditRowUnverified {
+  border-color: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.015);
+  color: #6f746e;
+}
+
+.auditCheck {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(198, 245, 62, 0.4);
+  background: rgba(198, 245, 62, 0.1);
+  color: #c6f53e;
+  font-size: 11px;
+}
+
+.auditDash {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  color: #8d918c;
+  font: 800 11px/1 "JetBrains Mono", monospace;
+}
+
 /* ---- live chart (centre column) ----
    The embedded Dexscreener chart was removed (issue #427): Dexscreener
    can't index this chain, so it only ever showed a "chart doesn't work
@@ -942,20 +1113,6 @@
   font-size: 12.5px;
   line-height: 1.6;
   max-width: 32ch;
-}
-
-.priceRow {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.priceValue {
-  font-family: "Archivo Black", sans-serif;
-  font-size: 40px;
-  line-height: 1;
-  letter-spacing: -0.045em;
 }
 
 .priceChange {
@@ -1095,7 +1252,7 @@
   font: 500 12px/1.6 "JetBrains Mono", monospace;
 }
 
-/* ---- right column ---- */
+/* ---- section label, shared by several panels ---- */
 
 .sectionLabel {
   font: 500 9.5px/1 "JetBrains Mono", monospace;
@@ -1104,50 +1261,15 @@
   color: #929693;
 }
 
-.terminalGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
+/* ---- About tab (issue #443 part 1 — moved here from the removed
+   TokenRightColumn; no longer a standalone `.panel`, just this tab's own
+   content padding inside `.activityPanel`) ---- */
 
-.terminalCard {
+.aboutPanel {
   display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(10, 11, 9, 0.75);
-  border-radius: 13px;
-  color: #d4d8d3;
-  text-decoration: none;
-}
-
-.terminalCard:hover {
-  border-color: rgba(198, 245, 62, 0.5);
-  background: rgba(198, 245, 62, 0.05);
-}
-
-.terminalMark {
-  width: 30px;
-  height: 30px;
-  flex: none;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  background: rgba(198, 245, 62, 0.1);
-  border: 1px solid rgba(198, 245, 62, 0.28);
-  color: #c6f53e;
-  font-family: "Archivo Black", sans-serif;
-  font-size: 13px;
-}
-
-.terminalName {
-  font: 700 12.5px/1 Archivo, sans-serif;
-}
-
-.terminalNote {
-  font: 500 9.5px/1 "JetBrains Mono", monospace;
-  color: #6f746e;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
 }
 
 .storyText {

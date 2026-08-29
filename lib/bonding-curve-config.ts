@@ -55,12 +55,40 @@ export const HOODLUMS_BONDING_CURVE_FEES_ABI = parseAbi([
 /**
  * Minimal ERC-20 slice needed to sell curve tokens: `sell()` pulls tokens via
  * `transferFrom`, so the swap panel must read/raise the curve's allowance
- * before calling it.
+ * before calling it. `totalSupply` was added for issue #443 part 1's market
+ * cap figure (last price × total supply).
  */
 export const ERC20_MIN_ABI = parseAbi([
   "function allowance(address owner, address spender) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)",
   "function balanceOf(address account) view returns (uint256)",
+  "function totalSupply() view returns (uint256)",
+]);
+
+/**
+ * Read-only slice for the token page's header band (issue #443 part 1),
+ * kept separate from `HOODLUMS_BONDING_CURVE_READ_ABI` (locked to exactly
+ * the graduation-status fields by tests/bonding-curve-config.test.ts) and
+ * from `HOODLUMS_BONDING_CURVE_TRADE_ABI`/`HOODLUMS_BONDING_CURVE_FEES_ABI`
+ * (each locked the same way by tests/bonding-curve-trade-config.test.ts).
+ * The header band reads its own independent copy of curve state — rather
+ * than sharing components/token-page/token-left-column.tsx's swap-panel
+ * state — since this issue scopes the swap panel as "unchanged internally";
+ * `initialVirtualTokenReserve`/`initialVirtualEthReserve` (for the
+ * pre-first-trade starting price) and `creator` (for the DROP ART
+ * creator check) are the two fields no other ABI slice already exposes.
+ */
+export const HOODLUMS_BONDING_CURVE_HEADER_ABI = parseAbi([
+  "function token() view returns (address)",
+  "function funded() view returns (bool)",
+  "function graduated() view returns (bool)",
+  "function realNativeReserve() view returns (uint256)",
+  "function graduationTarget() view returns (uint256)",
+  "function liquidityPool() view returns (address)",
+  "function remainingNativeToGraduate() view returns (uint256)",
+  "function creator() view returns (address)",
+  "function initialVirtualTokenReserve() view returns (uint256)",
+  "function initialVirtualEthReserve() view returns (uint256)",
 ]);
 
 /**

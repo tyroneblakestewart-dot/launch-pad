@@ -4,6 +4,8 @@ import {
   ZERO_ADDRESS,
   computeBondingCurveGraduationStatus,
   formatGraduationProgressPercent,
+  formatGraduationRemainingLabel,
+  formatGraduationSummary,
   type BondingCurveOnChainState,
 } from "../lib/bonding-curve-status";
 
@@ -128,5 +130,31 @@ describe("formatGraduationProgressPercent", () => {
   it("clamps out-of-range values instead of printing an absurd percentage", () => {
     expect(formatGraduationProgressPercent(-1n)).toBe("0.0%");
     expect(formatGraduationProgressPercent(GRADUATION_PROGRESS_BPS_MAX + 1n)).toBe("100.0%");
+  });
+});
+
+describe("formatGraduationSummary (issue #443 part 1 header band)", () => {
+  it("formats raised at 2dp, target at 1dp and progress at 0dp", () => {
+    const summary = formatGraduationSummary(3_120_000_000_000_000_000n, TARGET, 7_800n);
+    expect(summary).toBe("3.12 / 4.0 ETH · 78%");
+  });
+
+  it("formats a fresh, unfunded curve as fully zeroed", () => {
+    expect(formatGraduationSummary(0n, TARGET, 0n)).toBe("0.00 / 4.0 ETH · 0%");
+  });
+
+  it("clamps an out-of-range progress bps instead of printing an absurd percentage", () => {
+    expect(formatGraduationSummary(0n, TARGET, -1n)).toContain("· 0%");
+    expect(formatGraduationSummary(TARGET, TARGET, GRADUATION_PROGRESS_BPS_MAX + 1n)).toContain("· 100%");
+  });
+});
+
+describe("formatGraduationRemainingLabel (issue #443 part 1 header band)", () => {
+  it("formats the remaining wei amount to 2dp with a trailing label", () => {
+    expect(formatGraduationRemainingLabel(880_000_000_000_000_000n)).toBe("0.88 ETH remaining");
+  });
+
+  it("formats a fresh curve's remaining amount as the full target", () => {
+    expect(formatGraduationRemainingLabel(TARGET)).toBe("4.00 ETH remaining");
   });
 });

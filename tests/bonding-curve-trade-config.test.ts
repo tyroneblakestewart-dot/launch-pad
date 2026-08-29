@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ERC20_MIN_ABI,
   HOODLUMS_BONDING_CURVE_FEES_ABI,
+  HOODLUMS_BONDING_CURVE_HEADER_ABI,
   HOODLUMS_BONDING_CURVE_TRADE_ABI,
 } from "../lib/bonding-curve-config";
 
@@ -49,8 +50,35 @@ describe("HOODLUMS_BONDING_CURVE_FEES_ABI", () => {
 describe("ERC20_MIN_ABI", () => {
   const items = ERC20_MIN_ABI as unknown as readonly AbiItemShape[];
 
-  it("exposes exactly allowance, approve and balanceOf — the minimum sell() needs to check/raise allowance", () => {
+  it("exposes exactly allowance, approve, balanceOf and totalSupply — sell()'s allowance needs plus the header band's market-cap read (issue #443)", () => {
     const names = items.filter((item) => item.type === "function").map((item) => item.name).sort();
-    expect(names).toEqual(["allowance", "approve", "balanceOf"].sort());
+    expect(names).toEqual(["allowance", "approve", "balanceOf", "totalSupply"].sort());
+  });
+});
+
+describe("HOODLUMS_BONDING_CURVE_HEADER_ABI", () => {
+  const items = HOODLUMS_BONDING_CURVE_HEADER_ABI as unknown as readonly AbiItemShape[];
+
+  it("exposes exactly the fields the header band needs — token identity, graduation status, remaining-to-graduate, creator and the initial virtual reserves for the starting price", () => {
+    const names = items.filter((item) => item.type === "function").map((item) => item.name).sort();
+    expect(names).toEqual(
+      [
+        "token",
+        "funded",
+        "graduated",
+        "realNativeReserve",
+        "graduationTarget",
+        "liquidityPool",
+        "remainingNativeToGraduate",
+        "creator",
+        "initialVirtualTokenReserve",
+        "initialVirtualEthReserve",
+      ].sort(),
+    );
+  });
+
+  it("exposes only view functions — this is a read-only slice", () => {
+    const nonView = items.filter((item) => item.type === "function" && item.stateMutability !== "view");
+    expect(nonView).toEqual([]);
   });
 });

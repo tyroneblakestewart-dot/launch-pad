@@ -199,6 +199,9 @@ type RawTradeLog = {
     seller?: Address;
     netNativeIn?: bigint;
     netNativeOut?: bigint;
+    grossNativeIn?: bigint;
+    grossNativeOut?: bigint;
+    feeCharged?: bigint;
     tokensOut?: bigint;
     tokensIn?: bigint;
   };
@@ -256,6 +259,8 @@ function normalizeTradeLog(log: RawTradeLog, timestampByBlock: Map<bigint, numbe
       blockTimestamp,
       txHash: log.transactionHash,
       logIndex: log.logIndex,
+      grossNativeAmountRaw: log.args.grossNativeIn?.toString(),
+      feeChargedRaw: log.args.feeCharged?.toString(),
     };
   }
 
@@ -269,6 +274,8 @@ function normalizeTradeLog(log: RawTradeLog, timestampByBlock: Map<bigint, numbe
     blockTimestamp,
     txHash: log.transactionHash,
     logIndex: log.logIndex,
+    grossNativeAmountRaw: log.args.grossNativeOut?.toString(),
+    feeChargedRaw: log.args.feeCharged?.toString(),
   };
 }
 

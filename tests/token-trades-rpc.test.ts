@@ -126,6 +126,8 @@ describe("getTokenTrades", () => {
         blockTimestamp: Number(timestampForBlock(200n)),
         txHash: "0xTX1",
         logIndex: 0,
+        grossNativeAmountRaw: "10100000000000000",
+        feeChargedRaw: "100000000000000",
       },
     ]);
   });
@@ -159,6 +161,8 @@ describe("getTokenTrades", () => {
         blockTimestamp: Number(timestampForBlock(300n)),
         txHash: "0xTX2",
         logIndex: 1,
+        grossNativeAmountRaw: "4100000000000000",
+        feeChargedRaw: "100000000000000",
       },
     ]);
   });

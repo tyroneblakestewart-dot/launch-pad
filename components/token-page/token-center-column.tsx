@@ -9,12 +9,13 @@ import type { TokenMarketStats } from "@/lib/server/token-market-stats";
 import type { SupportedChain } from "@/lib/types";
 import styles from "./token-page.module.css";
 
-type ActivityTab = "trades" | "holders" | "hoodchat";
+type ActivityTab = "trades" | "holders" | "hoodchat" | "about";
 
 const TABS: { id: ActivityTab; label: string }[] = [
   { id: "trades", label: "Recent trades" },
   { id: "holders", label: "Holders" },
   { id: "hoodchat", label: "Hoodchat" },
+  { id: "about", label: "About" },
 ];
 
 function formatTokenAmount(amountRaw: string, decimals: number | null): string {
@@ -36,19 +37,27 @@ function formatTokenAmount(amountRaw: string, decimals: number | null): string {
  * one poll driving both, not two. The old `marketStats.trades` field (a
  * Blockscout LP-transfer heuristic that only ever worked for a token with a
  * Dexscreener-indexed pool, never a still-bonding curve token) is no longer
- * used here.
+ * used here. Issue #443 part 1 adds an About tab (moved here from the now
+ * fully-removed `TokenRightColumn`, whose only other content — referral
+ * trade-terminal links — was dead code on the only chain this page
+ * supports, since `tradeLinks` is always empty on Robinhood Chain Testnet)
+ * alongside Recent trades/Holders/Hoodchat, so the centre column now fills
+ * the full width the old three-column desktop layout split between centre
+ * and right.
  */
 export function TokenCenterColumn({
   chain,
   address,
   marketStats,
   curveAddress,
+  chainShortLabel,
   explorerBaseUrl,
 }: {
   chain: SupportedChain;
   address: string;
   marketStats: TokenMarketStats;
   curveAddress: string | null;
+  chainShortLabel: string;
   explorerBaseUrl: string;
 }) {
   const [tab, setTab] = useState<ActivityTab>("trades");
@@ -142,8 +151,16 @@ export function TokenCenterColumn({
               </p>
             </div>
           )
-        ) : (
+        ) : tab === "hoodchat" ? (
           <TokenChatPanel chain={chain} address={address} symbol={symbol} holders={holders} />
+        ) : (
+          <div className={styles.aboutPanel}>
+            <p className={styles.storyText}>No description has been published for this token yet.</p>
+            <div className={styles.storyTags}>
+              <span className={styles.storyTag}>Bonding curve launch</span>
+              <span className={styles.storyTag}>{chainShortLabel}</span>
+            </div>
+          </div>
         )}
       </div>
     </>
