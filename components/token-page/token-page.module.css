@@ -328,17 +328,17 @@
    Every panel below is a direct grid item of `.grid` — there are no
    per-column wrapper divs — because the chart has to interleave between the
    swap and stats panels in the mobile order (header → swap → chart → stats
-   → tabs) even though swap/stats/fees share one sticky desktop column. A
-   nested flex column per side can only reorder items within its own box; it
-   can't relocate one of its items into a different visual column at a wider
+   → tabs) even though swap/stats/fees share one desktop column. A nested
+   flex column per side can only reorder items within its own box; it can't
+   relocate one of its items into a different visual column at a wider
    breakpoint without moving markup between components, so column placement
-   is resolved entirely here via `grid-column` and `order` on each panel's
-   own class. Base rules below target the 390px primary target: a single
-   stacked column in the order above. The wider (min-width, not max-width)
-   breakpoint assigns swap/stats/fees to the sticky left column and the
-   chart+tabs to the rest — issue #443 part 1 removes the old three-column
-   (#429) desktop layout entirely, since identity/about no longer have a
-   column of their own. */
+   is resolved entirely here via `grid-column`/`grid-row` and `order` on
+   each panel's own class. Base rules below target the 390px primary
+   target: a single stacked column in the order above. The wider
+   (min-width, not max-width) breakpoint assigns swap/stats/fees to the
+   left column and the chart+tabs to the rest — issue #443 part 1 removes
+   the old three-column (#429) desktop layout entirely, since identity/about
+   no longer have a column of their own. */
 
 .grid {
   display: grid;
@@ -350,13 +350,21 @@
   min-width: 0;
 }
 
-/* Wraps the swap panel (or its graduated/fallback variant), the Stats/Audit
-   panel and the creator-fee panel so they can move and stick together as
-   one desktop column while staying invisible to layout on mobile —
-   `display: contents` makes them behave as direct grid-item siblings of
-   `.chartPlaceholder`, so the mobile order below still interleaves the
-   chart between swap and stats even though they're nested one level deeper
-   in the DOM. */
+/* `.leftGroup` (in TokenLeftColumn) and `.centerGroup` (in TokenCenterColumn)
+   exist purely to group DOM nodes inside each component's own return value
+   — React requires a single root, and each component renders more than one
+   panel. `display: contents` at every width keeps both invisible to
+   layout: their children (the swap panel, `.leftRest`, the chart panel,
+   the activity panel) behave as direct grid-item siblings of `.grid`,
+   ordered on mobile via the `order` values below and grid-placed directly
+   at the desktop breakpoint further down. An earlier attempt (issue #449
+   item 3) instead turned `.leftGroup`/`.centerGroup` themselves into nested
+   grids that shared the first row track with their parent — but that
+   nested row axis gets no extra tracks of its own beyond the one it
+   shares, so `.leftGroup`'s three children (swap, stats, fee) were all
+   clamped into that single shared track and rendered on top of each other
+   instead of stacking, and the same problem hit `.centerGroup`'s chart/tabs
+   pair. */
 .leftGroup {
   display: contents;
 }
@@ -365,18 +373,21 @@
   min-width: 0;
 }
 
-/* Wraps the chart and the activity/tabs panel (issue #447 item 2 — the #431
-   staircase repeated): without this, `.chartPlaceholder` and
-   `.activityPanel` are two separate grid items auto-placed into column 2,
-   so the tabs land in whatever row follows the chart's own row — which, at
-   a two-column grid, is sized by the tall sticky `.leftGroup` column, not
-   by the chart itself, leaving a visible gap between the chart's real
-   bottom edge and the tabs above it. Wrapping both in one `.centerGroup`
-   grid item (same `display: contents` on mobile / real flex column on
-   desktop pattern `.leftGroup` already uses) makes the tabs sit directly
-   under the chart regardless of how tall the left column is. */
 .centerGroup {
   display: contents;
+}
+
+/* New wrapper (issue #450) around the Stats/Audit panel and the creator-fee
+   panel: the actual grid item placed in row 2, column 1 below — a real
+   flex column at desktop, `display: contents` on mobile so its two
+   children stay direct grid-item siblings of the mobile stack instead,
+   exactly like `.leftGroup`/`.centerGroup` above. */
+.leftRest {
+  display: contents;
+}
+
+.leftRest > * {
+  min-width: 0;
 }
 
 .swapPanel {
@@ -402,64 +413,60 @@
 @media (min-width: 881px) {
   .grid {
     grid-template-columns: 300px minmax(0, 1fr);
-    /* One explicit row shared by both columns via `subgrid` below (issue
-       #449 item 3) — everything each column renders past that first row is
-       its own local implicit row, sized independently. */
-    grid-template-rows: auto;
-    align-items: start;
+    /* Two explicit rows (issue #450, replacing the broken nested-grid
+       attempt described above): row 1 holds the swap panel and the chart
+       panel side by side, row 2 holds `.leftRest` (Stats/Audit + creator
+       fees) and the activity/tabs panel. Grid's own default
+       `align-items: stretch` applies to row 1, so the chart panel's bottom
+       edge lines up with the swap panel's and the chart's canvas fills
+       whichever of the two is taller; the two row-2 items opt out of that
+       stretch via their own `align-self: start` below so neither is pulled
+       to match its sibling's height. */
+    grid-template-rows: auto auto;
+    gap: 14px;
   }
 
-  /* `.leftGroup` stops being transparent to layout and becomes the actual
-     sticky left column instead, in swap → stats → fees order (issue #443
-     part 1 item 4) — the chart and its tabs fill the rest of the width the
-     old three-column (#429) layout split between a centre and a right
-     column. `.grid`'s own `align-items: start` (set just above) keeps this
-     from stretching to the tallest sibling, which sticky positioning
-     requires.
-
-     `display: grid` with `grid-template-rows: subgrid` (issue #449 item 3,
-     replacing the plain flex column) makes this column's first row (the
-     swap panel) share the exact same row track as `.centerGroup`'s first
-     row (the chart panel) — the track is sized to the taller of the two and
-     both stretch to fill it (grid's default `align-items: stretch` for
-     their own children), so the chart's bottom edge lines up with the
-     swap panel's. The Stats/Audit and creator-fee panels below are local
-     implicit rows, outside the subgrid, so they size independently and
-     never get stretched to match the chart. */
-  .leftGroup {
-    display: grid;
-    grid-template-rows: subgrid;
-    grid-row: 1;
+  /* Swap panel and chart panel: row 1, side by side, both stretching to
+     the row's height (grid's default `align-items: stretch`) so the
+     chart's canvas fills the swap panel's height (issue #443 part 1 item 4
+     / issue #450). */
+  .swapPanel {
+    order: initial;
     grid-column: 1;
+    grid-row: 1;
+  }
+
+  .chartPlaceholder {
+    order: initial;
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  /* `.leftRest` is the real grid item for row 2, column 1 — a flex column
+     holding the Stats/Audit panel and the creator-fee panel, sized to its
+     own content (`align-self: start` opts out of the grid's default
+     stretch) rather than matching the chart's height. Deliberately not
+     sticky — the design doesn't use sticky positioning here, and it
+     cannot survive being split across two grid rows (issue #450). */
+  .leftRest {
+    display: flex;
+    flex-direction: column;
     gap: 14px;
-    position: sticky;
-    top: 14px;
+    grid-column: 1;
+    grid-row: 2;
     align-self: start;
   }
 
-  .swapPanel,
   .statsPanel,
   .feePanel {
     order: initial;
   }
 
-  /* `.centerGroup` becomes the single, real grid item in column 2, also
-     `subgrid`-ing the shared first row with `.leftGroup` (issue #449 item
-     3) — the chart's canvas fills that row's full height, and the
-     activity/tabs panel is a local implicit row below it, so its top edge
-     starts at the same line as the Stats/Audit panel regardless of how
-     tall the chart or the sticky left column are (issue #447 item 2). */
-  .centerGroup {
-    display: grid;
-    grid-template-rows: subgrid;
-    grid-row: 1;
-    grid-column: 2;
-    gap: 14px;
-  }
-
-  .chartPlaceholder,
   .activityPanel {
     order: initial;
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
   }
 }
 

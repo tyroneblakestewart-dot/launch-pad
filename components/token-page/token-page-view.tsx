@@ -72,8 +72,9 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
             per-column wrapper divs (issue #429's pattern, kept here) —
             because the mobile stacking order (swap → chart → stats → tabs)
             still has to interleave the chart between panels that share a
-            desktop sticky column; column placement is resolved entirely in
-            CSS via `grid-column` and `order` on each panel's own class. */}
+            desktop column; column placement is resolved entirely in CSS
+            via `grid-column`/`grid-row` and `order` on each panel's own
+            class (issue #450). */}
         <div className={styles.grid}>
           <TokenLeftColumn
             chainId={chain}

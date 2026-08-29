@@ -473,16 +473,19 @@ describe("token page mobile-first layout (issue #443 part 1: header → swap →
     expect(baseCss).toContain(".activityPanel {\n  order: 5;\n}");
   });
 
-  it("resets swap/stats/fees to natural document order once desktop gives them their own sticky column, in swap → stats → fees order", async () => {
+  it("resets swap/stats/fees to natural document order at the desktop breakpoint, in swap → stats → fees order", async () => {
     const css = await source("components/token-page/token-page.module.css");
     const desktopBlockStart = css.indexOf("@media (min-width: 881px)");
-    const resetIndex = css.indexOf(".swapPanel,\n  .statsPanel,\n  .feePanel {\n    order: initial;\n  }", desktopBlockStart);
-    expect(resetIndex).toBeGreaterThan(desktopBlockStart);
+    const desktopBlock = css.slice(desktopBlockStart);
+    const swapResetIndex = desktopBlock.indexOf(".swapPanel {\n    order: initial;");
+    const statsFeeResetIndex = desktopBlock.indexOf(".statsPanel,\n  .feePanel {\n    order: initial;\n  }");
+    expect(swapResetIndex).toBeGreaterThan(-1);
+    expect(statsFeeResetIndex).toBeGreaterThan(swapResetIndex);
   });
 
-  it("keeps the trade column reachable while scrolling on desktop via position: sticky", async () => {
+  it("does not use position: sticky for the left column — the design doesn't use it, and it can't survive being split across two grid rows (issue #450)", async () => {
     const css = await source("components/token-page/token-page.module.css");
-    expect(css).toContain("position: sticky;");
+    expect(css).not.toContain("position: sticky;");
     expect(css).toContain("align-self: start;");
   });
 
@@ -545,7 +548,7 @@ describe("token page desktop layout: swap + stats + fees left, chart + tabs fill
     expect(view.indexOf("<TokenCenterColumn", gridIndex)).toBeGreaterThan(gridIndex);
   });
 
-  it("groups the swap panel, Stats/Audit panel and creator-fee panel behind a display:contents wrapper, so they can share one sticky desktop column while still interleaving with the chart on mobile", async () => {
+  it("groups the swap panel, Stats/Audit panel and creator-fee panel behind a display:contents wrapper, so they can share the left side of the page while still interleaving with the chart on mobile", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
     const groupStart = component.indexOf("<div className={styles.leftGroup}>");
     expect(groupStart).toBeGreaterThan(-1);
@@ -557,42 +560,67 @@ describe("token page desktop layout: swap + stats + fees left, chart + tabs fill
     expect(feeIndex).toBeGreaterThan(statsIndex);
   });
 
-  it("puts the sticky swap/stats/fee column on the left and the chart/activity column in the rest of the width at the two-column desktop breakpoint", async () => {
+  it("places the swap panel and chart panel on grid row 1, and .leftRest / the activity panel on grid row 2, at the two-column desktop breakpoint (issue #450)", async () => {
     const css = await source("components/token-page/token-page.module.css");
     const blockStart = css.indexOf("@media (min-width: 881px)");
     const block = css.slice(blockStart);
-    expect(block).toContain(".leftGroup {\n    display: grid;");
-    expect(block).toContain("grid-column: 1;");
-    expect(block).toContain("position: sticky;");
-    expect(block).toContain(".centerGroup {\n    display: grid;");
-    expect(block).toContain("grid-column: 2;");
+
+    const swapStart = block.indexOf(".swapPanel {");
+    const swapEnd = block.indexOf("}", swapStart);
+    const swapRule = block.slice(swapStart, swapEnd);
+    expect(swapRule).toContain("grid-column: 1;");
+    expect(swapRule).toContain("grid-row: 1;");
+
+    const chartStart = block.indexOf(".chartPlaceholder {");
+    const chartEnd = block.indexOf("}", chartStart);
+    const chartRule = block.slice(chartStart, chartEnd);
+    expect(chartRule).toContain("grid-column: 2;");
+    expect(chartRule).toContain("grid-row: 1;");
+
+    const leftRestStart = block.indexOf(".leftRest {");
+    const leftRestEnd = block.indexOf("}", leftRestStart);
+    const leftRestRule = block.slice(leftRestStart, leftRestEnd);
+    expect(leftRestRule).toContain("display: flex;");
+    expect(leftRestRule).toContain("grid-column: 1;");
+    expect(leftRestRule).toContain("grid-row: 2;");
+    expect(leftRestRule).toContain("align-self: start;");
+
+    const activityStart = block.indexOf(".activityPanel {");
+    const activityEnd = block.indexOf("}", activityStart);
+    const activityRule = block.slice(activityStart, activityEnd);
+    expect(activityRule).toContain("grid-column: 2;");
+    expect(activityRule).toContain("grid-row: 2;");
+    expect(activityRule).toContain("align-self: start;");
   });
 
-  it("subgrids the first row (swap panel vs chart panel) across .leftGroup and .centerGroup so their bottom edges line up, while each keeps its own remaining rows as independently-sized local rows (issue #449 item 3, the staggered-row-2 defect)", async () => {
+  it("uses an explicit two-row grid instead of subgrid, so row 1 (swap vs chart) stretches to match while row 2 (leftRest vs activity) sizes independently (issue #450, replacing the broken subgrid attempt from issue #449 item 3)", async () => {
     const css = await source("components/token-page/token-page.module.css");
+    expect(css).not.toContain("subgrid");
+
     const blockStart = css.indexOf("@media (min-width: 881px)");
     const block = css.slice(blockStart);
-    expect(block).toContain("grid-template-rows: auto;");
+    expect(block).toContain("grid-template-rows: auto auto;");
 
-    const leftGroupStart = block.indexOf(".leftGroup {");
-    const leftGroupEnd = block.indexOf("}", leftGroupStart);
-    const leftGroupRule = block.slice(leftGroupStart, leftGroupEnd);
-    expect(leftGroupRule).toContain("grid-template-rows: subgrid;");
-    expect(leftGroupRule).toContain("grid-row: 1;");
-
-    const centerGroupStart = block.indexOf(".centerGroup {");
-    const centerGroupEnd = block.indexOf("}", centerGroupStart);
-    const centerGroupRule = block.slice(centerGroupStart, centerGroupEnd);
-    expect(centerGroupRule).toContain("grid-template-rows: subgrid;");
-    expect(centerGroupRule).toContain("grid-row: 1;");
-
-    // .leftGroup/.centerGroup keep real column containers — swap/stats/fee
-    // and chart/activity are not flattened back into loose .grid items
-    // (the #431 staircase this issue explicitly warns against repeating).
+    // `.leftGroup`/`.centerGroup` stay pure DOM-grouping wrappers at every
+    // width — they are never converted into real grid containers, since a
+    // subgridded axis has no implicit tracks and would clamp their extra
+    // children on top of each other (the defect this issue fixes).
+    expect(block).not.toContain(".leftGroup {\n    display: grid;");
+    expect(block).not.toContain(".centerGroup {\n    display: grid;");
     expect(block).not.toMatch(/\.grid\s*{[^}]*grid-template-areas/);
   });
 
-  it("wraps the chart and the activity/tabs panel in a real .centerGroup grid item, matching the .leftGroup pattern, so the tabs' row height never depends on the tall sticky left column (issue #447 item 2, the #431 staircase repeated)", async () => {
+  it("groups the Stats/Audit panel and creator-fee panel inside a new .leftRest wrapper in the left column", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    const leftRestStart = component.indexOf("<div className={styles.leftRest}>");
+    expect(leftRestStart).toBeGreaterThan(-1);
+    const statsIndex = component.indexOf("<TokenStatsAuditPanel", leftRestStart);
+    const feeIndex = component.indexOf("styles.feePanel}`}>", leftRestStart);
+    expect(statsIndex).toBeGreaterThan(leftRestStart);
+    expect(feeIndex).toBeGreaterThan(statsIndex);
+  });
+
+  it("wraps the chart and the activity/tabs panel behind a display:contents .centerGroup, and grid-places each panel independently so the tabs' row height never depends on the left column (issue #447 item 2 / issue #450, the #431 staircase repeated)", async () => {
     const component = await source("components/token-page/token-center-column.tsx");
     const css = await source("components/token-page/token-page.module.css");
 
@@ -610,7 +638,8 @@ describe("token page desktop layout: swap + stats + fees left, chart + tabs fill
 
     const desktopBlockStart = css.indexOf("@media (min-width: 881px)");
     const desktopBlock = css.slice(desktopBlockStart);
-    expect(desktopBlock).toContain(".chartPlaceholder,\n  .activityPanel {\n    order: initial;\n  }");
+    expect(desktopBlock).toContain(".chartPlaceholder {\n    order: initial;\n    grid-column: 2;\n    grid-row: 1;\n  }");
+    expect(desktopBlock).toContain(".activityPanel {\n    order: initial;\n    grid-column: 2;\n    grid-row: 2;\n    align-self: start;\n  }");
   });
 
   it("does not touch the token page's trade logic or error surfacing (issue #427) while rearranging layout and deduplicating polling (issue #444)", async () => {
