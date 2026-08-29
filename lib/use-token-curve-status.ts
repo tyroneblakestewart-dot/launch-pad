@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPublicClient, defineChain, formatEther, formatUnits, http, type Address } from "viem";
 import { ERC20_MIN_ABI, HOODLUMS_BONDING_CURVE_HEADER_ABI } from "@/lib/bonding-curve-config";
 import { computeBondingCurveGraduationStatus, type BondingCurveGraduationStatus } from "@/lib/bonding-curve-status";
@@ -36,6 +36,24 @@ function readError(error: unknown): string {
   return "Curve state unavailable.";
 }
 
+/** Field-by-field comparison so an unchanged poll result keeps the exact same `TokenCurveStatus` reference (issue #449) instead of forcing a re-render every 12s. */
+function statusesEqual(a: TokenCurveStatus, b: TokenCurveStatus): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind !== "ready" || b.kind !== "ready") return true;
+  return (
+    a.curve === b.curve &&
+    a.creator === b.creator &&
+    a.remainingToGraduateWei === b.remainingToGraduateWei &&
+    a.startingPriceNativePerToken === b.startingPriceNativePerToken &&
+    a.totalSupplyRaw === b.totalSupplyRaw &&
+    a.graduation.state === b.graduation.state &&
+    a.graduation.progressBps === b.graduation.progressBps &&
+    a.graduation.raisedWei === b.graduation.raisedWei &&
+    a.graduation.targetWei === b.graduation.targetWei &&
+    a.graduation.liquidityPool === b.graduation.liquidityPool
+  );
+}
+
 /**
  * The single shared on-chain curve-status poll for the whole token page
  * (issue #444): called exactly once, in `token-page-view.tsx`, and its
@@ -53,12 +71,24 @@ export function useTokenCurveStatus(
   tokenAddress: string,
   curveAddress: Address | null,
   decimals: number,
-): TokenCurveStatus {
+): { status: TokenCurveStatus; stale: boolean } {
   const [status, setStatus] = useState<TokenCurveStatus>(curveAddress ? { kind: "loading" } : { kind: "no-address" });
+  const [stale, setStale] = useState(false);
+  // Tracks which curve address has completed at least one full load attempt
+  // (success, error or wrong-token — any determinate outcome), so `load()`
+  // only ever shows the transient "loading" status before that curve's
+  // first resolution. Every later poll (same curve) is stale-while-
+  // revalidate: the last known status stays rendered in place and a failed
+  // refresh sets `stale` instead of clobbering it back to "loading" (issue
+  // #449) — this is what stopped the swap panel from unmounting into
+  // "Checking whether a bonding curve is live…" on every 12s poll.
+  const loadedCurveRef = useRef<Address | null>(null);
 
   const load = useCallback(
     async (curve: Address) => {
-      setStatus({ kind: "loading" });
+      if (loadedCurveRef.current !== curve) {
+        setStatus({ kind: "loading" });
+      }
       try {
         const publicClient = createPublicClient({ chain, transport: http(ROBINHOOD_TESTNET.rpcUrls[0]) });
         const [
@@ -112,7 +142,9 @@ export function useTokenCurveStatus(
         ]);
 
         if ((token as string).toLowerCase() !== tokenAddress.toLowerCase()) {
-          setStatus({ kind: "wrong-token" });
+          setStatus((current) => (current.kind === "wrong-token" ? current : { kind: "wrong-token" }));
+          setStale(false);
+          loadedCurveRef.current = curve;
           return;
         }
 
@@ -120,7 +152,7 @@ export function useTokenCurveStatus(
         const startingPriceNativePerToken =
           tokenReserveWhole > 0 ? Number(formatEther(initialVirtualEthReserve)) / tokenReserveWhole : 0;
 
-        setStatus({
+        const next: TokenCurveStatus = {
           kind: "ready",
           curve,
           creator,
@@ -134,17 +166,29 @@ export function useTokenCurveStatus(
           remainingToGraduateWei: remainingToGraduate,
           startingPriceNativePerToken,
           totalSupplyRaw,
-        });
+        };
+        setStatus((current) => (statusesEqual(current, next) ? current : next));
+        setStale(false);
+        loadedCurveRef.current = curve;
       } catch (error) {
-        setStatus({ kind: "error", message: readError(error) });
+        if (loadedCurveRef.current === curve) {
+          // A refresh failed after this curve already resolved once — keep
+          // showing the last known status and flag it stale instead of
+          // replacing it with an error.
+          setStale(true);
+        } else {
+          setStatus({ kind: "error", message: readError(error) });
+          loadedCurveRef.current = curve;
+        }
       }
     },
     [tokenAddress, decimals],
   );
 
   useEffect(() => {
-    // load()'s first statement is a synchronous setStatus({kind:"loading"})
-    // before its first await — the same load-on-mount shape
+    // load()'s first statement is a conditional, synchronous
+    // setStatus({kind:"loading"}) before its first await (only for this
+    // curve's first load) — the same load-on-mount shape
     // components/token-page/token-left-column.tsx's loadCurve already uses.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (curveAddress) void load(curveAddress);
@@ -208,5 +252,5 @@ export function useTokenCurveStatus(
     };
   }, [curveAddress, load]);
 
-  return status;
+  return { status, stale };
 }

@@ -402,6 +402,10 @@
 @media (min-width: 881px) {
   .grid {
     grid-template-columns: 300px minmax(0, 1fr);
+    /* One explicit row shared by both columns via `subgrid` below (issue
+       #449 item 3) — everything each column renders past that first row is
+       its own local implicit row, sized independently. */
+    grid-template-rows: auto;
     align-items: start;
   }
 
@@ -411,12 +415,23 @@
      old three-column (#429) layout split between a centre and a right
      column. `.grid`'s own `align-items: start` (set just above) keeps this
      from stretching to the tallest sibling, which sticky positioning
-     requires. */
+     requires.
+
+     `display: grid` with `grid-template-rows: subgrid` (issue #449 item 3,
+     replacing the plain flex column) makes this column's first row (the
+     swap panel) share the exact same row track as `.centerGroup`'s first
+     row (the chart panel) — the track is sized to the taller of the two and
+     both stretch to fill it (grid's default `align-items: stretch` for
+     their own children), so the chart's bottom edge lines up with the
+     swap panel's. The Stats/Audit and creator-fee panels below are local
+     implicit rows, outside the subgrid, so they size independently and
+     never get stretched to match the chart. */
   .leftGroup {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-row: 1;
     grid-column: 1;
+    gap: 14px;
     position: sticky;
     top: 14px;
     align-self: start;
@@ -428,15 +443,18 @@
     order: initial;
   }
 
-  /* `.centerGroup` becomes the single, real grid item in column 2 — the
-     chart and tabs panel lay out as its flex children, so the tabs' row
-     height depends only on the chart's own height, never on `.leftGroup`'s
-     sticky column height (issue #447 item 2). */
+  /* `.centerGroup` becomes the single, real grid item in column 2, also
+     `subgrid`-ing the shared first row with `.leftGroup` (issue #449 item
+     3) — the chart's canvas fills that row's full height, and the
+     activity/tabs panel is a local implicit row below it, so its top edge
+     starts at the same line as the Stats/Audit panel regardless of how
+     tall the chart or the sticky left column are (issue #447 item 2). */
   .centerGroup {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-row: 1;
     grid-column: 2;
+    gap: 14px;
   }
 
   .chartPlaceholder,

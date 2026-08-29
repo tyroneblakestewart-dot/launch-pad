@@ -6,7 +6,6 @@ import {
   diffTimeSeries,
   resolveAllTimeframeInterval,
   resolveChartInterval,
-  resolveInitialVisibleRange,
   tradePriceNativePerToken,
   type Candle,
 } from "@/lib/candle-bucketing";
@@ -240,34 +239,5 @@ describe("computeMovingAverage", () => {
     const first = computeMovingAverage(candlesWithCloses([1, 2, 3, 4]), 2);
     const second = computeMovingAverage(candlesWithCloses([1, 2, 3, 4, 5]), 2);
     expect(second.slice(0, first.length)).toEqual(first);
-  });
-});
-
-describe("resolveInitialVisibleRange", () => {
-  it("returns null for zero candles", () => {
-    expect(resolveInitialVisibleRange(0, 120)).toBeNull();
-  });
-
-  it("returns a fixed-width window for a single candle instead of a zero-width range (issue #447 item 1: the single-candle slab bug)", () => {
-    const range = resolveInitialVisibleRange(1, 120);
-    expect(range).not.toBeNull();
-    expect(range!.to - range!.from + 1).toBe(120);
-    expect(range).toEqual({ from: -115, to: 4 });
-  });
-
-  it("keeps the range width exactly maxVisibleBars regardless of candle count", () => {
-    for (const candleCount of [1, 2, 3, 50, 300]) {
-      const range = resolveInitialVisibleRange(candleCount, 120)!;
-      expect(range.to - range.from + 1).toBe(120);
-    }
-  });
-
-  it("places `to` a fixed rightOffsetBars past the last real candle, so bar width never depends on candle count", () => {
-    expect(resolveInitialVisibleRange(2, 120)).toEqual({ from: -114, to: 5 });
-    expect(resolveInitialVisibleRange(300, 120)).toEqual({ from: 184, to: 303 });
-  });
-
-  it("honours a custom rightOffsetBars", () => {
-    expect(resolveInitialVisibleRange(1, 120, 0)).toEqual({ from: -119, to: 0 });
   });
 });

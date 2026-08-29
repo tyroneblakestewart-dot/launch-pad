@@ -19,7 +19,6 @@ import {
   diffCandles,
   diffTimeSeries,
   resolveChartInterval,
-  resolveInitialVisibleRange,
   tradePriceNativePerToken,
   type Candle,
   type ChartTimeframe,
@@ -51,7 +50,6 @@ const DOWN_COLOR = "#8d918c";
 const MA20_COLOR = "rgba(198, 245, 62, 0.85)";
 const MA50_COLOR = "rgba(255, 255, 255, 0.4)";
 const HORIZONTAL_LINE_COLOR = "#9ad4ff";
-const VISIBLE_BAR_COUNT = 120;
 const MA20_PERIOD = 20;
 const MA50_PERIOD = 50;
 
@@ -106,6 +104,14 @@ function formatUtcTime(unixSeconds: number): string {
  * observer re-firing on sub-pixel layout noise and feeding straight back
  * into another reflow — resizing only when the rounded pixel size actually
  * changes breaks that loop.
+ *
+ * Bar width (issue #449 item 2): the time scale's own `barSpacing`/
+ * `minBarSpacing` are fixed constants, so pixel width per candle stays
+ * constant regardless of chart width or candle count — no code path ever
+ * calls `setVisibleLogicalRange` or `fitContent` to force a window (the
+ * deployed bug: forcing a 120-bar window on a low-trade-count token spread
+ * candles to ~3x the design's width). `scrollToRealTime()` after
+ * `setData()` is what puts the latest bar at the right edge instead.
  */
 export function TokenTradeChart({
   trades,
@@ -173,8 +179,8 @@ export function TokenTradeChart({
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 4,
-        barSpacing: 8,
-        minBarSpacing: 4,
+        barSpacing: 6,
+        minBarSpacing: 3,
       },
       crosshair: { mode: CrosshairMode.Normal },
     });
@@ -336,8 +342,7 @@ export function TokenTradeChart({
         candles.map((candle) => ({ time: candle.time as UTCTimestamp, value: candle.volume, color: volumeBarColor(candle) })),
       );
 
-      const range = resolveInitialVisibleRange(candles.length, VISIBLE_BAR_COUNT);
-      if (range) chartRef.current?.timeScale().setVisibleLogicalRange(range);
+      chartRef.current?.timeScale().scrollToRealTime();
     } else {
       const candleDiff = diffCandles(renderedCandlesRef.current, candles);
       for (const candle of [...candleDiff.updated, ...candleDiff.appended]) {

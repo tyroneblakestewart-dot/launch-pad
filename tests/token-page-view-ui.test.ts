@@ -561,11 +561,35 @@ describe("token page desktop layout: swap + stats + fees left, chart + tabs fill
     const css = await source("components/token-page/token-page.module.css");
     const blockStart = css.indexOf("@media (min-width: 881px)");
     const block = css.slice(blockStart);
-    expect(block).toContain(".leftGroup {\n    display: flex;");
+    expect(block).toContain(".leftGroup {\n    display: grid;");
     expect(block).toContain("grid-column: 1;");
     expect(block).toContain("position: sticky;");
-    expect(block).toContain(".centerGroup {\n    display: flex;");
+    expect(block).toContain(".centerGroup {\n    display: grid;");
     expect(block).toContain("grid-column: 2;");
+  });
+
+  it("subgrids the first row (swap panel vs chart panel) across .leftGroup and .centerGroup so their bottom edges line up, while each keeps its own remaining rows as independently-sized local rows (issue #449 item 3, the staggered-row-2 defect)", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const blockStart = css.indexOf("@media (min-width: 881px)");
+    const block = css.slice(blockStart);
+    expect(block).toContain("grid-template-rows: auto;");
+
+    const leftGroupStart = block.indexOf(".leftGroup {");
+    const leftGroupEnd = block.indexOf("}", leftGroupStart);
+    const leftGroupRule = block.slice(leftGroupStart, leftGroupEnd);
+    expect(leftGroupRule).toContain("grid-template-rows: subgrid;");
+    expect(leftGroupRule).toContain("grid-row: 1;");
+
+    const centerGroupStart = block.indexOf(".centerGroup {");
+    const centerGroupEnd = block.indexOf("}", centerGroupStart);
+    const centerGroupRule = block.slice(centerGroupStart, centerGroupEnd);
+    expect(centerGroupRule).toContain("grid-template-rows: subgrid;");
+    expect(centerGroupRule).toContain("grid-row: 1;");
+
+    // .leftGroup/.centerGroup keep real column containers — swap/stats/fee
+    // and chart/activity are not flattened back into loose .grid items
+    // (the #431 staircase this issue explicitly warns against repeating).
+    expect(block).not.toMatch(/\.grid\s*{[^}]*grid-template-areas/);
   });
 
   it("wraps the chart and the activity/tabs panel in a real .centerGroup grid item, matching the .leftGroup pattern, so the tabs' row height never depends on the tall sticky left column (issue #447 item 2, the #431 staircase repeated)", async () => {

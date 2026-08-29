@@ -124,9 +124,11 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain('all: "ALL"');
   });
 
-  it("never calls fitContent — the defect that stretched a one/two-candle token across the full plot width", async () => {
+  it("never calls fitContent or setVisibleLogicalRange to force a visible window — bar width is fixed via barSpacing instead (issue #449 item 2: the 3x-wide-candle defect)", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).not.toContain("fitContent(");
+    expect(component).not.toContain("setVisibleLogicalRange(");
+    expect(component).not.toContain("resolveInitialVisibleRange");
   });
 
   it("only calls series.setData on first load or a timeframe change; every other update diffs and calls series.update", async () => {
@@ -141,17 +143,16 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain("candleSeries.update(candleToBar(candle));");
   });
 
-  it("sets the first-load visible range via the pure resolveInitialVisibleRange helper instead of fitContent", async () => {
+  it("scrolls to real time after setData instead of forcing a visible logical range (issue #449 item 2)", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
-    expect(component).toContain("resolveInitialVisibleRange(candles.length, VISIBLE_BAR_COUNT)");
-    expect(component).toContain("chartRef.current?.timeScale().setVisibleLogicalRange(range);");
+    expect(component).toContain("chartRef.current?.timeScale().scrollToRealTime();");
   });
 
-  it("fixes bar spacing/right offset instead of leaving the time scale to stretch bars to fit", async () => {
+  it("fixes bar spacing/right offset to a constant pixel width, independent of chart width or candle count (issue #449 item 2)", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain("rightOffset: 4");
-    expect(component).toContain("barSpacing: 8");
-    expect(component).toContain("minBarSpacing: 4");
+    expect(component).toContain("barSpacing: 6");
+    expect(component).toContain("minBarSpacing: 3");
   });
 
   it("sizes the chart via a manually-guarded ResizeObserver, never passing autoSize as a chart option (the traced cause of the ~1s candle jump)", async () => {
@@ -265,5 +266,37 @@ describe("TokenLeftColumn live curve polling and own-trade signal (issue #430, l
     expect(successBranchStart).toBeGreaterThan(-1);
     expect(notifyIndex).toBeGreaterThan(successBranchStart);
     expect(notifyIndex).toBeLessThan(resetIndex);
+  });
+});
+
+describe("useTokenCurveStatus stale-while-revalidate (issue #449 item 1: the swap panel flash)", () => {
+  it("only shows the loading status before a curve's first resolved read — a second load() for the same curve never resets to loading", async () => {
+    const hook = await source("lib/use-token-curve-status.ts");
+    expect(hook).toContain("const loadedCurveRef = useRef<Address | null>(null);");
+    const loadStart = hook.indexOf("async (curve: Address) => {");
+    expect(loadStart).toBeGreaterThan(-1);
+    expect(hook.indexOf('if (loadedCurveRef.current !== curve) {\n        setStatus({ kind: "loading" });\n      }')).toBeGreaterThan(
+      loadStart,
+    );
+  });
+
+  it("keeps the same status object reference when a poll resolves to identical values instead of forcing a re-render", async () => {
+    const hook = await source("lib/use-token-curve-status.ts");
+    expect(hook).toContain("function statusesEqual(a: TokenCurveStatus, b: TokenCurveStatus): boolean {");
+    expect(hook).toContain("setStatus((current) => (statusesEqual(current, next) ? current : next));");
+    expect(hook).toContain('setStatus((current) => (current.kind === "wrong-token" ? current : { kind: "wrong-token" }));');
+  });
+
+  it("keeps the last known status on a failed refresh and sets a separate stale flag instead of clobbering it back to an error, mirroring lib/use-token-trades.ts", async () => {
+    const hook = await source("lib/use-token-curve-status.ts");
+    expect(hook).toContain("const [stale, setStale] = useState(false);");
+    expect(hook).toContain("if (loadedCurveRef.current === curve) {");
+    expect(hook).toContain("setStale(true);");
+    expect(hook).toContain("return { status, stale };");
+  });
+
+  it("threads the new { status, stale } return shape through token-page-view.tsx's single call site", async () => {
+    const view = await source("components/token-page/token-page-view.tsx");
+    expect(view).toContain("const { status: curveStatus } = useTokenCurveStatus(address, curveAddress, decimals);");
   });
 });
