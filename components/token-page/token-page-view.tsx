@@ -51,7 +51,8 @@ export type TokenPageViewProps = {
 export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLinks, curveAddress, launch }: TokenPageViewProps) {
   const decimals = marketStats.supported && marketStats.decimals !== null ? marketStats.decimals : DEFAULT_TOKEN_DECIMALS;
   const curveStatus = useTokenCurveStatus(address, curveAddress, decimals);
-  const { trades, error: tradesError } = useTokenTrades(curveAddress);
+  const { trades, error: tradesError, stale: tradesStale, retry: retryTrades } = useTokenTrades(curveAddress);
+  const startingPriceNativePerToken = curveStatus.kind === "ready" ? curveStatus.startingPriceNativePerToken : null;
 
   return (
     <main className={`${styles.page} token-page-full-screen`}>
@@ -92,6 +93,9 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
             explorerBaseUrl={chainInfo.explorerBaseUrl}
             trades={trades}
             tradesError={tradesError}
+            tradesStale={tradesStale}
+            retryTrades={retryTrades}
+            startingPriceNativePerToken={startingPriceNativePerToken}
           />
         </div>
       </div>

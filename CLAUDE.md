@@ -1065,3 +1065,85 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   this issue's own instruction; new/changed CSS was checked only by
   reading it against the existing breakpoints, not on-device or in a
   browser.
+- Token page v2, part 2 of 3 (issue #445): the chart's internals and the
+  trades hook's live-update behaviour are rebuilt to the design; layout,
+  header band, stats panel and routes are unchanged (part 1's own scope
+  split). Two defects drove this work: `timeScale().fitContent()` on every
+  poll stretched a low-trade-count token into a single slab-wide candle
+  with no `priceFormat` set (axis read "0.00" at ~1e-8 prices), and
+  `lib/use-token-trades.ts` replaced its whole `trades` array every 12s
+  poll even when nothing changed, forcing a full `setData`+`fitContent`
+  and a visible jump; a third, faster (~1s) jump traced to
+  `createChart`'s `autoSize: true` option, whose own `ResizeObserver`
+  could re-fire on sub-pixel layout noise and feed straight back into
+  another reflow. **In-place live updates** — `lib/use-token-trades.ts`
+  now folds every poll through a new pure `lib/token-trades-merge.ts`
+  (`mergeTokenTrades`, keyed by tx hash + log index): an identical poll
+  returns the exact same array reference and skips `setState` entirely,
+  new trades are folded in and re-sorted newest-first, and previously-held
+  trade objects are never recreated. The hook now also exposes `stale`
+  (a poll failed after data had already loaded — distinct from `error`,
+  reserved for "never successfully loaded once") and `retry`, threaded
+  down through `token-page-view.tsx` → `token-center-column.tsx` to the
+  chart. **Candle data flow** — `lib/candle-bucketing.ts`'s
+  `CandleInterval` is now the design's fixed rail (5m/15m/1h/6h/1d);
+  `resolveAllTimeframeInterval`/`resolveChartInterval` add the "ALL"
+  meta-timeframe (finest interval keeping full history at or under ~200
+  bars, widening as needed), `Candle` gained a `volume` field (summed
+  post-fee native amount per bucket), and new pure `diffTimeSeries`/
+  `diffCandles`/`computeMovingAverage`/`resolveInitialVisibleRange`
+  helpers do the diffing/MA/visible-range math the chart needs without a
+  chart instance. `lib/token-candle-geometry.ts` (the homepage grid
+  sparkline, issue #440) reads the same `CANDLE_INTERVALS` list unchanged
+  in shape — dropping "1m" and adding "6h"/"1d" only ever makes its own
+  coarsest-necessary interval picker more accurate, never a behaviour
+  change any existing test depended on. **The chart itself**
+  (`components/token-page/token-trade-chart.tsx`) now calls
+  `series.setData()` only on first load or a timeframe change (which also
+  sets the initial visible logical range to the most recent ~120 bars via
+  `resolveInitialVisibleRange` — never `fitContent()`, anywhere, so one or
+  two candles render at their fixed `barSpacing`/`minBarSpacing` width
+  instead of stretching); every later update diffs against what's already
+  rendered and calls `series.update()` for just the mutated last bar and
+  any newly appended ones, which is what keeps a scrolled-back viewer's
+  position stable while a viewer at the right edge keeps following the
+  latest bar for free (lightweight-charts' own `update()` semantics).
+  Sizing is now a manually-guarded `ResizeObserver` (skips `chart.resize()`
+  entirely unless the rounded pixel size actually changed) instead of
+  `autoSize: true`, closing off the suspected feedback-loop source of the
+  ~1s jump. The candlestick series' `priceFormat` is `type: "custom"`
+  wrapping the existing `formatNativePriceSixSigFigs` (`lib/token-page-
+  format.ts`) — the same six-significant-figure formatter the header
+  band's big figure already uses — so the axis, the crosshair label and
+  the built-in dashed lime last-price line/axis tag can never read
+  "0.00" and can never disagree with the header. MA20 (lime) and MA50
+  (white) line series are recomputed from `computeMovingAverage` and kept
+  in sync via the same diff/update approach; a histogram volume pane is
+  added but hidden by default (`visible: false`) behind a small header
+  toggle. A left-edge tool rail offers crosshair (default) and a
+  horizontal-line tool (`lib/token-chart-tools.ts`'s pure `addHorizontalLine`/
+  `removeHorizontalLine`) — clicking the plot with the line tool active
+  reads the price at that y-coordinate via `series.coordinateToPrice()`
+  and draws a removable `series.createPriceLine()`; entirely client-side
+  state, no backend data, per the data inventory's own note. A
+  `chart.subscribeCrosshairMove` handler renders a tooltip (time in UTC,
+  candle change %, O/H/L/C at six significant figures, volume in ETH) as
+  ordinary React state rather than a lightweight-charts primitive. The
+  chart's own small last-price label and the zero-trade state's starting
+  price both still derive from the exact same shared source part 1
+  established (`tradePriceNativePerToken` over the newest loaded trade, or
+  the curve's starting price with zero trades) — the chart never computes
+  a second, independent last price. Zero-trade and poll-failure-after-data
+  states are dedicated overlays/banners (the empty-plot note and a thin
+  amber "Live data paused" banner with a wired RETRY calling the hook's
+  `retry`); the loading state remains the pre-existing blank-until-first-
+  data chart with no new skeleton. Validated this session: `npm run
+  test:app` — 283 test files / 3067 tests passing. `npm run lint` — 0
+  errors (12 pre-existing warnings only). `npm run build` — succeeds.
+  `npm run test:contracts` — 65 passing (untouched, no contract changes).
+  No visual pass was run this session, per the issue's own instruction —
+  the owner reviews the deployed chart against the committed design; the
+  new CSS (fill-height plot, tool rail, tooltip, stale banner) was checked
+  only by reading it against the existing breakpoints, not on-device or in
+  a browser. Part 3 (a holder-stats route for Top 10 %/Dev %/Snipers %)
+  remains out of scope for this PR.
