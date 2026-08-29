@@ -135,11 +135,16 @@ type TokenLeftColumnProps = {
  * creator-fee panel (issue #443 part 1 supersedes issue #429's identity
  * card here — identity, graduation and price now live in the header band,
  * `components/token-page/token-header-band.tsx`). All three panels are
- * wrapped in `.leftGroup`, which is invisible to layout on mobile
- * (`display: contents`, letting the chart panel interleave between the
- * swap and stats panels per the new "header → swap → chart → stats → tabs"
- * mobile order) and becomes the actual sticky flex column at desktop
- * widths, in swap → stats → fees order. `curveStatus` is the page-level
+ * wrapped in `.leftGroup`, invisible to layout at every width
+ * (`display: contents`), letting the chart panel interleave between the
+ * swap and stats panels on mobile per the "header → swap → chart → stats →
+ * tabs" order. At the desktop breakpoint the swap panel becomes its own
+ * grid item (row 1, alongside the chart panel), while the Stats/Audit panel
+ * and the creator-fee panel are wrapped together in `.leftRest`, a flex
+ * column that is itself the row-2 grid item — sized to its own content
+ * rather than stretched or stuck in place (issue #450: the design doesn't
+ * use sticky positioning here, and it can't survive being split across two
+ * grid rows). `curveStatus` is the page-level
  * shared on-chain curve read (issue #444, lib/use-token-curve-status.ts) —
  * previously this component ran its own independent `loadCurve` poll
  * against the same curve the header band was also independently polling;
@@ -519,12 +524,13 @@ export function TokenLeftColumn({
 
   return (
     <>
-      {/* Swap, Stats/Audit and creator-fee panels move and stick together
-          as one desktop column (issue #443 part 1) — `.leftGroup` is
-          `display: contents` on mobile so these panels stay direct grid
-          siblings of the chart panel, which interleaves between swap and
-          stats per the new mobile order, and becomes the real sticky flex
-          column at desktop widths (`token-page.module.css`). */}
+      {/* Swap, Stats/Audit and creator-fee panels share the left side of
+          the page (issue #443 part 1) — `.leftGroup` is `display: contents`
+          at every width so these panels stay direct grid siblings of the
+          chart panel, which interleaves between swap and stats per the
+          mobile order; at desktop widths the swap panel becomes its own
+          grid item and the Stats/Audit + creator-fee panels are grouped
+          into `.leftRest` below (`token-page.module.css`, issue #450). */}
       <div className={styles.leftGroup}>
         {curveView.kind === "ready" && curveView.graduation.state !== "graduated" ? (
           <div className={`${styles.panel} ${styles.swapPanel}`}>
@@ -687,39 +693,45 @@ export function TokenLeftColumn({
           </div>
         )}
 
-        <TokenStatsAuditPanel
-          trades={trades}
-          decimals={resolvedDecimals}
-          holderCount={marketStats.supported ? marketStats.holderCount : null}
-          factoryMinted={factoryMinted}
-        />
+        {/* Grouped together (issue #450) so they occupy a single grid cell
+            at the desktop breakpoint (`.leftRest`, `token-page.module.css`)
+            — `display: contents` on mobile keeps them direct grid-item
+            siblings of the mobile stack, unchanged from before. */}
+        <div className={styles.leftRest}>
+          <TokenStatsAuditPanel
+            trades={trades}
+            decimals={resolvedDecimals}
+            holderCount={marketStats.supported ? marketStats.holderCount : null}
+            factoryMinted={factoryMinted}
+          />
 
-        {isCreator && curveView.kind === "ready" && (
-          <div className={`${styles.panel} ${styles.feePanel}`}>
-            <span className={styles.sectionLabel}>Creator fees</span>
-            <div className={styles.feePanelRow}>
-              <span className={styles.mutedNote}>Claimable balance</span>
-              <span className={styles.feeClaimValue}>
-                {claimableFeeWei !== null ? `${formatEther(claimableFeeWei)} ETH` : "—"}
-              </span>
+          {isCreator && curveView.kind === "ready" && (
+            <div className={`${styles.panel} ${styles.feePanel}`}>
+              <span className={styles.sectionLabel}>Creator fees</span>
+              <div className={styles.feePanelRow}>
+                <span className={styles.mutedNote}>Claimable balance</span>
+                <span className={styles.feeClaimValue}>
+                  {claimableFeeWei !== null ? `${formatEther(claimableFeeWei)} ETH` : "—"}
+                </span>
+              </div>
+              <button
+                type="button"
+                className={styles.feeWithdrawButton}
+                onClick={withdrawCreatorFees}
+                disabled={feeBusy || claimableFeeWei === null || claimableFeeWei === 0n}
+              >
+                {feeBusy ? "Withdrawing…" : "Withdraw fees"}
+              </button>
+              {feeError ? (
+                <p className={styles.tradeErrorText} role="alert">
+                  {feeError}
+                </p>
+              ) : feeStatusMessage ? (
+                <p className={styles.tradeHint}>{feeStatusMessage}</p>
+              ) : null}
             </div>
-            <button
-              type="button"
-              className={styles.feeWithdrawButton}
-              onClick={withdrawCreatorFees}
-              disabled={feeBusy || claimableFeeWei === null || claimableFeeWei === 0n}
-            >
-              {feeBusy ? "Withdrawing…" : "Withdraw fees"}
-            </button>
-            {feeError ? (
-              <p className={styles.tradeErrorText} role="alert">
-                {feeError}
-              </p>
-            ) : feeStatusMessage ? (
-              <p className={styles.tradeHint}>{feeStatusMessage}</p>
-            ) : null}
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </>
   );

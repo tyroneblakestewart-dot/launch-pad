@@ -161,28 +161,3 @@ export function computeMovingAverage(candles: readonly Candle[], period: number)
   }
   return points;
 }
-
-/**
- * The chart's first-load visible window (issue #445 item 3, fixed-width
- * regardless of candle count in issue #447 item 1): a `fitContent()`-style
- * range collapses to zero width at one candle ({ from: 0, to: 0 }), which
- * lightweight-charts then stretches across the whole plot into a single
- * slab. The window must always span exactly `maxVisibleBars` logical
- * positions — `to` sits `rightOffsetBars` past the last real candle
- * (matching the chart's own `timeScale.rightOffset`) and `from` is
- * `maxVisibleBars - 1` positions further back, with negative indices
- * allowed so empty positions before the first candle simply render blank.
- * That keeps one candle, two candles and 300 candles all rendering at the
- * chart's configured `barSpacing` at the right edge. Returns `null` for no
- * candles — nothing to show a range for yet.
- */
-export function resolveInitialVisibleRange(
-  candleCount: number,
-  maxVisibleBars: number,
-  rightOffsetBars = 4,
-): { from: number; to: number } | null {
-  if (candleCount <= 0) return null;
-  const to = candleCount - 1 + rightOffsetBars;
-  const from = to - maxVisibleBars + 1;
-  return { from, to };
-}
