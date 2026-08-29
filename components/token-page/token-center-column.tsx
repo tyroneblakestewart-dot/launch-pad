@@ -56,6 +56,9 @@ export function TokenCenterColumn({
   explorerBaseUrl,
   trades,
   tradesError,
+  tradesStale,
+  retryTrades,
+  startingPriceNativePerToken,
 }: {
   chain: SupportedChain;
   address: string;
@@ -64,6 +67,9 @@ export function TokenCenterColumn({
   explorerBaseUrl: string;
   trades: TokenTrade[] | null;
   tradesError: string | null;
+  tradesStale: boolean;
+  retryTrades: () => void;
+  startingPriceNativePerToken: number | null;
 }) {
   const [tab, setTab] = useState<ActivityTab>("trades");
 
@@ -75,7 +81,15 @@ export function TokenCenterColumn({
   return (
     <>
       <div className={styles.chartPlaceholder} data-token-chart="true">
-        <TokenTradeChart trades={trades} decimals={decimals} error={tradesError} />
+        <TokenTradeChart
+          trades={trades}
+          decimals={decimals}
+          error={tradesError}
+          stale={tradesStale}
+          retry={retryTrades}
+          startingPriceNativePerToken={startingPriceNativePerToken}
+          pairLabel={`${symbol ?? "TOKEN"} / ETH`}
+        />
       </div>
 
       <div className={styles.activityPanel}>

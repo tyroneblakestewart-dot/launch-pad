@@ -1031,8 +1031,9 @@
    part 2's live chart. Issue #430 fills that placeholder region in with a
    real candlestick chart (components/token-page/token-trade-chart.tsx) — the
    `.chartPlaceholder` class name stays, since it's still the same grid-
-   placement anchor used above (`order`/`grid-column`), only its contents
-   changed from static copy to the live chart. */
+   placement anchor used above (`order`/`grid-column`). Issue #445 rebuilds
+   the chart's internals to the design: a fill-height plot (instead of a
+   fixed 260px), a left-edge tool rail, and a poll-failure banner. */
 
 .chartPlaceholder {
   border: 1px solid rgba(198, 245, 62, 0.2);
@@ -1059,6 +1060,43 @@
   flex-wrap: wrap;
 }
 
+.chartPairInfo {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.chartLastPrice {
+  font: 600 10px/1 "JetBrains Mono", monospace;
+  color: #6f746e;
+}
+
+.chartHeaderControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chartVolumeToggle {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: transparent;
+  color: #929693;
+  font: 700 10.5px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 0.14s;
+}
+
+.chartVolumeToggleActive {
+  border-color: rgba(198, 245, 62, 0.5);
+  background: rgba(198, 245, 62, 0.09);
+  color: #c6f53e;
+}
+
 .chartIntervalGroup {
   display: flex;
   gap: 4px;
@@ -1083,10 +1121,68 @@
   color: #c6f53e;
 }
 
+.chartBody {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.chartToolRail {
+  flex: none;
+  width: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.chartToolButton {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(239, 244, 236, 0.6);
+  font: 700 13px/1 "JetBrains Mono", monospace;
+  cursor: pointer;
+  transition: all 0.14s;
+}
+
+.chartToolButtonActive {
+  border-color: rgba(198, 245, 62, 0.4);
+  background: linear-gradient(180deg, rgba(198, 245, 62, 0.18), rgba(198, 245, 62, 0.04));
+  color: #c6f53e;
+}
+
+.chartLineChip {
+  margin-top: 4px;
+  padding: 3px 6px;
+  border-radius: 7px;
+  border: 1px solid rgba(154, 212, 255, 0.35);
+  background: rgba(154, 212, 255, 0.08);
+  color: #9ad4ff;
+  font: 700 8.5px/1.4 "JetBrains Mono", monospace;
+  cursor: pointer;
+  text-align: center;
+}
+
 .chartCanvasWrap {
   position: relative;
   width: 100%;
-  height: 260px;
+  flex: 1;
+  min-height: 320px;
+}
+
+@media (min-width: 881px) {
+  .chartCanvasWrap {
+    min-height: 460px;
+  }
 }
 
 .chartCanvas {
@@ -1113,6 +1209,76 @@
   font-size: 12.5px;
   line-height: 1.6;
   max-width: 32ch;
+}
+
+.chartStaleBanner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 12px;
+  background: rgba(245, 190, 80, 0.1);
+  border-bottom: 1px solid rgba(245, 190, 80, 0.4);
+  font: 600 10px/1 "JetBrains Mono", monospace;
+  color: #f5be50;
+}
+
+.chartStaleRetry {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: 800 10px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.08em;
+  color: #f5be50;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.chartTooltip {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 4;
+  min-width: 150px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(6, 9, 7, 0.96);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.chartTooltipHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font: 700 9.5px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.08em;
+  color: #8d918c;
+}
+
+.chartTooltipRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  font: 600 10.5px/1.3 "JetBrains Mono", monospace;
+  color: #e6ebe4;
+}
+
+.chartTooltipRow span:first-child {
+  color: #8d918c;
 }
 
 .priceChange {
