@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#0a0b09; color:#f4f7f1; font-family:Inter,system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#c6f53e; text-decoration:none; }
+  a:hover { color:#dcff7a; }
+  button { font-family:inherit; }
+  @keyframes hcPulse { 0%,100% { opacity:.35; } 50% { opacity:1; } }
+</style>
+</helmet>
+
+<div style="min-height:100vh;overflow-x:auto;background:radial-gradient(1100px 620px at 30% -8%, rgba(198,245,62,0.07), transparent 62%), radial-gradient(900px 600px at 90% 4%, rgba(198,245,62,0.04), transparent 60%), #0a0b09;padding:22px 26px 40px;display:flex;flex-direction:column;gap:18px;min-width:1120px">
+
+  <div style="border:1px solid rgba(255,255,255,0.09);border-radius:22px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 30px 70px -24px rgba(0,0,0,0.8);padding:10px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <button style="width:32px;height:32px;flex:none;border-radius:9px;display:grid;place-items:center;cursor:pointer;border:1px solid rgba(255,255,255,0.1);background:linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02)),#111713;box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 6px 16px -10px rgba(0,0,0,0.85);color:#c3c9c4">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"></path></svg>
+    </button>
+    <div style="width:50px;height:50px;flex:none;border-radius:11px;border:1px dashed rgba(198,245,62,0.3);background:linear-gradient(180deg, rgba(198,245,62,0.05), rgba(0,0,0,0.3)),#0a0f0c;display:grid;place-items:center;cursor:pointer">
+      <span style="text-align:center;font:700 6.5px/1.6 'IBM Plex Mono',monospace;letter-spacing:0.1em;color:#6f746e">DROP<br>ART</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:5px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font:400 17px 'Archivo Black',Inter,sans-serif;letter-spacing:-0.01em">HOODLUMS</span>
+        <span style="font:700 12px 'IBM Plex Mono',monospace;color:#8d918c">$HOODS</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;border:1px solid rgba(198,245,62,0.3);background:linear-gradient(180deg, rgba(198,245,62,0.14), rgba(198,245,62,0.03));font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;color:#c6f53e"><span style="width:6px;height:6px;border-radius:50%;background:#c6f53e;animation:hcPulse 1.9s ease-in-out infinite"></span>LIVE</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;font:600 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;color:#8d918c">
+        <span style="color:#c3c9c4">2,417</span> HOLDERS
+        <span style="width:3px;height:3px;border-radius:50%;background:#4a4f49"></span>
+        LAUNCHED <span style="color:#c3c9c4">2D AGO</span>
+        <span style="width:3px;height:3px;border-radius:50%;background:#4a4f49"></span>
+        <span style="display:inline-flex;padding:3px 8px;border-radius:999px;border:1px solid rgba(145,240,182,0.32);background:rgba(145,240,182,0.08);color:#91f0b6;letter-spacing:0.11em">RHC</span>
+      </div>
+    </div>
+    <div style="flex:1;min-width:200px;max-width:360px;display:flex;flex-direction:column;gap:4px;padding:0 14px">
+      <div style="display:flex;justify-content:space-between;gap:10px">
+        <span style="font:700 8px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#8d918c">GRADUATION</span>
+        <span style="font:700 9.5px/1 'IBM Plex Mono',monospace;color:#c6f53e">3.12 / 4.0 ETH · 78%</span>
+      </div>
+      <div style="height:5px;border-radius:99px;background:linear-gradient(180deg, rgba(0,0,0,0.4), rgba(255,255,255,0.02));box-shadow:0 2px 5px 0 rgba(0,0,0,0.5) inset;overflow:hidden">
+        <span style="display:block;width:78%;height:100%;border-radius:99px;background:linear-gradient(90deg, rgba(198,245,62,0.55), #c6f53e);box-shadow:0 0 14px rgba(198,245,62,0.5)"></span>
+      </div>
+      <span style="font:600 8.5px 'IBM Plex Mono',monospace;color:#6f746e">0.88 ETH remaining</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button onClick="{{ togglePriceMode }}" title="Switch between price and market cap" style="border:0;background:none;padding:0;cursor:pointer;display:flex;align-items:baseline;gap:9px">
+          <span style="font:700 8px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;color:#8d918c">{{ modeLabel }}</span>
+          <span style="font:400 21px/1 'Archivo Black',Inter,sans-serif;letter-spacing:-0.01em;color:#f4f7f1">{{ headFigure }}</span>
+        </button>
+        <span style="{{ a.changeStyle }}">{{ a.changeLabel }}</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        <sc-for list="{{ links }}" as="l" hint-placeholder-count="2">
+          <span style="display:flex;flex-direction:column;align-items:center;gap:3px">
+            <span style="{{ l.style }}">{{ l.label }} <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"></path></svg></span>
+            <span style="{{ l.noteStyle }}">{{ l.note }}</span>
+          </span>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;gap:18px;align-items:flex-start">
+
+    <!-- LEFT — swap first -->
+    <div style="width:340px;flex:none;display:flex;flex-direction:column;gap:14px">
+      <div style="border:1px solid rgba(255,255,255,0.09);border-radius:22px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 30px 70px -24px rgba(0,0,0,0.8);padding:16px;display:flex;flex-direction:column;gap:13px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;display:flex;gap:3px;padding:3px;border-radius:999px;border:1px solid rgba(255,255,255,0.08);background:linear-gradient(180deg, rgba(0,0,0,0.4), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset">
+            <button onClick="{{ setBuy }}" style="{{ buyTabStyle }}">Buy</button>
+            <button onClick="{{ setSell }}" style="{{ sellTabStyle }}">Sell</button>
+          </div>
+          <span style="display:inline-flex;align-items:center;gap:7px;min-height:34px;padding:0 12px;border-radius:999px;border:1px solid rgba(145,240,182,0.3);background:rgba(145,240,182,0.07);font:700 10.5px 'IBM Plex Mono',monospace;color:#91f0b6"><span style="width:6px;height:6px;border-radius:50%;background:#91f0b6"></span>0x3990…966a</span>
+        </div>
+
+        <div style="border:1px solid rgba(255,255,255,0.09);border-radius:14px;background:linear-gradient(180deg, rgba(0,0,0,0.38), rgba(255,255,255,0.022)),#0a0f0c;box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;padding:13px 14px;display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;justify-content:space-between;gap:10px">
+            <span style="font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#8d918c">YOU PAY</span>
+            <span style="font:600 9.5px/1 'IBM Plex Mono',monospace;color:#6f746e">BAL 0.0227 ETH</span>
+          </div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+            <span style="font:400 26px 'Archivo Black',Inter,sans-serif;color:#f4f7f1">0.05</span>
+            <span style="padding:6px 11px;border-radius:8px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.09);font:800 11px 'IBM Plex Mono',monospace;color:#e6ebe4">ETH</span>
+          </div>
+          <div style="display:flex;gap:6px">
+            <sc-for list="{{ presets }}" as="p" hint-placeholder-count="4">
+              <button onClick="{{ p.apply }}" style="{{ p.style }}">{{ p.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:center;margin:-6px 0"><span style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;border:1px solid rgba(255,255,255,0.1);background:#111713;box-shadow:0 6px 16px -8px rgba(0,0,0,0.9);color:#c6f53e;position:relative;z-index:2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"></path></svg></span></div>
+
+        <div style="border:1px solid rgba(255,255,255,0.09);border-radius:14px;background:linear-gradient(180deg, rgba(0,0,0,0.38), rgba(255,255,255,0.022)),#0a0f0c;box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;padding:13px 14px;display:flex;flex-direction:column;gap:9px">
+          <span style="font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#8d918c">YOU RECEIVE</span>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+            <span style="font:400 26px 'Archivo Black',Inter,sans-serif;color:#f4f7f1">14,730</span>
+            <span style="padding:6px 11px;border-radius:8px;background:rgba(198,245,62,0.1);border:1px solid rgba(198,245,62,0.3);font:800 11px 'IBM Plex Mono',monospace;color:#c6f53e">HOODS</span>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <span style="font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#8d918c">SLIPPAGE</span>
+          <div style="display:flex;gap:4px">
+            <sc-for list="{{ slips }}" as="s" hint-placeholder-count="3">
+              <button onClick="{{ s.apply }}" style="{{ s.style }}">{{ s.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <button style="width:100%;min-height:50px;border:0;border-radius:999px;background:#c6f53e;color:#071008;font:800 14.5px Inter,sans-serif;cursor:pointer;box-shadow:0 14px 34px -12px rgba(198,245,62,0.5)">{{ ctaLabel }}</button>
+        <span style="text-align:center;font:600 10px 'IBM Plex Mono',monospace;color:#6f746e">1% fee · 60% treasury / 40% creator · bonding</span>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,0.09);border-radius:22px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 30px 70px -24px rgba(0,0,0,0.8);overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 14px;border-bottom:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg, rgba(198,245,62,0.04), transparent)">
+          <div style="display:flex;gap:3px;padding:3px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:linear-gradient(180deg, rgba(0,0,0,0.4), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset">
+            <sc-for list="{{ statsTabs }}" as="t" hint-placeholder-count="2">
+              <button onClick="{{ t.apply }}" style="{{ t.style }}">{{ t.label }}</button>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:2px">
+            <sc-for list="{{ tfBtns }}" as="t" hint-placeholder-count="3">
+              <button onClick="{{ t.apply }}" style="{{ t.style }}">{{ t.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <sc-if value="{{ isStats }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:6px 14px 14px;display:flex;flex-direction:column">
+            <sc-for list="{{ pairs }}" as="p" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:7px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,0.055)">
+                <div style="display:flex;justify-content:space-between;gap:12px">
+                  <div style="display:flex;flex-direction:column;gap:4px"><span style="font:700 8.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;color:#8d918c">{{ p.lk }}</span><span style="{{ p.lvStyle }}">{{ p.lv }}</span></div>
+                  <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><span style="font:700 8.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;color:#8d918c">{{ p.rk }}</span><span style="{{ p.rvStyle }}">{{ p.rv }}</span></div>
+                </div>
+                <div style="display:flex;gap:3px;height:3px;border-radius:99px;overflow:hidden;background:rgba(255,255,255,0.05)">
+                  <span style="{{ p.lBar }}"></span><span style="{{ p.rBar }}"></span>
+                </div>
+              </div>
+            </sc-for>
+            <div style="margin-top:12px;border:1px solid rgba(255,255,255,0.08);border-radius:12px;background:linear-gradient(180deg, rgba(0,0,0,0.32), rgba(255,255,255,0.02)),#0a0f0c;box-shadow:0 2px 6px 0 rgba(0,0,0,0.45) inset;overflow:hidden">
+              <button onClick="{{ toggleComp }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 13px;border:0;background:none;cursor:pointer">
+                <span style="font:700 8.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#8d918c">HOLDER BREAKDOWN</span>
+                <span style="display:inline-flex;align-items:center;gap:8px">
+                  <span style="font:700 11px/1 'IBM Plex Mono',monospace;color:#e6ebe4">2,417</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8d918c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="{{ compChevron }}"><path d="M6 9l6 6 6-6"></path></svg>
+                </span>
+              </button>
+              <sc-if value="{{ compOpen }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:0 13px 5px;border-top:1px solid rgba(255,255,255,0.06)">
+                  <sc-for list="{{ comp }}" as="r" hint-placeholder-count="5">
+                    <div style="{{ r.rowStyle }}" title="{{ r.tip }}">
+                      <span style="display:inline-flex;align-items:center;gap:5px;font:700 8.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;color:#8d918c">{{ r.k }}<span style="{{ r.infoStyle }}">i</span></span>
+                      <span style="font:700 12px/1 'IBM Plex Mono',monospace;color:#e6ebe4">{{ r.v }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isAudit }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:13px 14px 14px;display:flex;flex-direction:column;gap:7px">
+            <sc-for list="{{ audit }}" as="x" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:11px;border:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008))">
+                <span style="width:20px;height:20px;flex:none;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(198,245,62,0.4);background:rgba(198,245,62,0.1)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#c6f53e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 10 18 19.5 6.5"></path></svg></span>
+                <span style="font-size:12.5px;color:#d9dfd6">{{ x }}</span>
+              </div>
+            </sc-for>
+            <span style="font:600 9px 'IBM Plex Mono',monospace;color:#6f746e;padding:3px 2px 0">Guaranteed by the Hoodlums factory contract</span>
+          </div>
+        </sc-if>
+
+      </div>
+
+
+      <div style="border:1px solid rgba(255,255,255,0.09);border-radius:22px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 30px 70px -24px rgba(0,0,0,0.8);padding:16px;display:flex;flex-direction:column;gap:11px">
+        <span style="font:700 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;color:#8d918c">CREATOR FEES</span>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+          <span style="font-size:12.5px;color:#a8aaa9">Claimable</span>
+          <span style="font:700 14px 'IBM Plex Mono',monospace;color:#c6f53e">0.00000012 ETH</span>
+        </div>
+        <button style="width:100%;min-height:42px;border:0;border-radius:999px;background:#c6f53e;color:#071008;font:800 12.5px Inter,sans-serif;cursor:pointer">Withdraw fees</button>
+      </div>
+    </div>
+
+    <!-- CENTRE — chart owns it -->
+    <div style="flex:1;min-width:620px;display:flex;flex-direction:column;gap:14px">
+      <div style="border:1px solid rgba(255,255,255,0.09);border-radius:22px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -20px rgba(0,0,0,0.75);overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 20px 12px;background:linear-gradient(180deg, rgba(198,245,62,0.045), transparent)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font:700 11px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#c3c9c4">HOODS / ETH</span>
+            <span style="font:600 10px/1 'IBM Plex Mono',monospace;color:#6f746e">{{ a.lastShort }}</span>
+          </div>
+          <div style="display:flex;gap:3px;padding:4px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:linear-gradient(180deg, rgba(0,0,0,0.4), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset">
+            <sc-for list="{{ a.tfs }}" as="t" hint-placeholder-count="6">
+              <button onClick="{{ t.apply }}" style="{{ t.style }}">{{ t.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:stretch;border-top:1px solid rgba(255,255,255,0.07)">
+          <div style="width:50px;flex:none;border-right:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg, rgba(0,0,0,0.3), rgba(255,255,255,0.012));padding:12px 0;display:flex;flex-direction:column;align-items:center;gap:4px">
+            <sc-for list="{{ a.tools }}" as="t" hint-placeholder-count="2">
+              <button onClick="{{ t.apply }}" title="{{ t.name }}" style="{{ t.style }}">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="{{ t.d }}"></path></svg>
+              </button>
+            </sc-for>
+          </div>
+
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+            <div onMouseMove="{{ a.onMove }}" onMouseLeave="{{ a.onLeave }}" style="position:relative;height:370px;cursor:crosshair">
+              <sc-if value="{{ showGrid }}" hint-placeholder-val="{{ true }}">
+                <div style="position:absolute;inset:0">
+                  <sc-for list="{{ a.grid }}" as="g" hint-placeholder-count="5">
+                    <div style="{{ g.line }}"></div>
+                  </sc-for>
+                  <sc-for list="{{ a.vgrid }}" as="g" hint-placeholder-count="6">
+                    <div style="{{ g.line }}"></div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+                <polyline points="{{ a.ma50 }}" fill="none" stroke="rgba(255,255,255,0.34)" stroke-width="1.4" vector-effect="non-scaling-stroke"></polyline>
+                <polyline points="{{ a.ma20 }}" fill="none" stroke="#c6f53e" stroke-width="1.7" stroke-opacity="0.85" vector-effect="non-scaling-stroke"></polyline>
+              </svg>
+              <sc-for list="{{ a.candles }}" as="c" hint-placeholder-count="124">
+                <div style="{{ c.wick }}"></div>
+              </sc-for>
+              <sc-for list="{{ a.candles }}" as="c" hint-placeholder-count="124">
+                <div style="{{ c.body }}"></div>
+              </sc-for>
+              <div style="{{ a.lastLine }}"></div>
+              <sc-if value="{{ a.hasHover }}" hint-placeholder-val="{{ true }}">
+                <div style="{{ a.crossV }}"></div>
+                <div style="{{ a.crossH }}"></div>
+                <div style="{{ a.tipStyle }}">
+                  <div style="display:flex;align-items:center;gap:8px;padding-bottom:7px;margin-bottom:7px;border-bottom:1px solid rgba(255,255,255,0.08)">
+                    <span style="font:700 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.1em;color:#8d918c">{{ a.hoverTime }}</span>
+                    <span style="{{ a.hoverPctStyle }}">{{ a.hoverPct }}</span>
+                  </div>
+                  <sc-for list="{{ a.hoverRows }}" as="r" hint-placeholder-count="5">
+                    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:22px;padding:2.5px 0">
+                      <span style="font:600 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.1em;color:#8d918c">{{ r.k }}</span>
+                      <span style="{{ r.style }}">{{ r.v }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+
+            <sc-if value="{{ showVolume }}" hint-placeholder-val="{{ true }}">
+              <div style="position:relative;height:64px;border-top:1px solid rgba(255,255,255,0.07)">
+                <span style="position:absolute;top:7px;left:12px;font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#6f746e;z-index:2">VOL</span>
+                <sc-for list="{{ a.candles }}" as="c" hint-placeholder-count="124">
+                  <div style="{{ c.vol }}"></div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <div style="position:relative;height:24px;border-top:1px solid rgba(255,255,255,0.07);background:rgba(0,0,0,0.25)">
+              <sc-for list="{{ a.vgrid }}" as="g" hint-placeholder-count="6">
+                <span style="{{ g.label }}">{{ g.text }}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="width:80px;flex:none;display:flex;flex-direction:column;border-left:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg, rgba(0,0,0,0.3), rgba(255,255,255,0.012))">
+            <div style="position:relative;height:370px;flex:none">
+              <sc-for list="{{ a.grid }}" as="g" hint-placeholder-count="5">
+                <span style="{{ g.label }}">{{ g.text }}</span>
+              </sc-for>
+              <span style="{{ a.lastTag }}">{{ a.lastShort }}</span>
+              <sc-if value="{{ a.hasHover }}" hint-placeholder-val="{{ true }}">
+                <span style="{{ a.hoverTag }}">{{ a.hoverShort }}</span>
+              </sc-if>
+            </div>
+            <sc-if value="{{ showVolume }}" hint-placeholder-val="{{ true }}">
+              <div style="height:64px;flex:none;border-top:1px solid rgba(255,255,255,0.07)"></div>
+            </sc-if>
+            <div style="height:24px;flex:none;border-top:1px solid rgba(255,255,255,0.07);background:rgba(0,0,0,0.25)"></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="min-height:363px;border:1px solid rgba(255,255,255,0.09);border-radius:22px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 30px 70px -24px rgba(0,0,0,0.8);overflow:hidden">
+        <div style="display:flex;gap:2px;padding:10px 14px 0;border-bottom:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg, rgba(198,245,62,0.04), transparent)">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+            <button onClick="{{ t.apply }}" style="{{ t.style }}">{{ t.label }}</button>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ isTrades }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:12px 18px 16px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:grid;grid-template-columns:64px 1fr 110px 96px 56px;gap:12px;padding:6px 10px;font:700 8.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#6f746e">
+              <span>TYPE</span><span>WALLET</span><span style="text-align:right">AMOUNT</span><span style="text-align:right">ETH</span><span style="text-align:right">TIME</span>
+            </div>
+            <sc-for list="{{ trades }}" as="t" hint-placeholder-count="7">
+              <div style="display:grid;grid-template-columns:64px 1fr 110px 96px 56px;gap:12px;align-items:center;padding:9px 10px;border-radius:9px;border:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008))">
+                <span style="{{ t.typeStyle }}">{{ t.arrow }} {{ t.type }}</span>
+                <span style="font:600 11px/1 'IBM Plex Mono',monospace;color:#c3c9c4">{{ t.wallet }}</span>
+                <span style="text-align:right;font:600 11px/1 'IBM Plex Mono',monospace;color:#e6ebe4">{{ t.amount }}</span>
+                <span style="{{ t.ethStyle }}">{{ t.eth }}</span>
+                <span style="text-align:right;font:600 10.5px/1 'IBM Plex Mono',monospace;color:#6f746e">{{ t.ago }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isHolders }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:12px 18px 16px;display:flex;flex-direction:column;gap:4px">
+            <sc-for list="{{ holders }}" as="h" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;gap:12px;padding:9px 10px;border-radius:9px;border:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008))">
+                <span style="width:26px;font:700 10px/1 'IBM Plex Mono',monospace;color:#6f746e">#{{ h.rank }}</span>
+                <span style="flex:1;font:600 11px/1 'IBM Plex Mono',monospace;color:#c3c9c4">{{ h.wallet }} <span style="{{ h.badgeStyle }}">{{ h.badge }}</span></span>
+                <div style="width:130px;height:5px;border-radius:99px;background:rgba(255,255,255,0.07);overflow:hidden"><span style="{{ h.barStyle }}"></span></div>
+                <span style="width:52px;text-align:right;font:700 11px/1 'IBM Plex Mono',monospace;color:#e6ebe4">{{ h.pct }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isChat }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:12px 18px 16px;display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ chat }}" as="m" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:11px;border:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008))">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font:700 10.5px/1 'IBM Plex Mono',monospace;color:#c6f53e">{{ m.wallet }}</span>
+                  <span style="{{ m.badgeStyle }}">{{ m.badge }}</span>
+                  <span style="margin-left:auto;font:600 9.5px/1 'IBM Plex Mono',monospace;color:#6f746e">{{ m.ago }}</span>
+                </div>
+                <span style="font-size:12.5px;color:#d9dfd6;line-height:1.5">{{ m.body }}</span>
+              </div>
+            </sc-for>
+            <div style="display:flex;gap:8px;align-items:center;border:1px solid rgba(255,255,255,0.09);border-radius:999px;background:linear-gradient(180deg, rgba(0,0,0,0.38), rgba(255,255,255,0.022)),#0a0f0c;box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;padding:6px 6px 6px 16px">
+              <span style="flex:1;font-size:12.5px;color:#6f746e">Chat about $HOODS…</span>
+              <button style="min-height:34px;padding:0 18px;border-radius:999px;border:0;background:#c6f53e;color:#071008;font:800 12px Inter,sans-serif;cursor:pointer">Send</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isAbout }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:16px 18px 18px;display:flex;flex-direction:column;gap:12px;max-width:66ch">
+            <p style="margin:0;font-size:13px;line-height:1.65;color:#c3c9c4">Straight off the block. HOODLUMS is the crew token of the launchpad itself — no promises, just vibes and a bonding curve that graduates into locked liquidity.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <span style="display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;border:1px solid rgba(198,245,62,0.32);background:linear-gradient(180deg, rgba(198,245,62,0.13), rgba(198,245,62,0.03));font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;color:#c6f53e">BONDING CURVE LAUNCH</span>
+              <span style="display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(145,240,182,0.32);background:rgba(145,240,182,0.08);font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;color:#91f0b6">RHC</span>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+
+  </div>
+
+
+</div>
+
+<template id="__bundler_thumbnail">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="#0a0b09"/><g fill="#c6f53e"><rect x="30" y="52" width="12" height="18" rx="2"/><rect x="54" y="62" width="12" height="22" rx="2"/><rect x="78" y="46" width="12" height="26" rx="2"/></g></svg>
+</template>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#c6f53e&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#c6f53e&quot;,&quot;#91f0b6&quot;,&quot;#9ad4ff&quot;,&quot;#f5d84e&quot;],&quot;section&quot;:&quot;Theme&quot;},&quot;downColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#8d918c&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#e2564b&quot;,&quot;#ff7a5c&quot;,&quot;#8d918c&quot;],&quot;section&quot;:&quot;Theme&quot;},&quot;showVolume&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Panes&quot;},&quot;showGrid&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Panes&quot;}}">
+const MONO = "'IBM Plex Mono',monospace";
+
+class Component extends DCLogic {
+  state = { tf: '1H', hover: null, tool: 'cross', tab: 'trades', side: 'buy', slip: '1%', preset: '0.1' };
+
+  rng(seed) { let x = seed >>> 0; return () => { x = (1664525 * x + 1013904223) >>> 0; return x / 4294967296; }; }
+
+  gen(seed, n, p0, vol, drift) {
+    const r = this.rng(seed), out = []; let p = p0;
+    for (let i = 0; i < n; i++) {
+      const o = p;
+      const c = Math.max(p0 * 0.3, o * (1 + (r() - 0.5 + drift) * vol));
+      out.push({ o, c, h: Math.max(o, c) * (1 + r() * vol * 0.55), l: Math.min(o, c) * (1 - r() * vol * 0.55), v: 0.22 + r() * 0.92 });
+      p = c;
+    }
+    return out;
+  }
+
+  sma(arr, k) {
+    return arr.map((_, i) => {
+      if (i < k - 1) return null;
+      let s = 0; for (let j = i - k + 1; j <= i; j++) s += arr[j];
+      return s / k;
+    });
+  }
+
+  fmt(p) { return p.toPrecision(6) + ' ETH'; }
+  fmtShort(p) { return p.toPrecision(6); }
+
+  chip(active) {
+    return 'min-height:28px;padding:0 12px;border-radius:8px;cursor:pointer;transition:all .14s;font:700 10.5px/1 ' + MONO +
+      ';letter-spacing:0.07em;border:1px solid ' + (active ? 'rgba(198,245,62,0.5)' : 'transparent') +
+      ';background:' + (active ? 'linear-gradient(180deg, rgba(198,245,62,0.2), rgba(198,245,62,0.05))' : 'transparent') +
+      ';box-shadow:' + (active ? '0 1px 0 0 rgba(198,245,62,0.22) inset, 0 6px 16px -8px rgba(198,245,62,0.5)' : 'none') +
+      ';text-shadow:' + (active ? '0 0 12px rgba(198,245,62,0.45)' : 'none') +
+      ';color:' + (active ? '#c6f53e' : '#8d918c');
+  }
+
+  changeStyle(pos) {
+    return 'display:inline-flex;align-items:center;min-height:26px;padding:0 10px;border-radius:8px;border:1px solid ' +
+      (pos ? 'rgba(198,245,62,0.34)' : 'rgba(226,86,75,0.34)') + ';background:' +
+      (pos ? 'linear-gradient(180deg, rgba(198,245,62,0.16), rgba(198,245,62,0.04))' : 'linear-gradient(180deg, rgba(226,86,75,0.16), rgba(226,86,75,0.04))') +
+      ';font:700 12px/1 ' + MONO + ';color:' + (pos ? '#c6f53e' : '#e2564b');
+  }
+
+  renderVals() {
+    const st = this.state;
+    const up = this.props.accent ?? '#c6f53e';
+    const dn = this.props.downColor ?? '#e2564b';
+    const seedOf = s => s.split('').reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0;
+
+    const cs = this.gen(seedOf('a' + st.tf), 124, 0.0000318, 0.034, 0.016);
+    const hi2 = Math.max.apply(null, cs.map(c => c.h)), lo2 = Math.min.apply(null, cs.map(c => c.l));
+    const span = (hi2 - lo2) || hi2 * 0.05, max = hi2 + span * 0.09, min = lo2 - span * 0.09;
+    const Y = p => ((max - p) / (max - min)) * 100;
+    const n = cs.length, slot = 100 / n, bw = slot * 0.5;
+
+    const candles = cs.map((c, i) => {
+      const cx = slot * (i + 0.5), rise = c.c >= c.o, col = rise ? up : dn;
+      const top = Y(Math.max(c.o, c.c)), bot = Y(Math.min(c.o, c.c));
+      return {
+        wick: 'position:absolute;left:' + cx + '%;top:' + Y(c.h) + '%;height:' + (Y(c.l) - Y(c.h)) + '%;width:1px;margin-left:-0.5px;background:' + col + ';opacity:.9',
+        body: 'position:absolute;left:' + (cx - bw / 2) + '%;top:' + top + '%;width:' + bw + '%;height:' + Math.max(0.4, bot - top) + '%;background:' + col + ';border-radius:0.5px',
+        vol: 'position:absolute;bottom:0;left:' + (cx - bw / 2) + '%;width:' + bw + '%;height:' + (c.v * 78) + '%;background:' + col + ';opacity:.3;border-radius:2px 2px 0 0'
+      };
+    });
+
+    const grid = [];
+    for (let i = 0; i < 6; i++) {
+      const p = max - (max - min) * (i / 5), t = Y(p);
+      grid.push({
+        line: 'position:absolute;left:0;right:0;top:' + t + '%;height:1px;background:rgba(255,255,255,0.045)',
+        label: 'position:absolute;top:' + t + '%;right:10px;transform:translateY(-50%);font:600 9.5px/1 ' + MONO + ';color:#6f746e;white-space:nowrap',
+        text: this.fmtShort(p)
+      });
+    }
+    const times = ['04:00', '07:00', '10:00', '13:00', '16:00', '19:00'];
+    const vgrid = times.map((t, i) => {
+      const x = (i + 0.5) * (100 / times.length);
+      return {
+        line: 'position:absolute;top:0;bottom:0;left:' + x + '%;width:1px;background:rgba(255,255,255,0.035)',
+        label: 'position:absolute;left:' + x + '%;top:50%;transform:translate(-50%,-50%);font:600 9px/1 ' + MONO + ';color:#6f746e;white-space:nowrap',
+        text: t
+      };
+    });
+
+    const pts = vals => vals.map((v, i) => v == null ? null : (slot * (i + 0.5)) + ',' + Y(v)).filter(Boolean).join(' ');
+    const closes = cs.map(c => c.c);
+    const last = closes[n - 1], pct = ((last - closes[0]) / closes[0]) * 100;
+
+    const a = {
+      candles, grid, vgrid,
+      ma20: pts(this.sma(closes, 20)), ma50: pts(this.sma(closes, 50)),
+      lastLabel: this.fmt(last), lastShort: this.fmtShort(last),
+      changeLabel: (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%',
+      changeStyle: this.changeStyle(pct >= 0),
+      lastLine: 'position:absolute;left:0;right:0;top:' + Y(last) + '%;height:1px;background:repeating-linear-gradient(90deg, ' + up + ' 0 6px, transparent 6px 12px);opacity:.6',
+      lastTag: 'position:absolute;top:' + Y(last) + '%;right:6px;transform:translateY(-50%);padding:4px 6px;border-radius:5px;background:' + up + ';color:#071008;font:700 9.5px/1 ' + MONO + ';white-space:nowrap',
+      tfs: ['5M', '15M', '1H', '6H', '1D', 'ALL'].map(l => ({ label: l, style: this.chip(st.tf === l), apply: () => this.setState({ tf: l }) })),
+      tools: [
+        { id: 'cross', name: 'Crosshair', d: 'M12 2.5v6.5M12 15v6.5M2.5 12H9M15 12h6.5M13.4 12a1.4 1.4 0 1 1-2.8 0 1.4 1.4 0 0 1 2.8 0' },
+        { id: 'ray', name: 'Horizontal line', d: 'M2.5 12h7M14.5 12h7M13.4 12a1.4 1.4 0 1 1-2.8 0 1.4 1.4 0 0 1 2.8 0' }
+      ].map(t => ({
+        name: t.name, d: t.d,
+        apply: () => this.setState({ tool: t.id }),
+        style: 'width:34px;height:34px;border-radius:9px;display:grid;place-items:center;cursor:pointer;transition:all .14s;padding:0;border:1px solid ' +
+          (st.tool === t.id ? 'rgba(198,245,62,0.4)' : 'transparent') +
+          ';background:' + (st.tool === t.id ? 'linear-gradient(180deg, rgba(198,245,62,0.18), rgba(198,245,62,0.04))' : 'transparent') +
+          ';box-shadow:' + (st.tool === t.id ? '0 0 18px -4px rgba(198,245,62,0.5), 0 1px 0 0 rgba(198,245,62,0.2) inset' : 'none') +
+          ';color:' + (st.tool === t.id ? '#c6f53e' : 'rgba(239,244,236,0.6)')
+      })),
+      onMove: e => {
+        const r = e.currentTarget.getBoundingClientRect();
+        const i = Math.max(0, Math.min(n - 1, Math.floor(((e.clientX - r.left) / r.width) * n)));
+        if (i !== st.hover) this.setState({ hover: i });
+      },
+      onLeave: () => this.setState({ hover: null })
+    };
+
+    const hv = st.hover;
+    a.hasHover = hv != null;
+    if (hv != null) {
+      const c = cs[hv], cx = slot * (hv + 0.5), hp = Y(c.c), rise = c.c >= c.o;
+      const chg = ((c.c - c.o) / c.o) * 100;
+      const flipX = cx > 62;
+      a.crossV = 'position:absolute;top:0;bottom:0;left:' + cx + '%;width:1px;background:repeating-linear-gradient(180deg, rgba(255,255,255,0.35) 0 4px, transparent 4px 8px)';
+      a.crossH = 'position:absolute;left:0;right:0;top:' + hp + '%;height:1px;background:repeating-linear-gradient(90deg, rgba(255,255,255,0.35) 0 4px, transparent 4px 8px)';
+      a.tipStyle = 'position:absolute;top:14px;' + (flipX ? 'right:' + (100 - cx) + '%;margin-right:14px' : 'left:' + cx + '%;margin-left:14px') +
+        ';min-width:168px;padding:11px 13px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:rgba(6,9,7,0.96);backdrop-filter:blur(10px);box-shadow:0 18px 44px -14px rgba(0,0,0,0.9);pointer-events:none;z-index:5';
+      a.hoverTime = times[Math.min(times.length - 1, Math.floor(hv / n * times.length))] + ' UTC';
+      a.hoverPct = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+      a.hoverPctStyle = 'font:700 10px/1 ' + MONO + ';color:' + (rise ? up : dn);
+      const val = () => 'font:700 11px/1 ' + MONO + ';color:#e6ebe4';
+      a.hoverRows = [
+        { k: 'O', v: this.fmtShort(c.o), style: val() },
+        { k: 'H', v: this.fmtShort(c.h), style: val() },
+        { k: 'L', v: this.fmtShort(c.l), style: val() },
+        { k: 'C', v: this.fmtShort(c.c), style: 'font:700 11px/1 ' + MONO + ';color:' + (rise ? up : dn) },
+        { k: 'VOL', v: (c.v * 24).toFixed(1) + ' ETH', style: val() }
+      ];
+      a.hoverShort = this.fmtShort(c.c);
+      a.hoverTag = 'position:absolute;top:' + hp + '%;right:6px;transform:translateY(-50%);padding:4px 6px;border-radius:5px;background:#2b302c;border:1px solid rgba(255,255,255,0.18);color:#f4f7f1;font:700 9.5px/1 ' + MONO + ';white-space:nowrap';
+    }
+
+    const segTab = on => 'flex:1;min-height:34px;border-radius:999px;cursor:pointer;font:800 12px Inter,sans-serif;border:1px solid ' +
+      (on ? 'rgba(198,245,62,0.5)' : 'transparent') +
+      ';background:' + (on ? '#c6f53e' : 'transparent') + ';color:' + (on ? '#071008' : '#8d918c');
+
+    const tabBtn = on => 'min-height:38px;padding:0 16px;border-radius:10px 10px 0 0;cursor:pointer;font:700 11.5px Inter,sans-serif;border:0;border-bottom:2px solid ' +
+      (on ? '#c6f53e' : 'transparent') +
+      ';background:' + (on ? 'linear-gradient(180deg, rgba(198,245,62,0.16), rgba(198,245,62,0.02))' : 'transparent') +
+      ';box-shadow:' + (on ? '0 6px 20px -10px rgba(198,245,62,0.6)' : 'none') +
+      ';text-shadow:' + (on ? '0 0 12px rgba(198,245,62,0.4)' : 'none') +
+      ';color:' + (on ? '#c6f53e' : '#8d918c');
+
+    const rT = this.rng(seedOf('tape'));
+    const trades = Array.from({ length: 7 }, (_, i) => {
+      const buy = rT() > 0.36, eth = 0.02 + rT() * 1.4;
+      return {
+        type: buy ? 'BUY' : 'SELL', arrow: buy ? '▲' : '▼',
+        typeStyle: 'font:700 10.5px/1 ' + MONO + ';color:' + (buy ? up : dn),
+        wallet: '0x' + Math.floor(rT() * 0xfffff).toString(16).padStart(5, '0') + '…' + Math.floor(rT() * 0xffff).toString(16).padStart(4, '0'),
+        amount: (eth * 294000).toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        eth: eth.toFixed(3) + ' ETH',
+        ethStyle: 'text-align:right;font:700 11px/1 ' + MONO + ';color:' + (buy ? up : dn),
+        ago: (i * 6 + 2) + 'm'
+      };
+    });
+
+    const holders = [
+      ['0x3990…966a', 'DEV', 14.2], ['0x81ce…04d1', '', 6.8], ['0xa2f7…9b30', '', 5.1],
+      ['0x66d0…7e12', '', 4.4], ['0xf1b8…22c9', '', 3.2], ['0x09ad…d54f', '', 2.7]
+    ].map((h, i) => ({
+      rank: i + 1, wallet: h[0], badge: h[1],
+      badgeStyle: h[1] ? 'display:inline-flex;padding:2px 7px;border-radius:99px;border:1px solid rgba(198,245,62,0.4);background:rgba(198,245,62,0.1);font:800 8px/1.4 ' + MONO + ';letter-spacing:0.1em;color:#c6f53e' : 'display:none',
+      barStyle: 'display:block;width:' + (h[2] / 14.2 * 100) + '%;height:100%;border-radius:99px;background:' + up,
+      pct: h[2].toFixed(1) + '%'
+    }));
+
+    const chat = [
+      { wallet: '0x3990…966a', badge: 'DEV', ago: '4m', body: 'Chart looking clean. Graduation this week if the pace holds.' },
+      { wallet: '0x81ce…04d1', badge: 'HOLDER', ago: '9m', body: 'Been here since block one. Not moving.' },
+      { wallet: '0xa2f7…9b30', badge: 'HOLDER', ago: '17m', body: 'That 0.618 bounce was textbook.' },
+      { wallet: '0x66d0…7e12', badge: 'HOLDER', ago: '31m', body: 'gm hoodlums' }
+    ].map(m => ({
+      ...m,
+      badgeStyle: 'display:inline-flex;padding:2px 7px;border-radius:99px;border:1px solid ' +
+        (m.badge === 'DEV' ? 'rgba(198,245,62,0.4);background:rgba(198,245,62,0.1);color:#c6f53e' : 'rgba(145,240,182,0.32);background:rgba(145,240,182,0.07);color:#91f0b6') +
+        ';font:800 8px/1.4 ' + MONO + ';letter-spacing:0.1em'
+    }));
+
+    const mode = st.priceMode ?? 'price';
+    const headFigure = mode === 'price' ? this.fmt(last) : (last * 100000).toFixed(2) + ' ETH';
+    const modeLabel = mode === 'price' ? 'PRICE · TAP FOR MCAP' : 'MCAP · TAP FOR PRICE';
+    const stf = st.statsTf ?? '24h';
+    const T = {
+      '5m': { chg: 2.4, vol: '6.1 ETH', buys: 38, sells: 21, bv: 4.2, sv: 1.9, buyers: 31, sellers: 17 },
+      '1h': { chg: 8.1, vol: '38.4 ETH', buys: 214, sells: 132, bv: 24.6, sv: 13.8, buyers: 158, sellers: 96 },
+      '24h': { chg: 14.6, vol: '184.2 ETH', buys: 1092, sells: 611, bv: 117.3, sv: 66.9, buyers: 703, sellers: 388 }
+    }[stf];
+    const share = (x, y) => Math.round(x / (x + y) * 100);
+    const vLime = 'font:700 13px/1 ' + MONO + ';color:' + up;
+    const vRed = 'font:700 13px/1 ' + MONO + ';color:' + dn;
+    const vNeu = 'font:700 13px/1 ' + MONO + ';color:#e6ebe4';
+    const bars = s => ({
+      lBar: 'display:block;width:' + s + '%;background:' + up,
+      rBar: 'display:block;flex:1;background:' + dn + ';opacity:.85'
+    });
+    const pairs = [
+      Object.assign({ lk: 'PRICE CHANGE', lv: (T.chg >= 0 ? '+' : '') + T.chg.toFixed(1) + '%', lvStyle: T.chg >= 0 ? vLime : vRed, rk: 'VOLUME', rv: T.vol, rvStyle: vNeu }, bars(share(T.buys, T.sells))),
+      Object.assign({ lk: 'BUYS', lv: T.buys.toLocaleString('en-US'), lvStyle: vLime, rk: 'SELLS', rv: T.sells.toLocaleString('en-US'), rvStyle: vRed }, bars(share(T.buys, T.sells))),
+      Object.assign({ lk: 'BUY VOL', lv: T.bv + ' ETH', lvStyle: vLime, rk: 'SELL VOL', rv: T.sv + ' ETH', rvStyle: vRed }, bars(share(T.bv, T.sv))),
+      Object.assign({ lk: 'BUYERS', lv: T.buyers.toLocaleString('en-US'), lvStyle: vLime, rk: 'SELLERS', rv: T.sellers.toLocaleString('en-US'), rvStyle: vRed }, bars(share(T.buyers, T.sellers)))
+    ];
+    const comp = [
+      ['HOLDERS', '2,417', ''], ['TOP 10 %', '18.4%', ''], ['DEV %', '4.2%', ''],
+      ['SNIPERS %', '1.1%', 'Wallets that bought within the first 10 blocks after launch'], ['TOTAL FEES', '2.86 ETH', '']
+    ].map((r, i, arr) => ({
+      k: r[0], v: r[1], tip: r[2],
+      infoStyle: r[2] ? 'width:12px;height:12px;border-radius:50%;border:1px solid rgba(255,255,255,0.25);display:inline-grid;place-items:center;font:700 7.5px/1 ' + MONO + ';color:#8d918c;cursor:help' : 'display:none',
+      rowStyle: 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid ' + (i === arr.length - 1 ? 'transparent' : 'rgba(255,255,255,0.05)') + (r[2] ? ';cursor:help' : '')
+    }));
+
+    return {
+      a, trades, holders, chat, chatPreview: chat.slice(0, 2),
+      togglePriceMode: () => this.setState({ priceMode: mode === 'price' ? 'mcap' : 'price' }),
+      headFigure, modeLabel, pairs, comp,
+      compOpen: st.compOpen ?? false,
+      toggleComp: () => this.setState({ compOpen: !(st.compOpen ?? false) }),
+      compChevron: 'transition:transform .16s ease;transform:rotate(' + ((st.compOpen ?? false) ? 180 : 0) + 'deg)',
+      audit: ['0% tax', 'No mint function', 'No owner', 'LP locked at graduation'],
+      statsTabs: [['stats', 'Stats'], ['audit', 'Audit']].map(t => ({ label: t[1], style: this.chip((st.statsTab ?? 'stats') === t[0]), apply: () => this.setState({ statsTab: t[0] }) })),
+      tfBtns: ['5m', '1h', '24h'].map(l => ({ label: l.toUpperCase(), style: this.chip(stf === l), apply: () => this.setState({ statsTf: l }) })),
+      isStats: (st.statsTab ?? 'stats') === 'stats',
+      isAudit: (st.statsTab ?? 'stats') === 'audit',
+      links: (() => {
+        const base = "display:inline-flex;align-items:center;gap:5px;min-height:26px;padding:0 10px;border-radius:7px;border:1px solid rgba(255,255,255,0.09);background:rgba(255,255,255,0.035);font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase";
+        return [
+          { label: 'Contract', style: base + ';color:#a8aaa9;cursor:pointer', note: '', noteStyle: 'display:none' },
+          { label: 'Pool', style: base + ';color:#5f645e;opacity:.55;cursor:default', note: 'after graduation', noteStyle: "font:600 7.5px 'IBM Plex Mono',monospace;color:#6f746e" }
+        ];
+      })(),
+      tabs: [
+        { id: 'trades', label: 'Recent trades' }, { id: 'holders', label: 'Holders' }, { id: 'chat', label: 'Hoodchat' }, { id: 'about', label: 'About' }
+      ].map(t => ({ label: t.label, style: tabBtn(st.tab === t.id), apply: () => this.setState({ tab: t.id }) })),
+      isTrades: st.tab === 'trades', isHolders: st.tab === 'holders', isChat: st.tab === 'chat', isAbout: st.tab === 'about',
+      setBuy: () => this.setState({ side: 'buy' }),
+      setSell: () => this.setState({ side: 'sell' }),
+      buyTabStyle: segTab(st.side === 'buy'),
+      sellTabStyle: segTab(st.side === 'sell'),
+      ctaLabel: st.side === 'buy' ? 'Buy $HOODS' : 'Sell $HOODS',
+      presets: ['0.1', '0.5', '1', 'MAX'].map(p => ({
+        label: p,
+        apply: () => this.setState({ preset: p }),
+        style: 'flex:1;min-height:30px;border-radius:8px;cursor:pointer;font:700 10.5px/1 ' + MONO + ';border:1px solid ' +
+          (st.preset === p ? 'rgba(198,245,62,0.5)' : 'rgba(255,255,255,0.09)') +
+          ';background:' + (st.preset === p ? 'linear-gradient(180deg, rgba(198,245,62,0.2), rgba(198,245,62,0.05))' : 'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.012))') +
+          ';color:' + (st.preset === p ? '#c6f53e' : '#a8aaa9')
+      })),
+      slips: ['0.5%', '1%', '3%'].map(sv => ({
+        label: sv,
+        apply: () => this.setState({ slip: sv }),
+        style: 'min-height:28px;padding:0 12px;border-radius:999px;cursor:pointer;font:700 10px/1 ' + MONO + ';border:1px solid ' +
+          (st.slip === sv ? 'rgba(198,245,62,0.5)' : 'rgba(255,255,255,0.09)') +
+          ';background:' + (st.slip === sv ? 'linear-gradient(180deg, rgba(198,245,62,0.2), rgba(198,245,62,0.05))' : 'transparent') +
+          ';color:' + (st.slip === sv ? '#c6f53e' : '#8d918c')
+      })),
+      showVolume: this.props.showVolume ?? false,
+      showGrid: this.props.showGrid ?? true
+    };
+  }
+}
+</script>
+</body>
+</html>
