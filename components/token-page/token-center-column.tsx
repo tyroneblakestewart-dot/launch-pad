@@ -79,7 +79,7 @@ export function TokenCenterColumn({
   const explorerTxBaseUrl = explorerBaseUrl.replace("/address/", "/tx/");
 
   return (
-    <>
+    <div className={styles.centerGroup}>
       <div className={styles.chartPlaceholder} data-token-chart="true">
         <TokenTradeChart
           trades={trades}
@@ -181,6 +181,6 @@ export function TokenCenterColumn({
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }

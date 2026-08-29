@@ -1,4 +1,5 @@
 import { formatEther, type Address } from "viem";
+import { formatNativeAmountSixSigFigsTrimmed } from "./token-page-format";
 
 // Pure re-implementation of the display model derived from
 // contracts/HoodlumsTestBondingCurve.sol's public state. Progress mirrors
@@ -82,20 +83,23 @@ export function formatGraduationProgressPercent(progressBps: bigint): string {
 
 /**
  * Formats the token page v2 header band's graduation summary (issue #443
- * part 1), e.g. "3.12 / 4.0 ETH · 78%" — raised at 2dp, target at 1dp,
- * progress at 0dp, matching design/token-page-v2/token-page-data-inventory.md
- * section 1.
+ * part 1, precision fixed in issue #447 item 4), e.g.
+ * "0.0000099 / 0.01 ETH · 0%" — raised and target both go through the same
+ * six-significant-figure, trailing-zeros-trimmed
+ * `formatNativeAmountSixSigFigsTrimmed` helper (a fixed 2dp/1dp format reads
+ * as "0.00 / 0.0 ETH" for a small testnet target, wrong at both ends),
+ * progress stays at 0dp.
  */
 export function formatGraduationSummary(raisedWei: bigint, targetWei: bigint, progressBps: bigint): string {
   const clampedBps =
     progressBps < 0n ? 0n : progressBps > GRADUATION_PROGRESS_BPS_MAX ? GRADUATION_PROGRESS_BPS_MAX : progressBps;
-  const raised = Number(formatEther(raisedWei)).toFixed(2);
-  const target = Number(formatEther(targetWei)).toFixed(1);
+  const raised = formatNativeAmountSixSigFigsTrimmed(Number(formatEther(raisedWei)));
+  const target = formatNativeAmountSixSigFigsTrimmed(Number(formatEther(targetWei)));
   const pct = (Number(clampedBps) / 100).toFixed(0);
   return `${raised} / ${target} ETH · ${pct}%`;
 }
 
-/** Formats the header band's "x.xx ETH remaining" line (issue #443 part 1). */
+/** Formats the header band's "x ETH remaining" line (issue #443 part 1, precision fixed in issue #447 item 4) using the same shared six-significant-figure helper as formatGraduationSummary. */
 export function formatGraduationRemainingLabel(remainingWei: bigint): string {
-  return `${Number(formatEther(remainingWei)).toFixed(2)} ETH remaining`;
+  return `${formatNativeAmountSixSigFigsTrimmed(Number(formatEther(remainingWei)))} ETH remaining`;
 }

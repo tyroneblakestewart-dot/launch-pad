@@ -133,28 +133,39 @@ describe("formatGraduationProgressPercent", () => {
   });
 });
 
-describe("formatGraduationSummary (issue #443 part 1 header band)", () => {
-  it("formats raised at 2dp, target at 1dp and progress at 0dp", () => {
+describe("formatGraduationSummary (issue #443 part 1 header band, precision fixed in issue #447 item 4)", () => {
+  it("formats raised and target at up to six significant figures with trailing zeros trimmed, progress at 0dp", () => {
     const summary = formatGraduationSummary(3_120_000_000_000_000_000n, TARGET, 7_800n);
-    expect(summary).toBe("3.12 / 4.0 ETH · 78%");
+    expect(summary).toBe("3.12 / 4 ETH · 78%");
   });
 
   it("formats a fresh, unfunded curve as fully zeroed", () => {
-    expect(formatGraduationSummary(0n, TARGET, 0n)).toBe("0.00 / 4.0 ETH · 0%");
+    expect(formatGraduationSummary(0n, TARGET, 0n)).toBe("0 / 4 ETH · 0%");
   });
 
   it("clamps an out-of-range progress bps instead of printing an absurd percentage", () => {
     expect(formatGraduationSummary(0n, TARGET, -1n)).toContain("· 0%");
     expect(formatGraduationSummary(TARGET, TARGET, GRADUATION_PROGRESS_BPS_MAX + 1n)).toContain("· 100%");
   });
+
+  it("reads correctly at a small (0.01 ETH) testnet graduation target instead of rounding both ends to zero", () => {
+    const smallTarget = 10_000_000_000_000_000n; // 0.01 ether
+    const summary = formatGraduationSummary(9_900_000_000_000n, smallTarget, 99n); // 0.0000099 ether raised
+    expect(summary).toBe("0.0000099 / 0.01 ETH · 1%");
+  });
 });
 
-describe("formatGraduationRemainingLabel (issue #443 part 1 header band)", () => {
-  it("formats the remaining wei amount to 2dp with a trailing label", () => {
+describe("formatGraduationRemainingLabel (issue #443 part 1 header band, precision fixed in issue #447 item 4)", () => {
+  it("formats the remaining wei amount at up to six significant figures with trailing zeros trimmed", () => {
     expect(formatGraduationRemainingLabel(880_000_000_000_000_000n)).toBe("0.88 ETH remaining");
   });
 
   it("formats a fresh curve's remaining amount as the full target", () => {
-    expect(formatGraduationRemainingLabel(TARGET)).toBe("4.00 ETH remaining");
+    expect(formatGraduationRemainingLabel(TARGET)).toBe("4 ETH remaining");
+  });
+
+  it("reads correctly at a small (0.01 ETH) target instead of rounding to 0.0", () => {
+    const smallTarget = 10_000_000_000_000_000n; // 0.01 ether
+    expect(formatGraduationRemainingLabel(smallTarget)).toBe("0.01 ETH remaining");
   });
 });
