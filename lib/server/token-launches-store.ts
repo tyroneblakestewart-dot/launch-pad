@@ -27,6 +27,8 @@ export type TokenLaunch = {
   graduated: boolean;
   graduatedAt: string | null;
   launchedAt: string;
+  /** A client-captured square thumbnail (issue #438), or null when none was sent or it failed validation. Never the full-size artwork. */
+  artworkThumbnail: string | null;
 };
 
 export type RecordTokenLaunchInput = {
@@ -39,6 +41,7 @@ export type RecordTokenLaunchInput = {
   decimals: number;
   wholeTokenSupply: string;
   graduationTargetWei: string;
+  artworkThumbnail: string | null;
 };
 
 export type ListTokenLaunchesFilter = "all" | "bonding" | "graduated";
@@ -130,6 +133,7 @@ type LaunchRow = {
   graduated: boolean;
   graduated_at: Date | string | null;
   launched_at: Date | string;
+  artwork_thumbnail: string | null;
 };
 
 function asDate(value: Date | string): Date {
@@ -151,10 +155,11 @@ function launchFromRow(row: LaunchRow): TokenLaunch {
     graduated: row.graduated,
     graduatedAt: row.graduated_at ? asDate(row.graduated_at).toISOString() : null,
     launchedAt: asDate(row.launched_at).toISOString(),
+    artworkThumbnail: row.artwork_thumbnail ?? null,
   };
 }
 
-const LAUNCH_COLUMNS = `id, chain_id, token_address, curve_address, creator_wallet_address, token_name, ticker, decimals, whole_token_supply, graduation_target_wei, graduated, graduated_at, launched_at`;
+const LAUNCH_COLUMNS = `id, chain_id, token_address, curve_address, creator_wallet_address, token_name, ticker, decimals, whole_token_supply, graduation_target_wei, graduated, graduated_at, launched_at, artwork_thumbnail`;
 
 export function createPostgresTokenLaunchesStore(databaseUrl: string): TokenLaunchesStore {
   const pool = getPostgresPool(databaseUrl);
@@ -164,10 +169,13 @@ export function createPostgresTokenLaunchesStore(databaseUrl: string): TokenLaun
       const result = await pool.query<LaunchRow>(
         `INSERT INTO token_launches (
            chain_id, token_address, curve_address, creator_wallet_address,
-           token_name, ticker, decimals, whole_token_supply, graduation_target_wei
+           token_name, ticker, decimals, whole_token_supply, graduation_target_wei,
+           artwork_thumbnail
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT (chain_id, token_address) DO UPDATE SET chain_id = token_launches.chain_id
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT (chain_id, token_address) DO UPDATE SET
+           chain_id = token_launches.chain_id,
+           artwork_thumbnail = COALESCE(token_launches.artwork_thumbnail, EXCLUDED.artwork_thumbnail)
          RETURNING ${LAUNCH_COLUMNS}`,
         [
           input.chainId,
@@ -179,6 +187,7 @@ export function createPostgresTokenLaunchesStore(databaseUrl: string): TokenLaun
           input.decimals,
           input.wholeTokenSupply,
           input.graduationTargetWei,
+          input.artworkThumbnail,
         ],
       );
       const row = result.rows[0];

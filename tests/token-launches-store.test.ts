@@ -25,7 +25,17 @@ function createMemoryTokenLaunchesStore(): TokenLaunchesStore {
     async record(input: RecordTokenLaunchInput) {
       const existingKey = key(input.chainId, input.tokenAddress);
       const existing = [...launches.values()].find((l) => key(l.chainId, l.tokenAddress) === existingKey);
-      if (existing) return existing;
+      if (existing) {
+        // Mirrors the real store's ON CONFLICT ... COALESCE: fills in
+        // artwork on a double-submitted record if the first attempt had
+        // none, but never overwrites artwork already recorded.
+        if (!existing.artworkThumbnail && input.artworkThumbnail) {
+          const merged = { ...existing, artworkThumbnail: input.artworkThumbnail };
+          launches.set(existing.id, merged);
+          return merged;
+        }
+        return existing;
+      }
 
       const launch: TokenLaunch = {
         id: randomUUID(),
@@ -41,6 +51,7 @@ function createMemoryTokenLaunchesStore(): TokenLaunchesStore {
         graduated: false,
         graduatedAt: null,
         launchedAt: new Date().toISOString(),
+        artworkThumbnail: input.artworkThumbnail,
       };
       launches.set(launch.id, launch);
       return launch;
@@ -94,6 +105,7 @@ const SAMPLE: RecordTokenLaunchInput = {
   decimals: 18,
   wholeTokenSupply: "1000000",
   graduationTargetWei: "4000000000000000000",
+  artworkThumbnail: null,
 };
 
 afterEach(() => {
@@ -134,6 +146,36 @@ describe("TokenLaunchesStore contract (via in-memory double)", () => {
     const found = await store.findByTokenAddress(SAMPLE.chainId, SAMPLE.tokenAddress.toUpperCase());
     expect(found?.tokenAddress).toBe(SAMPLE.tokenAddress);
     expect(await store.findByTokenAddress(SAMPLE.chainId, "0x9999999999999999999999999999999999999")).toBeNull();
+  });
+
+  it("round-trips a recorded artwork thumbnail and defaults to null when absent", async () => {
+    const store = createMemoryTokenLaunchesStore();
+    const withoutArt = await store.record(SAMPLE);
+    expect(withoutArt.artworkThumbnail).toBeNull();
+
+    const dataUrl = "data:image/webp;base64,AAAA";
+    const withArt = await store.record({
+      ...SAMPLE,
+      tokenAddress: "0x5555555555555555555555555555555555555555",
+      artworkThumbnail: dataUrl,
+    });
+    expect(withArt.artworkThumbnail).toBe(dataUrl);
+
+    const found = await store.findByTokenAddress(SAMPLE.chainId, withArt.tokenAddress);
+    expect(found?.artworkThumbnail).toBe(dataUrl);
+  });
+
+  it("a double-submitted record fills in missing artwork without overwriting existing artwork", async () => {
+    const store = createMemoryTokenLaunchesStore();
+    const first = await store.record(SAMPLE);
+    expect(first.artworkThumbnail).toBeNull();
+
+    const filledIn = await store.record({ ...SAMPLE, artworkThumbnail: "data:image/webp;base64,BBBB" });
+    expect(filledIn.id).toBe(first.id);
+    expect(filledIn.artworkThumbnail).toBe("data:image/webp;base64,BBBB");
+
+    const ignored = await store.record({ ...SAMPLE, artworkThumbnail: "data:image/webp;base64,CCCC" });
+    expect(ignored.artworkThumbnail).toBe("data:image/webp;base64,BBBB");
   });
 
   it("markGraduated is a no-op once already graduated", async () => {

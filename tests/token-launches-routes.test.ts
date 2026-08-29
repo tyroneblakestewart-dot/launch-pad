@@ -96,6 +96,12 @@ const ACCOUNT = privateKeyToAccount(
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as `0x${string}`,
 );
 
+const WEBP_BYTES = Buffer.concat([Buffer.from("RIFF", "ascii"), Buffer.alloc(4), Buffer.from("WEBP", "ascii")]);
+const VALID_ARTWORK_THUMBNAIL = `data:image/webp;base64,${WEBP_BYTES.toString("base64")}`;
+const OVERSIZED_ARTWORK_THUMBNAIL = `data:image/webp;base64,${Buffer.concat([WEBP_BYTES, Buffer.alloc(170_000)]).toString("base64")}`;
+const GIF_BYTES = Buffer.from("GIF89a", "ascii");
+const WRONG_MIME_ARTWORK_THUMBNAIL = `data:image/gif;base64,${GIF_BYTES.toString("base64")}`;
+
 const PAYLOAD = {
   chainId: "46630",
   tokenAddress: "0x1111111111111111111111111111111111111111",
@@ -119,7 +125,7 @@ function getRequest(path: string, headers: Record<string, string> = {}) {
   return new Request(`${ORIGIN}${path}`, { method: "GET", headers });
 }
 
-async function signedRecordRequest(overrides: Partial<typeof PAYLOAD> = {}) {
+async function signedRecordRequest(overrides: Partial<typeof PAYLOAD> = {}, extraBody: Record<string, unknown> = {}) {
   const payload = { ...PAYLOAD, ...overrides };
   const challengeResponse = await tokenLaunchChallenge(
     postRequest("/api/token-launches/challenge", {
@@ -137,6 +143,7 @@ async function signedRecordRequest(overrides: Partial<typeof PAYLOAD> = {}) {
     challengeId: challenge.challengeId,
     nonce: challenge.nonce,
     signature,
+    ...extraBody,
   });
 }
 
@@ -227,6 +234,37 @@ describe("POST /api/token-launches", () => {
       tokenAddress: PAYLOAD.tokenAddress,
       creatorWalletAddress: ACCOUNT.address,
     });
+  });
+
+  it("accepts a valid artwork thumbnail and stores it", async () => {
+    const request = await signedRecordRequest({}, { artworkThumbnail: VALID_ARTWORK_THUMBNAIL });
+    const response = await recordLaunch(request);
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { launch: TokenLaunch };
+    expect(body.launch.artworkThumbnail).toBe(VALID_ARTWORK_THUMBNAIL);
+  });
+
+  it("stores null artwork when the field is absent", async () => {
+    const request = await signedRecordRequest();
+    const response = await recordLaunch(request);
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { launch: TokenLaunch };
+    expect(body.launch.artworkThumbnail).toBeNull();
+  });
+
+  it("rejects an oversized artwork thumbnail with 400, before touching auth or the chain", async () => {
+    const request = await signedRecordRequest({}, { artworkThumbnail: OVERSIZED_ARTWORK_THUMBNAIL });
+    const response = await recordLaunch(request);
+    expect(response.status).toBe(400);
+    expect(verifyMock).not.toHaveBeenCalled();
+    expect(await getTokenLaunchesStore().list("all", 10)).toEqual([]);
+  });
+
+  it("rejects an artwork thumbnail with a disallowed MIME type with 400", async () => {
+    const request = await signedRecordRequest({}, { artworkThumbnail: WRONG_MIME_ARTWORK_THUMBNAIL });
+    const response = await recordLaunch(request);
+    expect(response.status).toBe(400);
+    expect(verifyMock).not.toHaveBeenCalled();
   });
 
   it("never inserts a row when the on-chain reconciliation fails", async () => {
@@ -322,6 +360,13 @@ describe("GET /api/token-launches", () => {
     expect(response.headers.get("X-RateLimit-Limit")).toBeTruthy();
   });
 
+  it("returns the stored artwork thumbnail, and null when none was recorded", async () => {
+    await recordLaunch(await signedRecordRequest({}, { artworkThumbnail: VALID_ARTWORK_THUMBNAIL }));
+    const response = await listLaunches(getRequest("/api/token-launches"));
+    const body = (await response.json()) as { launches: Array<Record<string, unknown>> };
+    expect(body.launches[0]).toMatchObject({ artworkThumbnail: VALID_ARTWORK_THUMBNAIL });
+  });
+
   it("attaches live graduation progress from the curve-progress cache to a bonding launch", async () => {
     await recordLaunch(await signedRecordRequest());
     getCurveProgressMock.mockResolvedValueOnce({
@@ -414,5 +459,14 @@ describe("GET /api/admin/token-launches", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { launches: TokenLaunch[] };
     expect(body.launches).toHaveLength(1);
+  });
+
+  it("includes the artwork thumbnail in the admin list", async () => {
+    await recordLaunch(await signedRecordRequest({}, { artworkThumbnail: VALID_ARTWORK_THUMBNAIL }));
+    const response = await adminListLaunches(
+      new Request(`${ORIGIN}/api/admin/token-launches`, { headers: { Cookie: cookie } }),
+    );
+    const body = (await response.json()) as { launches: TokenLaunch[] };
+    expect(body.launches[0]?.artworkThumbnail).toBe(VALID_ARTWORK_THUMBNAIL);
   });
 });

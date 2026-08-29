@@ -122,7 +122,11 @@ export function HoodlumsTokenGrid({ liveSites }: { liveSites: PublicGeneratedSit
         <div className={styles.grid}>
           {launches.map((launch) => (
             <a key={launch.id} href={cardHref(launch)} className={styles.card}>
-              <TokenGridCardChart tokenName={launch.tokenName} curveAddress={launch.curveAddress} />
+              <TokenGridCardChart
+                tokenName={launch.tokenName}
+                curveAddress={launch.curveAddress}
+                artworkThumbnail={launch.artworkThumbnail}
+              />
               <b className={styles.cardName}>{launch.tokenName}</b>
               <span className={styles.cardTicker}>${launch.ticker}</span>
               <b className={styles.cardCap}>—</b>

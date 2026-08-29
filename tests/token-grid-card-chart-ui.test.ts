@@ -88,7 +88,14 @@ describe("HoodlumsTokenGrid card chart wiring (issue #436)", () => {
   it("renders TokenGridCardChart per card instead of a static initial-letter block", async () => {
     const component = await source("components/hoodlums-token-grid.tsx");
     expect(component).toContain('import { TokenGridCardChart } from "./token-grid-card-chart"');
-    expect(component).toContain("<TokenGridCardChart tokenName={launch.tokenName} curveAddress={launch.curveAddress} />");
+    expect(component).toContain("<TokenGridCardChart");
+    expect(component).toContain("tokenName={launch.tokenName}");
+    expect(component).toContain("curveAddress={launch.curveAddress}");
+  });
+
+  it("passes the recorded artwork thumbnail through to the card chart (issue #438)", async () => {
+    const component = await source("components/hoodlums-token-grid.tsx");
+    expect(component).toContain("artworkThumbnail={launch.artworkThumbnail}");
   });
 
   it("still maps each tab to the correct token_launches filter (unchanged from issue #412)", async () => {

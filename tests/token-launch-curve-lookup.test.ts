@@ -56,6 +56,7 @@ function launch(overrides: Partial<TokenLaunch> = {}): TokenLaunch {
     graduated: false,
     graduatedAt: null,
     launchedAt: new Date().toISOString(),
+    artworkThumbnail: null,
     ...overrides,
   };
 }
