@@ -44,6 +44,21 @@ export function formatUsdPrice(value: number | null): string {
 }
 
 /**
+ * Formats a native-currency price (e.g. testnet ETH per token) with the same
+ * significant-digit scaling as formatUsdPrice, but with no currency symbol —
+ * the homepage grid's hover preview (issue #440) reads prices straight off
+ * on-chain trades, and there is no USD conversion available for that path
+ * without a new server call.
+ */
+export function formatNativeAmount(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+  if (value === 0) return "0";
+  if (value >= 1) return value.toFixed(4);
+  const decimals = Math.min(12, Math.max(4, -Math.floor(Math.log10(Math.abs(value))) + 2));
+  return value.toFixed(decimals);
+}
+
+/**
  * Formats a unix-seconds timestamp as a short "time ago" label (e.g. `4m`,
  * `2h`), matching lib/server/token-market-stats.ts's `relativeTime` style
  * but for the epoch-seconds timestamps real on-chain trades carry (issue

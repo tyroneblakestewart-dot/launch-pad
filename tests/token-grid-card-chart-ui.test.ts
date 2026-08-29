@@ -59,7 +59,7 @@ describe("useInView (issue #436)", () => {
   });
 });
 
-describe("TokenGridCardChart (issue #436)", () => {
+describe("TokenGridCardChart (issue #440)", () => {
   it("reads trades only through useGridTokenTrades, gated on useInView's inView flag", async () => {
     const component = await source("components/token-grid-card-chart.tsx");
     expect(component).toContain('"use client"');
@@ -68,13 +68,20 @@ describe("TokenGridCardChart (issue #436)", () => {
     expect(component).toContain("useGridTokenTrades(curveAddress, inView)");
   });
 
-  it("builds both the mini and expanded chart from the one shared pure buildSparkline result", async () => {
+  it("builds the mini and preview candles from one shared pure buildCandleGeometry call, and never instantiates a chart library per card", async () => {
     const component = await source("components/token-grid-card-chart.tsx");
-    expect(component).toContain('import { buildSparkline, sparklineColor');
-    const buildCalls = component.match(/buildSparkline\(/g) ?? [];
+    expect(component).toContain('import { buildCandleGeometry, CANDLE_CHART_HEIGHT, CANDLE_CHART_WIDTH } from "@/lib/token-candle-geometry"');
+    const buildCalls = component.match(/buildCandleGeometry\(/g) ?? [];
     expect(buildCalls).toHaveLength(1);
-    expect(component).toContain("styles.sparklineMini");
-    expect(component).toContain("styles.sparklineExpanded");
+    expect(component).not.toMatch(/from ["']lightweight-charts["']/);
+    expect(component).toContain("styles.candleOverlay");
+    expect(component).toContain("styles.preview");
+  });
+
+  it("renders nothing over the art when there are no trades — no flat line, no empty box", async () => {
+    const component = await source("components/token-grid-card-chart.tsx");
+    expect(component).toContain("{candles.hasData && (");
+    expect(component).toContain("<div className={styles.candleOverlay}");
   });
 
   it("marks both chart SVGs decorative rather than double-announcing data to screen readers", async () => {
@@ -82,9 +89,35 @@ describe("TokenGridCardChart (issue #436)", () => {
     const ariaHiddenCount = component.match(/aria-hidden="true"/g) ?? [];
     expect(ariaHiddenCount.length).toBeGreaterThanOrEqual(2);
   });
+
+  it("measures the enclosing card anchor (not a prop) to clamp the floating preview inside the viewport", async () => {
+    const component = await source("components/token-grid-card-chart.tsx");
+    expect(component).toContain('import { computePreviewPosition, PREVIEW_HEIGHT, PREVIEW_WIDTH } from "@/lib/token-grid-preview-position"');
+    expect(component).toContain('artNode?.closest("a")');
+    expect(component).toContain("computePreviewPosition({");
+    expect(component).toContain('preview.style.setProperty("--preview-left"');
+    expect(component).toContain('preview.style.setProperty("--preview-top"');
+  });
+
+  it("positions the preview via mouseenter/focusin listeners on the anchor, cleaned up on leave/unmount", async () => {
+    const component = await source("components/token-grid-card-chart.tsx");
+    expect(component).toContain('anchor.addEventListener("mouseenter", handleEnter)');
+    expect(component).toContain('anchor.addEventListener("focusin", handleEnter)');
+    expect(component).toContain('anchor.addEventListener("mouseleave", handleLeave)');
+    expect(component).toContain('anchor.addEventListener("focusout", handleLeave)');
+    expect(component).toContain('anchor.removeEventListener("mouseenter", handleEnter)');
+    expect(component).toContain('anchor.removeEventListener("focusin", handleEnter)');
+  });
+
+  it("shows current price, percent change and time span in the floating preview", async () => {
+    const component = await source("components/token-grid-card-chart.tsx");
+    expect(component).toContain("formatNativeAmount(candles.lastPrice)");
+    expect(component).toContain("styles.previewPrice");
+    expect(component).toContain("sinceLabel");
+  });
 });
 
-describe("HoodlumsTokenGrid card chart wiring (issue #436)", () => {
+describe("HoodlumsTokenGrid card chart wiring (issue #436/#440)", () => {
   it("renders TokenGridCardChart per card instead of a static initial-letter block", async () => {
     const component = await source("components/hoodlums-token-grid.tsx");
     expect(component).toContain('import { TokenGridCardChart } from "./token-grid-card-chart"');
@@ -112,24 +145,66 @@ describe("HoodlumsTokenGrid card chart wiring (issue #436)", () => {
   });
 });
 
-describe("Grid card chart CSS (issue #436)", () => {
-  it("positions the expanded overlay absolutely within the card, never a layout participant", async () => {
+describe("Grid card square art region (issue #440)", () => {
+  it("scales the art region with the card's width via aspect-ratio + height: auto, not a fixed strip height", async () => {
     const css = await source("components/hoodlums-token-grid.module.css");
-    expect(css).toMatch(/\.card\s*\{[^}]*position:\s*relative;/);
-    expect(css).toMatch(/\.sparklineExpanded\s*\{[^}]*position:\s*absolute;/);
-    expect(css).toMatch(/\.sparklineExpanded\s*\{[^}]*inset:\s*0;/);
+    expect(css).toMatch(/\.art\s*\{[^}]*aspect-ratio:\s*1 \/ 1;/);
+    expect(css).toMatch(/\.art\s*\{[^}]*height:\s*auto;/);
   });
 
-  it("never lets the expanded overlay intercept the card's click-through navigation, in any state", async () => {
+  it("never overrides the square art region at any grid breakpoint, so taller cards can't break the columns", async () => {
     const css = await source("components/hoodlums-token-grid.module.css");
-    expect(css).toMatch(/\.sparklineExpanded\s*\{[^}]*pointer-events:\s*none;/);
+    const breakpointBlocks = css.split(/@media \(max-width: \d+px\) \{/).slice(1);
+    for (const block of breakpointBlocks) {
+      expect(block).not.toMatch(/\.art\s*\{/);
+    }
+    // Columns stay `fr`-based so uniform square card heights never fight the track sizing.
+    expect(css).toMatch(/\.grid\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/);
+  });
+});
+
+describe("Grid card candle overlay (issue #440)", () => {
+  it("occupies roughly the lower 40% of the art region over a soft dark bottom-up gradient", async () => {
+    const css = await source("components/hoodlums-token-grid.module.css");
+    expect(css).toMatch(/\.candleOverlay\s*\{[^}]*height:\s*40%;/);
+    expect(css).toMatch(/\.candleOverlay\s*\{[^}]*background:\s*linear-gradient\(to top,/);
+  });
+
+  it("colours up/down consistent with the site's existing candlestick chart green/red", async () => {
+    const css = await source("components/hoodlums-token-grid.module.css");
+    expect(css).toContain(".sparklineUp {\n  color: #91f0b6;\n}");
+    expect(css).toContain(".sparklineDown {\n  color: #ff5f56;\n}");
+  });
+});
+
+describe("Grid card floating preview (issue #440)", () => {
+  it("is fixed-positioned via computed CSS custom properties, larger than the card thumbnail, and raised above sibling cards on z-index", async () => {
+    const css = await source("components/hoodlums-token-grid.module.css");
+    expect(css).toMatch(/\.preview\s*\{[^}]*position:\s*fixed;/);
+    expect(css).toMatch(/\.preview\s*\{[^}]*left:\s*var\(--preview-left, 50%\);/);
+    expect(css).toMatch(/\.preview\s*\{[^}]*top:\s*var\(--preview-top, 50%\);/);
+    expect(css).toMatch(/\.preview\s*\{[^}]*z-index:\s*30;/);
+    expect(css).toMatch(/\.preview\s*\{[^}]*width:\s*300px;/);
+  });
+
+  it("never lets the floating preview intercept the card's click-through navigation, in any state", async () => {
+    const css = await source("components/hoodlums-token-grid.module.css");
+    expect(css).toMatch(/\.preview\s*\{[^}]*pointer-events:\s*none;/);
   });
 
   it("expands on hover only for pointer devices, and on keyboard focus regardless of pointer type", async () => {
     const css = await source("components/hoodlums-token-grid.module.css");
-    expect(css).toContain(".card:focus .sparklineExpanded,\n.card:focus-within .sparklineExpanded {");
+    expect(css).toContain(".card:focus .preview,\n.card:focus-within .preview {");
     expect(css).toContain("@media (hover: hover) and (pointer: fine) {");
-    expect(css).toContain(".card:hover .sparklineExpanded {");
+    expect(css).toContain(".card:hover .preview {");
+  });
+
+  it("gives touch/coarse-pointer devices no hover state at all — the mini candles are the only chart they see", async () => {
+    const css = await source("components/hoodlums-token-grid.module.css");
+    const hoverBlockIndex = css.indexOf("@media (hover: hover) and (pointer: fine) {");
+    expect(hoverBlockIndex).toBeGreaterThan(-1);
+    const block = css.slice(hoverBlockIndex, hoverBlockIndex + 120);
+    expect(block).toContain(".card:hover .preview");
   });
 
   it("respects prefers-reduced-motion for the hover expansion transition", async () => {
@@ -137,13 +212,25 @@ describe("Grid card chart CSS (issue #436)", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce) {");
     const reducedMotionIndex = css.indexOf("@media (prefers-reduced-motion: reduce) {");
     const block = css.slice(reducedMotionIndex, reducedMotionIndex + 200);
-    expect(block).toContain(".sparklineExpanded");
+    expect(block).toContain(".preview");
     expect(block).toContain("transition: none;");
   });
+});
 
-  it("colours up/down consistent with the site's existing candlestick chart green/red", async () => {
+describe("Grid card metadata hierarchy (issue #440)", () => {
+  it("makes the market cap the boldest/largest number on the card", async () => {
     const css = await source("components/hoodlums-token-grid.module.css");
-    expect(css).toContain(".sparklineUp {\n  color: #91f0b6;\n}");
-    expect(css).toContain(".sparklineDown {\n  color: #ff5f56;\n}");
+    const cardCapMatch = css.match(/\.cardCap\s*\{[^}]*font:\s*800 (\d+)px/);
+    const cardNameMatch = css.match(/\.cardName\s*\{[^}]*font:\s*800 (\d+)px/);
+    expect(cardCapMatch).not.toBeNull();
+    expect(cardNameMatch).not.toBeNull();
+    const capSize = Number(cardCapMatch?.[1]);
+    const nameSize = Number(cardNameMatch?.[1]);
+    expect(capSize).toBeGreaterThan(nameSize);
+  });
+
+  it("keeps the ticker visually secondary to the name", async () => {
+    const css = await source("components/hoodlums-token-grid.module.css");
+    expect(css).toMatch(/\.cardTicker\s*\{[^}]*color:\s*#566054;/);
   });
 });
