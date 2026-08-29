@@ -5,6 +5,7 @@ import {
   formatHolderCount,
   formatHolderPercent,
   formatLaunchAge,
+  formatNativeAmountSixSigFigsTrimmed,
   formatNativeFixed,
   formatNativePriceSixSigFigs,
   formatPriceChange,
@@ -138,6 +139,29 @@ describe("formatNativeFixed", () => {
   it("returns an em dash for null or non-finite input", () => {
     expect(formatNativeFixed(null, 2)).toBe("—");
     expect(formatNativeFixed(Number.NaN, 2)).toBe("—");
+  });
+});
+
+describe("formatNativeAmountSixSigFigsTrimmed (issue #447 item 4)", () => {
+  it("trims trailing zeros off a whole-number amount", () => {
+    expect(formatNativeAmountSixSigFigsTrimmed(4)).toBe("4");
+  });
+
+  it("trims trailing zeros off a small amount that still needs full precision", () => {
+    expect(formatNativeAmountSixSigFigsTrimmed(0.01)).toBe("0.01");
+  });
+
+  it("keeps every significant figure for a very small amount instead of rounding to zero", () => {
+    expect(formatNativeAmountSixSigFigsTrimmed(0.0000099)).toBe("0.0000099");
+  });
+
+  it("formats zero as a bare 0, not 0.000000", () => {
+    expect(formatNativeAmountSixSigFigsTrimmed(0)).toBe("0");
+  });
+
+  it("returns an em dash for null or negative input", () => {
+    expect(formatNativeAmountSixSigFigsTrimmed(null)).toBe("—");
+    expect(formatNativeAmountSixSigFigsTrimmed(-1)).toBe("—");
   });
 });
 

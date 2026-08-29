@@ -5,6 +5,7 @@ import {
   CrosshairMode,
   LineStyle,
   createChart,
+  type AutoscaleInfoProvider,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
@@ -24,7 +25,13 @@ import {
   type ChartTimeframe,
   type MovingAveragePoint,
 } from "@/lib/candle-bucketing";
-import { addHorizontalLine, removeHorizontalLine, type ChartTool, type HorizontalLine } from "@/lib/token-chart-tools";
+import {
+  addHorizontalLine,
+  expandDegeneratePriceRange,
+  removeHorizontalLine,
+  type ChartTool,
+  type HorizontalLine,
+} from "@/lib/token-chart-tools";
 import { DEFAULT_TOKEN_DECIMALS } from "@/lib/bonding-curve-deploy-config";
 import { formatNativePriceSixSigFigs, formatSignedPercent } from "@/lib/token-page-format";
 import type { TokenTrade } from "@/lib/token-trade-types";
@@ -189,6 +196,21 @@ export function TokenTradeChart({
       priceLineStyle: LineStyle.Dashed,
       lastValueVisible: true,
     });
+
+    // A single candle (or any window where every visible bar shares one
+    // price) makes lightweight-charts' default autoscale compute a
+    // zero-height price range, which suppresses every tick label except the
+    // last-price tag — percentage scaleMargins can't fix a percentage of
+    // zero (see expandDegeneratePriceRange's own doc comment). This only
+    // ever pads that genuinely-flat case; a real multi-price range is
+    // returned untouched.
+    const autoscaleInfoProvider: AutoscaleInfoProvider = (original) => {
+      const info = original();
+      if (!info) return info;
+      const { minValue, maxValue } = expandDegeneratePriceRange(info.priceRange.minValue, info.priceRange.maxValue);
+      return { ...info, priceRange: { minValue, maxValue } };
+    };
+    candleSeries.applyOptions({ autoscaleInfoProvider });
 
     const ma20Series = chart.addLineSeries({
       color: MA20_COLOR,

@@ -103,6 +103,22 @@ export function formatNativeFixed(value: number | null, decimals: number): strin
   return value.toFixed(decimals);
 }
 
+/**
+ * Formats a native-currency amount (ETH) at up to six significant figures
+ * with trailing zeros trimmed, e.g. `0.0000099`, `0.01` or `4` — the shared
+ * helper behind the header band's graduation summary and "x ETH remaining"
+ * line (issue #447 item 4). A fixed-decimal format like `formatNativeFixed`
+ * reads wrong at both ends of a small testnet graduation target (`0.01` ETH
+ * shown as `0.0` and a `0.0000099` raised amount shown as `0.00`), so this
+ * reuses `formatNativePriceSixSigFigs`'s magnitude-aware precision and then
+ * strips the zeros it pads on to hit exactly six significant figures.
+ */
+export function formatNativeAmountSixSigFigsTrimmed(value: number | null): string {
+  const formatted = formatNativePriceSixSigFigs(value);
+  if (formatted === "—" || !formatted.includes(".")) return formatted;
+  return formatted.replace(/0+$/, "").replace(/\.$/, "");
+}
+
 /** Formats a signed percentage at a fixed decimal count, e.g. `+11.92%` / `-4.20%`, or `"—"` when unavailable. */
 export function formatSignedPercent(value: number | null, decimals: number): string {
   if (value === null || !Number.isFinite(value)) return "—";

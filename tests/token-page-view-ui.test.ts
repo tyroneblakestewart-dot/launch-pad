@@ -523,6 +523,14 @@ describe("token page mobile-first layout (issue #443 part 1: header → swap →
     const pageRuleEnd = css.indexOf("}");
     expect(css.slice(0, pageRuleEnd)).toContain("overflow-x: hidden;");
   });
+
+  it("does not cap the shell's width — the design fills the viewport (issue #447 item 3)", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const shellStart = css.indexOf(".shell {");
+    const shellEnd = css.indexOf("}", shellStart);
+    const shellRule = css.slice(shellStart, shellEnd);
+    expect(shellRule).not.toContain("max-width");
+  });
 });
 
 describe("token page desktop layout: swap + stats + fees left, chart + tabs fill the rest (issue #443 part 1)", () => {
@@ -556,7 +564,29 @@ describe("token page desktop layout: swap + stats + fees left, chart + tabs fill
     expect(block).toContain(".leftGroup {\n    display: flex;");
     expect(block).toContain("grid-column: 1;");
     expect(block).toContain("position: sticky;");
-    expect(block).toContain(".chartPlaceholder,\n  .activityPanel {\n    grid-column: 2;\n  }");
+    expect(block).toContain(".centerGroup {\n    display: flex;");
+    expect(block).toContain("grid-column: 2;");
+  });
+
+  it("wraps the chart and the activity/tabs panel in a real .centerGroup grid item, matching the .leftGroup pattern, so the tabs' row height never depends on the tall sticky left column (issue #447 item 2, the #431 staircase repeated)", async () => {
+    const component = await source("components/token-page/token-center-column.tsx");
+    const css = await source("components/token-page/token-page.module.css");
+
+    expect(component).toContain("<div className={styles.centerGroup}>");
+    const groupStart = component.indexOf("<div className={styles.centerGroup}>");
+    const chartIndex = component.indexOf("styles.chartPlaceholder", groupStart);
+    const activityIndex = component.indexOf("styles.activityPanel", groupStart);
+    expect(chartIndex).toBeGreaterThan(groupStart);
+    expect(activityIndex).toBeGreaterThan(chartIndex);
+
+    const baseCenterGroupIndex = css.indexOf(".centerGroup {\n  display: contents;\n}");
+    const firstMediaIndex = css.indexOf("@media");
+    expect(baseCenterGroupIndex).toBeGreaterThan(-1);
+    expect(baseCenterGroupIndex).toBeLessThan(firstMediaIndex);
+
+    const desktopBlockStart = css.indexOf("@media (min-width: 881px)");
+    const desktopBlock = css.slice(desktopBlockStart);
+    expect(desktopBlock).toContain(".chartPlaceholder,\n  .activityPanel {\n    order: initial;\n  }");
   });
 
   it("does not touch the token page's trade logic or error surfacing (issue #427) while rearranging layout and deduplicating polling (issue #444)", async () => {

@@ -34,6 +34,12 @@ describe("mergeTokenTrades", () => {
     expect(mergeTokenTrades([], incoming)).toBe(incoming);
   });
 
+  it("returns the previous (not the incoming) empty array reference when both are empty, so a zero-trade token's poll never re-triggers the chart's empty-state setup (issue #447 item 5)", () => {
+    const previous: TokenTrade[] = [];
+    const incoming: TokenTrade[] = [];
+    expect(mergeTokenTrades(previous, incoming)).toBe(previous);
+  });
+
   it("returns the exact same array reference when the incoming poll has nothing new", () => {
     const previous = [
       trade({ txHash: "0xa", logIndex: 0, blockTimestamp: 100 }),

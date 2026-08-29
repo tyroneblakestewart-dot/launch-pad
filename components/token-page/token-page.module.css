@@ -15,9 +15,10 @@
   overflow-x: hidden;
 }
 
+/* No max-width cap (issue #447 item 3) — the design fills the viewport;
+   `.page`'s own side padding above is what keeps content off the screen
+   edges at any width. */
 .shell {
-  max-width: 1560px;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -364,6 +365,20 @@
   min-width: 0;
 }
 
+/* Wraps the chart and the activity/tabs panel (issue #447 item 2 — the #431
+   staircase repeated): without this, `.chartPlaceholder` and
+   `.activityPanel` are two separate grid items auto-placed into column 2,
+   so the tabs land in whatever row follows the chart's own row — which, at
+   a two-column grid, is sized by the tall sticky `.leftGroup` column, not
+   by the chart itself, leaving a visible gap between the chart's real
+   bottom edge and the tabs above it. Wrapping both in one `.centerGroup`
+   grid item (same `display: contents` on mobile / real flex column on
+   desktop pattern `.leftGroup` already uses) makes the tabs sit directly
+   under the chart regardless of how tall the left column is. */
+.centerGroup {
+  display: contents;
+}
+
 .swapPanel {
   order: 1;
 }
@@ -413,17 +428,20 @@
     order: initial;
   }
 
-  .chartPlaceholder,
-  .activityPanel {
+  /* `.centerGroup` becomes the single, real grid item in column 2 — the
+     chart and tabs panel lay out as its flex children, so the tabs' row
+     height depends only on the chart's own height, never on `.leftGroup`'s
+     sticky column height (issue #447 item 2). */
+  .centerGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
     grid-column: 2;
   }
 
-  .chartPlaceholder {
-    order: 1;
-  }
-
+  .chartPlaceholder,
   .activityPanel {
-    order: 2;
+    order: initial;
   }
 }
 
