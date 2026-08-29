@@ -34,3 +34,23 @@ export function expandDegeneratePriceRange(minValue: number, maxValue: number): 
   const padding = minValue === 0 ? 0.000001 : Math.abs(minValue) * 0.05;
   return { minValue: minValue - padding, maxValue: maxValue + padding };
 }
+
+/** Floor for computeChartMinMove — never zero/subnormal regardless of how small maxPrice is. */
+const MIN_MOVE_FLOOR = 1e-18;
+
+/**
+ * Derives the candlestick series' `priceFormat.minMove` from the data itself
+ * (issue #451 item 1). lightweight-charts can only place axis tick labels at
+ * multiples of `minMove`, so a fixed value far below the actual price
+ * magnitude (this chart previously hardcoded 1e-8 against real testnet
+ * prices around 1e-9) leaves no tick multiple inside the visible price
+ * range and the axis draws no labels at all — only the last-price tag. Six
+ * significant figures below the largest visible price keeps ticks legible
+ * at any magnitude: `10^(floor(log10(maxPrice)) - 6)`, floored at
+ * `MIN_MOVE_FLOOR` so it's never zero/subnormal.
+ */
+export function computeChartMinMove(maxPrice: number): number {
+  if (!Number.isFinite(maxPrice) || maxPrice <= 0) return MIN_MOVE_FLOOR;
+  const exponent = Math.floor(Math.log10(maxPrice));
+  return Math.max(MIN_MOVE_FLOOR, 10 ** (exponent - 6));
+}

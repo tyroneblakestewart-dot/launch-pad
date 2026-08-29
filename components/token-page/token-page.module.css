@@ -49,20 +49,37 @@
   outline-offset: 2px;
 }
 
-/* ---- header band (issue #443 part 1) ----
+/* ---- header band (issue #443 part 1, tightened issue #451 item 3) ----
    Full-width band replacing the old `.topbar`: back link, artwork, name/
    ticker/live/holders/age/chain, the graduation block, then the price/mcap
    toggle and link chips. Wraps to multiple rows below the design's 1120px
    reference width instead of clipping — this app's primary target is
    mobile Safari (CLAUDE.md rule 7), unlike the design reference's fixed
-   min-width canvas. */
+   min-width canvas.
+
+   The design reference sizes its price-figure and link-chip controls at
+   26-34px tall (issue #451's own header markup). Per review of issue #451's
+   PR, the earlier >=44px-unconditionally rule (which forced the price
+   figure and link chips into one side-by-side row to avoid doubling the
+   band's height) is now scoped to a pointer-coarse query only, at the
+   bottom of this file (deliberately kept out of this comment block's own
+   text so a plain string search for the layout breakpoints below still
+   finds those first) — a mouse/trackpad ("fine" pointer) desktop uses the
+   design's compact stacked proportions directly on `.backLink`/
+   `.headerLinkChip`/`.headerFigureToggle`, while a touch device (mobile
+   Safari, CLAUDE.md rule 7's primary target, always reports a coarse
+   pointer) still gets a real >=44px tap target and the side-by-side
+   `.headerFigureBlock` layout that keeps that larger sizing from doubling
+   the header's height. tests/token-page-view-ui.test.ts's accessibility
+   assertion checks these three selectors inside that query instead of
+   unconditionally. */
 
 .headerBand {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   flex-wrap: wrap;
-  padding: 10px 14px;
+  padding: 8px 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 18px;
   background: rgba(18, 21, 19, 0.99);
@@ -70,10 +87,10 @@
 
 .headerArtworkTile {
   position: relative;
-  width: 50px;
-  height: 50px;
+  width: 48px;
+  height: 48px;
   flex: none;
-  border-radius: 11px;
+  border-radius: 10px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.09);
   background: rgba(255, 255, 255, 0.03);
@@ -111,22 +128,22 @@
 .headerIdentity {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
 .headerTitleRow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   min-width: 0;
 }
 
 .headerName {
   font-family: "Archivo Black", sans-serif;
-  font-size: 20px;
-  letter-spacing: -0.03em;
+  font-size: 17px;
+  letter-spacing: -0.01em;
   text-transform: uppercase;
   line-height: 1;
 }
@@ -140,9 +157,9 @@
 .headerMetaRow {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   flex-wrap: wrap;
-  font: 600 10px/1 "JetBrains Mono", monospace;
+  font: 600 9px/1 "JetBrains Mono", monospace;
   letter-spacing: 0.06em;
   color: #929693;
   text-transform: uppercase;
@@ -162,7 +179,7 @@
   max-width: 360px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 .headerGraduationTop {
@@ -173,23 +190,26 @@
 }
 
 .headerGraduationLabel {
-  font: 700 9px/1 "JetBrains Mono", monospace;
+  font: 700 8px/1 "JetBrains Mono", monospace;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #929693;
 }
 
 .headerGraduationValue {
-  font: 700 10.5px/1 "JetBrains Mono", monospace;
+  font: 700 9.5px/1 "JetBrains Mono", monospace;
   color: #c6f53e;
   white-space: nowrap;
 }
 
 .headerGraduationRemaining {
-  font: 600 9.5px/1 "JetBrains Mono", monospace;
+  font: 600 8.5px/1 "JetBrains Mono", monospace;
   color: #6f746e;
 }
 
+/* Row, not column (see the block comment above `.headerBand`): the price
+   figure and the link chips sit side by side so their two 44px touch
+   targets don't stack into ~100px of height. */
 .headerFigureBlock {
   display: flex;
   flex-direction: column;
@@ -212,12 +232,11 @@
   background: none;
   padding: 0;
   cursor: pointer;
-  min-height: 44px;
 }
 
 .headerFigureLabel {
-  font: 700 8.5px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.1em;
+  font: 700 8px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.12em;
   color: #929693;
   white-space: nowrap;
 }
@@ -241,13 +260,12 @@
 .headerLinkChip {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
-  font: 600 10.5px/1 "JetBrains Mono", monospace;
+  font: 600 9.5px/1 "JetBrains Mono", monospace;
   color: #a8aaa9;
   border: 1px solid rgba(255, 255, 255, 0.09);
   background: rgba(255, 255, 255, 0.03);
-  padding: 6px 10px;
-  border-radius: 8px;
+  padding: 8px 10px;
+  border-radius: 7px;
   text-decoration: none;
 }
 
@@ -274,16 +292,16 @@
 }
 
 .backLink {
-  width: 44px;
-  height: 44px;
+  width: 32px;
+  height: 32px;
   flex: none;
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   background: rgba(255, 255, 255, 0.03);
   color: #a8aaa9;
   display: grid;
   place-items: center;
-  font-size: 17px;
+  font-size: 15px;
   text-decoration: none;
 }
 
@@ -295,14 +313,14 @@
 .liveBadge {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font: 500 10px/1 "JetBrains Mono", monospace;
+  gap: 5px;
+  font: 500 9px/1 "JetBrains Mono", monospace;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #91f0b6;
   border: 1px solid rgba(145, 240, 182, 0.3);
   background: rgba(145, 240, 182, 0.07);
-  padding: 6px 9px;
+  padding: 3px 8px;
   border-radius: 999px;
 }
 
@@ -497,7 +515,7 @@
 }
 
 .track {
-  height: 10px;
+  height: 5px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
   overflow: hidden;
@@ -808,7 +826,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
 }
 
 .feeClaimValue {
@@ -816,6 +835,8 @@
   font-size: 22px;
   letter-spacing: -0.03em;
   color: #c6f53e;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .feeWithdrawButton {
@@ -1325,8 +1346,8 @@
 }
 
 .priceChange {
-  font: 700 15px/1 "JetBrains Mono", monospace;
-  padding: 6px 10px;
+  font: 700 12px/1 "JetBrains Mono", monospace;
+  padding: 4px 9px;
   border-radius: 999px;
 }
 
@@ -1667,5 +1688,39 @@
   font: 700 11px "JetBrains Mono", monospace;
   letter-spacing: 0.03em;
   cursor: pointer;
+}
+
+/* Touch-only >=44px targets for the header band (issue #451 follow-up):
+   scoped to (pointer: coarse) so a real touch device (mobile Safari,
+   CLAUDE.md rule 7's primary target) keeps a safe tap area, while a
+   mouse/trackpad ("fine" pointer) desktop uses the design's compact
+   proportions set on `.backLink`/`.headerLinkChip`/`.headerFigureToggle`
+   above. `.headerFigureBlock` also goes back to a side-by-side row here
+   specifically, since stacking two 44px-tall rows would double the band's
+   height on the exact devices this rule targets. Placed at the end of the
+   file, after every `(min-width: ...)` layout breakpoint, so it never
+   changes which media query the mobile-first layout tests treat as "the
+   first breakpoint". */
+@media (pointer: coarse) {
+  .backLink {
+    width: 44px;
+    height: 44px;
+  }
+
+  .headerLinkChip {
+    min-height: 44px;
+  }
+
+  .headerFigureToggle {
+    min-height: 44px;
+  }
+
+  .headerFigureBlock {
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
 }
 

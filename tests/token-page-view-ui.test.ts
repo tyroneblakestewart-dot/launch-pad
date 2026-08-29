@@ -161,6 +161,64 @@ describe("token page header band (issue #443 part 1)", () => {
   });
 });
 
+describe("token page header band tightened proportions (issue #451 item 3)", () => {
+  it("tightens the band's own padding and the artwork tile to the design's compact size", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const bandStart = css.indexOf(".headerBand {");
+    const bandEnd = css.indexOf("}", bandStart);
+    expect(css.slice(bandStart, bandEnd)).toContain("padding: 8px 14px;");
+
+    const artStart = css.indexOf(".headerArtworkTile {");
+    const artEnd = css.indexOf("}", artStart);
+    const artRule = css.slice(artStart, artEnd);
+    expect(artRule).toContain("width: 48px;");
+    expect(artRule).toContain("height: 48px;");
+  });
+
+  it("shrinks the graduation progress track to the design's 5px height", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const trackStart = css.indexOf(".track {");
+    const trackEnd = css.indexOf("}", trackStart);
+    expect(css.slice(trackStart, trackEnd)).toContain("height: 5px;");
+  });
+
+  it("stacks the price-figure row above the link chips on a fine-pointer desktop, matching the design's proportions directly (issue #451 follow-up)", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const blockStart = css.indexOf(".headerFigureBlock {");
+    const blockEnd = css.indexOf("}", blockStart);
+    const rule = css.slice(blockStart, blockEnd);
+    expect(rule).toContain("flex-direction: column;");
+
+    // The base (fine-pointer) rules no longer force a 44px minimum — that's
+    // now scoped to the coarse-pointer media query below, so a mouse/
+    // trackpad desktop can use the design's compact 26-34px sizing.
+    const toggleStart = css.indexOf(".headerFigureToggle {");
+    const toggleEnd = css.indexOf("}", toggleStart);
+    expect(css.slice(toggleStart, toggleEnd)).not.toContain("min-height: 44px;");
+
+    const chipStart = css.indexOf(".headerLinkChip {");
+    const chipEnd = css.indexOf("}", chipStart);
+    expect(css.slice(chipStart, chipEnd)).not.toContain("min-height: 44px;");
+
+    const backLinkStart = css.indexOf(".backLink {");
+    const backLinkEnd = css.indexOf("}", backLinkStart);
+    expect(css.slice(backLinkStart, backLinkEnd)).not.toContain("44px");
+  });
+
+  it("keeps a real >=44px touch target and the side-by-side figure/link-chips layout for touch devices only, via a (pointer: coarse) media query", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const mediaStart = css.indexOf("@media (pointer: coarse) {");
+    expect(mediaStart).toBeGreaterThan(-1);
+    const mediaEnd = css.indexOf("\n}\n", mediaStart);
+    const mediaBlock = css.slice(mediaStart, mediaEnd);
+
+    expect(mediaBlock).toMatch(/\.backLink\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px;/s);
+    expect(mediaBlock).toMatch(/\.headerLinkChip\s*\{[^}]*min-height:\s*44px;/s);
+    expect(mediaBlock).toMatch(/\.headerFigureToggle\s*\{[^}]*min-height:\s*44px;/s);
+    expect(mediaBlock).toMatch(/\.headerFigureBlock\s*\{[^}]*flex-direction:\s*row;/s);
+  });
+});
+
 describe("token page left column (swap panel, unchanged internally) + Stats/Audit + creator fees", () => {
   it("no longer renders the old identity/stats-USD card — that content moved to the header band", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
@@ -257,7 +315,7 @@ describe("token page left column (swap panel, unchanged internally) + Stats/Audi
   it("shows the real fee note under the swap CTA, derived from the curve's fee constants rather than a hard-coded string (issue #443 part 1 item 6)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
     expect(component).toContain(
-      'import { formatFeeNote, shortenAddress } from "@/lib/token-page-format"',
+      'import { formatFeeNote, formatNativeAmountSixSigFigsTrimmed, shortenAddress } from "@/lib/token-page-format"',
     );
     expect(component).toContain("formatFeeNote(TRADING_FEE_BPS, PROTOCOL_FEE_SHARE_BPS, CREATOR_FEE_SHARE_BPS, false)");
     expect(component).toContain("formatFeeNote(TRADING_FEE_BPS, PROTOCOL_FEE_SHARE_BPS, CREATOR_FEE_SHARE_BPS, true)");
@@ -295,6 +353,21 @@ describe("token page left column (swap panel, unchanged internally) + Stats/Audi
 
     const hook = await source("lib/use-token-curve-status.ts");
     expect(hook).toContain('functionName: "creator"');
+  });
+
+  it("formats the claimable balance with the six-significant-figure trimmed helper instead of raw 18-decimal formatEther, so it never overflows the panel (issue #451 item 4)", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain(
+      'import { formatFeeNote, formatNativeAmountSixSigFigsTrimmed, shortenAddress } from "@/lib/token-page-format"',
+    );
+    expect(component).toContain("formatNativeAmountSixSigFigsTrimmed(Number(formatEther(claimableFeeWei)))");
+
+    const css = await source("components/token-page/token-page.module.css");
+    const ruleStart = css.indexOf(".feeClaimValue {");
+    const ruleEnd = css.indexOf("}", ruleStart);
+    const rule = css.slice(ruleStart, ruleEnd);
+    expect(rule).toContain("overflow-wrap: anywhere;");
+    expect(rule).toContain("min-width: 0;");
   });
 });
 
@@ -347,6 +420,25 @@ describe("token page trade UX correctness (issue #427)", () => {
     expect(component).toContain("const [feeError, setFeeError] = useState");
     expect(component).toContain("setFeeError(describeRevertedTrade(hash))");
     expect(component).toContain("setFeeError(describeTradeSubmissionFailure(error))");
+  });
+
+  it("clears the persistent 'Trade confirmed.' status once the side, amount input or a preset changes it wouldn't otherwise stay on screen indefinitely (issue #451 item 5)", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain("function updateAmount(next: string) {\n    setAmount(next);\n    setStatusMessage(\"\");\n  }");
+    expect(component).toContain("function changeSide(next: Side) {\n    setSide(next);\n    setStatusMessage(\"\");\n  }");
+
+    // The input, every preset and both Buy/Sell tabs go through the
+    // clearing helpers instead of the raw setters.
+    expect(component).toContain("onChange={(event) => updateAmount(event.target.value.replace(/[^0-9.]/g, \"\"))}");
+    expect(component).not.toContain("onChange={(event) => setAmount(event.target.value");
+    expect(component).toContain('onClick={() => changeSide("buy")}');
+    expect(component).toContain('onClick={() => changeSide("sell")}');
+
+    // A genuine trade success still sets `amount` directly (not through
+    // updateAmount), so the just-shown confirmation survives its own reset.
+    const successBranchStart = component.indexOf('setStatusMessage("Trade confirmed.")');
+    expect(successBranchStart).toBeGreaterThan(-1);
+    expect(component.indexOf('setAmount("");', successBranchStart)).toBeGreaterThan(successBranchStart);
   });
 });
 
@@ -489,12 +581,9 @@ describe("token page mobile-first layout (issue #443 part 1: header → swap →
     expect(css).toContain("align-self: start;");
   });
 
-  it("gives every interactive control in the header band and swap panel a >=44px touch target", async () => {
+  it("gives every interactive control in the header band and swap panel a >=44px touch target — backLink/headerLinkChip/headerFigureToggle checked as touch-only overrides since #451's follow-up review scoped them to (pointer: coarse)", async () => {
     const css = await source("components/token-page/token-page.module.css");
     for (const selector of [
-      ".backLink",
-      ".headerLinkChip",
-      ".headerFigureToggle",
       ".headerDropArt",
       ".pillButton",
       ".walletButton",
@@ -510,6 +599,19 @@ describe("token page mobile-first layout (issue #443 part 1: header → swap →
       const rule = css.slice(ruleStart, ruleEnd);
       const matchesHeightOrWidth = /(min-height|height):\s*4[4-9]px/.test(rule) || /width:\s*44px/.test(rule);
       expect(matchesHeightOrWidth, `expected ${selector} to declare a >=44px touch target`).toBe(true);
+    }
+
+    const mediaStart = css.indexOf("@media (pointer: coarse) {");
+    expect(mediaStart, "expected a (pointer: coarse) media query").toBeGreaterThan(-1);
+    const mediaEnd = css.indexOf("\n}\n", mediaStart);
+    const mediaBlock = css.slice(mediaStart, mediaEnd);
+    for (const selector of [".backLink", ".headerLinkChip", ".headerFigureToggle"]) {
+      const ruleStart = mediaBlock.indexOf(`${selector} {`);
+      expect(ruleStart, `expected a (pointer: coarse) rule for ${selector}`).toBeGreaterThan(-1);
+      const ruleEnd = mediaBlock.indexOf("}", ruleStart);
+      const rule = mediaBlock.slice(ruleStart, ruleEnd);
+      const matchesHeightOrWidth = /(min-height|height):\s*4[4-9]px/.test(rule) || /width:\s*44px/.test(rule);
+      expect(matchesHeightOrWidth, `expected ${selector} to declare a >=44px touch target under (pointer: coarse)`).toBe(true);
     }
   });
 

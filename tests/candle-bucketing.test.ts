@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildChartSeriesPoints,
   bucketTradesIntoCandles,
   computeMovingAverage,
   diffCandles,
+  diffChartSeriesPoints,
   diffTimeSeries,
+  isCandlePoint,
   resolveAllTimeframeInterval,
   resolveChartInterval,
   tradePriceNativePerToken,
   type Candle,
+  type ChartSeriesPoint,
 } from "@/lib/candle-bucketing";
 import type { TokenTrade } from "@/lib/token-trade-types";
 
@@ -239,5 +243,97 @@ describe("computeMovingAverage", () => {
     const first = computeMovingAverage(candlesWithCloses([1, 2, 3, 4]), 2);
     const second = computeMovingAverage(candlesWithCloses([1, 2, 3, 4, 5]), 2);
     expect(second.slice(0, first.length)).toEqual(first);
+  });
+});
+
+describe("buildChartSeriesPoints (issue #451 item 2: gaps and time axis)", () => {
+  it("fills exactly the whitespace bars between two trades an hour apart at 5m", () => {
+    const trades = [trade({ blockTimestamp: 0 }), trade({ blockTimestamp: 3600, logIndex: 1 })];
+    const candles = bucketTradesIntoCandles(trades, "5m", 18);
+    const points = buildChartSeriesPoints(candles, "5m", 3600);
+    const between = points.filter((point) => point.time > 0 && point.time < 3600);
+    expect(between).toHaveLength(11);
+    expect(between.every((point) => !isCandlePoint(point))).toBe(true);
+  });
+
+  it("keeps the current bucket present as whitespace once now has moved past the last trade's bucket", () => {
+    const trades = [trade({ blockTimestamp: 0 })];
+    const candles = bucketTradesIntoCandles(trades, "5m", 18);
+    const points = buildChartSeriesPoints(candles, "5m", 900);
+    const last = points[points.length - 1];
+    expect(last.time).toBe(900);
+    expect(isCandlePoint(last)).toBe(false);
+  });
+
+  it("pads roughly 100 whitespace bars before the first trade on first load", () => {
+    const trades = [trade({ blockTimestamp: 0 })];
+    const candles = bucketTradesIntoCandles(trades, "5m", 18);
+    const points = buildChartSeriesPoints(candles, "5m", 0);
+    expect(points.filter((point) => point.time < 0)).toHaveLength(100);
+  });
+
+  it("still produces a padded whitespace timeline (never candles) when there are zero trades yet", () => {
+    const points = buildChartSeriesPoints([], "5m", 3600);
+    expect(points.every((point) => !isCandlePoint(point))).toBe(true);
+    expect(points[points.length - 1].time).toBe(3600);
+    expect(points).toHaveLength(101);
+  });
+
+  it("never synthesizes OHLC for a gap bucket — whitespace points carry only a time field", () => {
+    const trades = [trade({ blockTimestamp: 0 }), trade({ blockTimestamp: 3600, logIndex: 1 })];
+    const candles = bucketTradesIntoCandles(trades, "5m", 18);
+    const points = buildChartSeriesPoints(candles, "5m", 3600);
+    for (const point of points) {
+      if (!isCandlePoint(point)) expect(Object.keys(point)).toEqual(["time"]);
+    }
+  });
+
+  it("filtering the candle points back out of the timeline exactly reproduces the real candles — MA/stats never see whitespace", () => {
+    const trades = [
+      trade({ blockTimestamp: 0 }),
+      trade({ blockTimestamp: 900, logIndex: 1 }),
+      trade({ blockTimestamp: 3600, logIndex: 2 }),
+    ];
+    const candles = bucketTradesIntoCandles(trades, "5m", 18);
+    const points = buildChartSeriesPoints(candles, "5m", 3600);
+    const recoveredCandles = points.filter(isCandlePoint);
+    expect(recoveredCandles).toEqual(candles);
+    expect(computeMovingAverage(recoveredCandles, 2)).toEqual(computeMovingAverage(candles, 2));
+  });
+});
+
+describe("diffChartSeriesPoints (issue #451 item 2: whitespace-inclusive live updates)", () => {
+  it("reports nothing changed for two identical whitespace-inclusive timelines", () => {
+    const previous: ChartSeriesPoint[] = [{ time: 0 }, { time: 300 }];
+    const next: ChartSeriesPoint[] = [{ time: 0 }, { time: 300 }];
+    expect(diffChartSeriesPoints(previous, next)).toEqual({ updated: [], appended: [] });
+  });
+
+  it("converts a whitespace slot into a candle when a trade lands in a previously-empty bucket", () => {
+    const candle: Candle = { time: 300, open: 1, high: 1, low: 1, close: 1, volume: 1 };
+    const previous: ChartSeriesPoint[] = [{ time: 0 }, { time: 300 }];
+    const next: ChartSeriesPoint[] = [{ time: 0 }, candle];
+    expect(diffChartSeriesPoints(previous, next)).toEqual({ updated: [candle], appended: [] });
+  });
+
+  it("detects a newly appended whitespace bar at the tail as the clock advances with no new trade", () => {
+    const previous: ChartSeriesPoint[] = [{ time: 0 }];
+    const appended: ChartSeriesPoint = { time: 300 };
+    const next: ChartSeriesPoint[] = [...previous, appended];
+    expect(diffChartSeriesPoints(previous, next)).toEqual({ updated: [], appended: [appended] });
+  });
+
+  it("treats two whitespace points at the same time as equal, never reporting a spurious update", () => {
+    const previous: ChartSeriesPoint[] = [{ time: 0 }];
+    const next: ChartSeriesPoint[] = [{ time: 0 }];
+    expect(diffChartSeriesPoints(previous, next)).toEqual({ updated: [], appended: [] });
+  });
+});
+
+describe("isCandlePoint", () => {
+  it("distinguishes a real candle from a whitespace point", () => {
+    const candle: Candle = { time: 0, open: 1, high: 1, low: 1, close: 1, volume: 1 };
+    expect(isCandlePoint(candle)).toBe(true);
+    expect(isCandlePoint({ time: 0 })).toBe(false);
   });
 });
