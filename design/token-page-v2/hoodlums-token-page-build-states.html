@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#0a0b09; color:#f4f7f1; font-family:Inter,system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#c6f53e; text-decoration:none; }
+  a:hover { color:#dcff7a; }
+  button { font-family:inherit; }
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:radial-gradient(1100px 620px at 30% -8%, rgba(198,245,62,0.07), transparent 62%), radial-gradient(900px 600px at 90% 4%, rgba(198,245,62,0.04), transparent 60%), #0a0b09;padding:34px 26px 60px">
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.18em;color:#8d918c">BUILD STATES</span>
+      <span style="flex:1;height:1px;background:rgba(255,255,255,0.07)"></span>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+
+      <div style="width:640px;display:flex;flex-direction:column;gap:8px">
+        <span style="font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#8d918c">HEADER · NON-CREATOR VIEW, NO ART SET</span>
+        <div style="border:1px solid rgba(255,255,255,0.09);border-radius:22px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 30px 70px -24px rgba(0,0,0,0.8);padding:10px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <div style="width:50px;height:50px;flex:none;border-radius:11px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0.3)),#0a0f0c;display:grid;place-items:center">
+            <span style="font:400 20px 'Archivo Black',Inter,sans-serif;color:#4a4f49">H</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font:400 17px 'Archivo Black',Inter,sans-serif">HOODLUMS</span>
+              <span style="font:700 12px 'IBM Plex Mono',monospace;color:#8d918c">$HOODS</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;border:1px solid rgba(198,245,62,0.3);background:linear-gradient(180deg, rgba(198,245,62,0.14), rgba(198,245,62,0.03));font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;color:#c6f53e">LIVE</span>
+            </div>
+            <span style="font:600 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;color:#8d918c">NO UPLOAD PROMPT — VIEWER IS NOT THE CREATOR</span>
+          </div>
+          <div style="flex:1"></div>
+          <div style="display:flex;align-items:baseline;gap:9px">
+            <span style="font:700 8px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;color:#8d918c">PRICE · TAP FOR MCAP</span>
+            <span style="font:400 21px/1 'Archivo Black',Inter,sans-serif;color:#f4f7f1">{{ lastLabel }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:560px;display:flex;flex-direction:column;gap:8px">
+        <span style="font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#8d918c">CHART · ZERO TRADES</span>
+        <div style="border:1px solid rgba(255,255,255,0.09);border-radius:22px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 30px 70px -24px rgba(0,0,0,0.8);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid rgba(255,255,255,0.07)">
+            <span style="font:700 11px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#c3c9c4">HOODS / ETH</span>
+            <span style="font:600 10px/1 'IBM Plex Mono',monospace;color:#6f746e">0.0000320 ETH · CURVE START</span>
+          </div>
+          <div style="display:flex">
+            <div style="flex:1;position:relative;height:190px">
+              <div style="position:absolute;left:0;right:0;top:25%;height:1px;background:rgba(255,255,255,0.045)"></div>
+              <div style="position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(255,255,255,0.045)"></div>
+              <div style="position:absolute;left:0;right:0;top:75%;height:1px;background:rgba(255,255,255,0.045)"></div>
+              <div style="position:absolute;inset:0;display:grid;place-items:center">
+                <span style="font:600 11.5px 'IBM Plex Mono',monospace;color:#8d918c">No trades yet — the first buy starts the chart</span>
+              </div>
+            </div>
+            <div style="width:80px;flex:none;position:relative;border-left:1px solid rgba(255,255,255,0.07);background:linear-gradient(180deg, rgba(0,0,0,0.3), rgba(255,255,255,0.012))">
+              <span style="position:absolute;top:25%;right:10px;transform:translateY(-50%);font:600 9.5px/1 'IBM Plex Mono',monospace;color:#6f746e">0.0000480</span>
+              <span style="position:absolute;top:50%;right:10px;transform:translateY(-50%);font:600 9.5px/1 'IBM Plex Mono',monospace;color:#6f746e">0.0000320</span>
+              <span style="position:absolute;top:75%;right:10px;transform:translateY(-50%);font:600 9.5px/1 'IBM Plex Mono',monospace;color:#6f746e">0.0000160</span>
+            </div>
+          </div>
+          <div style="height:22px;border-top:1px solid rgba(255,255,255,0.07);background:rgba(0,0,0,0.25)"></div>
+        </div>
+      </div>
+
+      <div style="width:560px;display:flex;flex-direction:column;gap:8px">
+        <span style="font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#8d918c">CHART · LIVE DATA PAUSED</span>
+        <div style="border:1px solid rgba(255,255,255,0.09);border-radius:22px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 30px 70px -24px rgba(0,0,0,0.8);overflow:hidden">
+          <div style="position:relative;height:212px">
+            <div style="position:absolute;inset:0;opacity:.5">
+              <sc-for list="{{ candles }}" as="c" hint-placeholder-count="124">
+                <div style="{{ c.wick }}"></div>
+              </sc-for>
+              <sc-for list="{{ candles }}" as="c" hint-placeholder-count="124">
+                <div style="{{ c.body }}"></div>
+              </sc-for>
+            </div>
+            <div style="position:absolute;top:0;left:0;right:0;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px;background:rgba(245,190,80,0.1);border-bottom:1px solid rgba(245,190,80,0.4);backdrop-filter:blur(4px)">
+              <span style="font:600 10px 'IBM Plex Mono',monospace;color:#f5be50">Live data paused — showing last known prices</span>
+              <span style="font:800 10px 'IBM Plex Mono',monospace;letter-spacing:0.08em;color:#f5be50;text-decoration:underline;cursor:pointer">RETRY</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:420px;display:flex;flex-direction:column;gap:8px">
+        <span style="font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#8d918c">HOODCHAT · NO WALLET CONNECTED</span>
+        <div style="border:1px solid rgba(255,255,255,0.09);border-radius:22px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 30px 70px -24px rgba(0,0,0,0.8);padding:14px;display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ chatPreview }}" as="m" hint-placeholder-count="2">
+            <div style="display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:11px;border:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008))">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font:700 10.5px/1 'IBM Plex Mono',monospace;color:#c6f53e">{{ m.wallet }}</span>
+                <span style="{{ m.badgeStyle }}">{{ m.badge }}</span>
+                <span style="margin-left:auto;font:600 9.5px/1 'IBM Plex Mono',monospace;color:#6f746e">{{ m.ago }}</span>
+              </div>
+              <span style="font-size:12.5px;color:#d9dfd6;line-height:1.5">{{ m.body }}</span>
+            </div>
+          </sc-for>
+          <div style="display:flex;gap:8px;align-items:center;border:1px solid rgba(255,255,255,0.07);border-radius:999px;background:rgba(255,255,255,0.02);padding:6px 6px 6px 16px;opacity:.6">
+            <span style="flex:1;font-size:12.5px;color:#6f746e">Connect a wallet holding $HOODS to chat</span>
+            <span style="min-height:34px;display:inline-flex;align-items:center;padding:0 18px;border-radius:999px;background:rgba(198,245,62,0.25);color:rgba(7,16,8,0.7);font:800 12px Inter,sans-serif;cursor:not-allowed">Send</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:340px;display:flex;flex-direction:column;gap:8px">
+        <span style="font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#8d918c">AUDIT · UNVERIFIED ROW</span>
+        <div style="border:1px solid rgba(255,255,255,0.09);border-radius:22px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 30px 70px -24px rgba(0,0,0,0.8);padding:14px;display:flex;flex-direction:column;gap:7px">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:11px;border:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008))">
+            <span style="width:20px;height:20px;flex:none;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(198,245,62,0.4);background:rgba(198,245,62,0.1)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#c6f53e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 10 18 19.5 6.5"></path></svg></span>
+            <span style="font-size:12.5px;color:#d9dfd6">0% tax</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:11px;border:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008))">
+            <span style="width:20px;height:20px;flex:none;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(198,245,62,0.4);background:rgba(198,245,62,0.1)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#c6f53e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 10 18 19.5 6.5"></path></svg></span>
+            <span style="font-size:12.5px;color:#d9dfd6">No mint function</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:11px;border:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.015)">
+            <span style="width:20px;height:20px;flex:none;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.05);font:800 11px/1 'IBM Plex Mono',monospace;color:#8d918c">–</span>
+            <span style="font-size:12.5px;color:#6f746e">No owner — verification pending</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:11px;border:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008))">
+            <span style="width:20px;height:20px;flex:none;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(198,245,62,0.4);background:rgba(198,245,62,0.1)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#c6f53e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 10 18 19.5 6.5"></path></svg></span>
+            <span style="font-size:12.5px;color:#d9dfd6">LP locked at graduation</span>
+          </div>
+          <span style="font:600 9px 'IBM Plex Mono',monospace;color:#6f746e;padding:3px 2px 0">Guaranteed by the Hoodlums factory contract</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<template id="__bundler_thumbnail">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="#0a0b09"/><g fill="#c6f53e"><rect x="26" y="30" width="28" height="28" rx="6"/><rect x="66" y="30" width="28" height="28" rx="6" opacity=".55"/><rect x="26" y="66" width="28" height="28" rx="6" opacity=".55"/><rect x="66" y="66" width="28" height="28" rx="6"/></g></svg>
+</template>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const MONO = "'IBM Plex Mono',monospace";
+
+class Component extends DCLogic {
+  rng(seed) { let x = seed >>> 0; return () => { x = (1664525 * x + 1013904223) >>> 0; return x / 4294967296; }; }
+
+  renderVals() {
+    const up = '#c6f53e', dn = '#e2564b';
+    const r = this.rng(1794);
+    const cs = []; let p = 0.0000318;
+    for (let i = 0; i < 124; i++) {
+      const o = p;
+      const c = Math.max(0.00001, o * (1 + (r() - 0.5 + 0.016) * 0.034));
+      cs.push({ o, c, h: Math.max(o, c) * (1 + r() * 0.019), l: Math.min(o, c) * (1 - r() * 0.019) });
+      p = c;
+    }
+    const hi = Math.max.apply(null, cs.map(c => c.h)), lo = Math.min.apply(null, cs.map(c => c.l));
+    const span = hi - lo, max = hi + span * 0.09, min = lo - span * 0.09;
+    const Y = v => ((max - v) / (max - min)) * 100;
+    const slot = 100 / 124, bw = slot * 0.5;
+    const candles = cs.map((c, i) => {
+      const cx = slot * (i + 0.5), col = c.c >= c.o ? up : dn;
+      const top = Y(Math.max(c.o, c.c)), bot = Y(Math.min(c.o, c.c));
+      return {
+        wick: 'position:absolute;left:' + cx + '%;top:' + Y(c.h) + '%;height:' + (Y(c.l) - Y(c.h)) + '%;width:1px;margin-left:-0.5px;background:' + col + ';opacity:.9',
+        body: 'position:absolute;left:' + (cx - bw / 2) + '%;top:' + top + '%;width:' + bw + '%;height:' + Math.max(0.4, bot - top) + '%;background:' + col + ';border-radius:0.5px'
+      };
+    });
+    const badge = kind => 'display:inline-flex;padding:2px 7px;border-radius:99px;border:1px solid ' +
+      (kind === 'DEV' ? 'rgba(198,245,62,0.4);background:rgba(198,245,62,0.1);color:#c6f53e' : 'rgba(145,240,182,0.32);background:rgba(145,240,182,0.07);color:#91f0b6') +
+      ';font:800 8px/1.4 ' + MONO + ';letter-spacing:0.1em';
+    return {
+      candles,
+      lastLabel: cs[123].c.toPrecision(6) + ' ETH',
+      chatPreview: [
+        { wallet: '0x3990…966a', badge: 'DEV', ago: '4m', body: 'Chart looking clean. Graduation this week if the pace holds.', badgeStyle: badge('DEV') },
+        { wallet: '0x81ce…04d1', badge: 'HOLDER', ago: '9m', body: 'Been here since block one. Not moving.', badgeStyle: badge('HOLDER') }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

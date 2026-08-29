@@ -40,7 +40,9 @@ const eslintConfig = defineConfig([
     // Runtime helper for the standalone design-reference mockups in
     // public/design-refs/*.html — not part of the Next.js app bundle.
     "public/support.js",
+    // Design references under design/ are never part of the app; the
+    // Claude Design runtime (support.js) there is third-party code.
+    "design/**",
   ]),
 ]);
-
 export default eslintConfig;
