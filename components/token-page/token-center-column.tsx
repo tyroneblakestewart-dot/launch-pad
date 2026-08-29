@@ -4,8 +4,8 @@ import { useState } from "react";
 import { TokenChatPanel } from "@/components/token-page/token-chat-panel";
 import { TokenTradeChart } from "@/components/token-page/token-trade-chart";
 import { formatHolderPercent, formatTimeAgoSeconds, shortenAddress } from "@/lib/token-page-format";
-import { useTokenTrades } from "@/lib/use-token-trades";
 import type { TokenMarketStats } from "@/lib/server/token-market-stats";
+import type { TokenTrade } from "@/lib/token-trade-types";
 import type { SupportedChain } from "@/lib/types";
 import styles from "./token-page.module.css";
 
@@ -31,37 +31,41 @@ function formatTokenAmount(amountRaw: string, decimals: number | null): string {
  * embedded Dexscreener chart entirely — Dexscreener can't index this chain,
  * so it only ever showed a "chart doesn't work here" message in the page's
  * prime real estate — leaving a placeholder for part 2's live chart. Issue
- * #430 fills that in for real: `useTokenTrades` reads the resolved bonding
- * curve's own on-chain trade history (GET /api/token-trades) once, shared by
- * both the candlestick chart and the Recent trades tab so there is exactly
- * one poll driving both, not two. The old `marketStats.trades` field (a
- * Blockscout LP-transfer heuristic that only ever worked for a token with a
- * Dexscreener-indexed pool, never a still-bonding curve token) is no longer
- * used here. Issue #443 part 1 adds an About tab (moved here from the now
- * fully-removed `TokenRightColumn`, whose only other content — referral
- * trade-terminal links — was dead code on the only chain this page
- * supports, since `tradeLinks` is always empty on Robinhood Chain Testnet)
- * alongside Recent trades/Holders/Hoodchat, so the centre column now fills
- * the full width the old three-column desktop layout split between centre
- * and right.
+ * #430 fills that in for real: the resolved bonding curve's own on-chain
+ * trade history (GET /api/token-trades) is shared by the candlestick chart
+ * and the Recent trades tab so there is exactly one poll driving both, not
+ * two. Issue #444 lifts that poll one level further, up to
+ * `token-page-view.tsx`, so the header band and the Stats/Audit panel share
+ * the exact same `trades`/`tradesError` values too — this component now
+ * receives them as props instead of calling `useTokenTrades` itself. The
+ * old `marketStats.trades` field (a Blockscout LP-transfer heuristic that
+ * only ever worked for a token with a Dexscreener-indexed pool, never a
+ * still-bonding curve token) is no longer used here. Issue #443 part 1 adds
+ * an About tab (moved here from the now fully-removed `TokenRightColumn`,
+ * whose only other content — referral trade-terminal links — was dead code
+ * on the only chain this page supports, since `tradeLinks` is always empty
+ * on Robinhood Chain Testnet) alongside Recent trades/Holders/Hoodchat, so
+ * the centre column now fills the full width the old three-column desktop
+ * layout split between centre and right.
  */
 export function TokenCenterColumn({
   chain,
   address,
   marketStats,
-  curveAddress,
   chainShortLabel,
   explorerBaseUrl,
+  trades,
+  tradesError,
 }: {
   chain: SupportedChain;
   address: string;
   marketStats: TokenMarketStats;
-  curveAddress: string | null;
   chainShortLabel: string;
   explorerBaseUrl: string;
+  trades: TokenTrade[] | null;
+  tradesError: string | null;
 }) {
   const [tab, setTab] = useState<ActivityTab>("trades");
-  const { trades, error: tradesError } = useTokenTrades(curveAddress);
 
   const holders = marketStats.supported ? marketStats.holders : [];
   const decimals = marketStats.supported ? marketStats.decimals : null;

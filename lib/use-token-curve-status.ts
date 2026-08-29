@@ -5,6 +5,7 @@ import { createPublicClient, defineChain, formatEther, formatUnits, http, type A
 import { ERC20_MIN_ABI, HOODLUMS_BONDING_CURVE_HEADER_ABI } from "@/lib/bonding-curve-config";
 import { computeBondingCurveGraduationStatus, type BondingCurveGraduationStatus } from "@/lib/bonding-curve-status";
 import { ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import { TOKEN_TRADE_CONFIRMED_EVENT } from "@/lib/token-trade-events";
 
 const chain = defineChain({
   id: ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL,
@@ -36,15 +37,17 @@ function readError(error: unknown): string {
 }
 
 /**
- * Independent, header-band-only read of a subset of the same on-chain curve
- * state components/token-page/token-left-column.tsx already reads for the
- * swap panel (issue #443 part 1). Deliberately NOT shared with that file —
- * this issue scopes the swap panel as "unchanged internally", and its
- * curve-loading state/tests are already extensively pinned — so this
- * duplicates a subset of its RPC reads via a dedicated ABI
- * (`HOODLUMS_BONDING_CURVE_HEADER_ABI`) rather than lifting shared state. A
- * stated trade-off: two independent 12s polls against the same curve
- * instead of one, acceptable given this app is testnet-only.
+ * The single shared on-chain curve-status poll for the whole token page
+ * (issue #444): called exactly once, in `token-page-view.tsx`, and its
+ * `TokenCurveStatus` result is passed down as a prop to both
+ * `TokenHeaderBand` and `TokenLeftColumn`'s swap panel — previously each
+ * maintained its own independent 12s poller against the same curve, which
+ * doubled RPC/API load and let the header and swap panel show
+ * momentarily different graduation/price data between polls. Uses a
+ * dedicated ABI (`HOODLUMS_BONDING_CURVE_HEADER_ABI`) that is a superset of
+ * what the swap panel needs (it also reads `token`, the initial virtual
+ * reserves and total supply for the header's starting-price/market-cap
+ * figures) so one read covers both consumers.
  */
 export function useTokenCurveStatus(
   tokenAddress: string,
@@ -149,7 +152,12 @@ export function useTokenCurveStatus(
 
   // Live graduation/price data (matches lib/use-token-trades.ts's issue
   // #403 pattern): a visible-tab-only 12s timer, refetched immediately on
-  // focus/visibilitychange, paused while the tab is hidden.
+  // focus/visibilitychange, paused while the tab is hidden, and also
+  // refetched immediately on TOKEN_TRADE_CONFIRMED_EVENT so the connected
+  // wallet's own just-confirmed buy/sell updates the header and swap panel's
+  // shared graduation/price state without waiting for the next tick — this
+  // replaces token-left-column.tsx's old direct `loadCurve()` call in its
+  // trade-confirm branch now that both consumers share this one poll.
   useEffect(() => {
     if (!curveAddress) return;
     const resolvedCurveAddress = curveAddress;
@@ -183,14 +191,20 @@ export function useTokenCurveStatus(
       startTimer();
     }
 
+    function handleTradeConfirmed() {
+      void load(resolvedCurveAddress);
+    }
+
     if (isPageVisible()) startTimer();
     document.addEventListener("visibilitychange", handleBecameVisible);
     window.addEventListener("focus", handleBecameVisible);
+    window.addEventListener(TOKEN_TRADE_CONFIRMED_EVENT, handleTradeConfirmed);
 
     return () => {
       stopTimer();
       document.removeEventListener("visibilitychange", handleBecameVisible);
       window.removeEventListener("focus", handleBecameVisible);
+      window.removeEventListener(TOKEN_TRADE_CONFIRMED_EVENT, handleTradeConfirmed);
     };
   }, [curveAddress, load]);
 

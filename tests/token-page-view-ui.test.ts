@@ -15,12 +15,14 @@ async function source(file: string): Promise<string> {
 }
 
 describe("token page view composition (issue #443 part 1)", () => {
-  it("is a server component composing the header band, left column and centre column", async () => {
+  it("is a client component composing the header band, left column and centre column, owning the one shared trades/curve poll (issue #444)", async () => {
     const view = await source("components/token-page/token-page-view.tsx");
-    expect(view).not.toContain('"use client"');
+    expect(view).toContain('"use client"');
     expect(view).toContain("<TokenHeaderBand");
     expect(view).toContain("<TokenLeftColumn");
     expect(view).toContain("<TokenCenterColumn");
+    expect(view).toContain("useTokenCurveStatus(address, curveAddress, decimals)");
+    expect(view).toContain("useTokenTrades(curveAddress)");
   });
 
   it("no longer renders a separate right column — About moved into the centre column's tabs", async () => {
@@ -71,11 +73,13 @@ describe("token page site chrome (issue #443 part 1 — full-screen route)", () 
 });
 
 describe("token page header band (issue #443 part 1)", () => {
-  it("is a client component reading its own independent curve status and trades", async () => {
+  it("is a client component receiving curve status and trades as props from the page's one shared poll (issue #444)", async () => {
     const component = await source("components/token-page/token-header-band.tsx");
     expect(component).toContain('"use client"');
-    expect(component).toContain("useTokenCurveStatus(address, curveAddress, decimals)");
-    expect(component).toContain("useTokenTrades(curveAddress)");
+    expect(component).not.toContain("useTokenCurveStatus(");
+    expect(component).not.toContain("useTokenTrades(");
+    expect(component).toContain("curveStatus: TokenCurveStatus");
+    expect(component).toContain("trades: TokenTrade[] | null");
   });
 
   it("renders the back link, artwork tile, name/ticker, holders, launch age and chain badge", async () => {
@@ -183,12 +187,16 @@ describe("token page left column (swap panel, unchanged internally) + Stats/Audi
     expect(component).toContain("factoryMinted: boolean;");
   });
 
-  it("only activates live swap controls once the configured curve's own token() matches this page", async () => {
+  it("only activates live swap controls once the configured curve's own token() matches this page (check now lives in the shared curve-status hook, issue #444)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
     expect(component).toContain('"use client"');
-    expect(component).toContain('functionName: "token"');
-    expect(component).toContain('(tokenAddress as string).toLowerCase() !== address.toLowerCase()');
-    expect(component).toContain('{ kind: "wrong-token" }');
+    expect(component).toContain('curveStatus.kind !== "ready"');
+    expect(component).toContain("return curveStatus;");
+
+    const hook = await source("lib/use-token-curve-status.ts");
+    expect(hook).toContain('functionName: "token"');
+    expect(hook).toContain('(token as string).toLowerCase() !== tokenAddress.toLowerCase()');
+    expect(hook).toContain('{ kind: "wrong-token" }');
   });
 
   it("falls back to the referral trade-terminal links when no curve is configured or reading it fails", async () => {
@@ -213,9 +221,10 @@ describe("token page left column (swap panel, unchanged internally) + Stats/Audi
     expect(component).toContain('functionName: "sell"');
   });
 
-  it("still computes graduation state from the shared pure status module for its own not-graduated/graduated branch, even though the figures themselves now render in the header band", async () => {
+  it("derives its local curve view from the page's shared curve status (issue #444) rather than computing graduation state itself", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
-    expect(component).toContain("computeBondingCurveGraduationStatus({");
+    expect(component).toContain("function toCurveView(curveStatus: TokenCurveStatus, decimals: number): CurveView {");
+    expect(component).toContain("const curveView = toCurveView(curveStatus, resolvedDecimals);");
     expect(component).toContain('curveView.graduation.state !== "graduated"');
   });
 
@@ -254,10 +263,12 @@ describe("token page left column (swap panel, unchanged internally) + Stats/Audi
     expect(component).toContain("formatFeeNote(TRADING_FEE_BPS, PROTOCOL_FEE_SHARE_BPS, CREATOR_FEE_SHARE_BPS, true)");
   });
 
-  it("reads remainingNativeToGraduate() and displays it, and caps the buy MAX preset at the graduation target", async () => {
+  it("reads remainingNativeToGraduate() via the shared curve-status hook and caps the buy MAX preset at the graduation target", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
-    expect(component).toContain('functionName: "remainingNativeToGraduate"');
     expect(component).toContain("grossNativeInForExactNet(curveView.remainingToGraduateWei)");
+
+    const hook = await source("lib/use-token-curve-status.ts");
+    expect(hook).toContain('functionName: "remainingNativeToGraduate"');
   });
 
   it("blocks submitting a buy that would exceed the graduation target instead of letting it revert", async () => {
@@ -274,14 +285,16 @@ describe("token page left column (swap panel, unchanged internally) + Stats/Audi
     expect(component).toContain("View liquidity pool");
   });
 
-  it("shows a creator fee panel with claimable balance and a withdraw button only for the confirmed on-chain creator", async () => {
+  it("shows a creator fee panel with claimable balance and a withdraw button only for the confirmed on-chain creator (creator itself resolved by the shared curve-status hook, issue #444)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
-    expect(component).toContain('functionName: "creator"');
     expect(component).toContain('functionName: "claimableFees"');
     expect(component).toContain('functionName: "withdrawFees"');
     expect(component).toContain("account.toLowerCase() === curveView.creator.toLowerCase()");
     expect(component).toContain("{isCreator && curveView.kind === \"ready\" && (");
     expect(component).toContain("Withdraw fees");
+
+    const hook = await source("lib/use-token-curve-status.ts");
+    expect(hook).toContain('functionName: "creator"');
   });
 });
 
@@ -308,7 +321,7 @@ describe("token page trade UX correctness (issue #427)", () => {
     expect(component).toContain('setAmount("");\n        setReceiveRaw(null);\n        setSellFeeRaw(null);');
   });
 
-  it("refetches curve state and balances after every confirmed trade so MAX and the progress bar are never stale (issue #427 item 4b)", async () => {
+  it("refetches balances after every confirmed trade, and refreshes the page's shared curve state via TOKEN_TRADE_CONFIRMED_EVENT on a genuine success so MAX and the progress bar are never stale (issue #427 item 4b, issue #444)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
     const submitTradeStart = component.indexOf("async function submitTrade()");
     const submitTradeEnd = component.indexOf("const payTicker", submitTradeStart);
@@ -317,11 +330,16 @@ describe("token page trade UX correctness (issue #427)", () => {
     const submitTrade = component.slice(submitTradeStart, submitTradeEnd);
 
     expect(submitTrade).toContain("void refreshBalances(account);");
-    expect(submitTrade).toContain("if (curveAddress) void loadCurve(curveAddress);");
+    expect(submitTrade).not.toContain("loadCurve");
+    expect(submitTrade).toContain("notifyTokenTradeConfirmed({ curveAddress: curveView.curve });");
     const refetchIndex = submitTrade.indexOf("void refreshBalances(account);", submitTrade.indexOf("waitForTransactionReceipt({ hash });"));
     const branchIndex = submitTrade.indexOf('receipt.status === "reverted"');
+    const notifyIndex = submitTrade.indexOf("notifyTokenTradeConfirmed({ curveAddress: curveView.curve });");
     expect(refetchIndex).toBeGreaterThan(-1);
     expect(refetchIndex).toBeLessThan(branchIndex);
+    // Only the genuine-success branch fires the shared refetch event — a
+    // reverted trade never moved the curve's own reserves.
+    expect(notifyIndex).toBeGreaterThan(branchIndex);
   });
 
   it("applies the same reverted/thrown-error handling to the creator fee withdraw flow", async () => {
@@ -333,10 +351,11 @@ describe("token page trade UX correctness (issue #427)", () => {
 });
 
 describe("token page Stats/Audit panel (issue #443 part 1)", () => {
-  it("is a client component sharing its own useTokenTrades poll, computed with the pure lib/token-trade-stats.ts helpers", async () => {
+  it("is a client component receiving trades as a prop from the page's one shared poll (issue #444), computed with the pure lib/token-trade-stats.ts helpers", async () => {
     const component = await source("components/token-page/token-stats-audit-panel.tsx");
     expect(component).toContain('"use client"');
-    expect(component).toContain('import { useTokenTrades } from "@/lib/use-token-trades"');
+    expect(component).not.toContain("useTokenTrades(");
+    expect(component).toContain("trades: TokenTrade[] | null");
     expect(component).toContain("computeTradeWindowStats(");
     expect(component).toContain("computeTotalFeesNative(");
   });
@@ -388,13 +407,14 @@ describe("token page centre column (chart + activity)", () => {
     expect(component).not.toContain("public-dexscreener-section");
   });
 
-  it("renders the real candlestick chart inside the same chart region, sharing one trades poll with the tab below (issue #430)", async () => {
+  it("renders the real candlestick chart inside the same chart region, sharing the page's one trades poll with the tab below (issue #430, lifted further in issue #444)", async () => {
     const component = await source("components/token-page/token-center-column.tsx");
     expect(component).toContain("styles.chartPlaceholder");
     expect(component).toContain('data-token-chart="true"');
     expect(component).toContain("<TokenTradeChart");
-    expect(component).toContain('import { useTokenTrades } from "@/lib/use-token-trades"');
-    expect(component).toContain("useTokenTrades(curveAddress)");
+    expect(component).not.toContain("useTokenTrades(");
+    expect(component).toContain("trades: TokenTrade[] | null");
+    expect(component).toContain("tradesError: string | null");
   });
 
   it("renders Recent trades and Holders tabs with graceful empty states, sourced from real on-chain trade data (issue #430)", async () => {
@@ -539,11 +559,68 @@ describe("token page desktop layout: swap + stats + fees left, chart + tabs fill
     expect(block).toContain(".chartPlaceholder,\n  .activityPanel {\n    grid-column: 2;\n  }");
   });
 
-  it("does not touch the token page's data-flow, trade logic or error surfacing (issue #427) while rearranging layout", async () => {
+  it("does not touch the token page's trade logic or error surfacing (issue #427) while rearranging layout and deduplicating polling (issue #444)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
     expect(component).toContain('receipt.status === "reverted"');
     expect(component).toContain("describeRevertedTrade(hash)");
     expect(component).toContain("void refreshBalances(account);");
-    expect(component).toContain("if (curveAddress) void loadCurve(curveAddress);");
+  });
+});
+
+describe("token page polling is deduplicated to one shared poll per data source (issue #444)", () => {
+  // Before this fix, token-center-column.tsx, token-header-band.tsx and
+  // token-stats-audit-panel.tsx each called useTokenTrades independently
+  // (three 12s /api/token-trades pollers on one open tab — ~900 requests/hour
+  // against the 600/hour/IP limit the homepage grid also shares), and
+  // token-left-column.tsx and lib/use-token-curve-status.ts each polled the
+  // same on-chain curve independently. A rendered token page must issue
+  // exactly one /api/token-trades request and one curve-status read per poll
+  // cycle, from exactly one call site each, both owned by token-page-view.tsx
+  // and threaded down as props — matching this repo's established
+  // source-pattern-assertion approach for interactive components (see this
+  // file's own top-of-file rationale comment; the Vitest suite runs with no
+  // jsdom, so there is no rendered DOM to dispatch a real fetch against).
+  const consumers = [
+    "components/token-page/token-header-band.tsx",
+    "components/token-page/token-center-column.tsx",
+    "components/token-page/token-stats-audit-panel.tsx",
+    "components/token-page/token-left-column.tsx",
+  ];
+
+  it("calls useTokenTrades exactly once across the whole page, in token-page-view.tsx", async () => {
+    const view = await source("components/token-page/token-page-view.tsx");
+    expect(view).toContain("useTokenTrades(curveAddress)");
+
+    for (const file of consumers) {
+      const component = await source(file);
+      expect(component, `${file} must not call useTokenTrades directly`).not.toContain("useTokenTrades(");
+    }
+  });
+
+  it("calls useTokenCurveStatus exactly once across the whole page, in token-page-view.tsx", async () => {
+    const view = await source("components/token-page/token-page-view.tsx");
+    expect(view).toContain("useTokenCurveStatus(address, curveAddress, decimals)");
+
+    for (const file of consumers) {
+      const component = await source(file);
+      expect(component, `${file} must not call useTokenCurveStatus directly`).not.toContain("useTokenCurveStatus(");
+    }
+  });
+
+  it("passes the same trades/tradesError and curveStatus values down to every consumer that needs them", async () => {
+    const view = await source("components/token-page/token-page-view.tsx");
+    expect(view).toContain("curveStatus={curveStatus}");
+    expect(view).toContain("trades={trades}");
+    expect(view).toContain("tradesError={tradesError}");
+  });
+
+  it("no longer justifies independent per-panel polling copies in a doc comment", async () => {
+    for (const file of [...consumers, "lib/use-token-curve-status.ts", "lib/use-token-trades.ts"]) {
+      const component = await source(file);
+      expect(component, `${file} must not claim a deliberate independent poll`).not.toContain("deliberate duplication");
+      expect(component, `${file} must not claim a deliberate independent poll`).not.toContain("Deliberately NOT shared");
+      expect(component, `${file} must not claim an owned independent copy`).not.toContain("owns an independent copy");
+      expect(component, `${file} must not claim two independent 12s polls`).not.toContain("two independent 12s polls");
+    }
   });
 });

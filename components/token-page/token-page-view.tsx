@@ -1,5 +1,9 @@
+"use client";
+
 import type { Address } from "viem";
 import { DEFAULT_TOKEN_DECIMALS } from "@/lib/bonding-curve-deploy-config";
+import { useTokenCurveStatus } from "@/lib/use-token-curve-status";
+import { useTokenTrades } from "@/lib/use-token-trades";
 import { TokenCenterColumn } from "./token-center-column";
 import { TokenHeaderBand } from "./token-header-band";
 import { TokenLeftColumn } from "./token-left-column";
@@ -33,12 +37,21 @@ export type TokenPageViewProps = {
  * Stats/Audit + creator fees on the left, the live chart and its tabs
  * (Recent trades / Holders / Hoodchat / About) filling the rest. Replaces
  * the old three-column desktop layout (issue #429) and its separate
- * identity/right columns entirely; a server component, since the only
- * interactive pieces (header band, swap panel, stats panel, chart/tabs) are
- * isolated in their own client-only children.
+ * identity/right columns entirely.
+ *
+ * A client component (issue #444): the header band, Stats/Audit panel and
+ * centre column previously each ran their own independent `useTokenTrades`
+ * poll, and the header band and swap panel each ran their own independent
+ * curve-status poll — six 12s pollers total against the same two data
+ * sources on one page. Both polls are now called exactly once, here, and
+ * `trades`/`tradesError`/`curveStatus` are passed down as props to every
+ * consumer, so the whole page shares one `/api/token-trades` poll and one
+ * on-chain curve read.
  */
 export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLinks, curveAddress, launch }: TokenPageViewProps) {
   const decimals = marketStats.supported && marketStats.decimals !== null ? marketStats.decimals : DEFAULT_TOKEN_DECIMALS;
+  const curveStatus = useTokenCurveStatus(address, curveAddress, decimals);
+  const { trades, error: tradesError } = useTokenTrades(curveAddress);
 
   return (
     <main className={`${styles.page} token-page-full-screen`}>
@@ -46,10 +59,12 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
         <TokenHeaderBand
           address={address}
           chainInfo={chainInfo}
-          curveAddress={curveAddress}
           marketStats={marketStats}
           launch={launch}
           decimals={decimals}
+          curveStatus={curveStatus}
+          trades={trades}
+          tradesError={tradesError}
         />
 
         {/* Every panel below is a direct grid item of `.grid` — no
@@ -63,18 +78,20 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
             chainId={chain}
             address={address}
             marketStats={marketStats}
-            curveAddress={curveAddress}
             tradeLinks={tradeLinks}
             factoryMinted={Boolean(launch)}
+            curveStatus={curveStatus}
+            trades={trades}
           />
 
           <TokenCenterColumn
             chain={chain}
             address={address}
             marketStats={marketStats}
-            curveAddress={curveAddress}
             chainShortLabel={chainInfo.shortLabel}
             explorerBaseUrl={chainInfo.explorerBaseUrl}
+            trades={trades}
+            tradesError={tradesError}
           />
         </div>
       </div>

@@ -7,6 +7,7 @@ import { tradePriceNativePerToken } from "@/lib/candle-bucketing";
 import { formatGraduationRemainingLabel, formatGraduationSummary } from "@/lib/bonding-curve-status";
 import type { TokenLaunch } from "@/lib/server/token-launches-store";
 import type { TokenMarketStats } from "@/lib/server/token-market-stats";
+import type { TokenTrade } from "@/lib/token-trade-types";
 import {
   formatHolderCount,
   formatLaunchAge,
@@ -14,8 +15,7 @@ import {
   formatNativePriceSixSigFigs,
   formatSignedPercent,
 } from "@/lib/token-page-format";
-import { useTokenCurveStatus } from "@/lib/use-token-curve-status";
-import { useTokenTrades } from "@/lib/use-token-trades";
+import type { TokenCurveStatus } from "@/lib/use-token-curve-status";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./token-page.module.css";
 
@@ -24,25 +24,37 @@ type ChainInfo = { shortLabel: string; explorerBaseUrl: string };
 export type TokenHeaderBandProps = {
   address: string;
   chainInfo: ChainInfo;
-  curveAddress: Address | null;
   marketStats: TokenMarketStats;
   launch: TokenLaunch | null;
   decimals: number;
+  curveStatus: TokenCurveStatus;
+  trades: TokenTrade[] | null;
+  tradesError: string | null;
 };
 
 /**
  * Full-width header band replacing the old `.topbar` (issue #443 part 1):
- * artwork, identity, graduation and the price/mcap toggle in one row. Reads
- * its own on-chain curve state (lib/use-token-curve-status.ts) and its own
- * copy of useTokenTrades — see that hook's own doc comment for why this is
- * a deliberate duplication rather than a shared-state lift from the swap
- * panel. The price/mcap toggle and the change pill both derive from
- * `tradePriceNativePerToken` (lib/candle-bucketing.ts) over the exact same
- * trades array — the one shared price source the issue requires.
+ * artwork, identity, graduation and the price/mcap toggle in one row.
+ * Receives `curveStatus` and `trades`/`tradesError` as props from
+ * `token-page-view.tsx` (issue #444) rather than polling either on its
+ * own — the page calls `useTokenCurveStatus`/`useTokenTrades` exactly once
+ * and shares the result with this component, the swap panel and the
+ * Stats/Audit panel, so the header and the rest of the page can never show
+ * a momentarily different last price between polls. The price/mcap toggle
+ * and the change pill both derive from `tradePriceNativePerToken`
+ * (lib/candle-bucketing.ts) over the exact same trades array — the one
+ * shared price source the issue requires.
  */
-export function TokenHeaderBand({ address, chainInfo, curveAddress, marketStats, launch, decimals }: TokenHeaderBandProps) {
-  const curveStatus = useTokenCurveStatus(address, curveAddress, decimals);
-  const { trades, error: tradesError } = useTokenTrades(curveAddress);
+export function TokenHeaderBand({
+  address,
+  chainInfo,
+  marketStats,
+  launch,
+  decimals,
+  curveStatus,
+  trades,
+  tradesError,
+}: TokenHeaderBandProps) {
   const [mode, setMode] = useState<"price" | "mcap">("price");
   const [account, setAccount] = useState<Address | null>(null);
 

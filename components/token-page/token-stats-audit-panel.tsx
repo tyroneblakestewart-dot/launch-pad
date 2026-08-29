@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import type { Address } from "viem";
 import {
   computeTradeWindowStats,
   computeTotalFeesNative,
@@ -11,7 +10,7 @@ import {
   type TradeStatsWindowKey,
 } from "@/lib/token-trade-stats";
 import { formatHolderCount, formatNativeFixed, formatSignedPercent } from "@/lib/token-page-format";
-import { useTokenTrades } from "@/lib/use-token-trades";
+import type { TokenTrade } from "@/lib/token-trade-types";
 import styles from "./token-page.module.css";
 
 type StatsTab = "stats" | "audit";
@@ -27,7 +26,7 @@ function sharePercent(a: number, b: number): { left: number; right: number } {
 }
 
 export type TokenStatsAuditPanelProps = {
-  curveAddress: Address | null;
+  trades: TokenTrade[] | null;
   decimals: number;
   holderCount: number | null;
   /** Whether this token was minted by the Hoodlums factory — false shows the unverified/dimmed audit treatment. */
@@ -35,15 +34,13 @@ export type TokenStatsAuditPanelProps = {
 };
 
 /**
- * New Stats/Audit panel (issue #443 part 1 item 5), sharing its own
- * `useTokenTrades` poll — see lib/use-token-curve-status.ts's doc comment
- * for why each token page v2 panel owns an independent copy rather than a
- * lifted shared fetch. All paired-row math is the pure, unit-tested
- * `lib/token-trade-stats.ts`, filtered by the panel's own 5M/1H/24H
- * selector (distinct from the chart's own timeframe rail).
+ * New Stats/Audit panel (issue #443 part 1 item 5). Receives `trades` as a
+ * prop from `token-page-view.tsx`'s single shared `useTokenTrades` poll
+ * (issue #444) rather than polling on its own. All paired-row math is the
+ * pure, unit-tested `lib/token-trade-stats.ts`, filtered by the panel's own
+ * 5M/1H/24H selector (distinct from the chart's own timeframe rail).
  */
-export function TokenStatsAuditPanel({ curveAddress, decimals, holderCount, factoryMinted }: TokenStatsAuditPanelProps) {
-  const { trades } = useTokenTrades(curveAddress);
+export function TokenStatsAuditPanel({ trades, decimals, holderCount, factoryMinted }: TokenStatsAuditPanelProps) {
   const [tab, setTab] = useState<StatsTab>("stats");
   const [windowKey, setWindowKey] = useState<TradeStatsWindowKey>("24h");
   const [breakdownOpen, setBreakdownOpen] = useState(false);

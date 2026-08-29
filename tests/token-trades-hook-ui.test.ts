@@ -118,12 +118,16 @@ describe("TokenCenterColumn live trade wiring (issue #430)", () => {
   });
 });
 
-describe("TokenLeftColumn live curve polling and own-trade signal (issue #430)", () => {
-  it("re-reads curve state on a 12s visible-tab timer, independent of the initial load", async () => {
+describe("TokenLeftColumn live curve polling and own-trade signal (issue #430, lifted to the shared page-level poll in issue #444)", () => {
+  it("no longer runs its own curve poll — that timer now lives in the page-level shared lib/use-token-curve-status.ts", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
-    expect(component).toContain("window.setInterval(() => void loadCurve(resolvedCurveAddress), 12_000)");
-    expect(component).toContain('document.addEventListener("visibilitychange", handleBecameVisible)');
-    expect(component).toContain('window.addEventListener("focus", handleBecameVisible)');
+    expect(component).not.toContain('window.setInterval(() => void loadCurve');
+    expect(component).not.toContain("const loadCurve = useCallback");
+
+    const hook = await source("lib/use-token-curve-status.ts");
+    expect(hook).toContain("window.setInterval(() => void load(resolvedCurveAddress), 12_000)");
+    expect(hook).toContain('document.addEventListener("visibilitychange", handleBecameVisible)');
+    expect(hook).toContain('window.addEventListener("focus", handleBecameVisible)');
   });
 
   it("notifies TOKEN_TRADE_CONFIRMED_EVENT only on a genuine (non-reverted) trade confirmation, inside the success branch", async () => {
