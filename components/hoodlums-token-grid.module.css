@@ -68,8 +68,8 @@
 .card {
   position: relative;
   display: grid;
-  gap: 4px;
-  padding: 12px;
+  gap: 3px;
+  padding: 10px;
   border: 1px solid rgba(188, 231, 89, 0.1);
   border-radius: 12px;
   background: #0d120e;
@@ -77,11 +77,20 @@
   text-decoration: none;
 }
 
+/* Square art region (issue #440): aspect-ratio + height: auto instead of a
+   fixed strip height, so the region scales with the card's own width at
+   every breakpoint (no media query overrides this) and shows the whole
+   512x512 recorded thumbnail (#438) rather than cropping its top/bottom off.
+   Every card in a grid row shares the same column width, so uniform square
+   height keeps rows aligned — a taller card can never break the grid's
+   column tracks, which are still driven purely by `.grid`'s
+   `minmax(0, 1fr)` columns. */
 .art {
   position: relative;
   display: grid;
   place-items: center;
-  height: 96px;
+  aspect-ratio: 1 / 1;
+  height: auto;
   margin-bottom: 8px;
   border-radius: 8px;
   background: #060a07;
@@ -91,8 +100,8 @@
 }
 
 /* Recorded launch artwork (issue #438): sits behind both the letter-initial
-   fallback (never rendered at the same time) and the #436 sparkline overlay
-   above it, filling the art region edge to edge. */
+   fallback (never rendered at the same time) and the candle overlay above
+   it, filling the square art region edge to edge. */
 .artImage {
   position: absolute;
   inset: 0;
@@ -108,48 +117,67 @@
   opacity: 0.55;
 }
 
-/* Mini sparkline (issue #436): drawn over the art initial, inside the
-   thumbnail region only — never taller than `.art`, so it never shifts the
-   card's own layout. */
-.sparklineMini {
+/* Mini candles over artwork (issue #440, replacing #436's line sparkline).
+   Occupies roughly the lower 40% of the square art region over a soft
+   dark bottom-up gradient so the bars stay legible against any image; only
+   rendered at all when there's real trade data (see token-grid-card-chart.tsx
+   — a token with no trades renders neither this container nor its SVG, never
+   an empty box or a flat line). */
+.candleOverlay {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 40%;
+  z-index: 2;
+  background: linear-gradient(to top, rgba(3, 6, 4, 0.82) 15%, rgba(3, 6, 4, 0) 100%);
+}
+
+.candleSvg {
   position: absolute;
   inset: 0;
-  z-index: 2;
   width: 100%;
   height: 100%;
 }
 
-/* Hover/focus expansion (issue #436). A pure-CSS overlay sized to the whole
-   card (`inset: 0` on the `.card`-positioned parent), not a layout
-   participant — it can never shift sibling grid cards, and
+/* Floating hover/focus preview (issue #440, replacing #436's inset:0
+   card-covering overlay). Anchored via `position: fixed` at coordinates
+   token-grid-card-chart.tsx computes from the real anchor rect
+   (lib/token-grid-preview-position.ts) so it stays inside the viewport for
+   cards on the grid's left/right edges and last row, and opens above or
+   below the *whole card* — never over it — so the card's own name, ticker
+   and market cap are never covered. Raised well above sibling cards on
+   z-index and never a layout participant (`position: fixed`, not `static`
+   or `relative`), so it can overlap neighbours without reflowing the grid.
    `pointer-events: none` means it can never intercept the card anchor's own
    click-through navigation, in any state. */
-.sparklineExpanded {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
+.preview {
+  position: fixed;
+  left: var(--preview-left, 50%);
+  top: var(--preview-top, 50%);
+  z-index: 30;
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  min-height: 200px;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 6px;
-  padding: 12px;
-  border-radius: 12px;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(188, 231, 89, 0.18);
+  border-radius: 14px;
   background: #0d120e;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.55);
   opacity: 0;
-  transform: scale(0.98);
+  transform: scale(0.97);
   transition: opacity 160ms ease, transform 160ms ease;
   pointer-events: none;
 }
 
-.sparklineExpandedSvg {
-  position: absolute;
-  inset: 0;
+.previewChart {
   width: 100%;
-  height: 100%;
+  height: 150px;
 }
 
-.sparklineExpandedMeta {
+.previewMeta {
   position: relative;
   z-index: 1;
   display: flex;
@@ -160,6 +188,11 @@
   font: 700 10px var(--mono);
 }
 
+.previewPrice {
+  color: #f4f7ef;
+  font: 800 14px var(--mono);
+}
+
 .sparklineUp {
   color: #91f0b6;
 }
@@ -168,44 +201,50 @@
   color: #ff5f56;
 }
 
-.card:focus .sparklineExpanded,
-.card:focus-within .sparklineExpanded {
+.card:focus .preview,
+.card:focus-within .preview {
   opacity: 1;
   transform: none;
 }
 
-/* Touch devices get no hover state — mini chart only, per issue #436. */
+/* Touch devices get no hover state — mini chart only, per issue #436/#440. */
 @media (hover: hover) and (pointer: fine) {
-  .card:hover .sparklineExpanded {
+  .card:hover .preview {
     opacity: 1;
     transform: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sparklineExpanded {
+  .preview {
     transition: none;
   }
 }
 
+/* Metadata hierarchy (issue #440): name prominent, ticker secondary right
+   beneath it, market cap the boldest number on the card, then a compact
+   meta line (the graduation row) — reached with a tighter type scale, not
+   more spacing. */
 .cardName {
   color: #f4f7ef;
-  font-size: 13px;
+  font: 800 13px var(--mono);
+  letter-spacing: 0.01em;
 }
 
 .cardTicker {
   color: #566054;
-  font: 600 11px var(--mono);
+  font: 600 10px var(--mono);
 }
 
 .cardCap {
-  margin-top: 4px;
+  margin-top: 5px;
   color: #bce759;
-  font: 800 15px var(--mono);
+  font: 800 17px var(--mono);
+  letter-spacing: -0.01em;
 }
 
 .cardCapLabel {
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   color: #3a4238;
   font: 600 9px var(--mono);
 }
