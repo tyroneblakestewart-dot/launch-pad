@@ -1226,14 +1226,17 @@
 
 .chartLineChip {
   margin-top: 4px;
-  padding: 3px 6px;
+  width: 26px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
   border-radius: 7px;
   border: 1px solid rgba(154, 212, 255, 0.35);
   background: rgba(154, 212, 255, 0.08);
   color: #9ad4ff;
-  font: 700 8.5px/1.4 "JetBrains Mono", monospace;
+  font: 700 12px/1 "JetBrains Mono", monospace;
   cursor: pointer;
-  text-align: center;
 }
 
 .chartCanvasWrap {
@@ -1721,6 +1724,30 @@
     gap: 14px;
     flex-wrap: wrap;
     justify-content: flex-end;
+  }
+
+  /* Chart controls (issue #453 area 8): the base (fine-pointer) sizes above
+     are 30-32px, below the 44px touch-target floor. `.chartLineChip` is
+     deliberately left out here — it's a compact, non-essential remove
+     control (its exact price still reaches assistive tech via
+     aria-label/title) that would overflow the narrow tool rail at 44px, so
+     it keeps its small fixed size on every pointer type instead. */
+  .chartVolumeToggle {
+    min-height: 44px;
+  }
+
+  .chartIntervalButton {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .chartToolRail {
+    width: 52px;
+  }
+
+  .chartToolButton {
+    width: 44px;
+    height: 44px;
   }
 }
 

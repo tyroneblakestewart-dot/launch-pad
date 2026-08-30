@@ -14,10 +14,21 @@ async function source(file: string): Promise<string> {
 }
 
 describe("useGridTokenTrades (issue #436)", () => {
-  it("reuses GET /api/token-trades — the same route the token page polls — rather than a second trade-reading path", async () => {
+  it("reuses GET /api/token-trades — the same route the token page polls — rather than a second trade-reading path, marked with the additive grid rate-limit-bucket query param (issue #453 area 1)", async () => {
     const hook = await source("lib/use-grid-token-trades.ts");
     expect(hook).toContain('"use client"');
-    expect(hook).toContain("`/api/token-trades?curve=${curveRef.current}`");
+    expect(hook).toContain("`/api/token-trades?curve=${curveRef.current}&source=grid`");
+  });
+
+  it("dedupes a focus + visibilitychange event pair into one in-flight request per card instead of two concurrent ones (issue #453 area 1)", async () => {
+    const hook = await source("lib/use-grid-token-trades.ts");
+    expect(hook).toContain("const inFlightRef = useRef(false);");
+    expect(hook).toContain("if (inFlightRef.current) return;");
+    expect(hook).toContain("inFlightRef.current = true;");
+    const loadStart = hook.indexOf("const load = useCallback(async () => {");
+    const loadEnd = hook.indexOf("}, []);", loadStart);
+    const loadBody = hook.slice(loadStart, loadEnd);
+    expect(loadBody).toContain("} finally {\n      inFlightRef.current = false;\n    }");
   });
 
   it("polls at a much slower ~60s cadence than the token page's 12s fast path", async () => {

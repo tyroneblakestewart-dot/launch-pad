@@ -583,6 +583,28 @@ export function consumeTokenTradesReadRateLimit(ip: string, now = Date.now()) {
   return consumeRateLimit(namedRateStore("token-trades-read"), ip, TOKEN_TRADES_READ_LIMIT, TOKEN_TRADES_WINDOW_MS, now);
 }
 
+// Homepage grid cards (issue #440) read this same GET /api/token-trades
+// route through lib/use-grid-token-trades.ts, marked with an additive
+// `source=grid` query param (issue #453 area 1) so they're charged against
+// this separate per-IP bucket instead of TOKEN_TRADES_READ_LIMIT above — a
+// busy homepage session must never be able to exhaust a token-detail page's
+// budget. Sized from the real 24-card grid maximum
+// (components/hoodlums-token-grid.tsx has no page-size cap beyond that):
+// each active/near-viewport card polls at use-grid-token-trades.ts's
+// POLL_INTERVAL_MS = 60_000 (60s) = 60 reads/hour/card steady state, so
+// 24 cards all active at once is 24 * 60 = 1440/hour baseline. On top of
+// that, every focus/visibilitychange event fires one immediate refetch per
+// still-active card; a realistic session might refocus the tab ~10 times in
+// an hour, adding up to 24 * 10 = 240 more. 1440 + 240 = 1680, rounded up
+// to 2000 for headroom without approaching the token-detail bucket's own
+// 600/hour ceiling.
+export const TOKEN_TRADES_GRID_READ_LIMIT = 2000;
+
+export function consumeTokenTradesGridReadRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("token-trades-grid-read"), ip, TOKEN_TRADES_GRID_READ_LIMIT, TOKEN_TRADES_WINDOW_MS, now);
+}
+
 export function resetTokenTradesRateLimitForTests() {
   namedRateStore("token-trades-read").clear();
+  namedRateStore("token-trades-grid-read").clear();
 }
