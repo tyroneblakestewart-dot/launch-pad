@@ -51,9 +51,9 @@ const TIMEFRAME_LABELS: Record<ChartTimeframe, string> = {
 };
 
 const UP_COLOR = "#c6f53e";
-const DOWN_COLOR = "#8d918c";
+const DOWN_COLOR = "#e2564b";
 const MA20_COLOR = "rgba(198, 245, 62, 0.85)";
-const MA50_COLOR = "rgba(255, 255, 255, 0.4)";
+const MA50_COLOR = "rgba(255, 255, 255, 0.34)";
 const HORIZONTAL_LINE_COLOR = "#9ad4ff";
 const MA20_PERIOD = 20;
 const MA50_PERIOD = 50;
@@ -83,7 +83,7 @@ function pointToSeriesDatum(point: ChartSeriesPoint) {
 }
 
 function volumeBarColor(candle: Candle): string {
-  return candle.close >= candle.open ? "rgba(198, 245, 62, 0.35)" : "rgba(141, 145, 140, 0.35)";
+  return candle.close >= candle.open ? "rgba(198, 245, 62, 0.35)" : "rgba(226, 86, 75, 0.35)";
 }
 
 function formatUtcTime(unixSeconds: number): string {
@@ -200,12 +200,16 @@ export function TokenTradeChart({
     const chart = createChart(container, {
       layout: {
         background: { color: "transparent" },
-        textColor: "#8d918c",
-        fontFamily: "'JetBrains Mono', monospace",
+        textColor: "#6f746e",
+        fontFamily: "'IBM Plex Mono', monospace",
+        fontSize: 9.5,
       },
       grid: {
-        vertLines: { color: "rgba(255, 255, 255, 0.045)" },
+        // Grid lines (issue #455 section 7): horizontal and vertical are
+        // deliberately different opacities in the design, never the same
+        // flat value.
         horzLines: { color: "rgba(255, 255, 255, 0.045)" },
+        vertLines: { color: "rgba(255, 255, 255, 0.035)" },
       },
       rightPriceScale: { borderColor: "rgba(255, 255, 255, 0.07)" },
       timeScale: {
@@ -216,7 +220,21 @@ export function TokenTradeChart({
         barSpacing: 6,
         minBarSpacing: 3,
       },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: {
+          color: "rgba(255, 255, 255, 0.35)",
+          width: 1,
+          style: LineStyle.Dashed,
+          labelBackgroundColor: "#2b302c",
+        },
+        horzLine: {
+          color: "rgba(255, 255, 255, 0.35)",
+          width: 1,
+          style: LineStyle.Dashed,
+          labelBackgroundColor: "#2b302c",
+        },
+      },
     });
 
     const candleSeries = chart.addCandlestickSeries({
@@ -232,7 +250,11 @@ export function TokenTradeChart({
       },
       priceLineVisible: true,
       priceLineWidth: 1,
-      priceLineColor: UP_COLOR,
+      // Dashed lime at 0.6 opacity (issue #455 section 7) — the axis tag
+      // itself (the small last-price label lightweight-charts renders on
+      // the price scale) always uses the series' own full-opacity color, a
+      // library constraint this repo can't override per-element.
+      priceLineColor: "rgba(198, 245, 62, 0.6)",
       priceLineStyle: LineStyle.Dashed,
       lastValueVisible: true,
     });

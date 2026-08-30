@@ -106,17 +106,17 @@ export function TokenStatsAuditPanel({ trades, decimals, holderCount, factoryMin
   return (
     <div className={`${styles.panel} ${styles.statsPanel}`}>
       <div className={styles.statsPanelHeader}>
-        <div className={styles.tabGroup}>
+        <div className={`${styles.tabGroup} ${styles.statsTabGroup}`}>
           <button
             type="button"
-            className={`${styles.pillButton} ${tab === "stats" ? styles.pillButtonActive : ""}`}
+            className={`${styles.pillButton} ${tab === "stats" ? styles.pillButtonChipActive : ""}`}
             onClick={() => setTab("stats")}
           >
             Stats
           </button>
           <button
             type="button"
-            className={`${styles.pillButton} ${tab === "audit" ? styles.pillButtonActive : ""}`}
+            className={`${styles.pillButton} ${tab === "audit" ? styles.pillButtonChipActive : ""}`}
             onClick={() => setTab("audit")}
           >
             Audit

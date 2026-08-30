@@ -226,11 +226,11 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain("candleSeries.applyOptions({");
   });
 
-  it("draws a dashed lime last-price line via the series' built-in price line, so the crosshair/axis tag share one formatter automatically", async () => {
+  it("draws a dashed lime last-price line at the design's 0.6 opacity via the series' built-in price line, so the crosshair/axis tag share one formatter automatically (issue #455)", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain("priceLineVisible: true");
     expect(component).toContain("priceLineStyle: LineStyle.Dashed");
-    expect(component).toContain("priceLineColor: UP_COLOR");
+    expect(component).toContain('priceLineColor: "rgba(198, 245, 62, 0.6)"');
   });
 
   it("never computes its own separate last price — it derives from the same shared trades/starting-price source as the header", async () => {

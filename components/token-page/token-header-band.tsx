@@ -75,7 +75,7 @@ export function TokenHeaderBand({
 
   const displayName = launch?.tokenName || (marketStats.supported && marketStats.name) || `${address.slice(0, 6)}…${address.slice(-4)}`;
   const ticker = launch?.ticker || (marketStats.supported && marketStats.symbol) || null;
-  const holderCountLabel = `${formatHolderCount(marketStats.supported ? marketStats.holderCount : null)} HOLDERS`;
+  const holderCountValue = formatHolderCount(marketStats.supported ? marketStats.holderCount : null);
   const launchAgeLabel = formatLaunchAge(launch?.launchedAt ?? null);
 
   const isCreator =
@@ -154,9 +154,13 @@ export function TokenHeaderBand({
           </button>
         ) : (
           <div className={styles.headerMetaRow}>
-            <span>{holderCountLabel}</span>
+            <span>
+              <span className={styles.headerMetaValue}>{holderCountValue}</span> HOLDERS
+            </span>
             <span className={styles.headerMetaDot} />
-            <span>LAUNCHED {launchAgeLabel}</span>
+            <span>
+              LAUNCHED <span className={styles.headerMetaValue}>{launchAgeLabel}</span>
+            </span>
             <span className={styles.headerMetaDot} />
             <span className={styles.chainBadge}>{chainInfo.shortLabel}</span>
           </div>

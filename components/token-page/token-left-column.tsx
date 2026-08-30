@@ -572,6 +572,7 @@ export function TokenLeftColumn({
                 className={`${styles.walletButton} ${account ? styles.walletButtonConnected : ""}`}
                 onClick={connectWallet}
               >
+                {account ? <span className={styles.walletDot} /> : null}
                 {account ? shortenAddress(account) : "Connect wallet"}
               </button>
             </div>
@@ -637,7 +638,7 @@ export function TokenLeftColumn({
                   <button
                     key={bps}
                     type="button"
-                    className={`${styles.pillButton} ${styles.slippageButton} ${slippageBps === bps ? styles.pillButtonActive : ""}`}
+                    className={`${styles.pillButton} ${styles.slippageButton} ${slippageBps === bps ? styles.pillButtonChipActive : ""}`}
                     onClick={() => setSlippageBps(bps)}
                   >
                     {formatSlippageLabel(bps)}

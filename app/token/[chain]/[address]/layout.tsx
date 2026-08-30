@@ -12,7 +12,7 @@ import { MobileBottomNavigation } from "@/components/app-navigation";
  * on a phone). Deliberately does not pull in the rest of
  * `app/(app)/layout.tsx` (its global theme CSS, `WalletProviderSelector`,
  * ambient glow, etc.) — the token page keeps its own bespoke design system
- * (`token-page-reset.css`, Archivo/JetBrains Mono fonts) from
+ * (`token-page-reset.css`, Inter/Archivo Black/IBM Plex Mono fonts) from
  * `app/token/layout.tsx`, only the account overlay and mobile nav are
  * shared.
  */

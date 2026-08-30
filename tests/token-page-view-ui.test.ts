@@ -88,8 +88,8 @@ describe("token page header band (issue #443 part 1)", () => {
     expect(component).toContain("styles.headerArtworkTile");
     expect(component).toContain("{displayName}");
     expect(component).toContain("{ticker}");
-    expect(component).toContain("{holderCountLabel}");
-    expect(component).toContain("LAUNCHED {launchAgeLabel}");
+    expect(component).toContain("{holderCountValue}");
+    expect(component).toContain("LAUNCHED <span className={styles.headerMetaValue}>{launchAgeLabel}</span>");
     expect(component).toContain("{chainInfo.shortLabel}");
   });
 
@@ -161,18 +161,18 @@ describe("token page header band (issue #443 part 1)", () => {
   });
 });
 
-describe("token page header band tightened proportions (issue #451 item 3)", () => {
-  it("tightens the band's own padding and the artwork tile to the design's compact size", async () => {
+describe("token page header band tightened proportions (issue #451 item 3, updated to the v2 premium-surface pass in issue #455)", () => {
+  it("matches the v2 design's exact band padding and 50x50 artwork tile size", async () => {
     const css = await source("components/token-page/token-page.module.css");
     const bandStart = css.indexOf(".headerBand {");
     const bandEnd = css.indexOf("}", bandStart);
-    expect(css.slice(bandStart, bandEnd)).toContain("padding: 8px 14px;");
+    expect(css.slice(bandStart, bandEnd)).toContain("padding: 10px 16px;");
 
     const artStart = css.indexOf(".headerArtworkTile {");
     const artEnd = css.indexOf("}", artStart);
     const artRule = css.slice(artStart, artEnd);
-    expect(artRule).toContain("width: 48px;");
-    expect(artRule).toContain("height: 48px;");
+    expect(artRule).toContain("width: 50px;");
+    expect(artRule).toContain("height: 50px;");
   });
 
   it("shrinks the graduation progress track to the design's 5px height", async () => {

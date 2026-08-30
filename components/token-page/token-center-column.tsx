@@ -114,7 +114,7 @@ export function TokenCenterColumn({
           ) : trades.length === 0 ? (
             <p className={styles.emptyState}>No trades recorded yet.</p>
           ) : (
-            <div>
+            <div className={styles.activityListBody}>
               <div className={`${styles.activityHeaderRow} ${styles.tradesGridCols}`}>
                 <span>Type</span>
                 <span>Wallet</span>
@@ -144,7 +144,7 @@ export function TokenCenterColumn({
           holders.length === 0 ? (
             <p className={styles.emptyState}>No holder data found for this token yet.</p>
           ) : (
-            <div>
+            <div className={styles.activityListBody}>
               <div className={`${styles.activityHeaderRow} ${styles.holdersGridCols}`}>
                 <span>Rank</span>
                 <span>Wallet</span>
