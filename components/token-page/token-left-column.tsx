@@ -182,6 +182,7 @@ export function TokenLeftColumn({
   const curveView = toCurveView(curveStatus, resolvedDecimals);
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("");
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [slippageBps, setSlippageBps] = useState<number>(100);
   const [account, setAccount] = useState<Address | null>(null);
   const [nativeBalance, setNativeBalance] = useState<bigint | null>(null);
@@ -372,14 +373,26 @@ export function TokenLeftColumn({
   // what's on screen and must clear (issue #451 item 5). `submitTrade`
   // itself still sets `amount` directly (not through this helper) after a
   // genuine success, so the just-shown confirmation survives that reset.
-  function updateAmount(next: string) {
+  // A manual edit through this path also clears which preset (if any)
+  // produced the current amount (issue #455 follow-up item 2) — typing over
+  // a preset-filled amount means that preset no longer describes what's in
+  // the field. `applyPreset` below sets the amount via `setAmountValue`
+  // directly instead of this helper, so it can mark its own preset as
+  // selected without this function immediately clearing it again.
+  function setAmountValue(next: string) {
     setAmount(next);
     setStatusMessage("");
+  }
+
+  function updateAmount(next: string) {
+    setAmountValue(next);
+    setSelectedPreset(null);
   }
 
   function changeSide(next: Side) {
     setSide(next);
     setStatusMessage("");
+    setSelectedPreset(null);
   }
 
   function applyPreset(preset: string) {
@@ -396,16 +409,18 @@ export function TokenLeftColumn({
             ? grossNativeInForExactNet(curveView.remainingToGraduateWei)
             : null;
         const cap = graduationCap !== null && graduationCap < balanceCap ? graduationCap : balanceCap;
-        updateAmount(nativeBalance !== null ? formatEther(cap) : "");
+        setAmountValue(nativeBalance !== null ? formatEther(cap) : "");
       } else {
-        updateAmount(preset);
+        setAmountValue(preset);
       }
+      setSelectedPreset(preset);
       return;
     }
     if (tokenBalance === null || curveView.kind !== "ready") return;
     const percent = preset === "MAX" ? 100 : Number(preset.replace("%", ""));
     const portion = (tokenBalance * BigInt(percent)) / 100n;
-    updateAmount(formatUnits(portion, curveView.decimals));
+    setAmountValue(formatUnits(portion, curveView.decimals));
+    setSelectedPreset(preset);
   }
 
   async function submitTrade() {
@@ -602,7 +617,12 @@ export function TokenLeftColumn({
               </div>
               <div className={styles.presetRow}>
                 {(side === "buy" ? BUY_PRESETS : SELL_PRESETS).map((preset) => (
-                  <button key={preset} type="button" className={styles.presetButton} onClick={() => applyPreset(preset)}>
+                  <button
+                    key={preset}
+                    type="button"
+                    className={`${styles.presetButton} ${selectedPreset === preset ? styles.presetButtonActive : ""}`}
+                    onClick={() => applyPreset(preset)}
+                  >
                     {preset}
                   </button>
                 ))}

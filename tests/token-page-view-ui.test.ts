@@ -371,6 +371,58 @@ describe("token page left column (swap panel, unchanged internally) + Stats/Audi
   });
 });
 
+describe("token page swap panel preset selected state (issue #455 follow-up item 2)", () => {
+  it("tracks which preset produced the current amount and renders it with the selected class", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain('const [selectedPreset, setSelectedPreset] = useState<string | null>(null);');
+    expect(component).toContain(
+      "className={`${styles.presetButton} ${selectedPreset === preset ? styles.presetButtonActive : \"\"}`}",
+    );
+  });
+
+  it("marks the clicked preset selected for both the buy and sell branches of applyPreset", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    const applyPresetStart = component.indexOf("function applyPreset(preset: string) {");
+    const applyPresetEnd = component.indexOf("\n  }", component.indexOf("setSelectedPreset(preset);\n  }", applyPresetStart));
+    expect(applyPresetStart).toBeGreaterThan(-1);
+    const applyPresetBody = component.slice(applyPresetStart, applyPresetEnd + 4);
+    // Buy branch (including MAX) sets the preset before returning early.
+    const buyReturnIndex = applyPresetBody.indexOf("setSelectedPreset(preset);\n      return;");
+    expect(buyReturnIndex).toBeGreaterThan(-1);
+    // Sell branch sets it as the last statement of the function.
+    expect(applyPresetBody.trim().endsWith("setSelectedPreset(preset);\n  }")).toBe(true);
+  });
+
+  it("clears the selected preset on a manual amount edit (typing) via updateAmount", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain("function updateAmount(next: string) {\n    setAmountValue(next);\n    setSelectedPreset(null);\n  }");
+    expect(component).toContain('onChange={(event) => updateAmount(event.target.value.replace(/[^0-9.]/g, ""))}');
+  });
+
+  it("clears the selected preset when the side is switched", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain(
+      "function changeSide(next: Side) {\n    setSide(next);\n    setStatusMessage(\"\");\n    setSelectedPreset(null);\n  }",
+    );
+  });
+
+  it("applies a preset's amount through a helper that does not itself clear the just-set selected preset", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain('function setAmountValue(next: string) {\n    setAmount(next);\n    setStatusMessage("");\n  }');
+    expect(component).not.toContain("function setAmountValue(next: string) {\n    setAmount(next);\n    setStatusMessage(\"\");\n    setSelectedPreset(null);\n  }");
+  });
+
+  it("declares a distinct selected-preset recipe in CSS, separate from plain hover", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const ruleStart = css.indexOf(".presetButtonActive {");
+    expect(ruleStart).toBeGreaterThan(-1);
+    const ruleEnd = css.indexOf("}", ruleStart);
+    const rule = css.slice(ruleStart, ruleEnd);
+    expect(rule).toContain("border-color: rgba(198, 245, 62, 0.5);");
+    expect(rule).toContain("color: #c6f53e;");
+  });
+});
+
 describe("token page trade UX correctness (issue #427)", () => {
   it("checks the receipt's own status instead of trusting waitForTransactionReceipt() to throw on a revert", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
@@ -424,8 +476,13 @@ describe("token page trade UX correctness (issue #427)", () => {
 
   it("clears the persistent 'Trade confirmed.' status once the side, amount input or a preset changes it wouldn't otherwise stay on screen indefinitely (issue #451 item 5)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
-    expect(component).toContain("function updateAmount(next: string) {\n    setAmount(next);\n    setStatusMessage(\"\");\n  }");
-    expect(component).toContain("function changeSide(next: Side) {\n    setSide(next);\n    setStatusMessage(\"\");\n  }");
+    // Both helpers now route the amount/status writes through setAmountValue
+    // and also clear the selected-preset state (issue #455 follow-up item 2)
+    // — still clearing statusMessage on every side/amount change as before.
+    expect(component).toContain("function updateAmount(next: string) {\n    setAmountValue(next);\n    setSelectedPreset(null);\n  }");
+    expect(component).toContain(
+      "function changeSide(next: Side) {\n    setSide(next);\n    setStatusMessage(\"\");\n    setSelectedPreset(null);\n  }",
+    );
 
     // The input, every preset and both Buy/Sell tabs go through the
     // clearing helpers instead of the raw setters.
@@ -581,31 +638,59 @@ describe("token page mobile-first layout (issue #443 part 1: header → swap →
     expect(css).toContain("align-self: start;");
   });
 
-  it("gives every interactive control in the header band and swap panel a >=44px touch target — backLink/headerLinkChip/headerFigureToggle checked as touch-only overrides since #451's follow-up review scoped them to (pointer: coarse)", async () => {
+  it("uses the design's compact sizes on the base (fine-pointer) rules for the swap/Stats-Audit/activity controls, matching the header band's own pattern (issue #455 follow-up item 1)", async () => {
     const css = await source("components/token-page/token-page.module.css");
-    for (const selector of [
-      ".headerDropArt",
-      ".pillButton",
-      ".walletButton",
-      ".presetButton",
-      ".activityTab",
-      ".feeWithdrawButton",
-      ".terminalFallbackLink",
-      ".holderBreakdownHeader",
-    ]) {
+    const designSizes: Record<string, RegExp> = {
+      ".headerDropArt": /min-height:\s*50px;/,
+      ".pillButton": /min-height:\s*34px;/,
+      ".walletButton": /min-height:\s*34px;/,
+      ".presetButton": /min-height:\s*30px;/,
+      ".slippageButton": /min-height:\s*28px;/,
+      ".feeWithdrawButton": /min-height:\s*42px;/,
+      ".activityTab": /min-height:\s*38px;/,
+    };
+    for (const [selector, expected] of Object.entries(designSizes)) {
       const ruleStart = css.indexOf(`${selector} {`);
       expect(ruleStart, `expected a rule for ${selector}`).toBeGreaterThan(-1);
       const ruleEnd = css.indexOf("}", ruleStart);
       const rule = css.slice(ruleStart, ruleEnd);
-      const matchesHeightOrWidth = /(min-height|height):\s*4[4-9]px/.test(rule) || /width:\s*44px/.test(rule);
-      expect(matchesHeightOrWidth, `expected ${selector} to declare a >=44px touch target`).toBe(true);
+      expect(rule, `expected ${selector}'s base rule to use its design size`).toMatch(expected);
+      expect(rule, `expected ${selector}'s base rule not to force a 44px floor`).not.toMatch(/min-height:\s*4[4-9]px/);
     }
 
+    // These two have no explicit design size stated (neither is in the
+    // design markup with its own min-height) — the base rule simply drops
+    // the forced floor and lets padding determine natural height, exactly
+    // like `.headerLinkChip`/`.headerFigureToggle` already do above.
+    for (const selector of [".terminalFallbackLink", ".holderBreakdownHeader"]) {
+      const ruleStart = css.indexOf(`${selector} {`);
+      expect(ruleStart, `expected a rule for ${selector}`).toBeGreaterThan(-1);
+      const ruleEnd = css.indexOf("}", ruleStart);
+      const rule = css.slice(ruleStart, ruleEnd);
+      expect(rule, `expected ${selector}'s base rule not to force a 44px floor`).not.toMatch(/min-height:\s*4[4-9]px/);
+    }
+  });
+
+  it("gives every interactive control in the header band and swap panel a >=44px touch target on a coarse pointer — backLink/headerLinkChip/headerFigureToggle (issue #451) and the swap/Stats-Audit/activity controls (issue #455 follow-up item 1) all move their floor into (pointer: coarse)", async () => {
+    const css = await source("components/token-page/token-page.module.css");
     const mediaStart = css.indexOf("@media (pointer: coarse) {");
     expect(mediaStart, "expected a (pointer: coarse) media query").toBeGreaterThan(-1);
     const mediaEnd = css.indexOf("\n}\n", mediaStart);
     const mediaBlock = css.slice(mediaStart, mediaEnd);
-    for (const selector of [".backLink", ".headerLinkChip", ".headerFigureToggle"]) {
+    for (const selector of [
+      ".backLink",
+      ".headerLinkChip",
+      ".headerFigureToggle",
+      ".headerDropArt",
+      ".pillButton",
+      ".walletButton",
+      ".presetButton",
+      ".slippageButton",
+      ".feeWithdrawButton",
+      ".terminalFallbackLink",
+      ".holderBreakdownHeader",
+      ".activityTab",
+    ]) {
       const ruleStart = mediaBlock.indexOf(`${selector} {`);
       expect(ruleStart, `expected a (pointer: coarse) rule for ${selector}`).toBeGreaterThan(-1);
       const ruleEnd = mediaBlock.indexOf("}", ruleStart);

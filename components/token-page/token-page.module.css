@@ -112,7 +112,7 @@
 }
 
 .headerDropArt {
-  min-height: 44px;
+  min-height: 50px;
   cursor: pointer;
   border: 1px dashed rgba(198, 245, 62, 0.4);
   border-radius: 11px;
@@ -559,7 +559,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
+  min-height: 34px;
   cursor: pointer;
   border: 1px solid transparent;
   background: transparent;
@@ -586,7 +586,7 @@
 .walletButton {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
+  min-height: 34px;
   cursor: pointer;
   border-radius: 999px;
   padding: 9px 14px;
@@ -691,7 +691,7 @@
   align-items: center;
   justify-content: center;
   flex: 1;
-  min-height: 44px;
+  min-height: 30px;
   cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.09);
   background: rgba(255, 255, 255, 0.03);
@@ -703,6 +703,17 @@
 
 .presetButton:hover {
   border-color: rgba(198, 245, 62, 0.5);
+  color: #c6f53e;
+}
+
+/* Preset selected state (issue #455 follow-up item 2): the preset button
+   that most recently produced the current amount stays visually selected
+   until the user edits the amount by hand or switches side — a plain
+   `:hover` isn't enough to communicate "this is what's currently filled
+   in" once the pointer moves away. */
+.presetButtonActive {
+  border-color: rgba(198, 245, 62, 0.5);
+  background: rgba(198, 245, 62, 0.12);
   color: #c6f53e;
 }
 
@@ -746,6 +757,13 @@
 }
 
 .slippageButton {
+  /* Own min-height (issue #455 follow-up item 1): previously relied on
+     inheriting .pillButton's 44px floor by not declaring one of its own —
+     now that .pillButton's base size is 34px (the Buy/Sell segmented
+     size), slippage chips need their own 28px design size stated
+     explicitly rather than silently inheriting the wrong control's
+     figure. */
+  min-height: 28px;
   padding: 7px 11px;
 }
 
@@ -840,7 +858,7 @@
 }
 
 .feeWithdrawButton {
-  min-height: 44px;
+  min-height: 42px;
   cursor: pointer;
   border: 0;
   border-radius: 999px;
@@ -882,7 +900,6 @@
   justify-content: center;
   flex: 1;
   min-width: 120px;
-  min-height: 44px;
   text-align: center;
   cursor: pointer;
   border-radius: 999px;
@@ -997,7 +1014,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 44px;
   padding: 11px 13px;
   border: 0;
   background: none;
@@ -1383,7 +1399,7 @@
 .activityTab {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
+  min-height: 38px;
   cursor: pointer;
   flex: none;
   border-radius: 12px;
@@ -1690,17 +1706,17 @@
   cursor: pointer;
 }
 
-/* Touch-only >=44px targets for the header band (issue #451 follow-up):
+/* Touch-only >=44px targets for the header band (issue #451 follow-up) and
+   the swap/Stats-Audit/activity controls (issue #455 follow-up item 1):
    scoped to (pointer: coarse) so a real touch device (mobile Safari,
    CLAUDE.md rule 7's primary target) keeps a safe tap area, while a
    mouse/trackpad ("fine" pointer) desktop uses the design's compact
-   proportions set on `.backLink`/`.headerLinkChip`/`.headerFigureToggle`
-   above. `.headerFigureBlock` also goes back to a side-by-side row here
-   specifically, since stacking two 44px-tall rows would double the band's
-   height on the exact devices this rule targets. Placed at the end of the
-   file, after every `(min-width: ...)` layout breakpoint, so it never
-   changes which media query the mobile-first layout tests treat as "the
-   first breakpoint". */
+   proportions set on each selector's own base rule above. `.headerFigureBlock`
+   also goes back to a side-by-side row here specifically, since stacking
+   two 44px-tall rows would double the band's height on the exact devices
+   this rule targets. Placed at the end of the file, after every
+   `(min-width: ...)` layout breakpoint, so it never changes which media
+   query the mobile-first layout tests treat as "the first breakpoint". */
 @media (pointer: coarse) {
   .backLink {
     width: 44px;
@@ -1721,6 +1737,42 @@
     gap: 14px;
     flex-wrap: wrap;
     justify-content: flex-end;
+  }
+
+  .headerDropArt {
+    min-height: 44px;
+  }
+
+  .pillButton {
+    min-height: 44px;
+  }
+
+  .walletButton {
+    min-height: 44px;
+  }
+
+  .presetButton {
+    min-height: 44px;
+  }
+
+  .slippageButton {
+    min-height: 44px;
+  }
+
+  .feeWithdrawButton {
+    min-height: 44px;
+  }
+
+  .terminalFallbackLink {
+    min-height: 44px;
+  }
+
+  .holderBreakdownHeader {
+    min-height: 44px;
+  }
+
+  .activityTab {
+    min-height: 44px;
   }
 }
 
