@@ -809,3 +809,216 @@ describe("token page polling is deduplicated to one shared poll per data source 
     }
   });
 });
+
+describe("token page premium surface system (issue #454)", () => {
+  it("defines every surface token on .page, lifted from the design file", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const pageStart = css.indexOf(".page {");
+    const pageEnd = css.indexOf("\n}\n", pageStart);
+    const pageRule = css.slice(pageStart, pageEnd);
+
+    for (const token of [
+      "--panel-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.07) inset, 0 0 0 1px rgba(0, 0, 0, 0.5), 0 30px 70px -24px rgba(0, 0, 0, 0.8);",
+      "--panel-shadow-strong: 0 1px 0 0 rgba(255, 255, 255, 0.07) inset, 0 0 0 1px rgba(0, 0, 0, 0.5), 0 40px 90px -20px rgba(0, 0, 0, 0.75);",
+      "--panel-bg: linear-gradient(180deg, rgba(24, 28, 25, 0.99), rgba(14, 17, 15, 0.99));",
+      "--inset-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;",
+      "--inset-bg: linear-gradient(180deg, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.25));",
+      "--raised-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01));",
+      "--raised-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.07) inset, 0 6px 16px -10px rgba(0, 0, 0, 0.85);",
+      "--pill-active-bg: linear-gradient(180deg, rgba(198, 245, 62, 0.2), rgba(198, 245, 62, 0.08));",
+      "--cta-glow: 0 14px 34px -12px rgba(198, 245, 62, 0.5);",
+      "--cta-glow-hover: 0 18px 44px -14px rgba(198, 245, 62, 0.6);",
+      "--accent-glow: 0 0 14px rgba(198, 245, 62, 0.5);",
+    ]) {
+      expect(pageRule, `expected .page to declare ${token}`).toContain(token);
+    }
+  });
+
+  it("gives every panel (swap, Stats/Audit, creator fees, chart, activity/tabs, header band) the panel-bg gradient and a panel shadow, never a flat single-colour background", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    // `.panel` is the shared base for the swap/Stats/Audit/creator-fee
+    // panels (each combines `${styles.panel} ${styles.<name>Panel}`).
+    // `.activityPanel`/`.chartPlaceholder` each also have an earlier,
+    // order-only mobile-stack rule (`.activityPanel { order: 5; }` etc.) —
+    // `lastIndexOf` reaches past those to the actual panel-chrome rule,
+    // which is declared later in the file.
+    for (const selector of [".panel", ".activityPanel", ".chartPlaceholder", ".headerBand"]) {
+      const ruleStart = css.lastIndexOf(`${selector} {`);
+      expect(ruleStart, `expected a base rule for ${selector}`).toBeGreaterThan(-1);
+      const ruleEnd = css.indexOf("}", ruleStart);
+      const rule = css.slice(ruleStart, ruleEnd);
+      expect(rule, `expected ${selector} to use var(--panel-bg)`).toContain("background: var(--panel-bg);");
+      expect(rule, `expected ${selector} to use a panel shadow variable`).toMatch(/box-shadow: var\(--panel-shadow(-strong)?\);/);
+      // The old flat rgba(18, 21, 19, 0.99) panel colour must be gone.
+      expect(rule).not.toContain("rgba(18, 21, 19, 0.99)");
+    }
+
+    // The chart panel and header band specifically use the stronger shadow.
+    for (const selector of [".chartPlaceholder", ".headerBand"]) {
+      const ruleStart = css.lastIndexOf(`${selector} {`);
+      const ruleEnd = css.indexOf("}", ruleStart);
+      expect(css.slice(ruleStart, ruleEnd)).toContain("box-shadow: var(--panel-shadow-strong);");
+    }
+
+    expect(css).not.toContain("rgba(18, 21, 19, 0.99)");
+  });
+
+  it("gives the recessed YOU PAY / YOU RECEIVE field boxes an inset background and shadow at 12px radius", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const ruleStart = css.indexOf(".fieldBox {");
+    const ruleEnd = css.indexOf("}", ruleStart);
+    const rule = css.slice(ruleStart, ruleEnd);
+    expect(rule).toContain("background: var(--inset-bg);");
+    expect(rule).toContain("box-shadow: var(--inset-shadow);");
+    expect(rule).toContain("border-radius: 12px;");
+    expect(rule).toContain("border: 1px solid rgba(255, 255, 255, 0.05);");
+  });
+
+  it("gives every pill/tab control a raised inactive state and a lime active state referencing the shared tokens", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    for (const selector of [
+      ".pillButton",
+      ".walletButton",
+      ".presetButton",
+      ".chartVolumeToggle",
+      ".chartIntervalButton",
+      ".activityTab",
+    ]) {
+      const ruleStart = css.indexOf(`${selector} {`);
+      expect(ruleStart, `expected a rule for ${selector}`).toBeGreaterThan(-1);
+      const ruleEnd = css.indexOf("}", ruleStart);
+      const rule = css.slice(ruleStart, ruleEnd);
+      expect(rule, `expected ${selector} to use var(--raised-bg)`).toContain("background: var(--raised-bg);");
+      expect(rule, `expected ${selector} to use var(--raised-shadow)`).toContain("box-shadow: var(--raised-shadow);");
+    }
+
+    for (const selector of [
+      ".pillButtonActive",
+      ".chartVolumeToggleActive",
+      ".chartIntervalButtonActive",
+      ".activityTabActive",
+    ]) {
+      const ruleStart = css.indexOf(`${selector} {`);
+      expect(ruleStart, `expected a rule for ${selector}`).toBeGreaterThan(-1);
+      const ruleEnd = css.indexOf("}", ruleStart);
+      const rule = css.slice(ruleStart, ruleEnd);
+      expect(rule, `expected ${selector} to use var(--pill-active-bg)`).toContain("background: var(--pill-active-bg);");
+      expect(rule, `expected ${selector} to use the 0.35-alpha accent border`).toContain("border-color: rgba(198, 245, 62, 0.35);");
+    }
+  });
+
+  it("gives only the active chart-tool button the accent glow among the pill/tab family", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const activeStart = css.indexOf(".chartToolButtonActive {");
+    const activeEnd = css.indexOf("}", activeStart);
+    const activeRule = css.slice(activeStart, activeEnd);
+    expect(activeRule).toContain("background: var(--pill-active-bg);");
+    expect(activeRule).toContain("box-shadow: var(--accent-glow);");
+
+    for (const selector of [".pillButtonActive", ".chartVolumeToggleActive", ".chartIntervalButtonActive", ".activityTabActive"]) {
+      const ruleStart = css.indexOf(`${selector} {`);
+      const ruleEnd = css.indexOf("}", ruleStart);
+      expect(css.slice(ruleStart, ruleEnd), `${selector} must not carry the accent glow`).not.toContain("var(--accent-glow)");
+    }
+  });
+
+  it("gives the Buy/Sell/Withdraw CTAs the lime glow with a hover-lift and a desaturated, glow-free disabled state", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+
+    const ctaStart = css.indexOf(".tradeButtonBuy,\n.tradeButtonSell {");
+    expect(ctaStart, "expected a shared .tradeButtonBuy/.tradeButtonSell rule").toBeGreaterThan(-1);
+    const ctaEnd = css.indexOf("}", ctaStart);
+    expect(css.slice(ctaStart, ctaEnd)).toContain("box-shadow: var(--cta-glow);");
+
+    expect(css).toContain("box-shadow: var(--cta-glow-hover);");
+    expect(css).toContain("transform: translateY(-1px);");
+    expect(css).toContain("transform: translateY(0);");
+
+    const withdrawStart = css.indexOf(".feeWithdrawButton {");
+    const withdrawEnd = css.indexOf("}", withdrawStart);
+    expect(css.slice(withdrawStart, withdrawEnd)).toContain("box-shadow: var(--cta-glow);");
+
+    const tradeDisabledStart = css.indexOf(".tradeButton:disabled {");
+    const tradeDisabledEnd = css.indexOf("}", tradeDisabledStart);
+    const tradeDisabledRule = css.slice(tradeDisabledStart, tradeDisabledEnd);
+    expect(tradeDisabledRule).toContain("opacity: 0.55;");
+    expect(tradeDisabledRule).toContain("box-shadow: none;");
+    expect(tradeDisabledRule).toMatch(/filter: (saturate|grayscale)\(/);
+
+    const withdrawDisabledStart = css.indexOf(".feeWithdrawButton:disabled {");
+    const withdrawDisabledEnd = css.indexOf("}", withdrawDisabledStart);
+    const withdrawDisabledRule = css.slice(withdrawDisabledStart, withdrawDisabledEnd);
+    expect(withdrawDisabledRule).toContain("opacity: 0.55;");
+    expect(withdrawDisabledRule).toContain("box-shadow: none;");
+  });
+
+  it("gives the graduation bar, stats split bars and holder share bars an inset track and a glowing lime fill", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+
+    const trackStart = css.indexOf(".track {");
+    const trackEnd = css.indexOf("}", trackStart);
+    expect(css.slice(trackStart, trackEnd)).toContain("box-shadow: var(--inset-shadow);");
+
+    const fillStart = css.indexOf(".fill {");
+    const fillEnd = css.indexOf("}", fillStart);
+    expect(css.slice(fillStart, fillEnd)).toContain("box-shadow: var(--accent-glow);");
+
+    const splitTrackStart = css.indexOf(".statsSplitBarTrack {");
+    const splitTrackEnd = css.indexOf("}", splitTrackStart);
+    expect(css.slice(splitTrackStart, splitTrackEnd)).toContain("box-shadow: var(--inset-shadow);");
+
+    const shareTrackStart = css.indexOf(".shareBarTrack {");
+    const shareTrackEnd = css.indexOf("}", shareTrackStart);
+    expect(css.slice(shareTrackStart, shareTrackEnd)).toContain("box-shadow: var(--inset-shadow);");
+  });
+
+  it("disables the new hover/lift transitions under prefers-reduced-motion", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const mediaStart = css.indexOf("@media (prefers-reduced-motion: reduce) {");
+    expect(mediaStart).toBeGreaterThan(-1);
+    const mediaEnd = css.indexOf("\n}\n", mediaStart);
+    const mediaBlock = css.slice(mediaStart, mediaEnd);
+    expect(mediaBlock).toContain("transition: none !important;");
+  });
+
+  it("keeps every hover-only surface brightening scoped to pointer:fine devices, never firing as a stuck touch-hover on mobile Safari (rule 7), consolidated into one block after the layout breakpoints", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const hoverMediaStart = css.indexOf("@media (hover: hover) and (pointer: fine) {");
+    expect(hoverMediaStart).toBeGreaterThan(-1);
+    // Only one such query — every other place this pass needed a hover
+    // state references it below instead of opening its own nested query.
+    expect(css.indexOf("@media (hover: hover) and (pointer: fine) {", hoverMediaStart + 1)).toBe(-1);
+
+    // Placed after the (min-width: 881px) layout breakpoint so it never
+    // becomes the first `@media` the mobile-first layout tests key off of.
+    expect(hoverMediaStart).toBeGreaterThan(css.indexOf("@media (min-width: 881px)"));
+
+    const hoverMediaEnd = css.indexOf("\n}\n", hoverMediaStart);
+    const hoverBlock = css.slice(hoverMediaStart, hoverMediaEnd);
+    for (const selector of [
+      ".backLink:hover",
+      ".pillButton:hover",
+      ".pillButtonActive:hover",
+      ".walletButton:hover",
+      ".presetButton:hover",
+      ".tradeButtonBuy:hover:not(:disabled),",
+      ".feeWithdrawButton:hover:not(:disabled)",
+      ".terminalFallbackLink:hover",
+      ".chartVolumeToggle:hover",
+      ".chartIntervalButton:hover",
+      ".chartToolButton:hover",
+      ".activityTab:hover",
+    ]) {
+      expect(hoverBlock, `expected the consolidated hover query to style ${selector}`).toContain(selector);
+    }
+  });
+
+  it("existing token page tests still pass against the same CSS module (sanity check that the surface-system pass didn't rename any class used elsewhere)", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    expect(css).toContain(".swapPanel {\n  order: 1;\n}");
+    expect(css).toContain(".chartPlaceholder {\n  order: 2;\n}");
+    expect(css).toContain(".statsPanel {\n  order: 3;\n}");
+    expect(css).toContain(".feePanel {\n  order: 4;\n}");
+    expect(css).toContain(".activityPanel {\n  order: 5;\n}");
+  });
+});

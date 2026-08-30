@@ -1,5 +1,6 @@
-/* Design tokens transcribed from public/design-refs/hoodlums-token-page.html:
-   #0a0b09 background + ambient lime glow, rgba(18,21,19,0.99) panels,
+/* Design tokens transcribed from design/token-page-v2/hoodlums-token-page-v2.html:
+   #0a0b09 background + ambient lime glow, gradient panels lit from above
+   (the panel/raised/inset/CTA surface tokens on `.page` below, issue #454),
    #c6f53e lime accent, Archivo Black headings, JetBrains Mono labels. */
 
 .page {
@@ -13,6 +14,24 @@
      mobile-first single-column layout below must never force the 390px
      viewport to scroll horizontally, independent of any one child's sizing. */
   overflow-x: hidden;
+
+  /* ---- surface token system (issue #454) ----
+     Lifted verbatim from design/token-page-v2/hoodlums-token-page-v2.html's
+     own inline CSS. Every panel, recessed input, pill/tab, CTA and progress
+     track below references these instead of a flat single colour, so the
+     whole page reads as one consistent lit-from-above surface system. */
+  --panel-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.07) inset, 0 0 0 1px rgba(0, 0, 0, 0.5), 0 30px 70px -24px rgba(0, 0, 0, 0.8);
+  --panel-shadow-strong: 0 1px 0 0 rgba(255, 255, 255, 0.07) inset, 0 0 0 1px rgba(0, 0, 0, 0.5), 0 40px 90px -20px rgba(0, 0, 0, 0.75);
+  --panel-bg: linear-gradient(180deg, rgba(24, 28, 25, 0.99), rgba(14, 17, 15, 0.99));
+  --inset-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;
+  --inset-bg: linear-gradient(180deg, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.25));
+  --raised-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01));
+  --raised-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  --raised-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.07) inset, 0 6px 16px -10px rgba(0, 0, 0, 0.85);
+  --pill-active-bg: linear-gradient(180deg, rgba(198, 245, 62, 0.2), rgba(198, 245, 62, 0.08));
+  --cta-glow: 0 14px 34px -12px rgba(198, 245, 62, 0.5);
+  --cta-glow-hover: 0 18px 44px -14px rgba(198, 245, 62, 0.6);
+  --accent-glow: 0 0 14px rgba(198, 245, 62, 0.5);
 }
 
 /* No max-width cap (issue #447 item 3) — the design fills the viewport;
@@ -80,9 +99,10 @@
   gap: 12px;
   flex-wrap: wrap;
   padding: 8px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 18px;
-  background: rgba(18, 21, 19, 0.99);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 22px;
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow-strong);
 }
 
 .headerArtworkTile {
@@ -92,8 +112,9 @@
   flex: none;
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(198, 245, 62, 0.3);
+  background: linear-gradient(180deg, rgba(198, 245, 62, 0.05), rgba(0, 0, 0, 0.3)), #0a0f0c;
+  box-shadow: var(--inset-shadow);
   display: grid;
   place-items: center;
 }
@@ -297,17 +318,14 @@
   flex: none;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--raised-bg);
+  box-shadow: var(--raised-shadow);
   color: #a8aaa9;
   display: grid;
   place-items: center;
   font-size: 15px;
   text-decoration: none;
-}
-
-.backLink:hover {
-  border-color: rgba(198, 245, 62, 0.5);
-  color: #c6f53e;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 
 .liveBadge {
@@ -319,7 +337,7 @@
   text-transform: uppercase;
   color: #91f0b6;
   border: 1px solid rgba(145, 240, 182, 0.3);
-  background: rgba(145, 240, 182, 0.07);
+  background: linear-gradient(180deg, rgba(145, 240, 182, 0.2), rgba(145, 240, 182, 0.08));
   padding: 3px 8px;
   border-radius: 999px;
 }
@@ -492,9 +510,10 @@
 
 .panel {
   padding: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 20px;
-  background: rgba(18, 21, 19, 0.99);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 22px;
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -508,7 +527,7 @@
   text-transform: uppercase;
   color: #c6f53e;
   border: 1px solid rgba(198, 245, 62, 0.34);
-  background: rgba(198, 245, 62, 0.07);
+  background: var(--pill-active-bg);
   padding: 6px 8px;
   border-radius: 999px;
   white-space: nowrap;
@@ -518,14 +537,14 @@
   height: 5px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
+  box-shadow: var(--inset-shadow);
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .fill {
   height: 100%;
-  background: linear-gradient(90deg, #c6f53e, #91f0b6);
-  box-shadow: 0 0 18px rgba(198, 245, 62, 0.4);
+  background: linear-gradient(90deg, rgba(198, 245, 62, 0.55), #c6f53e);
+  box-shadow: var(--accent-glow);
 }
 
 .mutedNote {
@@ -551,8 +570,9 @@
   display: flex;
   padding: 3px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--inset-bg);
+  box-shadow: var(--inset-shadow);
 }
 
 .pillButton {
@@ -562,18 +582,20 @@
   min-height: 44px;
   cursor: pointer;
   border: 1px solid transparent;
-  background: transparent;
+  background: var(--raised-bg);
+  box-shadow: var(--raised-shadow);
   border-radius: 999px;
   color: #929693;
   font: 700 11px/1 "JetBrains Mono", monospace;
   letter-spacing: 0.08em;
   padding: 8px 13px;
-  transition: all 0.14s;
+  transition: background 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 
 .pillButtonActive {
-  border-color: rgba(198, 245, 62, 0.6);
-  background: rgba(198, 245, 62, 0.12);
+  border-color: rgba(198, 245, 62, 0.35);
+  background: var(--pill-active-bg);
+  box-shadow: none;
   color: #c6f53e;
 }
 
@@ -591,9 +613,11 @@
   border-radius: 999px;
   padding: 9px 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--raised-bg);
+  box-shadow: var(--raised-shadow);
   color: #a8aaa9;
   font: 500 11.5px/1 "JetBrains Mono", monospace;
+  transition: background 0.14s ease, box-shadow 0.14s ease;
 }
 
 .walletButtonConnected {
@@ -603,9 +627,10 @@
 }
 
 .fieldBox {
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(10, 11, 9, 0.75);
-  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--inset-bg);
+  box-shadow: var(--inset-shadow);
+  border-radius: 12px;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -626,8 +651,8 @@
 }
 
 .fieldLabel {
-  font: 500 9.5px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.16em;
+  font: 700 9px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: #929693;
 }
@@ -694,16 +719,13 @@
   min-height: 44px;
   cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--raised-bg);
+  box-shadow: var(--raised-shadow);
   color: #a8aaa9;
-  border-radius: 9px;
+  border-radius: 999px;
   padding: 7px 0;
   font: 500 11px/1 "JetBrains Mono", monospace;
-}
-
-.presetButton:hover {
-  border-color: rgba(198, 245, 62, 0.5);
-  color: #c6f53e;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 
 .swapDivider {
@@ -718,8 +740,9 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #0a0b09;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: var(--raised-bg), #111713;
+  box-shadow: var(--raised-shadow);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   display: grid;
   place-items: center;
   color: #c6f53e;
@@ -734,8 +757,8 @@
 }
 
 .slippageLabel {
-  font: 500 10px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.14em;
+  font: 700 9px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: #929693;
 }
@@ -757,23 +780,29 @@
   border-radius: 999px;
   font-size: 17px;
   font-weight: 900;
+  transition: box-shadow 0.14s ease, transform 0.14s ease, filter 0.14s ease;
 }
 
-.tradeButtonBuy {
+/* CTA (issue #454 item 5): both Buy and Sell share the design's lime CTA
+   treatment — the design styles its single trade button identically
+   regardless of side, only the label changes. */
+.tradeButtonBuy,
+.tradeButtonSell {
   color: #061006;
   background: linear-gradient(135deg, #c6f53e, #91f0b6);
-  box-shadow: 0 16px 40px rgba(198, 245, 62, 0.16);
+  box-shadow: var(--cta-glow);
 }
 
-.tradeButtonSell {
-  color: #f4f7f1;
-  background: rgba(255, 95, 86, 0.16);
-  border: 1px solid rgba(255, 95, 86, 0.45);
+.tradeButtonBuy:active:not(:disabled),
+.tradeButtonSell:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .tradeButton:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+  box-shadow: none;
+  filter: saturate(0.3);
 }
 
 .tradeHint {
@@ -848,11 +877,19 @@
   background: linear-gradient(135deg, #c6f53e, #91f0b6);
   color: #061006;
   font: 900 12px/1 Archivo, sans-serif;
+  box-shadow: var(--cta-glow);
+  transition: box-shadow 0.14s ease, transform 0.14s ease, filter 0.14s ease;
+}
+
+.feeWithdrawButton:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .feeWithdrawButton:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+  box-shadow: none;
+  filter: saturate(0.3);
 }
 
 .terminalFallback {
@@ -891,6 +928,12 @@
   color: #061006;
   font: 900 13px/1 Archivo, sans-serif;
   text-decoration: none;
+  box-shadow: var(--cta-glow);
+  transition: box-shadow 0.14s ease, transform 0.14s ease;
+}
+
+.terminalFallbackLink:active {
+  transform: translateY(0);
 }
 
 .feeNote {
@@ -968,26 +1011,29 @@
   height: 3px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: var(--inset-shadow);
 }
 
 .statsSplitBarLeft {
   display: block;
   height: 100%;
-  background: #c6f53e;
+  background: linear-gradient(90deg, rgba(198, 245, 62, 0.7), #c6f53e);
+  box-shadow: 0 0 6px rgba(198, 245, 62, 0.35);
 }
 
 .statsSplitBarRight {
   display: block;
   height: 100%;
-  background: #ff5f56;
+  background: linear-gradient(90deg, rgba(255, 95, 86, 0.7), #ff5f56);
 }
 
 .holderBreakdown {
   margin-top: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-  background: rgba(10, 11, 9, 0.5);
+  background: var(--inset-bg);
+  box-shadow: var(--inset-shadow);
   overflow: hidden;
 }
 
@@ -1100,9 +1146,10 @@
    fixed 260px), a left-edge tool rail, and a poll-failure banner. */
 
 .chartPlaceholder {
-  border: 1px solid rgba(198, 245, 62, 0.2);
-  border-radius: 20px;
-  background: rgba(198, 245, 62, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 22px;
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow-strong);
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -1145,19 +1192,21 @@
 .chartVolumeToggle {
   min-height: 32px;
   padding: 0 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: transparent;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--raised-bg);
+  box-shadow: var(--raised-shadow);
   color: #929693;
   font: 700 10.5px/1 "JetBrains Mono", monospace;
   letter-spacing: 0.08em;
   cursor: pointer;
-  transition: all 0.14s;
+  transition: background 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 
 .chartVolumeToggleActive {
-  border-color: rgba(198, 245, 62, 0.5);
-  background: rgba(198, 245, 62, 0.09);
+  border-color: rgba(198, 245, 62, 0.35);
+  background: var(--pill-active-bg);
+  box-shadow: none;
   color: #c6f53e;
 }
 
@@ -1170,18 +1219,20 @@
   min-height: 32px;
   min-width: 36px;
   padding: 0 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: transparent;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--raised-bg);
+  box-shadow: var(--raised-shadow);
   color: #929693;
   font: 700 11px/1 "JetBrains Mono", monospace;
   cursor: pointer;
-  transition: all 0.14s;
+  transition: background 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 
 .chartIntervalButtonActive {
-  border-color: rgba(198, 245, 62, 0.5);
-  background: rgba(198, 245, 62, 0.09);
+  border-color: rgba(198, 245, 62, 0.35);
+  background: var(--pill-active-bg);
+  box-shadow: none;
   color: #c6f53e;
 }
 
@@ -1215,12 +1266,16 @@
   color: rgba(239, 244, 236, 0.6);
   font: 700 13px/1 "JetBrains Mono", monospace;
   cursor: pointer;
-  transition: all 0.14s;
+  transition: background 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 
+/* The one pill/tab control the design gives its own glow when active
+   (issue #454 item 4) — every other active pill uses --pill-active-bg with
+   no shadow. */
 .chartToolButtonActive {
-  border-color: rgba(198, 245, 62, 0.4);
-  background: linear-gradient(180deg, rgba(198, 245, 62, 0.18), rgba(198, 245, 62, 0.04));
+  border-color: rgba(198, 245, 62, 0.35);
+  background: var(--pill-active-bg);
+  box-shadow: var(--accent-glow);
   color: #c6f53e;
 }
 
@@ -1366,9 +1421,10 @@
 /* ---- activity tabs (recent trades / holders) ---- */
 
 .activityPanel {
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 20px;
-  background: rgba(18, 21, 19, 0.99);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 22px;
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
   overflow: hidden;
 }
 
@@ -1386,19 +1442,21 @@
   min-height: 44px;
   cursor: pointer;
   flex: none;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: transparent;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--raised-bg);
+  box-shadow: var(--raised-shadow);
   color: #929693;
   font: 700 12px/1 Archivo, sans-serif;
   letter-spacing: 0.01em;
   padding: 10px 15px;
-  transition: all 0.14s;
+  transition: background 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 
 .activityTabActive {
-  border-color: rgba(198, 245, 62, 0.5);
-  background: rgba(198, 245, 62, 0.09);
+  border-color: rgba(198, 245, 62, 0.35);
+  background: var(--pill-active-bg);
+  box-shadow: none;
   color: #c6f53e;
 }
 
@@ -1467,6 +1525,7 @@
   height: 6px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
+  box-shadow: var(--inset-shadow);
   overflow: hidden;
 }
 
@@ -1474,6 +1533,7 @@
   display: block;
   height: 100%;
   background: linear-gradient(90deg, #c6f53e, #91f0b6);
+  box-shadow: 0 0 6px rgba(198, 245, 62, 0.35);
 }
 
 .emptyState {
@@ -1721,6 +1781,89 @@
     gap: 14px;
     flex-wrap: wrap;
     justify-content: flex-end;
+  }
+}
+
+/* Surface-system hover states (issue #454 item 4: "hover on pointer devices
+   brightens the raised background one step") — every raised/CTA rule above
+   declares its own `transition:` and its resting `background`/`box-shadow`
+   inline, but the `:hover` variant itself lives down here in one shared
+   query, gated to `(hover: hover) and (pointer: fine)` so a touch device
+   (mobile Safari, CLAUDE.md rule 7's primary target) never gets a phantom
+   "stuck" hover state after a tap. Consolidated into one block, and placed
+   at the very end of the file (matching `@media (pointer: coarse)` above),
+   rather than declared inline next to each selector's base rule — an
+   earlier version of this pass scattered a dozen small `@media (hover:
+   hover)` blocks throughout the file, which made THAT the first `@media`
+   the existing mobile-first layout tests key off of
+   (`css.indexOf("@media")` expecting `@media (min-width: 881px)`) and broke
+   them. */
+@media (hover: hover) and (pointer: fine) {
+  .backLink:hover {
+    background: var(--raised-bg-hover);
+    border-color: rgba(198, 245, 62, 0.5);
+    color: #c6f53e;
+  }
+
+  .pillButton:hover {
+    background: var(--raised-bg-hover);
+  }
+
+  .pillButtonActive:hover {
+    background: var(--pill-active-bg);
+  }
+
+  .walletButton:hover {
+    background: var(--raised-bg-hover);
+  }
+
+  .presetButton:hover {
+    background: var(--raised-bg-hover);
+    border-color: rgba(198, 245, 62, 0.5);
+    color: #c6f53e;
+  }
+
+  .tradeButtonBuy:hover:not(:disabled),
+  .tradeButtonSell:hover:not(:disabled) {
+    box-shadow: var(--cta-glow-hover);
+    transform: translateY(-1px);
+  }
+
+  .feeWithdrawButton:hover:not(:disabled) {
+    box-shadow: var(--cta-glow-hover);
+    transform: translateY(-1px);
+  }
+
+  .terminalFallbackLink:hover {
+    box-shadow: var(--cta-glow-hover);
+    transform: translateY(-1px);
+  }
+
+  .chartVolumeToggle:hover {
+    background: var(--raised-bg-hover);
+  }
+
+  .chartIntervalButton:hover {
+    background: var(--raised-bg-hover);
+  }
+
+  .chartToolButton:hover {
+    background: var(--raised-bg-hover);
+  }
+
+  .activityTab:hover {
+    background: var(--raised-bg-hover);
+  }
+}
+
+/* Surface-system transitions (issue #454 item 4: pill/tab hover, CTA hover
+   lift, chart-tool glow) are disabled wholesale for anyone who has asked the
+   OS for reduced motion, rather than opting out selector-by-selector. Placed
+   at the very end of the file, after every layout breakpoint, so it never
+   becomes the first `@media` the mobile-first layout tests key off of. */
+@media (prefers-reduced-motion: reduce) {
+  .shell * {
+    transition: none !important;
   }
 }
 
