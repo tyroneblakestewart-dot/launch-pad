@@ -97,6 +97,21 @@ export function formatNativePriceSixSigFigs(value: number | null): string {
   return value.toFixed(decimals);
 }
 
+/**
+ * Formats a token balance with thousands separators and at most two decimal
+ * places, e.g. `74,503.26` (issue #458 item 4) — the swap panel's sell-side
+ * "bal" figure previously rendered a token balance at full 18-decimal
+ * precision with no thousands separators, wrapping onto multiple lines.
+ * Native/ETH balances are unaffected — they keep
+ * `formatNativeAmountSixSigFigsTrimmed`'s six-significant-figure precision,
+ * since a whole ETH balance is rarely large enough to need thousands
+ * separators and needs far more than two decimals to read as non-zero.
+ */
+export function formatTokenBalanceAmount(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "—";
+  return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
 /** Formats a native-currency amount at a fixed decimal count, or `"—"` when unavailable. */
 export function formatNativeFixed(value: number | null, decimals: number): string {
   if (value === null || !Number.isFinite(value)) return "—";

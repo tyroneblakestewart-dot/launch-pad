@@ -1147,3 +1147,54 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   only by reading it against the existing breakpoints, not on-device or in
   a browser. Part 3 (a holder-stats route for Top 10 %/Dev %/Snipers %)
   remains out of scope for this PR.
+- Token page v2 price-consistency fix (issue #458): the header figure, the
+  chart's candles/last-price line and the Stats price-change row could
+  disagree after a buy then sells, because "price" was defined as a trade's
+  own nativeAmount÷tokenAmount (its AVERAGE execution price), which is not
+  where a bonding curve actually lands post-trade. `TokensPurchased`/
+  `TokensSold` already emit `virtualTokenReserve`/`virtualEthReserve`
+  post-trade, so `lib/server/token-trades-rpc.ts` now copies both onto every
+  normalized `TokenTrade` (`virtualTokenReserveRaw`/`virtualEthReserveRaw`,
+  optional fields following the existing `grossNativeAmountRaw` convention)
+  and `lib/candle-bucketing.ts` gained `tradeSpotPriceNativePerToken`
+  (`virtualEthReserve ÷ virtualTokenReserve`) as the one price definition
+  used everywhere — `bucketTradesIntoCandles` (close = spot after the last
+  trade in a bucket, high/low = max/min spot per trade in the bucket, open =
+  the *previous* candle's close carried forward, never this bucket's own
+  first trade), the header band, `lib/token-trade-stats.ts`'s price-change
+  row, and — for consistency, since they share the same bucketing function —
+  the homepage grid's sparkline (`lib/token-sparkline.ts`) and mini
+  candlesticks (`lib/token-candle-geometry.ts`). The old average-price
+  helper is deleted outright rather than aliased. The chart's own
+  incremental-vs-full-resync update logic (issue #445/#451/#453) is
+  extracted into a new pure, unit-tested module,
+  `lib/token-trade-chart-render.ts`'s `applyTokenTradeChartUpdate` — this
+  repo's Vitest suite runs in a plain Node environment with no jsdom, so
+  this extraction is what makes the incremental sell-candle regression (a
+  buy-bucket followed by a sell bucket rendered via `series.update()`, not
+  `setData()`) directly testable against a fake series object
+  (`tests/token-trade-chart-render.test.ts`) instead of only a source-string
+  assertion; `components/token-page/token-trade-chart.tsx` now only adapts
+  real lightweight-charts series into that pure function's duck-typed
+  interface. The candlestick series' own built-in `priceLineVisible`/
+  `lastValueVisible` are disabled — the one dashed last-price line is now
+  drawn and kept in sync (`applyOptions`, not recreated) by the chart
+  itself off the same shared spot price the header uses, closing the gap
+  where the built-in tag could show a stale pre-sell price after an
+  incremental update. The swap panel's sell-side "bal" figure now uses a
+  new `formatTokenBalanceAmount` (`lib/token-page-format.ts`, thousands
+  separators, max two decimals) instead of raw 18-decimal `formatUnits`,
+  which wrapped; the buy-side ETH balance is unchanged. The chart's
+  pre-trade whitespace padding (~100 bars) is capped at `launchedAt` minus
+  five bars via a new optional `launchedAtUnixSeconds` parameter on
+  `buildChartSeriesPoints`, threaded down from `token-page-view.tsx`
+  (derived from the `token_launches` record) through `TokenCenterColumn` to
+  the chart — a token launched days ago no longer pads a 1D chart back
+  months of blank bars. Validated this session: `npm run test:app` — 284
+  test files / 3141 tests passing. `npm run lint` — 0 errors (12
+  pre-existing warnings only). `npm run build` — succeeds. `npm run
+  test:contracts` — 65 passing (untouched, no contract changes). No visual
+  pass was run this session — the dashed-line/balance-format/padding-cap
+  changes were checked by reading the code and by the new unit/fixture
+  tests, not on a live deployed page; flagged for the owner to confirm by
+  trading on a live bonding-curve token.

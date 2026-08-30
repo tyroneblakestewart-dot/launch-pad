@@ -59,6 +59,7 @@ export function TokenCenterColumn({
   tradesStale,
   retryTrades,
   startingPriceNativePerToken,
+  launchedAtUnixSeconds,
 }: {
   chain: SupportedChain;
   address: string;
@@ -70,6 +71,7 @@ export function TokenCenterColumn({
   tradesStale: boolean;
   retryTrades: () => void;
   startingPriceNativePerToken: number | null;
+  launchedAtUnixSeconds: number | null;
 }) {
   const [tab, setTab] = useState<ActivityTab>("trades");
 
@@ -88,6 +90,7 @@ export function TokenCenterColumn({
           stale={tradesStale}
           retry={retryTrades}
           startingPriceNativePerToken={startingPriceNativePerToken}
+          launchedAtUnixSeconds={launchedAtUnixSeconds}
           pairLabel={`${symbol ?? "TOKEN"} / ETH`}
         />
       </div>

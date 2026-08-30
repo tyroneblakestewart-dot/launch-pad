@@ -1,5 +1,5 @@
 import { formatEther } from "viem";
-import { tradePriceNativePerToken } from "./candle-bucketing";
+import { tradeSpotPriceNativePerToken } from "./candle-bucketing";
 import type { TokenTrade } from "./token-trade-types";
 
 // Pure aggregation over the trades useTokenTrades already holds, for the
@@ -92,8 +92,8 @@ export function computeTradeWindowStats(
 
   let priceChangePercent = 0;
   if (inWindow.length >= 2) {
-    const firstPrice = tradePriceNativePerToken(inWindow[0], decimals);
-    const lastPrice = tradePriceNativePerToken(inWindow[inWindow.length - 1], decimals);
+    const firstPrice = tradeSpotPriceNativePerToken(inWindow[0], decimals);
+    const lastPrice = tradeSpotPriceNativePerToken(inWindow[inWindow.length - 1], decimals);
     if (firstPrice > 0) priceChangePercent = ((lastPrice - firstPrice) / firstPrice) * 100;
   }
 

@@ -7,16 +7,25 @@ import {
 import { SPARKLINE_DOWN_COLOR, SPARKLINE_UP_COLOR } from "@/lib/token-sparkline";
 import type { TokenTrade } from "@/lib/token-trade-types";
 
+// Reuses tokenAmountRaw/nativeAmountRaw as the post-trade virtual reserves
+// too (issue #458): buildCandleGeometry buckets via the shared
+// bucketTradesIntoCandles, which now prices off tradeSpotPriceNativePerToken
+// (virtualEthReserveRaw ÷ virtualTokenReserveRaw) — this keeps every
+// existing nativeAmountRaw ÷ tokenAmountRaw price assumption below valid.
 function trade(overrides: Partial<TokenTrade> = {}): TokenTrade {
+  const tokenAmountRaw = overrides.tokenAmountRaw ?? "1000000000000000000";
+  const nativeAmountRaw = overrides.nativeAmountRaw ?? "10000000000000000";
   return {
     direction: "buy",
     wallet: "0x1111111111111111111111111111111111111111",
-    tokenAmountRaw: "1000000000000000000",
-    nativeAmountRaw: "10000000000000000",
+    tokenAmountRaw,
+    nativeAmountRaw,
     blockNumber: "1",
     blockTimestamp: 0,
     txHash: "0xaaaa000000000000000000000000000000000000000000000000000000aa",
     logIndex: 0,
+    virtualTokenReserveRaw: tokenAmountRaw,
+    virtualEthReserveRaw: nativeAmountRaw,
     ...overrides,
   };
 }

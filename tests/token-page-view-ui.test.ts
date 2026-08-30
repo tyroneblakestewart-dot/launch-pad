@@ -122,10 +122,10 @@ describe("token page header band (issue #443 part 1)", () => {
     expect(component).toContain('"MCAP · TAP FOR PRICE"');
   });
 
-  it("derives price mode from the one shared tradePriceNativePerToken helper over the loaded trades, falling back to the curve's starting price before any trade exists", async () => {
+  it("derives price mode from the one shared tradeSpotPriceNativePerToken helper (the curve's actual post-trade spot, issue #458) over the loaded trades, falling back to the curve's starting price before any trade exists", async () => {
     const component = await source("components/token-page/token-header-band.tsx");
-    expect(component).toContain('import { tradePriceNativePerToken } from "@/lib/candle-bucketing"');
-    expect(component).toContain("tradePriceNativePerToken(lastTrade, decimals)");
+    expect(component).toContain('import { tradeSpotPriceNativePerToken } from "@/lib/candle-bucketing"');
+    expect(component).toContain("tradeSpotPriceNativePerToken(lastTrade, decimals)");
     expect(component).toContain("curveStatus.startingPriceNativePerToken");
   });
 
@@ -315,10 +315,18 @@ describe("token page left column (swap panel, unchanged internally) + Stats/Audi
   it("shows the real fee note under the swap CTA, derived from the curve's fee constants rather than a hard-coded string (issue #443 part 1 item 6)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
     expect(component).toContain(
-      'import { formatFeeNote, formatNativeAmountSixSigFigsTrimmed, shortenAddress } from "@/lib/token-page-format"',
+      'import { formatFeeNote, formatNativeAmountSixSigFigsTrimmed, formatTokenBalanceAmount, shortenAddress } from "@/lib/token-page-format"',
     );
     expect(component).toContain("formatFeeNote(TRADING_FEE_BPS, PROTOCOL_FEE_SHARE_BPS, CREATOR_FEE_SHARE_BPS, false)");
     expect(component).toContain("formatFeeNote(TRADING_FEE_BPS, PROTOCOL_FEE_SHARE_BPS, CREATOR_FEE_SHARE_BPS, true)");
+  });
+
+  it("formats the sell-side token balance with thousands separators and at most two decimals instead of raw 18-decimal precision, so the 'bal' figure never wraps (issue #458 item 4); the buy-side ETH balance is untouched", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain(
+      "formatTokenBalanceAmount(Number(formatUnits(tokenBalance, curveView.decimals)))",
+    );
+    expect(component).toContain("`${formatEther(nativeBalance)} ETH`");
   });
 
   it("reads remainingNativeToGraduate() via the shared curve-status hook and caps the buy MAX preset at the graduation target", async () => {
@@ -358,7 +366,7 @@ describe("token page left column (swap panel, unchanged internally) + Stats/Audi
   it("formats the claimable balance with the six-significant-figure trimmed helper instead of raw 18-decimal formatEther, so it never overflows the panel (issue #451 item 4)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
     expect(component).toContain(
-      'import { formatFeeNote, formatNativeAmountSixSigFigsTrimmed, shortenAddress } from "@/lib/token-page-format"',
+      'import { formatFeeNote, formatNativeAmountSixSigFigsTrimmed, formatTokenBalanceAmount, shortenAddress } from "@/lib/token-page-format"',
     );
     expect(component).toContain("formatNativeAmountSixSigFigsTrimmed(Number(formatEther(claimableFeeWei)))");
 

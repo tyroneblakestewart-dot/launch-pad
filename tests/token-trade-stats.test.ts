@@ -5,34 +5,47 @@ import type { TokenTrade } from "@/lib/token-trade-types";
 const NOW = 1_700_000_000;
 const DECIMALS = 18;
 
+// Reuses tokenAmountRaw/nativeAmountRaw as the post-trade virtual reserves
+// too (issue #458): computeTradeWindowStats's price-change row now prices
+// off tradeSpotPriceNativePerToken (virtualEthReserveRaw ÷
+// virtualTokenReserveRaw) — this keeps every existing nativeAmountRaw ÷
+// tokenAmountRaw price assumption below valid.
 function buyTrade(overrides: Partial<TokenTrade> = {}): TokenTrade {
+  const tokenAmountRaw = overrides.tokenAmountRaw ?? "1000000000000000000"; // 1 whole token
+  const nativeAmountRaw = overrides.nativeAmountRaw ?? "10000000000000000"; // 0.01 ETH net-in
   return {
     direction: "buy",
     wallet: "0x1111111111111111111111111111111111111111",
-    tokenAmountRaw: "1000000000000000000", // 1 whole token
-    nativeAmountRaw: "10000000000000000", // 0.01 ETH net-in
+    tokenAmountRaw,
+    nativeAmountRaw,
     grossNativeAmountRaw: "10100000000000000",
     feeChargedRaw: "100000000000000",
     blockNumber: "1",
     blockTimestamp: NOW,
     txHash: "0xaaaa000000000000000000000000000000000000000000000000000000aa",
     logIndex: 0,
+    virtualTokenReserveRaw: tokenAmountRaw,
+    virtualEthReserveRaw: nativeAmountRaw,
     ...overrides,
   };
 }
 
 function sellTrade(overrides: Partial<TokenTrade> = {}): TokenTrade {
+  const tokenAmountRaw = overrides.tokenAmountRaw ?? "1000000000000000000";
+  const nativeAmountRaw = overrides.nativeAmountRaw ?? "9900000000000000"; // net-out (not used for sell volume)
   return {
     direction: "sell",
     wallet: "0x2222222222222222222222222222222222222222",
-    tokenAmountRaw: "1000000000000000000",
-    nativeAmountRaw: "9900000000000000", // net-out (not used for sell volume)
+    tokenAmountRaw,
+    nativeAmountRaw,
     grossNativeAmountRaw: "10000000000000000", // gross-out — this is what sell volume sums
     feeChargedRaw: "100000000000000",
     blockNumber: "2",
     blockTimestamp: NOW,
     txHash: "0xbbbb000000000000000000000000000000000000000000000000000000bb",
     logIndex: 1,
+    virtualTokenReserveRaw: tokenAmountRaw,
+    virtualEthReserveRaw: nativeAmountRaw,
     ...overrides,
   };
 }
