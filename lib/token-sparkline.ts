@@ -1,4 +1,4 @@
-import { tradePriceNativePerToken } from "@/lib/candle-bucketing";
+import { tradeSpotPriceNativePerToken } from "@/lib/candle-bucketing";
 import { DEFAULT_TOKEN_DECIMALS } from "@/lib/bonding-curve-deploy-config";
 import type { TokenTrade } from "@/lib/token-trade-types";
 
@@ -75,7 +75,7 @@ export function buildSparkline(
   const sorted = [...trades].sort((a, b) => a.blockTimestamp - b.blockTimestamp || a.logIndex - b.logIndex);
   const priced = sorted
     .map((trade) => ({
-      price: tradePriceNativePerToken(trade, DEFAULT_TOKEN_DECIMALS),
+      price: tradeSpotPriceNativePerToken(trade, DEFAULT_TOKEN_DECIMALS),
       timestamp: trade.blockTimestamp,
     }))
     .filter((point) => point.price > 0);

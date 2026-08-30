@@ -53,6 +53,9 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
   const { status: curveStatus } = useTokenCurveStatus(address, curveAddress, decimals);
   const { trades, error: tradesError, stale: tradesStale, retry: retryTrades } = useTokenTrades(curveAddress);
   const startingPriceNativePerToken = curveStatus.kind === "ready" ? curveStatus.startingPriceNativePerToken : null;
+  // Caps the chart's pre-trade whitespace padding (issue #458 item 5) — only
+  // known for a token launched through the recorded curve pipeline.
+  const launchedAtUnixSeconds = launch ? Math.floor(new Date(launch.launchedAt).getTime() / 1000) : null;
 
   return (
     <main className={`${styles.page} token-page-full-screen`}>
@@ -97,6 +100,7 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
             tradesStale={tradesStale}
             retryTrades={retryTrades}
             startingPriceNativePerToken={startingPriceNativePerToken}
+            launchedAtUnixSeconds={launchedAtUnixSeconds}
           />
         </div>
       </div>

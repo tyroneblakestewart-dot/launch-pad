@@ -204,6 +204,8 @@ type RawTradeLog = {
     feeCharged?: bigint;
     tokensOut?: bigint;
     tokensIn?: bigint;
+    virtualTokenReserve?: bigint;
+    virtualEthReserve?: bigint;
   };
   blockNumber: bigint | null;
   transactionHash: `0x${string}` | null;
@@ -261,6 +263,8 @@ function normalizeTradeLog(log: RawTradeLog, timestampByBlock: Map<bigint, numbe
       logIndex: log.logIndex,
       grossNativeAmountRaw: log.args.grossNativeIn?.toString(),
       feeChargedRaw: log.args.feeCharged?.toString(),
+      virtualTokenReserveRaw: log.args.virtualTokenReserve?.toString(),
+      virtualEthReserveRaw: log.args.virtualEthReserve?.toString(),
     };
   }
 
@@ -276,6 +280,8 @@ function normalizeTradeLog(log: RawTradeLog, timestampByBlock: Map<bigint, numbe
     logIndex: log.logIndex,
     grossNativeAmountRaw: log.args.grossNativeOut?.toString(),
     feeChargedRaw: log.args.feeCharged?.toString(),
+    virtualTokenReserveRaw: log.args.virtualTokenReserve?.toString(),
+    virtualEthReserveRaw: log.args.virtualEthReserve?.toString(),
   };
 }
 

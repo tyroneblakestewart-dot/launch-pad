@@ -38,28 +38,56 @@ export type Candle = {
 };
 
 /**
- * Native currency paid/received per whole token, from the trade's post-fee
- * amounts — the same ratio the curve itself just quoted the trade at.
- * `formatUnits`/`formatEther` do the wei-to-decimal conversion via string
- * math (no bigint-to-Number precision loss for the raw amount), so only the
- * final human-scale price ever passes through `Number()`.
+ * The curve's actual post-trade spot price: its own virtual ETH reserve
+ * divided by its own virtual token reserve, immediately after this trade
+ * (issue #458). Both `TokensPurchased` and `TokensSold` already carry these
+ * reserves, so this is what the curve is actually quoting the *next* trade
+ * at — unlike this trade's own nativeAmount÷tokenAmount ratio (its AVERAGE
+ * execution price), which is not the same number on a bonding curve and was
+ * the root cause of the header/chart/last-price-tag disagreeing with each
+ * other. This is the one price definition used everywhere a price is shown
+ * or bucketed. `formatUnits`/`formatEther` do the wei-to-decimal conversion
+ * via string math (no bigint-to-Number precision loss for the raw amount),
+ * so only the final human-scale price ever passes through `Number()`. A
+ * trade missing either reserve field (an old/test fixture predating this
+ * field) prices as 0 — dropped the same way a zero/invalid amount always was.
  */
-export function tradePriceNativePerToken(trade: TokenTrade, decimals: number): number {
-  const tokenAmount = Number(formatUnits(BigInt(trade.tokenAmountRaw), decimals));
-  if (!Number.isFinite(tokenAmount) || tokenAmount <= 0) return 0;
-  const nativeAmount = Number(formatEther(BigInt(trade.nativeAmountRaw)));
-  if (!Number.isFinite(nativeAmount) || nativeAmount < 0) return 0;
-  return nativeAmount / tokenAmount;
+export function tradeSpotPriceNativePerToken(trade: TokenTrade, decimals: number): number {
+  if (!trade.virtualTokenReserveRaw || !trade.virtualEthReserveRaw) return 0;
+  const tokenReserve = Number(formatUnits(BigInt(trade.virtualTokenReserveRaw), decimals));
+  if (!Number.isFinite(tokenReserve) || tokenReserve <= 0) return 0;
+  const ethReserve = Number(formatEther(BigInt(trade.virtualEthReserveRaw)));
+  if (!Number.isFinite(ethReserve) || ethReserve < 0) return 0;
+  return ethReserve / tokenReserve;
 }
 
 /**
  * Buckets trades into OHLCV candles for a given fixed interval. Trades are
  * sorted chronologically first (by block timestamp, then log index within a
  * block) regardless of input order, so open/close always reflect real trade
- * sequence. A trade with a zero/invalid price (e.g. dust amounts) is dropped
- * rather than distorting a candle with a bogus 0 price or phantom volume.
+ * sequence. A trade with a zero/invalid spot price (e.g. a fixture missing
+ * reserve fields) is dropped rather than distorting a candle with a bogus 0
+ * price or phantom volume.
+ *
+ * Open is the previous candle's close carried forward — never this bucket's
+ * own first trade — because a bonding curve's price only ever moves via a
+ * trade; nothing "resets" it at a bucket boundary. `startingPriceNativePerToken`
+ * seeds that carry-forward for the very first candle (the curve's own
+ * starting price, before any trade). Callers with no such value on hand
+ * (the homepage grid's mini candles have no curve-status read of their own)
+ * may omit it, in which case the first candle's open falls back to its own
+ * first trade's spot price — the same effective behaviour bucketing had
+ * before this function tracked open across buckets at all. High/low are the
+ * max/min spot price *after each trade in the bucket* — deliberately not
+ * widened by the carried-forward open — matching the curve's own quote
+ * sequence for that bucket.
  */
-export function bucketTradesIntoCandles(trades: TokenTrade[], interval: CandleInterval, decimals: number): Candle[] {
+export function bucketTradesIntoCandles(
+  trades: TokenTrade[],
+  interval: CandleInterval,
+  decimals: number,
+  startingPriceNativePerToken?: number,
+): Candle[] {
   if (trades.length === 0) return [];
 
   const intervalSeconds = CANDLE_INTERVAL_SECONDS[interval];
@@ -67,27 +95,34 @@ export function bucketTradesIntoCandles(trades: TokenTrade[], interval: CandleIn
     (a, b) => a.blockTimestamp - b.blockTimestamp || a.logIndex - b.logIndex,
   );
 
-  const buckets = new Map<number, Candle>();
+  const bucketTrades = new Map<number, TokenTrade[]>();
   for (const trade of sorted) {
-    const price = tradePriceNativePerToken(trade, decimals);
+    const price = tradeSpotPriceNativePerToken(trade, decimals);
     if (price <= 0) continue;
 
-    const rawVolume = Number(formatEther(BigInt(trade.nativeAmountRaw)));
-    const volume = Number.isFinite(rawVolume) ? rawVolume : 0;
-
     const bucketTime = Math.floor(trade.blockTimestamp / intervalSeconds) * intervalSeconds;
-    const existing = buckets.get(bucketTime);
-    if (!existing) {
-      buckets.set(bucketTime, { time: bucketTime, open: price, high: price, low: price, close: price, volume });
-    } else {
-      existing.high = Math.max(existing.high, price);
-      existing.low = Math.min(existing.low, price);
-      existing.close = price;
-      existing.volume += volume;
-    }
+    const existing = bucketTrades.get(bucketTime);
+    if (existing) existing.push(trade);
+    else bucketTrades.set(bucketTime, [trade]);
   }
 
-  return [...buckets.values()].sort((a, b) => a.time - b.time);
+  const times = [...bucketTrades.keys()].sort((a, b) => a - b);
+  const candles: Candle[] = [];
+  let previousClose = startingPriceNativePerToken ?? null;
+
+  for (const time of times) {
+    const tradesInBucket = bucketTrades.get(time)!;
+    const prices = tradesInBucket.map((trade) => tradeSpotPriceNativePerToken(trade, decimals));
+    const rawVolumes = tradesInBucket.map((trade) => Number(formatEther(BigInt(trade.nativeAmountRaw))));
+    const volume = rawVolumes.reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0);
+
+    const open = previousClose ?? prices[0];
+    const close = prices[prices.length - 1];
+    candles.push({ time, open, high: Math.max(...prices), low: Math.min(...prices), close, volume });
+    previousClose = close;
+  }
+
+  return candles;
 }
 
 /**
@@ -155,6 +190,9 @@ export function isCandlePoint(point: ChartSeriesPoint): point is Candle {
 /** How many whitespace bars to pad in before the first real candle, so the axis has real structure on first load even with very few trades (issue #451 item 2). */
 const PRE_TRADE_PADDING_BARS = 100;
 
+/** How many bars of padding survive the launch-age cap (issue #458 item 5) — enough that the first real candle still reads as "recent activity", not a lone bar glued to the left edge. */
+const LAUNCH_CAPPED_PADDING_BARS = 5;
+
 /**
  * Builds the exact linear timeline the chart's candlestick series should
  * render (issue #451 item 2): every real candle from `bucketTradesIntoCandles`
@@ -168,11 +206,22 @@ const PRE_TRADE_PADDING_BARS = 100;
  * flat/interpolated candle. `nowUnixSeconds` is a parameter rather than this
  * pure function reaching for the system clock, so the caller controls when
  * "now" advances.
+ *
+ * `launchedAtUnixSeconds` (issue #458 item 5) caps how far left that padding
+ * can reach: on a coarse timeframe (1D) a token launched days ago would
+ * otherwise pad ~100 bars *of that width* — literally months — behind its
+ * own first trade. The timeline is never allowed to start earlier than
+ * `launchedAtUnixSeconds` minus `LAUNCH_CAPPED_PADDING_BARS` bars; since bar
+ * width stays fixed regardless of window size, a young token simply shows
+ * blank space to the left of its capped start rather than a stretched or
+ * fabricated history. Omitted (no launch record) leaves the uncapped
+ * ~100-bar padding exactly as before.
  */
 export function buildChartSeriesPoints(
   candles: readonly Candle[],
   interval: CandleInterval,
   nowUnixSeconds: number,
+  launchedAtUnixSeconds?: number | null,
 ): ChartSeriesPoint[] {
   const intervalSeconds = CANDLE_INTERVAL_SECONDS[interval];
   const currentBucketTime = Math.floor(nowUnixSeconds / intervalSeconds) * intervalSeconds;
@@ -180,7 +229,12 @@ export function buildChartSeriesPoints(
   const candleByTime = new Map(candles.map((candle) => [candle.time, candle]));
   const earliestTime = candles.length > 0 ? candles[0].time : currentBucketTime;
   const latestCandleTime = candles.length > 0 ? candles[candles.length - 1].time : currentBucketTime;
-  const startTime = earliestTime - PRE_TRADE_PADDING_BARS * intervalSeconds;
+  const uncappedStartTime = earliestTime - PRE_TRADE_PADDING_BARS * intervalSeconds;
+  const launchFloorTime =
+    launchedAtUnixSeconds !== null && launchedAtUnixSeconds !== undefined
+      ? Math.floor(launchedAtUnixSeconds / intervalSeconds) * intervalSeconds - LAUNCH_CAPPED_PADDING_BARS * intervalSeconds
+      : null;
+  const startTime = launchFloorTime !== null ? Math.max(uncappedStartTime, launchFloorTime) : uncappedStartTime;
   const endTime = Math.max(currentBucketTime, latestCandleTime);
 
   const points: ChartSeriesPoint[] = [];

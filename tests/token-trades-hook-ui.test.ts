@@ -176,55 +176,23 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).not.toContain("resolveInitialVisibleRange");
   });
 
-  it("only calls setVisibleLogicalRange once, to restore the user's prior view immediately after the crash-safe full-resync fallback — never on the normal setData or incremental-update paths (issue #451 follow-up)", async () => {
-    const component = await source("components/token-page/token-trade-chart.tsx");
-    const occurrences = component.match(/setVisibleLogicalRange\(/g) ?? [];
-    expect(occurrences.length).toBe(1);
-
-    const resyncStart = component.indexOf("if (needsFullResync) {");
-    expect(resyncStart).toBeGreaterThan(-1);
-    const readIndex = component.indexOf(
-      "const visibleLogicalRange = chartRef.current?.timeScale().getVisibleLogicalRange() ?? null;",
-    );
-    const restoreIndex = component.indexOf("chartRef.current?.timeScale().setVisibleLogicalRange(visibleLogicalRange);");
-    expect(readIndex).toBeGreaterThan(resyncStart);
-    expect(restoreIndex).toBeGreaterThan(readIndex);
-  });
-
-  it("routes a trade landing in a bucket older than the whitespace timeline's current tail to a full resync instead of an out-of-order series.update() (issue #451 follow-up crash fix)", async () => {
+  // The out-of-order pre-check, the try/catch full-resync fallback, and the
+  // "only setData on first load/timeframe change, otherwise diff+update"
+  // decision (issue #445/#451 follow-up) were extracted to a pure,
+  // unit-tested engine in issue #458 item 3 — see
+  // tests/token-trade-chart-render.test.ts for behavioural coverage
+  // (including the incremental sell-candle fixture) against a fake series
+  // object. This component-level test only pins that the effect wires the
+  // real series/time-scale into that engine instead of re-implementing the
+  // decision inline.
+  it("delegates the whole update/resync decision to the pure engine instead of re-implementing it inline", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain(
-      "renderedPointsRef.current.length > 0 ? renderedPointsRef.current[renderedPointsRef.current.length - 1].time : null",
+      'import {\n  applyTokenTradeChartUpdate,\n  createInitialTokenTradeChartRenderState,\n  type TokenTradeChartRenderState,\n  type TokenTradeChartSeriesBundle,\n} from "@/lib/token-trade-chart-render";',
     );
-    expect(component).toContain(
-      "lastRenderedTime !== null && pointsDiff.updated.some((point) => point.time < lastRenderedTime)",
-    );
-    expect(component).toContain("let needsFullResync = hasOutOfOrderUpdate;");
-  });
-
-  it("also catches an update() throw the pre-check doesn't anticipate and falls back the same way, instead of letting it break the effect", async () => {
-    const component = await source("components/token-page/token-trade-chart.tsx");
-    const elseStart = component.indexOf("if (!needsFullResync) {");
-    expect(elseStart).toBeGreaterThan(-1);
-    const tryStart = component.indexOf("try {", elseStart);
-    const catchIndex = component.indexOf("} catch {", tryStart);
-    const resyncFlagSet = component.indexOf("needsFullResync = true;", catchIndex);
-    expect(tryStart).toBeGreaterThan(elseStart);
-    expect(catchIndex).toBeGreaterThan(tryStart);
-    expect(resyncFlagSet).toBeGreaterThan(catchIndex);
-  });
-
-  it("only calls series.setData on first load or a timeframe change; every other update diffs and calls series.update over the whitespace-inclusive timeline (issue #451 item 2)", async () => {
-    const component = await source("components/token-page/token-trade-chart.tsx");
-    expect(component).toContain("resolveChartInterval(timeframe, trades, decimals ?? DEFAULT_TOKEN_DECIMALS)");
-    expect(component).toContain("bucketTradesIntoCandles(trades, resolvedInterval, decimals ?? DEFAULT_TOKEN_DECIMALS)");
-    expect(component).toContain("buildChartSeriesPoints(candles, resolvedInterval, nowTick)");
-    expect(component).toContain("!hasRenderedOnceRef.current || renderedTimeframeRef.current !== timeframe");
-    expect(component).toContain("candleSeries.setData(points.map(pointToSeriesDatum));");
-    expect(component).toContain("diffChartSeriesPoints(renderedPointsRef.current, points)");
-    expect(component).toContain("candleSeries.update(pointToSeriesDatum(point));");
-    // Volume stays keyed off real candles only, unaffected by whitespace.
-    expect(component).toContain("diffCandles(renderedCandlesRef.current, candles)");
+    expect(component).toContain("applyTokenTradeChartUpdate(seriesBundle, renderStateRef.current, {");
+    expect(component).not.toContain("needsFullResync");
+    expect(component).not.toContain("diffChartSeriesPoints(");
   });
 
   it("advances the whitespace-inclusive timeline with the clock via a coarse timer, independent of new trades arriving", async () => {
@@ -234,8 +202,10 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
   });
 
   it("scrolls to real time after setData instead of forcing a visible logical range (issue #449 item 2)", async () => {
+    const engine = await source("lib/token-trade-chart-render.ts");
+    expect(engine).toContain("series.timeScale.scrollToRealTime();");
     const component = await source("components/token-page/token-trade-chart.tsx");
-    expect(component).toContain("chartRef.current?.timeScale().scrollToRealTime();");
+    expect(component).toContain("scrollToRealTime: () => chartRef.current?.timeScale().scrollToRealTime()");
   });
 
   it("fixes bar spacing/right offset to a constant pixel width, independent of chart width or candle count (issue #449 item 2)", async () => {
@@ -265,32 +235,48 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain("computeChartMinMove,");
     expect(component).toContain('from "@/lib/token-chart-tools"');
     expect(component).toContain(
-      "candles.length > 0 ? Math.max(...candles.map((candle) => candle.high)) : startingPriceNativePerToken",
+      "nextState.candles.length > 0 ? Math.max(...nextState.candles.map((candle) => candle.high)) : startingPriceNativePerToken",
     );
     expect(component).toContain("computeChartMinMove(maxPrice)");
     expect(component).toContain("if (minMove !== appliedMinMoveRef.current) {");
     expect(component).toContain("candleSeries.applyOptions({");
   });
 
-  it("draws a dashed lime last-price line via the series' built-in price line, so the crosshair/axis tag share one formatter automatically", async () => {
+  it("disables the candle series' own built-in price line/last-value tag — there must be exactly one last-price indicator on the chart (issue #458 item 2)", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
-    expect(component).toContain("priceLineVisible: true");
-    expect(component).toContain("priceLineStyle: LineStyle.Dashed");
-    expect(component).toContain("priceLineColor: UP_COLOR");
+    expect(component).toContain("priceLineVisible: false");
+    expect(component).toContain("lastValueVisible: false");
+    expect(component).not.toContain("priceLineVisible: true");
+    expect(component).not.toContain("lastValueVisible: true");
   });
 
-  it("never computes its own separate last price — it derives from the same shared trades/starting-price source as the header", async () => {
+  it("draws the one dashed lime last-price line itself, keyed off the same shared spot price as the header, and keeps it in sync via applyOptions rather than recreating it every render (issue #458 item 2)", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
-    expect(component).toContain("tradePriceNativePerToken(trades[0], decimals ?? DEFAULT_TOKEN_DECIMALS)");
+    const effectStart = component.indexOf("useEffect(() => {\n    const candleSeries = candleSeriesRef.current;\n    if (!candleSeries) return;");
+    expect(effectStart).toBeGreaterThan(-1);
+    const effectEnd = component.indexOf("}, [lastPrice]);", effectStart);
+    const effectBody = component.slice(effectStart, effectEnd);
+    expect(effectBody).toContain("lastPriceLineRef.current.applyOptions({ price: lastPrice });");
+    expect(effectBody).toContain("candleSeries.createPriceLine({");
+    expect(effectBody).toContain("lineStyle: LineStyle.Dashed");
+    expect(effectBody).toContain("color: UP_COLOR");
+    expect(effectBody).toContain("candleSeries.removePriceLine(lastPriceLineRef.current);");
+  });
+
+  it("never computes its own separate last price — it derives from the same shared trades/starting-price source as the header, using the curve's actual post-trade spot price (issue #458 item 1)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain('import {\n  CHART_TIMEFRAMES,\n  resolveChartInterval,\n  tradeSpotPriceNativePerToken,');
+    expect(component).toContain("tradeSpotPriceNativePerToken(trades[0], decimals ?? DEFAULT_TOKEN_DECIMALS)");
     expect(component).toContain(": startingPriceNativePerToken;");
   });
 
-  it("overlays MA20 (lime) and MA50 (white) lines computed from the pure moving-average function", async () => {
+  it("overlays MA20 (lime) and MA50 (white) line series, fed by the pure engine's own moving-average computation", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
-    expect(component).toContain("computeMovingAverage(candles, MA20_PERIOD)");
-    expect(component).toContain("computeMovingAverage(candles, MA50_PERIOD)");
     expect(component).toContain("chart.addLineSeries({\n      color: MA20_COLOR");
     expect(component).toContain("chart.addLineSeries({\n      color: MA50_COLOR");
+    const engine = await source("lib/token-trade-chart-render.ts");
+    expect(engine).toContain("computeMovingAverage(candles, MA20_PERIOD)");
+    expect(engine).toContain("computeMovingAverage(candles, MA50_PERIOD)");
   });
 
   it("adds a volume histogram pane hidden by default, with a toggle button", async () => {
@@ -350,14 +336,12 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(noBarBlock).toContain("return;");
   });
 
-  it("treats a resolved-interval change while staying on ALL as a real timeframe change via a separate rendered-interval ref, not an incompatible diff (issue #453 area 4)", async () => {
-    const component = await source("components/token-page/token-trade-chart.tsx");
-    expect(component).toContain("const renderedResolvedIntervalRef = useRef<CandleInterval | null>(null);");
-    expect(component).toContain(
-      "!hasRenderedOnceRef.current || renderedTimeframeRef.current !== timeframe || renderedResolvedIntervalRef.current !== resolvedInterval;",
-    );
-    expect(component).toContain("renderedResolvedIntervalRef.current = resolvedInterval;");
-  });
+  // The rendered-interval tracking that treats a resolved-interval change
+  // while staying on ALL as a real timeframe change (issue #453 area 4), and
+  // the volume series sharing the exact same real candle timestamps as the
+  // candlestick series (issue #453 area 5), both now live inside
+  // lib/token-trade-chart-render.ts's TokenTradeChartRenderState/
+  // applyTokenTradeChartUpdate — see tests/token-trade-chart-render.test.ts.
 
   it("re-derives resolvedInterval from the current trades on every render, including a fresh ALL re-selection, instead of a stale memoised value", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
@@ -366,18 +350,11 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     );
   });
 
-  it("feeds the volume histogram the exact same real candle timestamps as the candlestick series — never an independently computed time (issue #453 area 5)", async () => {
+  it("gives the volume series its own named price scale, distinct from the candlestick series' scale, without an independent time source", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
-    expect(component).toContain(
-      'volumeSeries.setData(\n        candles.map((candle) => ({ time: candle.time as UTCTimestamp, value: candle.volume, color: volumeBarColor(candle) })),\n      );',
-    );
-    expect(component).toContain(
-      'volumeSeries.update({ time: candle.time as UTCTimestamp, value: candle.volume, color: volumeBarColor(candle) });',
-    );
-    // Both series live on the same `chart` instance (one shared time scale) —
-    // the volume series only uses a *named price scale* ("chart-volume"),
-    // which affects the y-axis grouping, never horizontal alignment.
     expect(component).toContain('priceScaleId: "chart-volume"');
+    const engine = await source("lib/token-trade-chart-render.ts");
+    expect(engine).toContain("volumeBarColor(candle)");
   });
 
   it("never touches horizontal price lines from the data-flow/timeframe effect — the lines effect depends only on horizontalLines, so a timeframe change can't clear or move a drawn line (issue #453 area 6)", async () => {

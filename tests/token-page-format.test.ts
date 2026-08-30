@@ -11,6 +11,7 @@ import {
   formatPriceChange,
   formatSignedPercent,
   formatTimeAgoSeconds,
+  formatTokenBalanceAmount,
   formatUsdPrice,
   shortenAddress,
 } from "@/lib/token-page-format";
@@ -201,6 +202,25 @@ describe("formatLaunchAge", () => {
   it("returns an em dash for null or an invalid timestamp", () => {
     expect(formatLaunchAge(null)).toBe("—");
     expect(formatLaunchAge("not a date")).toBe("—");
+  });
+});
+
+describe("formatTokenBalanceAmount (issue #458 item 4)", () => {
+  it("adds thousands separators and caps at two decimals", () => {
+    expect(formatTokenBalanceAmount(74_503.2649)).toBe("74,503.26");
+  });
+
+  it("never shows more than two decimals even for a tiny fractional balance", () => {
+    expect(formatTokenBalanceAmount(0.123456789)).toBe("0.12");
+  });
+
+  it("formats a whole number with no trailing decimal point", () => {
+    expect(formatTokenBalanceAmount(1_000_000)).toBe("1,000,000");
+  });
+
+  it("returns an em dash for null or non-finite input", () => {
+    expect(formatTokenBalanceAmount(null)).toBe("—");
+    expect(formatTokenBalanceAmount(Number.NaN)).toBe("—");
   });
 });
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { formatUnits, type Address } from "viem";
-import { tradePriceNativePerToken } from "@/lib/candle-bucketing";
+import { tradeSpotPriceNativePerToken } from "@/lib/candle-bucketing";
 import { formatGraduationRemainingLabel, formatGraduationSummary } from "@/lib/bonding-curve-status";
 import type { TokenLaunch } from "@/lib/server/token-launches-store";
 import type { TokenMarketStats } from "@/lib/server/token-market-stats";
@@ -41,7 +41,7 @@ export type TokenHeaderBandProps = {
  * and shares the result with this component, the swap panel and the
  * Stats/Audit panel, so the header and the rest of the page can never show
  * a momentarily different last price between polls. The price/mcap toggle
- * and the change pill both derive from `tradePriceNativePerToken`
+ * and the change pill both derive from `tradeSpotPriceNativePerToken`
  * (lib/candle-bucketing.ts) over the exact same trades array — the one
  * shared price source the issue requires.
  */
@@ -92,7 +92,7 @@ export function TokenHeaderBand({
   const lastPrice = hasLoadError
     ? null
     : lastTrade
-      ? tradePriceNativePerToken(lastTrade, decimals)
+      ? tradeSpotPriceNativePerToken(lastTrade, decimals)
       : curveStatus.kind === "ready"
         ? curveStatus.startingPriceNativePerToken
         : null;
@@ -112,8 +112,8 @@ export function TokenHeaderBand({
     if (hasLoadError || orderedTrades.length < 2) return 0;
     const oldest = orderedTrades[orderedTrades.length - 1];
     const newest = orderedTrades[0];
-    const oldestPrice = tradePriceNativePerToken(oldest, decimals);
-    const newestPrice = tradePriceNativePerToken(newest, decimals);
+    const oldestPrice = tradeSpotPriceNativePerToken(oldest, decimals);
+    const newestPrice = tradeSpotPriceNativePerToken(newest, decimals);
     if (oldestPrice <= 0) return 0;
     return ((newestPrice - oldestPrice) / oldestPrice) * 100;
   })();

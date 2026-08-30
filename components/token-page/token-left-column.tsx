@@ -32,7 +32,7 @@ import type { BondingCurveGraduationStatus } from "@/lib/bonding-curve-status";
 import { CHAIN_CONFIG, ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { notifyTokenTradeConfirmed } from "@/lib/token-trade-events";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
-import { formatFeeNote, formatNativeAmountSixSigFigsTrimmed, shortenAddress } from "@/lib/token-page-format";
+import { formatFeeNote, formatNativeAmountSixSigFigsTrimmed, formatTokenBalanceAmount, shortenAddress } from "@/lib/token-page-format";
 import type { TokenTrade } from "@/lib/token-trade-types";
 import type { TokenCurveStatus } from "@/lib/use-token-curve-status";
 import { TokenStatsAuditPanel } from "./token-stats-audit-panel";
@@ -586,7 +586,7 @@ export function TokenLeftColumn({
                       ? `${formatEther(nativeBalance)} ETH`
                       : "—"
                     : tokenBalance !== null
-                      ? `${formatUnits(tokenBalance, curveView.decimals)} ${payTicker}`
+                      ? `${formatTokenBalanceAmount(Number(formatUnits(tokenBalance, curveView.decimals)))} ${payTicker}`
                       : "—"}
                 </span>
               </div>

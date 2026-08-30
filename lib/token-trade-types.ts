@@ -31,6 +31,16 @@ export type TokenTrade = {
   grossNativeAmountRaw?: string;
   /** Protocol fee charged on this trade, in wei. Optional for the same reason as `grossNativeAmountRaw`. */
   feeChargedRaw?: string;
+  /**
+   * The curve's own virtual token/ETH reserves immediately after this trade
+   * (issue #458) — both events emit these already. This, not
+   * nativeAmount÷tokenAmount (the trade's own AVERAGE price), is where the
+   * curve actually lands post-trade, so every price shown or bucketed
+   * (lib/candle-bucketing.ts's `tradeSpotPriceNativePerToken`) derives from
+   * these two fields. Optional for the same reason as `grossNativeAmountRaw`.
+   */
+  virtualTokenReserveRaw?: string;
+  virtualEthReserveRaw?: string;
 };
 
 export type TokenTradesResponse = { trades: TokenTrade[] };

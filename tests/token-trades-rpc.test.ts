@@ -128,6 +128,8 @@ describe("getTokenTrades", () => {
         logIndex: 0,
         grossNativeAmountRaw: "10100000000000000",
         feeChargedRaw: "100000000000000",
+        virtualTokenReserveRaw: "1",
+        virtualEthReserveRaw: "1",
       },
     ]);
   });
@@ -163,6 +165,8 @@ describe("getTokenTrades", () => {
         logIndex: 1,
         grossNativeAmountRaw: "4100000000000000",
         feeChargedRaw: "100000000000000",
+        virtualTokenReserveRaw: "1",
+        virtualEthReserveRaw: "1",
       },
     ]);
   });

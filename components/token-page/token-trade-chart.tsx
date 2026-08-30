@@ -14,20 +14,9 @@ import {
 } from "lightweight-charts";
 import {
   CHART_TIMEFRAMES,
-  bucketTradesIntoCandles,
-  buildChartSeriesPoints,
-  computeMovingAverage,
-  diffCandles,
-  diffChartSeriesPoints,
-  diffTimeSeries,
-  isCandlePoint,
   resolveChartInterval,
-  tradePriceNativePerToken,
-  type Candle,
-  type CandleInterval,
-  type ChartSeriesPoint,
+  tradeSpotPriceNativePerToken,
   type ChartTimeframe,
-  type MovingAveragePoint,
 } from "@/lib/candle-bucketing";
 import {
   addHorizontalLine,
@@ -37,6 +26,12 @@ import {
   type ChartTool,
   type HorizontalLine,
 } from "@/lib/token-chart-tools";
+import {
+  applyTokenTradeChartUpdate,
+  createInitialTokenTradeChartRenderState,
+  type TokenTradeChartRenderState,
+  type TokenTradeChartSeriesBundle,
+} from "@/lib/token-trade-chart-render";
 import { DEFAULT_TOKEN_DECIMALS } from "@/lib/bonding-curve-deploy-config";
 import { formatNativePriceSixSigFigs, formatSignedPercent } from "@/lib/token-page-format";
 import type { TokenTrade } from "@/lib/token-trade-types";
@@ -56,8 +51,6 @@ const DOWN_COLOR = "#8d918c";
 const MA20_COLOR = "rgba(198, 245, 62, 0.85)";
 const MA50_COLOR = "rgba(255, 255, 255, 0.4)";
 const HORIZONTAL_LINE_COLOR = "#9ad4ff";
-const MA20_PERIOD = 20;
-const MA50_PERIOD = 50;
 
 type HoverInfo = {
   time: number;
@@ -67,25 +60,6 @@ type HoverInfo = {
   close: number;
   volume: number;
 };
-
-function candleToBar(candle: Candle) {
-  return {
-    time: candle.time as UTCTimestamp,
-    open: candle.open,
-    high: candle.high,
-    low: candle.low,
-    close: candle.close,
-  };
-}
-
-/** Converts a whitespace-inclusive timeline point to what the candlestick series expects: an OHLC bar, or a bare-time WhitespaceData point. */
-function pointToSeriesDatum(point: ChartSeriesPoint) {
-  return isCandlePoint(point) ? candleToBar(point) : { time: point.time as UTCTimestamp };
-}
-
-function volumeBarColor(candle: Candle): string {
-  return candle.close >= candle.open ? "rgba(198, 245, 62, 0.35)" : "rgba(141, 145, 140, 0.35)";
-}
 
 function formatUtcTime(unixSeconds: number): string {
   const date = new Date(unixSeconds * 1000);
@@ -143,6 +117,7 @@ export function TokenTradeChart({
   stale,
   retry,
   startingPriceNativePerToken,
+  launchedAtUnixSeconds,
   pairLabel,
 }: {
   trades: TokenTrade[] | null;
@@ -151,6 +126,8 @@ export function TokenTradeChart({
   stale: boolean;
   retry: () => void;
   startingPriceNativePerToken: number | null;
+  /** Unix seconds the token launched, when known — caps how far the pre-trade whitespace padding can reach (issue #458 item 5). */
+  launchedAtUnixSeconds: number | null;
   pairLabel: string;
 }) {
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("1h");
@@ -166,13 +143,8 @@ export function TokenTradeChart({
   const ma50SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const priceLinesRef = useRef<Map<string, IPriceLine>>(new Map());
-  const renderedPointsRef = useRef<ChartSeriesPoint[]>([]);
-  const renderedCandlesRef = useRef<Candle[]>([]);
-  const renderedMa20Ref = useRef<MovingAveragePoint[]>([]);
-  const renderedMa50Ref = useRef<MovingAveragePoint[]>([]);
-  const renderedTimeframeRef = useRef<ChartTimeframe | null>(null);
-  const renderedResolvedIntervalRef = useRef<CandleInterval | null>(null);
-  const hasRenderedOnceRef = useRef(false);
+  const lastPriceLineRef = useRef<IPriceLine | null>(null);
+  const renderStateRef = useRef<TokenTradeChartRenderState>(createInitialTokenTradeChartRenderState());
   const appliedMinMoveRef = useRef<number | null>(null);
   const toolRef = useRef<ChartTool>(tool);
   const lastAppliedSizeRef = useRef<{ width: number; height: number } | null>(null);
@@ -232,11 +204,15 @@ export function TokenTradeChart({
         minMove: 0.00000001,
         formatter: (price: number) => formatNativePriceSixSigFigs(price),
       },
-      priceLineVisible: true,
-      priceLineWidth: 1,
-      priceLineColor: UP_COLOR,
-      priceLineStyle: LineStyle.Dashed,
-      lastValueVisible: true,
+      // Single last-price indicator (issue #458 item 2): the series' own
+      // built-in price line/last-value tag are disabled so there is exactly
+      // one dashed last-price line on the chart, driven by the same shared
+      // spot price as the header (see the lastPriceLineRef effect below) —
+      // the built-in one previously mutated independently of that shared
+      // value and could show a stale pre-trade price after an incremental
+      // update.
+      priceLineVisible: false,
+      lastValueVisible: false,
     });
 
     // A single candle (or any window where every visible bar shares one
@@ -339,13 +315,8 @@ export function TokenTradeChart({
       ma50SeriesRef.current = null;
       volumeSeriesRef.current = null;
       priceLines.clear();
-      renderedPointsRef.current = [];
-      renderedCandlesRef.current = [];
-      renderedMa20Ref.current = [];
-      renderedMa50Ref.current = [];
-      renderedTimeframeRef.current = null;
-      renderedResolvedIntervalRef.current = null;
-      hasRenderedOnceRef.current = false;
+      lastPriceLineRef.current = null;
+      renderStateRef.current = createInitialTokenTradeChartRenderState();
       appliedMinMoveRef.current = null;
       lastAppliedSizeRef.current = null;
     };
@@ -356,11 +327,27 @@ export function TokenTradeChart({
     return resolveChartInterval(timeframe, trades, decimals ?? DEFAULT_TOKEN_DECIMALS);
   }, [trades, decimals, timeframe]);
 
-  // Data flow (issue #445 items 2–3): setData (which resets the visible
-  // range) only on first load or a timeframe change; every later poll diffs
-  // against what's already rendered and calls series.update() for just the
-  // mutated last bar / newly appended bars, which never disturbs the user's
-  // current scroll position.
+  // The one shared spot price (issue #458 item 1) — never a second,
+  // independently-computed last price. Every on-chart price indicator (the
+  // small label above, the dashed last-price line below, and the candle
+  // bucketing itself inside applyTokenTradeChartUpdate) traces back to this
+  // same value or to `startingPriceNativePerToken`, the same source the
+  // header band uses.
+  const lastPrice =
+    trades && trades.length > 0
+      ? tradeSpotPriceNativePerToken(trades[0], decimals ?? DEFAULT_TOKEN_DECIMALS)
+      : startingPriceNativePerToken;
+
+  // Data flow (issue #445 items 2–3, extracted to a pure, unit-testable
+  // engine in issue #458 item 3): setData (which resets the visible range)
+  // only on first load or a timeframe change; every later poll diffs against
+  // what's already rendered and calls series.update() for just the mutated
+  // last bar / newly appended bars, which never disturbs the user's current
+  // scroll position. The actual decision logic (including the out-of-order
+  // pre-check and the crash-safe full-resync fallback, issue #451 follow-up)
+  // lives in lib/token-trade-chart-render.ts's applyTokenTradeChartUpdate —
+  // this effect only adapts the real lightweight-charts series/time-scale
+  // into that pure function's duck-typed interface.
   useEffect(() => {
     const candleSeries = candleSeriesRef.current;
     const ma20Series = ma20SeriesRef.current;
@@ -370,18 +357,55 @@ export function TokenTradeChart({
       return;
     }
 
-    const candles = bucketTradesIntoCandles(trades, resolvedInterval, decimals ?? DEFAULT_TOKEN_DECIMALS);
-    const ma20 = computeMovingAverage(candles, MA20_PERIOD);
-    const ma50 = computeMovingAverage(candles, MA50_PERIOD);
+    const seriesBundle: TokenTradeChartSeriesBundle = {
+      candleSeries: {
+        setData: (data) =>
+          candleSeries.setData(
+            data.map((point) =>
+              "open" in point
+                ? { time: point.time as UTCTimestamp, open: point.open, high: point.high, low: point.low, close: point.close }
+                : { time: point.time as UTCTimestamp },
+            ),
+          ),
+        update: (point) =>
+          candleSeries.update(
+            "open" in point
+              ? { time: point.time as UTCTimestamp, open: point.open, high: point.high, low: point.low, close: point.close }
+              : { time: point.time as UTCTimestamp },
+          ),
+      },
+      ma20Series: {
+        setData: (data) => ma20Series.setData(data.map((point) => ({ time: point.time as UTCTimestamp, value: point.value }))),
+        update: (point) => ma20Series.update({ time: point.time as UTCTimestamp, value: point.value }),
+      },
+      ma50Series: {
+        setData: (data) => ma50Series.setData(data.map((point) => ({ time: point.time as UTCTimestamp, value: point.value }))),
+        update: (point) => ma50Series.update({ time: point.time as UTCTimestamp, value: point.value }),
+      },
+      volumeSeries: {
+        setData: (data) =>
+          volumeSeries.setData(data.map((point) => ({ time: point.time as UTCTimestamp, value: point.value, color: point.color }))),
+        update: (point) => volumeSeries.update({ time: point.time as UTCTimestamp, value: point.value, color: point.color }),
+      },
+      timeScale: {
+        scrollToRealTime: () => chartRef.current?.timeScale().scrollToRealTime(),
+        getVisibleLogicalRange: () => chartRef.current?.timeScale().getVisibleLogicalRange() ?? null,
+        setVisibleLogicalRange: (range) => chartRef.current?.timeScale().setVisibleLogicalRange(range),
+      },
+    };
 
-    // Gap-filling + axis fix (issue #451 items 1-2): the series itself is
-    // fed this whitespace-inclusive timeline, never the sparse real-candle
-    // list alone — that's what keeps a trade an hour old from sitting
-    // directly beside one from seconds ago. MA/volume stay on real candles
-    // only (`candles`, computed above), untouched.
-    const points = buildChartSeriesPoints(candles, resolvedInterval, nowTick);
+    const nextState = applyTokenTradeChartUpdate(seriesBundle, renderStateRef.current, {
+      trades,
+      decimals: decimals ?? DEFAULT_TOKEN_DECIMALS,
+      interval: resolvedInterval,
+      timeframe,
+      nowUnixSeconds: nowTick,
+      startingPriceNativePerToken,
+      launchedAtUnixSeconds,
+    });
 
-    const maxPrice = candles.length > 0 ? Math.max(...candles.map((candle) => candle.high)) : startingPriceNativePerToken;
+    const maxPrice =
+      nextState.candles.length > 0 ? Math.max(...nextState.candles.map((candle) => candle.high)) : startingPriceNativePerToken;
     if (maxPrice !== null && maxPrice > 0) {
       const minMove = computeChartMinMove(maxPrice);
       if (minMove !== appliedMinMoveRef.current) {
@@ -392,95 +416,37 @@ export function TokenTradeChart({
       }
     }
 
-    // Staying on "ALL" while a newly arrived trade changes ALL's own
-    // resolved fixed interval (issue #453 area 4) — e.g. enough new trades
-    // arrive to push resolveAllTimeframeInterval from "5m" to "15m" — is a
-    // real effective timeframe change, not a normal poll: diffing candles
-    // bucketed at two different widths against each other would compare
-    // incompatible bucket boundaries. `renderedTimeframeRef` alone can't
-    // detect this since the UI-facing `timeframe` value ("all") never
-    // changes, so the actually-rendered bucket width is tracked separately.
-    const isFirstLoadOrTimeframeChange =
-      !hasRenderedOnceRef.current || renderedTimeframeRef.current !== timeframe || renderedResolvedIntervalRef.current !== resolvedInterval;
+    renderStateRef.current = nextState;
+  }, [trades, decimals, resolvedInterval, timeframe, nowTick, startingPriceNativePerToken, launchedAtUnixSeconds]);
 
-    if (isFirstLoadOrTimeframeChange) {
-      candleSeries.setData(points.map(pointToSeriesDatum));
-      ma20Series.setData(ma20.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })));
-      ma50Series.setData(ma50.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })));
-      volumeSeries.setData(
-        candles.map((candle) => ({ time: candle.time as UTCTimestamp, value: candle.volume, color: volumeBarColor(candle) })),
-      );
-
-      chartRef.current?.timeScale().scrollToRealTime();
-    } else {
-      const pointsDiff = diffChartSeriesPoints(renderedPointsRef.current, points);
-      const candleDiff = diffCandles(renderedCandlesRef.current, candles);
-      const ma20Diff = diffTimeSeries(renderedMa20Ref.current, ma20, (a, b) => a.value === b.value);
-      const ma50Diff = diffTimeSeries(renderedMa50Ref.current, ma50, (a, b) => a.value === b.value);
-
-      // The whitespace timeline's tail advances on its own clock (the
-      // 30s nowTick above), independent of when a trade is actually
-      // fetched. A trade whose block time falls in a bucket the tail has
-      // already moved past — any trade near a bucket boundary that's
-      // polled after that boundary passes — produces an "updated" point
-      // that is no longer the chart's last rendered bar.
-      // lightweight-charts' series.update() only accepts the last bar or a
-      // genuinely newer one; anything older throws "Cannot update oldest
-      // data", which would otherwise break this whole effect. A pre-check
-      // routes the obvious case straight to a full resync, and a try/catch
-      // around the incremental path itself catches anything that check
-      // doesn't anticipate — both fall back the same way.
-      const lastRenderedTime =
-        renderedPointsRef.current.length > 0 ? renderedPointsRef.current[renderedPointsRef.current.length - 1].time : null;
-      const hasOutOfOrderUpdate =
-        lastRenderedTime !== null && pointsDiff.updated.some((point) => point.time < lastRenderedTime);
-
-      let needsFullResync = hasOutOfOrderUpdate;
-      if (!needsFullResync) {
-        try {
-          for (const point of [...pointsDiff.updated, ...pointsDiff.appended]) {
-            candleSeries.update(pointToSeriesDatum(point));
-          }
-          for (const candle of [...candleDiff.updated, ...candleDiff.appended]) {
-            volumeSeries.update({ time: candle.time as UTCTimestamp, value: candle.volume, color: volumeBarColor(candle) });
-          }
-          for (const point of [...ma20Diff.updated, ...ma20Diff.appended]) {
-            ma20Series.update({ time: point.time as UTCTimestamp, value: point.value });
-          }
-          for (const point of [...ma50Diff.updated, ...ma50Diff.appended]) {
-            ma50Series.update({ time: point.time as UTCTimestamp, value: point.value });
-          }
-        } catch {
-          needsFullResync = true;
-        }
+  // Single last-price indicator (issue #458 item 2): the one dashed
+  // last-price line on the chart, driven by the exact same spot price the
+  // header/last-price label use — never the series' own built-in price line
+  // (disabled above), which could independently lag after an incremental
+  // update.
+  useEffect(() => {
+    const candleSeries = candleSeriesRef.current;
+    if (!candleSeries) return;
+    if (lastPrice === null || lastPrice === undefined || !(lastPrice > 0)) {
+      if (lastPriceLineRef.current) {
+        candleSeries.removePriceLine(lastPriceLineRef.current);
+        lastPriceLineRef.current = null;
       }
-
-      if (needsFullResync) {
-        // Only this fallback ever forces the visible range — reading it
-        // right before setData and restoring it right after keeps the
-        // chart from jumping, while leaving the "never force a range on a
-        // normal update" rule (issue #449 item 2) untouched everywhere else.
-        const visibleLogicalRange = chartRef.current?.timeScale().getVisibleLogicalRange() ?? null;
-        candleSeries.setData(points.map(pointToSeriesDatum));
-        ma20Series.setData(ma20.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })));
-        ma50Series.setData(ma50.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })));
-        volumeSeries.setData(
-          candles.map((candle) => ({ time: candle.time as UTCTimestamp, value: candle.volume, color: volumeBarColor(candle) })),
-        );
-        if (visibleLogicalRange) {
-          chartRef.current?.timeScale().setVisibleLogicalRange(visibleLogicalRange);
-        }
-      }
+      return;
     }
-
-    renderedPointsRef.current = points;
-    renderedCandlesRef.current = candles;
-    renderedMa20Ref.current = ma20;
-    renderedMa50Ref.current = ma50;
-    renderedTimeframeRef.current = timeframe;
-    renderedResolvedIntervalRef.current = resolvedInterval;
-    hasRenderedOnceRef.current = true;
-  }, [trades, decimals, resolvedInterval, timeframe, nowTick, startingPriceNativePerToken]);
+    if (lastPriceLineRef.current) {
+      lastPriceLineRef.current.applyOptions({ price: lastPrice });
+    } else {
+      lastPriceLineRef.current = candleSeries.createPriceLine({
+        price: lastPrice,
+        color: UP_COLOR,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: "",
+      });
+    }
+  }, [lastPrice]);
 
   // Volume pane visibility toggle (hidden by default) never touches the
   // data-flow effect above, so flipping it can't trigger a setData/re-range.
@@ -520,10 +486,6 @@ export function TokenTradeChart({
   const showEmptyOverlay = !error && trades !== null && trades.length === 0;
   const hasLoadError = Boolean(error) && trades === null;
 
-  const lastPrice =
-    trades && trades.length > 0
-      ? tradePriceNativePerToken(trades[0], decimals ?? DEFAULT_TOKEN_DECIMALS)
-      : startingPriceNativePerToken;
   const lastPriceLabel = lastPrice !== null && lastPrice !== undefined ? `${formatNativePriceSixSigFigs(lastPrice)} ETH` : "—";
 
   const hoverChangePercent = hoverInfo && hoverInfo.open > 0 ? ((hoverInfo.close - hoverInfo.open) / hoverInfo.open) * 100 : null;

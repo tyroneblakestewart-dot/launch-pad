@@ -10,16 +10,25 @@ import {
 } from "@/lib/token-sparkline";
 import type { TokenTrade } from "@/lib/token-trade-types";
 
+// Reuses tokenAmountRaw/nativeAmountRaw as the post-trade virtual reserves
+// too (issue #458): buildSparkline now prices off tradeSpotPriceNativePerToken
+// (virtualEthReserveRaw ÷ virtualTokenReserveRaw), and every fixture below
+// was written assuming its price is nativeAmountRaw ÷ tokenAmountRaw — this
+// keeps every existing price assumption valid without rewriting each case.
 function trade(overrides: Partial<TokenTrade> = {}): TokenTrade {
+  const tokenAmountRaw = overrides.tokenAmountRaw ?? "1000000000000000000";
+  const nativeAmountRaw = overrides.nativeAmountRaw ?? "10000000000000000";
   return {
     direction: "buy",
     wallet: "0x1111111111111111111111111111111111111111",
-    tokenAmountRaw: "1000000000000000000",
-    nativeAmountRaw: "10000000000000000",
+    tokenAmountRaw,
+    nativeAmountRaw,
     blockNumber: "1",
     blockTimestamp: 0,
     txHash: "0xaaaa000000000000000000000000000000000000000000000000000000aa",
     logIndex: 0,
+    virtualTokenReserveRaw: tokenAmountRaw,
+    virtualEthReserveRaw: nativeAmountRaw,
     ...overrides,
   };
 }
