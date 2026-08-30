@@ -35,8 +35,30 @@ export function useTokenTrades(curveAddress: string | null) {
   const [stale, setStale] = useState(false);
   const curveRef = useRef(curveAddress);
   const tradesRef = useRef<TokenTrade[] | null>(null);
+  // Which curve's request is currently in flight, if any — scoped per-curve
+  // (rather than a plain boolean) so a still-in-flight request for a curve
+  // that's just been switched away from can never block the new curve's own
+  // first load: a boolean flag would stay "true" until the old curve's
+  // request settles, silently swallowing the new curve's load() call for up
+  // to a full poll interval.
+  const inFlightCurveRef = useRef<string | null>(null);
+
+  // Curve-bound reset (issue #453 area 2): a genuine curve switch (client-
+  // side navigation from one token page to another while this hook's call
+  // site stays mounted) must never keep showing the previous curve's
+  // trades. `curveRef` is bumped synchronously the moment `curveAddress`
+  // genuinely changes value — a same-value re-render is a no-op — so
+  // load()'s post-await checks against it (below) correctly detect and
+  // discard a response that's still in flight for a curve that's no longer
+  // current, while a same-curve background poll (the normal case) stays
+  // untouched and stale-while-revalidate.
   useEffect(() => {
+    if (curveRef.current === curveAddress) return;
     curveRef.current = curveAddress;
+    tradesRef.current = null;
+    setTrades(null);
+    setError(null);
+    setStale(false);
   }, [curveAddress]);
 
   const load = useCallback(async () => {
@@ -48,10 +70,19 @@ export function useTokenTrades(curveAddress: string | null) {
       setStale(false);
       return;
     }
+    // Dedupes a focus + visibilitychange event pair firing in quick
+    // succession into one request instead of two concurrent ones — scoped to
+    // this curve, so it never blocks a different curve's own load (above).
+    if (inFlightCurveRef.current === curve) return;
+    inFlightCurveRef.current = curve;
     try {
       const response = await fetch(`/api/token-trades?curve=${curve}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Trade history request failed.");
       const body = (await response.json()) as { trades: TokenTrade[] };
+      // The curve may have moved on while this request was in flight — a
+      // response for a curve that's no longer current must never merge
+      // into (or replace) whatever curve is actually showing now.
+      if (curveRef.current !== curve) return;
 
       const previousTrades = tradesRef.current;
       const merged = previousTrades === null ? body.trades : mergeTokenTrades(previousTrades, body.trades);
@@ -62,11 +93,14 @@ export function useTokenTrades(curveAddress: string | null) {
       setError(null);
       setStale(false);
     } catch {
+      if (curveRef.current !== curve) return;
       if (tradesRef.current === null) {
         setError("Could not load trade history. Try again shortly.");
       } else {
         setStale(true);
       }
+    } finally {
+      if (inFlightCurveRef.current === curve) inFlightCurveRef.current = null;
     }
   }, []);
 

@@ -39,9 +39,13 @@ describe("useTokenTrades (issue #430)", () => {
     expect(hook).toContain("window.addEventListener(TOKEN_TRADE_CONFIRMED_EVENT, handleTradeConfirmed)");
   });
 
-  it("never resets to a loading state on a background refresh — only ever overwrites the trades array in place", async () => {
+  it("never resets to a loading state on a background refresh inside load() — only ever overwrites the trades array in place; a reset to null happens only outside load(), on a genuine curve switch", async () => {
     const hook = await source("lib/use-token-trades.ts");
-    expect(hook).not.toContain("setTrades(null)");
+    const loadStart = hook.indexOf("const load = useCallback(async () => {");
+    const loadEnd = hook.indexOf("}, []);", loadStart);
+    expect(loadStart).toBeGreaterThan(-1);
+    const loadBody = hook.slice(loadStart, loadEnd);
+    expect(loadBody).not.toContain("setTrades(null)");
   });
 
   it("resolves to an empty list with no fetch when no curve is configured for this token", async () => {
@@ -73,6 +77,48 @@ describe("useTokenTrades (issue #430)", () => {
     expect(hook).toContain("setStale(true);");
     expect(hook).toContain("setStale(false);");
     expect(hook).toContain("return { trades, error, stale, retry: load };");
+  });
+});
+
+describe("useTokenTrades curve-bound reset + stale-response guard (issue #453 area 2)", () => {
+  it("resets trades/error/stale to their initial state only when curveAddress genuinely changes value, not on every same-value re-render", async () => {
+    const hook = await source("lib/use-token-trades.ts");
+    const resetEffectStart = hook.indexOf("if (curveRef.current === curveAddress) return;");
+    expect(resetEffectStart).toBeGreaterThan(-1);
+    const resetEffectEnd = hook.indexOf("}, [curveAddress]);", resetEffectStart);
+    const resetEffectBody = hook.slice(resetEffectStart, resetEffectEnd);
+    expect(resetEffectBody).toContain("curveRef.current = curveAddress;");
+    expect(resetEffectBody).toContain("tradesRef.current = null;");
+    expect(resetEffectBody).toContain("setTrades(null);");
+    expect(resetEffectBody).toContain("setError(null);");
+    expect(resetEffectBody).toContain("setStale(false);");
+  });
+
+  it("discards a response for a curve that's no longer current, both on success and on a failed poll, instead of merging it in or clobbering the new curve's error/stale state", async () => {
+    const hook = await source("lib/use-token-trades.ts");
+    const loadStart = hook.indexOf("const load = useCallback(async () => {");
+    const loadEnd = hook.indexOf("}, []);", loadStart);
+    const loadBody = hook.slice(loadStart, loadEnd);
+    const guardOccurrences = loadBody.match(/if \(curveRef\.current !== curve\) return;/g) ?? [];
+    expect(guardOccurrences.length).toBe(2);
+    // One guard must sit after the await/parse (success path), the other in the catch block.
+    const successGuardIndex = loadBody.indexOf("if (curveRef.current !== curve) return;");
+    const catchIndex = loadBody.indexOf("} catch {");
+    const catchGuardIndex = loadBody.indexOf("if (curveRef.current !== curve) return;", catchIndex);
+    expect(successGuardIndex).toBeGreaterThan(-1);
+    expect(successGuardIndex).toBeLessThan(catchIndex);
+    expect(catchGuardIndex).toBeGreaterThan(catchIndex);
+  });
+
+  it("dedupes a focus + visibilitychange event pair into one in-flight request instead of two concurrent ones, scoped per-curve so it can never block a different (newly switched-to) curve's own load", async () => {
+    const hook = await source("lib/use-token-trades.ts");
+    expect(hook).toContain("const inFlightCurveRef = useRef<string | null>(null);");
+    expect(hook).toContain("if (inFlightCurveRef.current === curve) return;");
+    expect(hook).toContain("inFlightCurveRef.current = curve;");
+    const loadStart = hook.indexOf("const load = useCallback(async () => {");
+    const loadEnd = hook.indexOf("}, []);", loadStart);
+    const loadBody = hook.slice(loadStart, loadEnd);
+    expect(loadBody).toContain("} finally {\n      if (inFlightCurveRef.current === curve) inFlightCurveRef.current = null;\n    }");
   });
 });
 
@@ -282,6 +328,75 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain("formatUtcTime(hoverInfo.time)");
     expect(component).toContain("formatSignedPercent(hoverChangePercent, 2)");
     expect(component).toContain("{hoverInfo.volume.toFixed(1)} ETH");
+  });
+
+  it("preserves the last valid tooltip over a whitespace bar (time/point present, no OHLC) instead of clearing it — only a genuine crosshair leave clears it (issue #453 area 3)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    const subscribeStart = component.indexOf("chart.subscribeCrosshairMove((param) => {");
+    expect(subscribeStart).toBeGreaterThan(-1);
+    const subscribeEnd = component.indexOf("});", subscribeStart);
+    const subscribeBody = component.slice(subscribeStart, subscribeEnd);
+
+    const leaveGuardIndex = subscribeBody.indexOf("if (!param.time || !param.point) {");
+    const leaveClearIndex = subscribeBody.indexOf("setHoverInfo(null);", leaveGuardIndex);
+    expect(leaveGuardIndex).toBeGreaterThan(-1);
+    expect(leaveClearIndex).toBeGreaterThan(leaveGuardIndex);
+
+    const noBarGuardIndex = subscribeBody.indexOf("if (!bar) {");
+    expect(noBarGuardIndex).toBeGreaterThan(leaveGuardIndex);
+    const noBarBlockEnd = subscribeBody.indexOf("}", noBarGuardIndex);
+    const noBarBlock = subscribeBody.slice(noBarGuardIndex, noBarBlockEnd);
+    expect(noBarBlock).not.toContain("setHoverInfo(null)");
+    expect(noBarBlock).toContain("return;");
+  });
+
+  it("treats a resolved-interval change while staying on ALL as a real timeframe change via a separate rendered-interval ref, not an incompatible diff (issue #453 area 4)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain("const renderedResolvedIntervalRef = useRef<CandleInterval | null>(null);");
+    expect(component).toContain(
+      "!hasRenderedOnceRef.current || renderedTimeframeRef.current !== timeframe || renderedResolvedIntervalRef.current !== resolvedInterval;",
+    );
+    expect(component).toContain("renderedResolvedIntervalRef.current = resolvedInterval;");
+  });
+
+  it("re-derives resolvedInterval from the current trades on every render, including a fresh ALL re-selection, instead of a stale memoised value", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain(
+      "const resolvedInterval = useMemo(() => {\n    if (trades === null) return null;\n    return resolveChartInterval(timeframe, trades, decimals ?? DEFAULT_TOKEN_DECIMALS);\n  }, [trades, decimals, timeframe]);",
+    );
+  });
+
+  it("feeds the volume histogram the exact same real candle timestamps as the candlestick series — never an independently computed time (issue #453 area 5)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain(
+      'volumeSeries.setData(\n        candles.map((candle) => ({ time: candle.time as UTCTimestamp, value: candle.volume, color: volumeBarColor(candle) })),\n      );',
+    );
+    expect(component).toContain(
+      'volumeSeries.update({ time: candle.time as UTCTimestamp, value: candle.volume, color: volumeBarColor(candle) });',
+    );
+    // Both series live on the same `chart` instance (one shared time scale) —
+    // the volume series only uses a *named price scale* ("chart-volume"),
+    // which affects the y-axis grouping, never horizontal alignment.
+    expect(component).toContain('priceScaleId: "chart-volume"');
+  });
+
+  it("never touches horizontal price lines from the data-flow/timeframe effect — the lines effect depends only on horizontalLines, so a timeframe change can't clear or move a drawn line (issue #453 area 6)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    const linesEffectStart = component.indexOf("const remainingIds = new Set(priceLinesRef.current.keys());");
+    expect(linesEffectStart).toBeGreaterThan(-1);
+    const linesEffectDepsIndex = component.indexOf("}, [horizontalLines]);", linesEffectStart);
+    expect(linesEffectDepsIndex).toBeGreaterThan(linesEffectStart);
+    // The exact same numeric price is what gets persisted/recreated — never
+    // re-derived from the chart's current view.
+    expect(component).toContain("series.createPriceLine({\n          price: line.price,");
+  });
+
+  it("uses a compact, fixed-size remove control for a drawn line instead of a variable-width price-text chip that could overflow the tool rail — the exact price still reaches assistive tech via aria-label/title (issue #453 area 8)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain("const removeLabel = `Remove horizontal line at ${formatNativePriceSixSigFigs(line.price)}`;");
+    expect(component).toContain("title={removeLabel}");
+    expect(component).toContain("aria-label={removeLabel}");
+    expect(component).not.toContain("{formatNativePriceSixSigFigs(line.price)} ×");
   });
 });
 

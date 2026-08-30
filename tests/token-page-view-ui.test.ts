@@ -615,6 +615,56 @@ describe("token page mobile-first layout (issue #443 part 1: header → swap →
     }
   });
 
+  it("gives the chart's volume toggle, interval buttons and tool-rail buttons a >=44px touch target under (pointer: coarse), widening the tool rail to fit, without inflating the fine-pointer desktop sizes (issue #453 area 8)", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+
+    // Fine-pointer (base) sizes stay compact — unchanged from before.
+    const baseSelectors: [string, RegExp][] = [
+      [".chartVolumeToggle", /min-height:\s*32px;/],
+      [".chartIntervalButton", /min-height:\s*32px;/],
+      [".chartToolButton", /width:\s*30px;/],
+    ];
+    for (const [selector, expected] of baseSelectors) {
+      const ruleStart = css.indexOf(`${selector} {`);
+      expect(ruleStart, `expected a base rule for ${selector}`).toBeGreaterThan(-1);
+      const ruleEnd = css.indexOf("}", ruleStart);
+      expect(css.slice(ruleStart, ruleEnd)).toMatch(expected);
+    }
+
+    const mediaStart = css.indexOf("@media (pointer: coarse) {");
+    expect(mediaStart, "expected a (pointer: coarse) media query").toBeGreaterThan(-1);
+    const mediaEnd = css.indexOf("\n}\n", mediaStart);
+    const mediaBlock = css.slice(mediaStart, mediaEnd);
+
+    for (const selector of [".chartVolumeToggle", ".chartIntervalButton", ".chartToolButton"]) {
+      const ruleStart = mediaBlock.indexOf(`${selector} {`);
+      expect(ruleStart, `expected a (pointer: coarse) rule for ${selector}`).toBeGreaterThan(-1);
+      const ruleEnd = mediaBlock.indexOf("}", ruleStart);
+      const rule = mediaBlock.slice(ruleStart, ruleEnd);
+      const matchesHeightOrWidth = /(min-height|height):\s*4[4-9]px/.test(rule) || /(min-)?width:\s*4[4-9]px/.test(rule);
+      expect(matchesHeightOrWidth, `expected ${selector} to declare a >=44px touch target under (pointer: coarse)`).toBe(true);
+    }
+
+    // The tool rail itself must widen enough to still fit a 44px button —
+    // otherwise the button would overflow its own rail.
+    expect(mediaBlock).toMatch(/\.chartToolRail\s*\{[^}]*width:\s*52px;/);
+  });
+
+  it("keeps the horizontal-line remove chip a small fixed size on every pointer type — it's excluded from the coarse-pointer 44px bump since it would overflow the narrow tool rail; its exact price still reaches assistive tech via aria-label/title (issue #453 area 8)", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const baseRuleStart = css.indexOf(".chartLineChip {");
+    expect(baseRuleStart).toBeGreaterThan(-1);
+    const baseRuleEnd = css.indexOf("}", baseRuleStart);
+    const baseRule = css.slice(baseRuleStart, baseRuleEnd);
+    expect(baseRule).toMatch(/width:\s*26px;/);
+    expect(baseRule).toMatch(/height:\s*22px;/);
+
+    const mediaStart = css.indexOf("@media (pointer: coarse) {");
+    const mediaEnd = css.indexOf("\n}\n", mediaStart);
+    const mediaBlock = css.slice(mediaStart, mediaEnd);
+    expect(mediaBlock).not.toContain(".chartLineChip {");
+  });
+
   it("gives every focusable control a visible keyboard focus ring", async () => {
     const css = await source("components/token-page/token-page.module.css");
     expect(css).toContain(".shell a:focus-visible,");

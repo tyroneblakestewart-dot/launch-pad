@@ -24,6 +24,7 @@ import {
   resolveChartInterval,
   tradePriceNativePerToken,
   type Candle,
+  type CandleInterval,
   type ChartSeriesPoint,
   type ChartTimeframe,
   type MovingAveragePoint,
@@ -170,6 +171,7 @@ export function TokenTradeChart({
   const renderedMa20Ref = useRef<MovingAveragePoint[]>([]);
   const renderedMa50Ref = useRef<MovingAveragePoint[]>([]);
   const renderedTimeframeRef = useRef<ChartTimeframe | null>(null);
+  const renderedResolvedIntervalRef = useRef<CandleInterval | null>(null);
   const hasRenderedOnceRef = useRef(false);
   const appliedMinMoveRef = useRef<number | null>(null);
   const toolRef = useRef<ChartTool>(tool);
@@ -292,7 +294,10 @@ export function TokenTradeChart({
         | { open: number; high: number; low: number; close: number }
         | undefined;
       if (!bar) {
-        setHoverInfo(null);
+        // A whitespace bar has a time/point but no OHLC — preserve the last
+        // valid hover info instead of flickering the tooltip closed while
+        // the crosshair is still genuinely over the chart (issue #453
+        // area 3).
         return;
       }
       const volumeBar = param.seriesData.get(volumeSeries) as { value: number } | undefined;
@@ -339,6 +344,7 @@ export function TokenTradeChart({
       renderedMa20Ref.current = [];
       renderedMa50Ref.current = [];
       renderedTimeframeRef.current = null;
+      renderedResolvedIntervalRef.current = null;
       hasRenderedOnceRef.current = false;
       appliedMinMoveRef.current = null;
       lastAppliedSizeRef.current = null;
@@ -386,7 +392,16 @@ export function TokenTradeChart({
       }
     }
 
-    const isFirstLoadOrTimeframeChange = !hasRenderedOnceRef.current || renderedTimeframeRef.current !== timeframe;
+    // Staying on "ALL" while a newly arrived trade changes ALL's own
+    // resolved fixed interval (issue #453 area 4) — e.g. enough new trades
+    // arrive to push resolveAllTimeframeInterval from "5m" to "15m" — is a
+    // real effective timeframe change, not a normal poll: diffing candles
+    // bucketed at two different widths against each other would compare
+    // incompatible bucket boundaries. `renderedTimeframeRef` alone can't
+    // detect this since the UI-facing `timeframe` value ("all") never
+    // changes, so the actually-rendered bucket width is tracked separately.
+    const isFirstLoadOrTimeframeChange =
+      !hasRenderedOnceRef.current || renderedTimeframeRef.current !== timeframe || renderedResolvedIntervalRef.current !== resolvedInterval;
 
     if (isFirstLoadOrTimeframeChange) {
       candleSeries.setData(points.map(pointToSeriesDatum));
@@ -463,6 +478,7 @@ export function TokenTradeChart({
     renderedMa20Ref.current = ma20;
     renderedMa50Ref.current = ma50;
     renderedTimeframeRef.current = timeframe;
+    renderedResolvedIntervalRef.current = resolvedInterval;
     hasRenderedOnceRef.current = true;
   }, [trades, decimals, resolvedInterval, timeframe, nowTick, startingPriceNativePerToken]);
 
@@ -565,18 +581,27 @@ export function TokenTradeChart({
           >
             —
           </button>
-          {horizontalLines.map((line) => (
-            <button
-              key={line.id}
-              type="button"
-              className={styles.chartLineChip}
-              onClick={() => setHorizontalLines((current) => removeHorizontalLine(current, line.id))}
-              title="Remove this line"
-              data-token-chart-remove-line={line.id}
-            >
-              {formatNativePriceSixSigFigs(line.price)} ×
-            </button>
-          ))}
+          {horizontalLines.map((line) => {
+            // A compact fixed-size remove control (issue #453 area 8):
+            // the full price-text chip this replaces could overflow the
+            // narrow tool rail at some prices/digit counts. The exact
+            // price still reaches assistive tech via aria-label/title
+            // instead of being dropped.
+            const removeLabel = `Remove horizontal line at ${formatNativePriceSixSigFigs(line.price)}`;
+            return (
+              <button
+                key={line.id}
+                type="button"
+                className={styles.chartLineChip}
+                onClick={() => setHorizontalLines((current) => removeHorizontalLine(current, line.id))}
+                title={removeLabel}
+                aria-label={removeLabel}
+                data-token-chart-remove-line={line.id}
+              >
+                ×
+              </button>
+            );
+          })}
         </div>
 
         <div className={styles.chartCanvasWrap}>

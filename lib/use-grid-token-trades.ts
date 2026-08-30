@@ -19,17 +19,30 @@ const POLL_INTERVAL_MS = 60_000;
  * just leaves `trades` at its last-known value/null — the caller's pure
  * sparkline builder already renders a flat baseline for that, so one busy
  * card degrading gracefully can never break the surrounding grid.
+ *
+ * The `source=grid` query marker (issue #453 area 1) is an additive flag
+ * only — the route/response/RPC path is identical to the token page's own
+ * read — that tells GET /api/token-trades to charge this read against a
+ * separate, larger per-IP bucket (lib/server/api-protection.ts's
+ * TOKEN_TRADES_GRID_READ_LIMIT) sized for up to 24 simultaneously-active
+ * grid cards, so a busy homepage session can never exhaust the token-detail
+ * page's own 600/hour budget. `inFlightRef` also dedupes a focus +
+ * visibilitychange event pair into one request per card instead of two
+ * concurrent ones.
  */
 export function useGridTokenTrades(curveAddress: string, active: boolean) {
   const [trades, setTrades] = useState<TokenTrade[] | null>(null);
   const curveRef = useRef(curveAddress);
+  const inFlightRef = useRef(false);
   useEffect(() => {
     curveRef.current = curveAddress;
   }, [curveAddress]);
 
   const load = useCallback(async () => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     try {
-      const response = await fetch(`/api/token-trades?curve=${curveRef.current}`, { cache: "no-store" });
+      const response = await fetch(`/api/token-trades?curve=${curveRef.current}&source=grid`, { cache: "no-store" });
       if (!response.ok) return;
       const body = (await response.json()) as { trades: TokenTrade[] };
       setTrades(body.trades);
@@ -37,6 +50,8 @@ export function useGridTokenTrades(curveAddress: string, active: boolean) {
       // Silent: the pure sparkline builder already renders a flat baseline
       // for a null/stale trades list, matching this hook's "degrade quietly"
       // contract.
+    } finally {
+      inFlightRef.current = false;
     }
   }, []);
 
