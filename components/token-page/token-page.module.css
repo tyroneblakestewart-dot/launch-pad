@@ -97,16 +97,6 @@
   min-width: 0;
 }
 
-@media (min-width: 881px) {
-  .page {
-    padding: 22px 26px 40px;
-  }
-
-  .shell {
-    gap: 18px;
-  }
-}
-
 /* Full-screen route (issue #443 part 1): AppNavigation's sidebar itself is
    no longer mounted on this route (app/token/[chain]/[address]/layout.tsx),
    but its CSS module is still bundled here via the shared
@@ -423,22 +413,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .liveDot {
-    animation: none;
-  }
-
-  .chartIntervalButton,
-  .pillButton,
-  .presetButton,
-  .slippageButton,
-  .chartToolButton,
-  .activityTab,
-  .chartVolumeToggle {
-    transition: none;
-  }
-}
-
 /* ---- grid (mobile-first, issue #427; rearranged for #443 part 1) ----
    Every panel below is a direct grid item of `.grid` — there are no
    per-column wrapper divs — because the chart has to interleave between the
@@ -526,6 +500,14 @@
 }
 
 @media (min-width: 881px) {
+  .page {
+    padding: 22px 26px 40px;
+  }
+
+  .shell {
+    gap: 18px;
+  }
+
   .grid {
     grid-template-columns: 340px minmax(620px, 1fr);
     /* Two explicit rows (issue #450, replacing the broken nested-grid
@@ -1943,13 +1925,34 @@
     min-height: 44px;
   }
 
-  .pillButton,
-  .walletButton,
-  .presetButton,
-  .slippageButton,
-  .feeWithdrawButton,
-  .terminalFallbackLink,
-  .holderBreakdownHeader,
+  .pillButton {
+    min-height: 44px;
+  }
+
+  .walletButton {
+    min-height: 44px;
+  }
+
+  .presetButton {
+    min-height: 44px;
+  }
+
+  .slippageButton {
+    min-height: 44px;
+  }
+
+  .feeWithdrawButton {
+    min-height: 44px;
+  }
+
+  .terminalFallbackLink {
+    min-height: 44px;
+  }
+
+  .holderBreakdownHeader {
+    min-height: 44px;
+  }
+
   .activityTab {
     min-height: 44px;
   }
@@ -1976,5 +1979,46 @@
   .chartToolButton {
     width: 44px;
     height: 44px;
+  }
+}
+
+/* prefers-reduced-motion (issue #460 RULES): disables the LIVE dot pulse and
+   every chip's hover/active transition. Placed at the very end of the file,
+   after the coarse-pointer block, so it never shifts which media query the
+   mobile-first layout tests treat as "the first breakpoint", and each
+   selector gets its own rule (rather than one comma-grouped rule) so a
+   plain substring search for `${selector} {` always finds the real base
+   rule first. */
+@media (prefers-reduced-motion: reduce) {
+  .liveDot {
+    animation: none;
+  }
+
+  .chartIntervalButton {
+    transition: none;
+  }
+
+  .pillButton {
+    transition: none;
+  }
+
+  .presetButton {
+    transition: none;
+  }
+
+  .slippageButton {
+    transition: none;
+  }
+
+  .chartToolButton {
+    transition: none;
+  }
+
+  .activityTab {
+    transition: none;
+  }
+
+  .chartVolumeToggle {
+    transition: none;
   }
 }

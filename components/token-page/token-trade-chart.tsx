@@ -33,7 +33,7 @@ import {
   type TokenTradeChartSeriesBundle,
 } from "@/lib/token-trade-chart-render";
 import { DEFAULT_TOKEN_DECIMALS } from "@/lib/bonding-curve-deploy-config";
-import { formatNativePriceSixSigFigs, formatSignedPercent } from "@/lib/token-page-format";
+import { formatNativeAmountSixSigFigsTrimmed, formatNativePriceSixSigFigs, formatSignedPercent } from "@/lib/token-page-format";
 import type { TokenTrade } from "@/lib/token-trade-types";
 import styles from "./token-page.module.css";
 
@@ -47,9 +47,9 @@ const TIMEFRAME_LABELS: Record<ChartTimeframe, string> = {
 };
 
 const UP_COLOR = "#c6f53e";
-const DOWN_COLOR = "#8d918c";
-const MA20_COLOR = "rgba(198, 245, 62, 0.85)";
-const MA50_COLOR = "rgba(255, 255, 255, 0.4)";
+const DOWN_COLOR = "#e2564b";
+const MA20_COLOR = "#c6f53e";
+const MA50_COLOR = "#ffffff";
 const HORIZONTAL_LINE_COLOR = "#9ad4ff";
 
 type HoverInfo = {
@@ -174,11 +174,13 @@ export function TokenTradeChart({
     const chart = createChart(container, {
       layout: {
         background: { color: "transparent" },
-        textColor: "#8d918c",
-        fontFamily: "'JetBrains Mono', monospace",
+        textColor: "#6f746e",
+        fontFamily: "'IBM Plex Mono', monospace",
       },
       grid: {
-        vertLines: { color: "rgba(255, 255, 255, 0.045)" },
+        // Horizontal/vertical grid lines carry deliberately different
+        // opacities per the design (issue #460 section 7).
+        vertLines: { color: "rgba(255, 255, 255, 0.035)" },
         horzLines: { color: "rgba(255, 255, 255, 0.045)" },
       },
       rightPriceScale: { borderColor: "rgba(255, 255, 255, 0.07)" },
@@ -190,15 +192,19 @@ export function TokenTradeChart({
         barSpacing: 6,
         minBarSpacing: 3,
       },
-      crosshair: { mode: CrosshairMode.Normal },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { color: "rgba(255, 255, 255, 0.35)", style: LineStyle.Dashed, labelBackgroundColor: "#2b302c" },
+        horzLine: { color: "rgba(255, 255, 255, 0.35)", style: LineStyle.Dashed, labelBackgroundColor: "#2b302c" },
+      },
     });
 
     const candleSeries = chart.addCandlestickSeries({
       upColor: UP_COLOR,
       downColor: DOWN_COLOR,
       borderVisible: false,
-      wickUpColor: UP_COLOR,
-      wickDownColor: DOWN_COLOR,
+      wickUpColor: "rgba(198, 245, 62, 0.9)",
+      wickDownColor: "rgba(226, 86, 75, 0.9)",
       priceFormat: {
         type: "custom",
         minMove: 0.00000001,
@@ -617,7 +623,7 @@ export function TokenTradeChart({
               </div>
               <div className={styles.chartTooltipRow}>
                 <span>VOL</span>
-                <span>{hoverInfo.volume.toFixed(1)} ETH</span>
+                <span>{formatNativeAmountSixSigFigsTrimmed(hoverInfo.volume)} ETH</span>
               </div>
             </div>
           )}

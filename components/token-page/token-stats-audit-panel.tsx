@@ -9,7 +9,7 @@ import {
   TRADE_STATS_WINDOW_SECONDS,
   type TradeStatsWindowKey,
 } from "@/lib/token-trade-stats";
-import { formatHolderCount, formatNativeFixed, formatSignedPercent } from "@/lib/token-page-format";
+import { formatHolderCount, formatNativeAmountSixSigFigsTrimmed, formatSignedPercent } from "@/lib/token-page-format";
 import type { TokenTrade } from "@/lib/token-trade-types";
 import styles from "./token-page.module.css";
 
@@ -69,7 +69,7 @@ export function TokenStatsAuditPanel({ trades, decimals, holderCount, factoryMin
       leftValue: formatSignedPercent(stats.priceChangePercent, 1),
       leftUp: stats.priceChangePercent >= 0,
       rightLabel: "VOLUME",
-      rightValue: `${formatNativeFixed(stats.volumeNative, 1)} ETH`,
+      rightValue: `${formatNativeAmountSixSigFigsTrimmed(stats.volumeNative)} ETH`,
       share: changeShare,
     },
     {
@@ -84,10 +84,10 @@ export function TokenStatsAuditPanel({ trades, decimals, holderCount, factoryMin
     {
       key: "vol",
       leftLabel: "BUY VOL",
-      leftValue: `${formatNativeFixed(stats.buyVolumeNative, 1)} ETH`,
+      leftValue: `${formatNativeAmountSixSigFigsTrimmed(stats.buyVolumeNative)} ETH`,
       leftUp: true,
       rightLabel: "SELL VOL",
-      rightValue: `${formatNativeFixed(stats.sellVolumeNative, 1)} ETH`,
+      rightValue: `${formatNativeAmountSixSigFigsTrimmed(stats.sellVolumeNative)} ETH`,
       share: volShare,
     },
     {
@@ -109,14 +109,14 @@ export function TokenStatsAuditPanel({ trades, decimals, holderCount, factoryMin
         <div className={styles.tabGroup}>
           <button
             type="button"
-            className={`${styles.pillButton} ${tab === "stats" ? styles.pillButtonActive : ""}`}
+            className={`${styles.chartIntervalButton} ${tab === "stats" ? styles.chartIntervalButtonActive : ""}`}
             onClick={() => setTab("stats")}
           >
             Stats
           </button>
           <button
             type="button"
-            className={`${styles.pillButton} ${tab === "audit" ? styles.pillButtonActive : ""}`}
+            className={`${styles.chartIntervalButton} ${tab === "audit" ? styles.chartIntervalButtonActive : ""}`}
             onClick={() => setTab("audit")}
           >
             Audit
@@ -192,7 +192,7 @@ export function TokenStatsAuditPanel({ trades, decimals, holderCount, factoryMin
                 </div>
                 <div className={styles.holderBreakdownRow}>
                   <span className={styles.statsPairLabel}>TOTAL FEES</span>
-                  <span className={styles.statsPairValueNeutral}>{formatNativeFixed(totalFeesNative, 2)} ETH</span>
+                  <span className={styles.statsPairValueNeutral}>{formatNativeAmountSixSigFigsTrimmed(totalFeesNative)} ETH</span>
                 </div>
               </div>
             )}
