@@ -1,18 +1,90 @@
-/* Design tokens transcribed from public/design-refs/hoodlums-token-page.html:
-   #0a0b09 background + ambient lime glow, rgba(18,21,19,0.99) panels,
-   #c6f53e lime accent, Archivo Black headings, JetBrains Mono labels. */
+/* Design tokens transcribed verbatim from
+   design/token-page-v2/hoodlums-token-page-v2.html (issue #460's "exact
+   values" pass). Every shared recipe (master panel, inset well, raised
+   micro-button, chip, preset/slippage selected state) is defined exactly
+   once below as a CSS custom property on `.page` — the shared ancestor of
+   every element on this route — and referenced by `var()` everywhere it
+   applies, so each value lives in one place. */
 
 .page {
   min-height: 100vh;
   padding: 14px 16px 32px;
-  background: #0a0b09;
-  background-image: radial-gradient(90% 55% at 50% -8%, rgba(198, 245, 62, 0.1), transparent 62%);
+  background:
+    radial-gradient(1100px 620px at 30% -8%, rgba(198, 245, 62, 0.07), transparent 62%),
+    radial-gradient(900px 600px at 90% 4%, rgba(198, 245, 62, 0.04), transparent 60%),
+    #0a0b09;
   color: #f4f7f1;
-  font-family: Archivo, system-ui, sans-serif;
+  font-family: "Inter", system-ui, sans-serif;
   /* Safety net matching the generated-site pattern (issue #323/#427): the
      mobile-first single-column layout below must never force the 390px
      viewport to scroll horizontally, independent of any one child's sizing. */
   overflow-x: hidden;
+
+  /* ---- text palette (issue #460) ---- */
+  --text-primary: #f4f7f1;
+  --text-body: #d9dfd6;
+  --text-value: #e6ebe4;
+  --text-secondary: #c3c9c4;
+  --text-sub: #a8aaa9;
+  --text-label: #8d918c;
+  --text-faint: #6f746e;
+  --text-disabled: #4a4f49;
+  --accent-lime: #c6f53e;
+  --accent-red: #e2564b;
+  --accent-mint: #91f0b6;
+  --text-on-lime: #071008;
+  --mono: "IBM Plex Mono", monospace;
+  --sans: "Inter", sans-serif;
+  --display: "Archivo Black", "Inter", sans-serif;
+
+  /* ---- master panel recipe (issue #460 section 2) — header band, swap,
+     Stats/Audit, creator fees, chart panel, lower-tabs panel ---- */
+  --panel-border: 1px solid rgba(255, 255, 255, 0.09);
+  --panel-radius: 22px;
+  --panel-bg: linear-gradient(
+    180deg,
+    rgba(24, 28, 25, 0.99) 0%,
+    rgba(15, 18, 16, 0.99) 34%,
+    rgba(9, 11, 10, 0.99) 100%
+  );
+  --panel-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.07) inset, 0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 30px 70px -24px rgba(0, 0, 0, 0.8);
+  --panel-header-border: 1px solid rgba(255, 255, 255, 0.07);
+  --panel-header-wash: linear-gradient(180deg, rgba(198, 245, 62, 0.045), transparent);
+  --panel-header-wash-soft: linear-gradient(180deg, rgba(198, 245, 62, 0.04), transparent);
+
+  /* ---- inset well recipe (YOU PAY / YOU RECEIVE / sell amount / holder
+     breakdown dropdown) ---- */
+  --well-border: 1px solid rgba(255, 255, 255, 0.09);
+  --well-radius: 14px;
+  --well-bg: linear-gradient(180deg, rgba(0, 0, 0, 0.38), rgba(255, 255, 255, 0.022)), #0a0f0c;
+  --well-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;
+
+  /* ---- raised micro-button recipe (back button, swap-arrow bead) ---- */
+  --raised-border: 1px solid rgba(255, 255, 255, 0.1);
+  --raised-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02)), #111713;
+  --raised-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.07) inset, 0 6px 16px -10px rgba(0, 0, 0, 0.85);
+
+  /* ---- shared CHIP recipe (5M/1H/24H, chart timeframes, Stats/Audit
+     segments) ---- */
+  --chip-idle-color: var(--text-label);
+  --chip-active-border-color: rgba(198, 245, 62, 0.5);
+  --chip-active-bg: linear-gradient(180deg, rgba(198, 245, 62, 0.2), rgba(198, 245, 62, 0.05));
+  --chip-active-shadow: 0 1px 0 0 rgba(198, 245, 62, 0.22) inset, 0 6px 16px -8px rgba(198, 245, 62, 0.5);
+  --chip-active-text-shadow: 0 0 12px rgba(198, 245, 62, 0.45);
+  --chip-active-color: var(--accent-lime);
+
+  /* ---- preset / slippage idle+selected recipe ---- */
+  --preset-idle-border: 1px solid rgba(255, 255, 255, 0.09);
+  --preset-idle-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.012));
+  --preset-idle-color: var(--text-sub);
+  --preset-selected-border: 1px solid rgba(198, 245, 62, 0.5);
+  --preset-selected-bg: linear-gradient(180deg, rgba(198, 245, 62, 0.2), rgba(198, 245, 62, 0.05));
+  --preset-selected-color: var(--accent-lime);
+
+  /* ---- CTA recipe — SOLID lime, never a gradient, site-wide ---- */
+  --cta-bg: #c6f53e;
+  --cta-color: #071008;
 }
 
 /* No max-width cap (issue #447 item 3) — the design fills the viewport;
@@ -49,7 +121,8 @@
   outline-offset: 2px;
 }
 
-/* ---- header band (issue #443 part 1, tightened issue #451 item 3) ----
+/* ---- header band (issue #443 part 1, tightened issue #451 item 3, exact
+   values issue #460 section 3) ----
    Full-width band replacing the old `.topbar`: back link, artwork, name/
    ticker/live/holders/age/chain, the graduation block, then the price/mcap
    toggle and link chips. Wraps to multiple rows below the design's 1120px
@@ -57,43 +130,34 @@
    mobile Safari (CLAUDE.md rule 7), unlike the design reference's fixed
    min-width canvas.
 
-   The design reference sizes its price-figure and link-chip controls at
-   26-34px tall (issue #451's own header markup). Per review of issue #451's
-   PR, the earlier >=44px-unconditionally rule (which forced the price
-   figure and link chips into one side-by-side row to avoid doubling the
-   band's height) is now scoped to a pointer-coarse query only, at the
-   bottom of this file (deliberately kept out of this comment block's own
-   text so a plain string search for the layout breakpoints below still
-   finds those first) — a mouse/trackpad ("fine" pointer) desktop uses the
-   design's compact stacked proportions directly on `.backLink`/
-   `.headerLinkChip`/`.headerFigureToggle`, while a touch device (mobile
-   Safari, CLAUDE.md rule 7's primary target, always reports a coarse
-   pointer) still gets a real >=44px tap target and the side-by-side
-   `.headerFigureBlock` layout that keeps that larger sizing from doubling
-   the header's height. tests/token-page-view-ui.test.ts's accessibility
-   assertion checks these three selectors inside that query instead of
-   unconditionally. */
+   CONTROL SIZES (issue #460): the sizes below are the BASE rules for a
+   fine-pointer desktop. `.headerDropArt`/`.headerLinkChip`/
+   `.headerFigureToggle`/`.backLink` carry no unconditional 44px floor —
+   that floor lives only inside the (pointer: coarse) block at the end of
+   this file, alongside `.headerFigureBlock`'s row layout, which keeps a
+   touch device's larger targets from doubling the band's height. */
 
 .headerBand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   flex-wrap: wrap;
-  padding: 8px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 18px;
-  background: rgba(18, 21, 19, 0.99);
+  padding: 10px 16px;
+  border: var(--panel-border);
+  border-radius: var(--panel-radius);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
 }
 
 .headerArtworkTile {
   position: relative;
-  width: 48px;
-  height: 48px;
+  width: 50px;
+  height: 50px;
   flex: none;
-  border-radius: 10px;
+  border-radius: 11px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(198, 245, 62, 0.3);
+  background: linear-gradient(180deg, rgba(198, 245, 62, 0.05), rgba(0, 0, 0, 0.3)), #0a0f0c;
   display: grid;
   place-items: center;
 }
@@ -106,19 +170,18 @@
 }
 
 .headerArtworkInitial {
-  font-family: "Archivo Black", sans-serif;
+  font-family: var(--display);
   font-size: 20px;
-  color: #4a4f49;
+  color: var(--text-disabled);
 }
 
 .headerDropArt {
-  min-height: 44px;
   cursor: pointer;
   border: 1px dashed rgba(198, 245, 62, 0.4);
   border-radius: 11px;
-  background: rgba(198, 245, 62, 0.06);
-  color: #c6f53e;
-  font: 700 10px/1.4 "JetBrains Mono", monospace;
+  background: linear-gradient(180deg, rgba(198, 245, 62, 0.06), rgba(0, 0, 0, 0.2));
+  color: var(--accent-lime);
+  font: 700 9px/1.4 var(--mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 6px 10px;
@@ -141,7 +204,8 @@
 }
 
 .headerName {
-  font-family: "Archivo Black", sans-serif;
+  font-family: var(--display);
+  font-weight: 400;
   font-size: 17px;
   letter-spacing: -0.01em;
   text-transform: uppercase;
@@ -149,8 +213,8 @@
 }
 
 .headerTicker {
-  font: 700 12px/1 "JetBrains Mono", monospace;
-  color: #929693;
+  font: 700 12px/1 var(--mono);
+  color: var(--text-label);
   letter-spacing: 0.04em;
 }
 
@@ -159,9 +223,9 @@
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  font: 600 9px/1 "JetBrains Mono", monospace;
+  font: 600 9px/1 var(--mono);
   letter-spacing: 0.06em;
-  color: #929693;
+  color: var(--text-label);
   text-transform: uppercase;
 }
 
@@ -169,7 +233,7 @@
   width: 3px;
   height: 3px;
   border-radius: 50%;
-  background: #4a4f49;
+  background: var(--text-disabled);
   flex: none;
 }
 
@@ -190,21 +254,21 @@
 }
 
 .headerGraduationLabel {
-  font: 700 8px/1 "JetBrains Mono", monospace;
+  font: 700 8px/1 var(--mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #929693;
+  color: var(--text-label);
 }
 
 .headerGraduationValue {
-  font: 700 9.5px/1 "JetBrains Mono", monospace;
-  color: #c6f53e;
+  font: 700 9.5px/1 var(--mono);
+  color: var(--accent-lime);
   white-space: nowrap;
 }
 
 .headerGraduationRemaining {
-  font: 600 8.5px/1 "JetBrains Mono", monospace;
-  color: #6f746e;
+  font: 600 8.5px/1 var(--mono);
+  color: var(--text-faint);
 }
 
 /* Row, not column (see the block comment above `.headerBand`): the price
@@ -235,17 +299,18 @@
 }
 
 .headerFigureLabel {
-  font: 700 8px/1 "JetBrains Mono", monospace;
+  font: 700 8px/1 var(--mono);
   letter-spacing: 0.12em;
-  color: #929693;
+  color: var(--text-label);
   white-space: nowrap;
 }
 
 .headerFigureValue {
-  font-family: "Archivo Black", sans-serif;
+  font-family: var(--display);
+  font-weight: 400;
   font-size: 21px;
-  letter-spacing: -0.02em;
-  color: #f4f7f1;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
   white-space: nowrap;
 }
 
@@ -260,21 +325,26 @@
 .headerLinkChip {
   display: inline-flex;
   align-items: center;
-  font: 600 9.5px/1 "JetBrains Mono", monospace;
-  color: #a8aaa9;
+  gap: 5px;
+  min-height: 26px;
+  font: 600 9.5px/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-sub);
   border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.03);
-  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0 10px;
   border-radius: 7px;
   text-decoration: none;
 }
 
 .headerLinkChip:hover {
   border-color: rgba(198, 245, 62, 0.5);
-  color: #c6f53e;
+  color: var(--accent-lime);
 }
 
 .headerLinkChipDisabled {
+  color: #5f645e;
   opacity: 0.55;
   cursor: default;
 }
@@ -287,18 +357,19 @@
 }
 
 .headerLinkChipNote {
-  font: 600 8px/1 "JetBrains Mono", monospace;
-  color: #6f746e;
+  font: 600 7.5px/1 var(--mono);
+  color: var(--text-faint);
 }
 
 .backLink {
   width: 32px;
   height: 32px;
   flex: none;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.03);
-  color: #a8aaa9;
+  border-radius: 9px;
+  border: var(--raised-border);
+  background: var(--raised-bg);
+  box-shadow: var(--raised-shadow);
+  color: var(--text-secondary);
   display: grid;
   place-items: center;
   font-size: 15px;
@@ -307,38 +378,38 @@
 
 .backLink:hover {
   border-color: rgba(198, 245, 62, 0.5);
-  color: #c6f53e;
+  color: var(--accent-lime);
 }
 
 .liveBadge {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font: 500 9px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.14em;
+  gap: 6px;
+  font: 700 9px/1 var(--mono);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #91f0b6;
-  border: 1px solid rgba(145, 240, 182, 0.3);
-  background: rgba(145, 240, 182, 0.07);
-  padding: 3px 8px;
+  color: var(--accent-lime);
+  border: 1px solid rgba(198, 245, 62, 0.3);
+  background: linear-gradient(180deg, rgba(198, 245, 62, 0.14), rgba(198, 245, 62, 0.03));
+  padding: 4px 9px;
   border-radius: 999px;
 }
 
 .liveDot {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: #91f0b6;
-  animation: hd-pulse 2s ease-in-out infinite;
+  background: var(--accent-lime);
+  animation: hd-pulse 1.9s ease-in-out infinite;
 }
 
 @keyframes hd-pulse {
   0%,
   100% {
-    opacity: 1;
+    opacity: 0.35;
   }
   50% {
-    opacity: 0.35;
+    opacity: 1;
   }
 }
 
@@ -429,8 +500,16 @@
 }
 
 @media (min-width: 881px) {
+  .page {
+    padding: 22px 26px 40px;
+  }
+
+  .shell {
+    gap: 18px;
+  }
+
   .grid {
-    grid-template-columns: 300px minmax(0, 1fr);
+    grid-template-columns: 340px minmax(620px, 1fr);
     /* Two explicit rows (issue #450, replacing the broken nested-grid
        attempt described above): row 1 holds the swap panel and the chart
        panel side by side, row 2 holds `.leftRest` (Stats/Audit + creator
@@ -441,7 +520,7 @@
        stretch via their own `align-self: start` below so neither is pulled
        to match its sibling's height. */
     grid-template-rows: auto auto;
-    gap: 14px;
+    gap: 18px;
   }
 
   /* Swap panel and chart panel: row 1, side by side, both stretching to
@@ -488,13 +567,14 @@
   }
 }
 
-/* ---- generic panel chrome ---- */
+/* ---- generic panel chrome (master panel recipe, issue #460 section 2) ---- */
 
 .panel {
-  padding: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 20px;
-  background: rgba(18, 21, 19, 0.99);
+  padding: 16px;
+  border: var(--panel-border);
+  border-radius: var(--panel-radius);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -503,41 +583,42 @@
 /* ---- header band identity chips (issue #443 part 1) ---- */
 
 .chainBadge {
-  font: 500 10px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.12em;
+  font: 700 9px/1 var(--mono);
+  letter-spacing: 0.11em;
   text-transform: uppercase;
-  color: #c6f53e;
-  border: 1px solid rgba(198, 245, 62, 0.34);
-  background: rgba(198, 245, 62, 0.07);
-  padding: 6px 8px;
+  color: var(--accent-mint);
+  border: 1px solid rgba(145, 240, 182, 0.32);
+  background: rgba(145, 240, 182, 0.08);
+  padding: 3px 8px;
   border-radius: 999px;
   white-space: nowrap;
 }
 
 .track {
   height: 5px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  border-radius: 99px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 2px 5px 0 rgba(0, 0, 0, 0.5) inset;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .fill {
   height: 100%;
-  background: linear-gradient(90deg, #c6f53e, #91f0b6);
-  box-shadow: 0 0 18px rgba(198, 245, 62, 0.4);
+  border-radius: 99px;
+  background: linear-gradient(90deg, rgba(198, 245, 62, 0.55), #c6f53e);
+  box-shadow: 0 0 14px rgba(198, 245, 62, 0.5);
 }
 
 .mutedNote {
   margin: 0;
-  color: #6f746e;
-  font: 500 11px/1.6 "JetBrains Mono", monospace;
+  color: var(--text-faint);
+  font: 600 11px/1.6 var(--mono);
 }
 
-/* ---- swap panel ---- */
+/* ---- swap panel (issue #460 section 4) ---- */
 
 .swapPanel {
-  gap: 12px;
+  gap: 13px;
 }
 
 .swapTopRow {
@@ -549,67 +630,97 @@
 
 .tabGroup {
   display: flex;
+  gap: 3px;
   padding: 3px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;
 }
 
 .pillButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
+  min-height: 28px;
   cursor: pointer;
   border: 1px solid transparent;
   background: transparent;
-  border-radius: 999px;
-  color: #929693;
-  font: 700 11px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.08em;
-  padding: 8px 13px;
+  border-radius: 8px;
+  color: var(--chip-idle-color);
+  font: 700 10.5px/1 var(--mono);
+  letter-spacing: 0.07em;
+  padding: 0 12px;
   transition: all 0.14s;
 }
 
 .pillButtonActive {
-  border-color: rgba(198, 245, 62, 0.6);
-  background: rgba(198, 245, 62, 0.12);
-  color: #c6f53e;
+  border-color: var(--chip-active-border-color);
+  background: var(--chip-active-bg);
+  box-shadow: var(--chip-active-shadow);
+  text-shadow: var(--chip-active-text-shadow);
+  color: var(--chip-active-color);
 }
 
+/* Buy/Sell segment (issue #460 section 4): min-height 34px, pill radius,
+   solid-on-active — a different recipe than the plain chip `.pillButton`
+   idle/active pair above (which the Stats/Audit segmented tabs use as-is),
+   scoped with a compound selector so both can share the same base class. */
 .buySellTab {
-  padding: 9px 22px;
-  font: 900 12.5px/1 Archivo, sans-serif;
+  flex: 1;
+  min-height: 34px;
+  border-radius: 999px;
+  font: 800 12px/1 var(--sans);
   letter-spacing: 0.02em;
+  padding: 0;
+}
+
+.buySellTab.pillButtonActive {
+  border-color: rgba(198, 245, 62, 0.5);
+  background: var(--cta-bg);
+  color: var(--cta-color);
+  box-shadow: none;
+  text-shadow: none;
 }
 
 .walletButton {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
+  gap: 7px;
+  min-height: 34px;
   cursor: pointer;
   border-radius: 999px;
-  padding: 9px 14px;
+  padding: 0 12px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   background: rgba(255, 255, 255, 0.03);
-  color: #a8aaa9;
-  font: 500 11.5px/1 "JetBrains Mono", monospace;
+  color: var(--text-sub);
+  font: 500 11.5px/1 var(--mono);
 }
 
 .walletButtonConnected {
-  border-color: rgba(145, 240, 182, 0.35);
-  background: rgba(145, 240, 182, 0.08);
-  color: #91f0b6;
+  border-color: rgba(145, 240, 182, 0.3);
+  background: rgba(145, 240, 182, 0.07);
+  color: var(--accent-mint);
+  font: 700 10.5px/1 var(--mono);
+}
+
+.walletDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-mint);
+  flex: none;
 }
 
 .fieldBox {
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(10, 11, 9, 0.75);
-  border-radius: 14px;
-  padding: 12px;
+  border: var(--well-border);
+  background: var(--well-bg);
+  border-radius: var(--well-radius);
+  box-shadow: var(--well-shadow);
+  padding: 13px 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
 }
 
 /* The amount input has no border of its own to hang a focus ring on
@@ -626,20 +737,20 @@
 }
 
 .fieldLabel {
-  font: 500 9.5px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.16em;
+  font: 700 9px/1 var(--mono);
+  letter-spacing: 0.13em;
   text-transform: uppercase;
-  color: #929693;
+  color: var(--text-label);
 }
 
 .fieldBalance {
-  font: 500 11px/1 "JetBrains Mono", monospace;
-  color: #929693;
+  font: 600 9.5px/1 var(--mono);
+  color: var(--text-faint);
 }
 
 .amountRow {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 10px;
 }
 
@@ -649,36 +760,39 @@
   background: transparent;
   border: 0;
   outline: none;
-  color: #f4f7f1;
-  font-family: "Archivo Black", sans-serif;
+  color: var(--text-primary);
+  font-family: var(--display);
+  font-weight: 400;
   font-size: 26px;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.01em;
 }
 
 .amountValue {
   flex: 1;
   min-width: 0;
-  font-family: "Archivo Black", sans-serif;
+  font-family: var(--display);
+  font-weight: 400;
   font-size: 26px;
-  letter-spacing: -0.04em;
-  color: #f4f7f1;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .tickerPill {
-  font: 700 13px/1 "JetBrains Mono", monospace;
-  color: #f4f7f1;
+  font: 800 11px/1 var(--mono);
+  color: var(--text-value);
   border: 1px solid rgba(255, 255, 255, 0.09);
-  padding: 8px 10px;
-  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 6px 11px;
+  border-radius: 8px;
 }
 
 .tickerPillAccent {
-  color: #c6f53e;
-  border-color: rgba(198, 245, 62, 0.34);
-  background: rgba(198, 245, 62, 0.07);
+  color: var(--accent-lime);
+  border-color: rgba(198, 245, 62, 0.3);
+  background: rgba(198, 245, 62, 0.1);
 }
 
 .presetRow {
@@ -691,38 +805,52 @@
   align-items: center;
   justify-content: center;
   flex: 1;
-  min-height: 44px;
+  min-height: 30px;
   cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.03);
-  color: #a8aaa9;
-  border-radius: 9px;
-  padding: 7px 0;
-  font: 500 11px/1 "JetBrains Mono", monospace;
+  border: var(--preset-idle-border);
+  background: var(--preset-idle-bg);
+  color: var(--preset-idle-color);
+  border-radius: 8px;
+  padding: 0;
+  font: 700 10.5px/1 var(--mono);
 }
 
 .presetButton:hover {
   border-color: rgba(198, 245, 62, 0.5);
-  color: #c6f53e;
+  color: var(--accent-lime);
+}
+
+/* The button whose preset last produced the current amount (issue #460
+   RULES) — cleared the moment the user edits the amount by hand or
+   switches side (components/token-page/token-left-column.tsx). */
+.presetButtonSelected {
+  border: var(--preset-selected-border);
+  background: var(--preset-selected-bg);
+  color: var(--preset-selected-color);
+}
+
+.presetButtonSelected:hover {
+  color: var(--preset-selected-color);
 }
 
 .swapDivider {
   display: flex;
   justify-content: center;
-  margin: -16px 0 -14px;
+  margin: -6px 0;
   position: relative;
   z-index: 2;
 }
 
 .swapDividerIcon {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #0a0b09;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--raised-bg);
+  border: var(--raised-border);
+  box-shadow: var(--raised-shadow);
   display: grid;
   place-items: center;
-  color: #c6f53e;
+  color: var(--accent-lime);
   font-size: 13px;
 }
 
@@ -734,52 +862,64 @@
 }
 
 .slippageLabel {
-  font: 500 10px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.14em;
+  font: 700 9px/1 var(--mono);
+  letter-spacing: 0.13em;
   text-transform: uppercase;
-  color: #929693;
+  color: var(--text-label);
 }
 
 .slippageGroup {
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 
 .slippageButton {
-  padding: 7px 11px;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: transparent;
+}
+
+.slippageButton.pillButtonActive {
+  border: var(--preset-selected-border);
+  background: var(--preset-selected-bg);
+  color: var(--preset-selected-color);
+  box-shadow: none;
+  text-shadow: none;
 }
 
 .tradeButton {
-  min-height: 58px;
+  min-height: 50px;
   width: 100%;
   border: 0;
   cursor: pointer;
   border-radius: 999px;
-  font-size: 17px;
-  font-weight: 900;
+  font: 800 14.5px/1 var(--sans);
+  background: var(--cta-bg);
+  color: var(--cta-color);
+  box-shadow: 0 14px 34px -12px rgba(198, 245, 62, 0.5);
 }
 
-.tradeButtonBuy {
-  color: #061006;
-  background: linear-gradient(135deg, #c6f53e, #91f0b6);
-  box-shadow: 0 16px 40px rgba(198, 245, 62, 0.16);
-}
-
+/* CTA buttons are SOLID lime with dark text — never a gradient, site-wide
+   (issue #460 RULES). Buy and Sell share the exact same solid recipe; the
+   button's label text (not its color) is what tells the two sides apart. */
+.tradeButtonBuy,
 .tradeButtonSell {
-  color: #f4f7f1;
-  background: rgba(255, 95, 86, 0.16);
-  border: 1px solid rgba(255, 95, 86, 0.45);
+  background: var(--cta-bg);
+  color: var(--cta-color);
 }
 
 .tradeButton:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+  box-shadow: none;
 }
 
 .tradeHint {
   margin: 0;
-  font: 500 10.5px/1.5 "JetBrains Mono", monospace;
-  color: #929693;
+  font: 600 10.5px/1.5 var(--mono);
+  color: var(--text-sub);
   text-align: center;
 }
 
@@ -789,11 +929,11 @@
 .tradeErrorText {
   margin: 0;
   padding: 9px 11px;
-  border: 1px solid rgba(255, 95, 86, 0.35);
+  border: 1px solid rgba(226, 86, 75, 0.35);
   border-radius: 10px;
   background: rgba(42, 18, 21, 0.6);
   color: #ff8a80;
-  font: 600 11px/1.5 "JetBrains Mono", monospace;
+  font: 600 11px/1.5 var(--mono);
   text-align: center;
 }
 
@@ -808,46 +948,44 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font: 500 10.5px/1.5 "JetBrains Mono", monospace;
-  color: #929693;
+  font: 600 10.5px/1.5 var(--mono);
+  color: var(--text-sub);
 }
 
 .feeBreakdownRow b {
-  color: #f4f7f1;
+  color: var(--text-primary);
 }
 
 .feePanel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 11px;
 }
 
 .feePanelRow {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 6px 10px;
 }
 
 .feeClaimValue {
-  font-family: "Archivo Black", sans-serif;
-  font-size: 22px;
-  letter-spacing: -0.03em;
-  color: #c6f53e;
+  font: 700 14px/1 var(--mono);
+  color: var(--accent-lime);
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
 .feeWithdrawButton {
-  min-height: 44px;
+  min-height: 42px;
   cursor: pointer;
   border: 0;
   border-radius: 999px;
-  padding: 11px 18px;
-  background: linear-gradient(135deg, #c6f53e, #91f0b6);
-  color: #061006;
-  font: 900 12px/1 Archivo, sans-serif;
+  padding: 0 18px;
+  background: var(--cta-bg);
+  color: var(--cta-color);
+  font: 800 12.5px/1 var(--sans);
 }
 
 .feeWithdrawButton:disabled {
@@ -864,7 +1002,7 @@
 
 .terminalFallbackCopy {
   margin: 0;
-  color: #929693;
+  color: var(--text-sub);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -882,25 +1020,33 @@
   justify-content: center;
   flex: 1;
   min-width: 120px;
-  min-height: 44px;
+  min-height: 40px;
   text-align: center;
   cursor: pointer;
   border-radius: 999px;
-  padding: 12px 14px;
-  background: linear-gradient(135deg, #c6f53e, #91f0b6);
-  color: #061006;
-  font: 900 13px/1 Archivo, sans-serif;
+  padding: 0 14px;
+  background: var(--cta-bg);
+  color: var(--cta-color);
+  font: 800 13px/1 var(--sans);
   text-decoration: none;
 }
 
 .feeNote {
   margin: 0;
   text-align: center;
-  font: 600 10px/1.5 "JetBrains Mono", monospace;
-  color: #6f746e;
+  font: 600 10px/1.5 var(--mono);
+  color: var(--text-faint);
 }
 
-/* ---- Stats/Audit panel (issue #443 part 1) ---- */
+/* ---- Stats/Audit panel (issue #443 part 1, exact values issue #460
+   section 5) — `.statsPanel` overrides `.panel`'s own padding to 0 since
+   every section below carries its own padding, matching the design's
+   header-row/body split instead of one uniform panel inset. ---- */
+
+.statsPanel {
+  padding: 0;
+  overflow: hidden;
+}
 
 .statsPanelHeader {
   display: flex;
@@ -908,6 +1054,9 @@
   justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
+  padding: 11px 14px;
+  border-bottom: var(--panel-header-border);
+  background: var(--panel-header-wash-soft);
 }
 
 .statsWindowGroup {
@@ -918,6 +1067,7 @@
 .statsBody {
   display: flex;
   flex-direction: column;
+  padding: 6px 14px 14px;
 }
 
 .statsPairRow {
@@ -940,25 +1090,25 @@
 }
 
 .statsPairLabel {
-  font: 700 8.5px/1 "JetBrains Mono", monospace;
+  font: 700 8.5px/1 var(--mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #929693;
+  color: var(--text-label);
 }
 
 .statsPairValueLime {
-  font: 700 13px/1 "JetBrains Mono", monospace;
-  color: #c6f53e;
+  font: 700 13px/1 var(--mono);
+  color: var(--accent-lime);
 }
 
 .statsPairValueDown {
-  font: 700 13px/1 "JetBrains Mono", monospace;
-  color: #ff5f56;
+  font: 700 13px/1 var(--mono);
+  color: var(--accent-red);
 }
 
 .statsPairValueNeutral {
-  font: 700 13px/1 "JetBrains Mono", monospace;
-  color: #e6ebe4;
+  font: 700 13px/1 var(--mono);
+  color: var(--text-value);
 }
 
 .statsSplitBarTrack {
@@ -974,20 +1124,23 @@
 .statsSplitBarLeft {
   display: block;
   height: 100%;
-  background: #c6f53e;
+  background: var(--accent-lime);
+  opacity: 0.85;
 }
 
 .statsSplitBarRight {
   display: block;
   height: 100%;
-  background: #ff5f56;
+  background: var(--accent-red);
+  opacity: 0.85;
 }
 
 .holderBreakdown {
   margin-top: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-  background: rgba(10, 11, 9, 0.5);
+  background: var(--well-bg);
+  box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.45) inset;
   overflow: hidden;
 }
 
@@ -997,7 +1150,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 44px;
   padding: 11px 13px;
   border: 0;
   background: none;
@@ -1008,15 +1160,15 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font: 700 11px/1 "JetBrains Mono", monospace;
-  color: #e6ebe4;
+  font: 700 11px/1 var(--mono);
+  color: var(--text-value);
 }
 
 .chevron,
 .chevronOpen {
   display: inline-block;
-  color: #929693;
-  transition: transform 0.14s;
+  color: var(--text-label);
+  transition: transform 0.16s ease;
 }
 
 .chevronOpen {
@@ -1024,7 +1176,7 @@
 }
 
 .holderBreakdownRows {
-  padding: 0 13px 8px;
+  padding: 0 13px 5px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   flex-direction: column;
@@ -1035,13 +1187,19 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 9px 0;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.holderBreakdownRow:last-child {
+  border-bottom: 0;
 }
 
 .auditBody {
   display: flex;
   flex-direction: column;
   gap: 7px;
+  padding: 13px 14px 14px;
 }
 
 .auditRow {
@@ -1051,15 +1209,15 @@
   padding: 10px 12px;
   border-radius: 11px;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.03);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.008));
   font-size: 12.5px;
-  color: #d9dfd6;
+  color: var(--text-body);
 }
 
 .auditRowUnverified {
   border-color: rgba(255, 255, 255, 0.05);
   background: rgba(255, 255, 255, 0.015);
-  color: #6f746e;
+  color: var(--text-faint);
 }
 
 .auditCheck {
@@ -1071,7 +1229,7 @@
   place-items: center;
   border: 1px solid rgba(198, 245, 62, 0.4);
   background: rgba(198, 245, 62, 0.1);
-  color: #c6f53e;
+  color: var(--accent-lime);
   font-size: 11px;
 }
 
@@ -1084,11 +1242,11 @@
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.05);
-  color: #8d918c;
-  font: 800 11px/1 "JetBrains Mono", monospace;
+  color: var(--text-label);
+  font: 800 11px/1 var(--mono);
 }
 
-/* ---- live chart (centre column) ----
+/* ---- live chart (centre column, issue #460 section 7) ----
    The embedded Dexscreener chart was removed (issue #427): Dexscreener
    can't index this chain, so it only ever showed a "chart doesn't work
    here" message in the page's prime real estate, leaving a placeholder for
@@ -1097,42 +1255,48 @@
    `.chartPlaceholder` class name stays, since it's still the same grid-
    placement anchor used above (`order`/`grid-column`). Issue #445 rebuilds
    the chart's internals to the design: a fill-height plot (instead of a
-   fixed 260px), a left-edge tool rail, and a poll-failure banner. */
+   fixed 260px), a left-edge tool rail, and a poll-failure banner.
+   `.chartPlaceholder` now carries the master panel recipe directly (no more
+   own accent-tinted placeholder look) with its own padding removed — the
+   header and body below each carry their own padding, matching the
+   design's header-row/body split. */
 
 .chartPlaceholder {
-  border: 1px solid rgba(198, 245, 62, 0.2);
-  border-radius: 20px;
-  background: rgba(198, 245, 62, 0.03);
-  padding: 14px;
+  border: var(--panel-border);
+  border-radius: var(--panel-radius);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
+  padding: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
 
 .chartPlaceholderLabel {
-  font: 700 9.5px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #c6f53e;
+  font: 700 11px/1 var(--mono);
+  letter-spacing: 0.13em;
+  color: var(--text-secondary);
 }
 
 .chartHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 16px;
   flex-wrap: wrap;
+  padding: 16px 20px 12px;
+  background: var(--panel-header-wash);
 }
 
 .chartPairInfo {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 10px;
 }
 
 .chartLastPrice {
-  font: 600 10px/1 "JetBrains Mono", monospace;
-  color: #6f746e;
+  font: 600 10px/1 var(--mono);
+  color: var(--text-faint);
 }
 
 .chartHeaderControls {
@@ -1145,62 +1309,75 @@
 .chartVolumeToggle {
   min-height: 32px;
   padding: 0 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  border: 1px solid transparent;
   background: transparent;
-  color: #929693;
-  font: 700 10.5px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.08em;
+  color: var(--chip-idle-color);
+  font: 700 10.5px/1 var(--mono);
+  letter-spacing: 0.07em;
   cursor: pointer;
   transition: all 0.14s;
 }
 
 .chartVolumeToggleActive {
-  border-color: rgba(198, 245, 62, 0.5);
-  background: rgba(198, 245, 62, 0.09);
-  color: #c6f53e;
+  border-color: var(--chip-active-border-color);
+  background: var(--chip-active-bg);
+  box-shadow: var(--chip-active-shadow);
+  text-shadow: var(--chip-active-text-shadow);
+  color: var(--chip-active-color);
 }
 
 .chartIntervalGroup {
   display: flex;
-  gap: 4px;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;
 }
 
 .chartIntervalButton {
-  min-height: 32px;
+  min-height: 28px;
   min-width: 36px;
   padding: 0 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  border: 1px solid transparent;
   background: transparent;
-  color: #929693;
-  font: 700 11px/1 "JetBrains Mono", monospace;
+  color: var(--chip-idle-color);
+  font: 700 10.5px/1 var(--mono);
+  letter-spacing: 0.07em;
   cursor: pointer;
   transition: all 0.14s;
 }
 
 .chartIntervalButtonActive {
-  border-color: rgba(198, 245, 62, 0.5);
-  background: rgba(198, 245, 62, 0.09);
-  color: #c6f53e;
+  border-color: var(--chip-active-border-color);
+  background: var(--chip-active-bg);
+  box-shadow: var(--chip-active-shadow);
+  text-shadow: var(--chip-active-text-shadow);
+  color: var(--chip-active-color);
 }
 
 .chartBody {
   display: flex;
   align-items: stretch;
-  gap: 8px;
+  gap: 0;
   flex: 1;
   min-height: 0;
+  border-top: var(--panel-header-border);
 }
 
 .chartToolRail {
   flex: none;
-  width: 34px;
+  width: 50px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding-top: 2px;
+  padding: 12px 0;
+  border-right: var(--panel-header-border);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.3), rgba(255, 255, 255, 0.012));
 }
 
 .chartToolButton {
@@ -1213,7 +1390,7 @@
   border: 1px solid transparent;
   background: transparent;
   color: rgba(239, 244, 236, 0.6);
-  font: 700 13px/1 "JetBrains Mono", monospace;
+  font: 700 13px/1 var(--mono);
   cursor: pointer;
   transition: all 0.14s;
 }
@@ -1221,7 +1398,8 @@
 .chartToolButtonActive {
   border-color: rgba(198, 245, 62, 0.4);
   background: linear-gradient(180deg, rgba(198, 245, 62, 0.18), rgba(198, 245, 62, 0.04));
-  color: #c6f53e;
+  box-shadow: 0 0 18px -4px rgba(198, 245, 62, 0.5), 0 1px 0 0 rgba(198, 245, 62, 0.2) inset;
+  color: var(--accent-lime);
 }
 
 .chartLineChip {
@@ -1235,7 +1413,7 @@
   border: 1px solid rgba(154, 212, 255, 0.35);
   background: rgba(154, 212, 255, 0.08);
   color: #9ad4ff;
-  font: 700 12px/1 "JetBrains Mono", monospace;
+  font: 700 12px/1 var(--mono);
   cursor: pointer;
 }
 
@@ -1272,7 +1450,7 @@
 
 .chartEmptyCopy {
   margin: 0;
-  color: #929693;
+  color: var(--text-sub);
   font-size: 12.5px;
   line-height: 1.6;
   max-width: 32ch;
@@ -1291,7 +1469,7 @@
   padding: 7px 12px;
   background: rgba(245, 190, 80, 0.1);
   border-bottom: 1px solid rgba(245, 190, 80, 0.4);
-  font: 600 10px/1 "JetBrains Mono", monospace;
+  font: 600 10px/1 var(--mono);
   color: #f5be50;
 }
 
@@ -1299,7 +1477,7 @@
   border: 0;
   background: none;
   padding: 0;
-  font: 800 10px/1 "JetBrains Mono", monospace;
+  font: 800 10px/1 var(--mono);
   letter-spacing: 0.08em;
   color: #f5be50;
   text-decoration: underline;
@@ -1308,18 +1486,20 @@
 
 .chartTooltip {
   position: absolute;
-  top: 12px;
-  left: 12px;
+  top: 14px;
+  left: 14px;
   z-index: 4;
-  min-width: 150px;
-  padding: 10px 12px;
+  min-width: 168px;
+  padding: 11px 13px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(6, 9, 7, 0.96);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 18px 44px -14px rgba(0, 0, 0, 0.9);
   pointer-events: none;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2.5px;
 }
 
 .chartTooltipHeader {
@@ -1327,92 +1507,102 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding-bottom: 6px;
-  margin-bottom: 4px;
+  padding-bottom: 7px;
+  margin-bottom: 7px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font: 700 9.5px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.08em;
-  color: #8d918c;
+  font: 700 9.5px/1 var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--text-label);
 }
 
 .chartTooltipRow {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 18px;
-  font: 600 10.5px/1.3 "JetBrains Mono", monospace;
-  color: #e6ebe4;
+  gap: 22px;
+  font: 600 9.5px/1 var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--text-value);
 }
 
 .chartTooltipRow span:first-child {
-  color: #8d918c;
+  color: var(--text-label);
+}
+
+.chartTooltipRow span:last-child {
+  font: 700 11px/1 var(--mono);
+  color: var(--text-value);
+  letter-spacing: 0;
 }
 
 .priceChange {
-  font: 700 12px/1 "JetBrains Mono", monospace;
+  font: 700 12px/1 var(--mono);
   padding: 4px 9px;
   border-radius: 999px;
 }
 
 .priceChangeUp {
-  color: #91f0b6;
-  background: rgba(145, 240, 182, 0.1);
-  border: 1px solid rgba(145, 240, 182, 0.28);
+  color: var(--accent-lime);
+  background: linear-gradient(180deg, rgba(198, 245, 62, 0.16), rgba(198, 245, 62, 0.04));
+  border: 1px solid rgba(198, 245, 62, 0.34);
 }
 
 .priceChangeDown {
-  color: #ff5f56;
-  background: rgba(255, 95, 86, 0.1);
-  border: 1px solid rgba(255, 95, 86, 0.28);
+  color: var(--accent-red);
+  background: linear-gradient(180deg, rgba(226, 86, 75, 0.16), rgba(226, 86, 75, 0.04));
+  border: 1px solid rgba(226, 86, 75, 0.34);
 }
 
-/* ---- activity tabs (recent trades / holders) ---- */
+/* ---- activity tabs (recent trades / holders), issue #460 section 8 ---- */
 
 .activityPanel {
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 20px;
-  background: rgba(18, 21, 19, 0.99);
+  border: var(--panel-border);
+  border-radius: var(--panel-radius);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
   overflow: hidden;
+  min-height: 363px;
 }
 
 .activityTabs {
   display: flex;
-  gap: 4px;
-  padding: 10px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  gap: 2px;
+  padding: 10px 14px 0;
+  border-bottom: var(--panel-header-border);
+  background: var(--panel-header-wash-soft);
   overflow: auto;
 }
 
 .activityTab {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
+  min-height: 38px;
   cursor: pointer;
   flex: none;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px 10px 0 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
   background: transparent;
-  color: #929693;
-  font: 700 12px/1 Archivo, sans-serif;
-  letter-spacing: 0.01em;
-  padding: 10px 15px;
+  color: var(--text-label);
+  font: 700 11.5px/1 var(--sans);
+  padding: 0 16px;
   transition: all 0.14s;
 }
 
 .activityTabActive {
-  border-color: rgba(198, 245, 62, 0.5);
-  background: rgba(198, 245, 62, 0.09);
-  color: #c6f53e;
+  border-bottom-color: var(--accent-lime);
+  background: linear-gradient(180deg, rgba(198, 245, 62, 0.16), rgba(198, 245, 62, 0.02));
+  color: var(--accent-lime);
 }
 
 .activityHeaderRow {
   display: grid;
   gap: 10px;
   padding: 10px 16px;
-  font: 500 9.5px/1 "JetBrains Mono", monospace;
+  font: 600 9.5px/1 var(--mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #6f746e;
+  color: var(--text-faint);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -1430,7 +1620,7 @@
   padding: 11px 16px;
   align-items: center;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  font: 500 12.5px/1 "JetBrains Mono", monospace;
+  font: 600 12.5px/1 var(--mono);
 }
 
 .tradeTypeBuy {
@@ -1438,7 +1628,7 @@
   align-items: center;
   gap: 5px;
   font-weight: 700;
-  color: #c6f53e;
+  color: var(--accent-lime);
 }
 
 .tradeTypeSell {
@@ -1446,52 +1636,52 @@
   align-items: center;
   gap: 5px;
   font-weight: 700;
-  color: #ff5f56;
+  color: var(--accent-red);
 }
 
 .dimText {
-  color: #a8aaa9;
+  color: var(--text-sub);
 }
 
 .bodyText {
-  color: #d4d8d3;
+  color: var(--text-body);
 }
 
 .faintText {
-  color: #6f746e;
+  color: var(--text-faint);
   text-align: right;
 }
 
 .rankText {
-  color: #6f746e;
+  color: var(--text-faint);
 }
 
 .shareBarTrack {
-  height: 6px;
+  height: 5px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.07);
   overflow: hidden;
 }
 
 .shareBarFill {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, #c6f53e, #91f0b6);
+  background: var(--accent-lime);
 }
 
 .emptyState {
   padding: 28px 16px;
-  color: #6f746e;
-  font: 500 12px/1.6 "JetBrains Mono", monospace;
+  color: var(--text-faint);
+  font: 600 12px/1.6 var(--mono);
 }
 
 /* ---- section label, shared by several panels ---- */
 
 .sectionLabel {
-  font: 500 9.5px/1 "JetBrains Mono", monospace;
+  font: 600 9.5px/1 var(--mono);
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #929693;
+  color: var(--text-sub);
 }
 
 /* ---- About tab (issue #443 part 1 — moved here from the removed
@@ -1501,48 +1691,50 @@
 .aboutPanel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
+  gap: 12px;
+  padding: 16px 18px 18px;
+  max-width: 66ch;
 }
 
 .storyText {
   margin: 0;
-  color: #d4d8d3;
-  font-size: 14px;
-  line-height: 1.6;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
 }
 
 .storyTags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   padding-top: 2px;
 }
 
 .storyTag {
-  font: 500 10px/1 "JetBrains Mono", monospace;
-  letter-spacing: 0.1em;
+  font: 700 9px/1 var(--mono);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #91f0b6;
-  border: 1px solid rgba(145, 240, 182, 0.28);
-  background: rgba(145, 240, 182, 0.07);
-  padding: 6px 9px;
+  color: var(--accent-mint);
+  border: 1px solid rgba(145, 240, 182, 0.32);
+  background: rgba(145, 240, 182, 0.08);
+  padding: 7px 12px;
   border-radius: 999px;
 }
 
-/* ---- token page Hoodchat tab (issue #237) ---- */
+/* ---- token page Hoodchat tab (issue #237, exact values issue #460
+   section 8) ---- */
 
 .chatFeedShell {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 10px;
+  padding: 12px 18px 16px;
 }
 
 .chatFeed {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
   max-height: 46vh;
   overflow-y: auto;
 }
@@ -1551,55 +1743,55 @@
   position: relative;
   display: grid;
   gap: 4px;
-  padding: 10px 44px 10px 10px;
-  border-radius: 12px;
-}
-
-.chatMessage:hover {
-  background: rgba(255, 255, 255, 0.03);
+  padding: 10px 44px 10px 12px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.008));
 }
 
 .chatMeta {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .chatWallet {
-  font: 700 11px "JetBrains Mono", monospace;
-  color: #c6f53e;
+  font: 700 10.5px/1 var(--mono);
+  color: var(--accent-lime);
 }
 
 .chatBadgeDev,
 .chatBadgeHolder {
   padding: 2px 7px;
-  border-radius: 999px;
-  font: 700 8.5px "JetBrains Mono", monospace;
-  letter-spacing: 0.06em;
+  border-radius: 99px;
+  font: 800 8px/1.4 var(--mono);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .chatBadgeDev {
-  color: #071008;
-  background: #c6f53e;
+  color: var(--accent-lime);
+  border: 1px solid rgba(198, 245, 62, 0.4);
+  background: rgba(198, 245, 62, 0.1);
 }
 
 .chatBadgeHolder {
-  color: #91f0b6;
-  background: rgba(145, 240, 182, 0.1);
-  border: 1px solid rgba(145, 240, 182, 0.28);
+  color: var(--accent-mint);
+  background: rgba(145, 240, 182, 0.07);
+  border: 1px solid rgba(145, 240, 182, 0.32);
 }
 
 .chatTime {
-  color: #5f645e;
-  font: 500 10px "JetBrains Mono", monospace;
+  color: var(--text-faint);
+  font: 600 9.5px/1 var(--mono);
+  margin-left: auto;
 }
 
 .chatBody {
   margin: 0;
-  color: #f4f7f1;
-  font-size: 13px;
+  color: var(--text-body);
+  font-size: 12.5px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -1613,7 +1805,7 @@
   border-radius: 999px;
   background: transparent;
   color: #5f645e;
-  font: 600 9px "JetBrains Mono", monospace;
+  font: 600 9px/1 var(--mono);
   text-transform: uppercase;
   cursor: pointer;
 }
@@ -1642,23 +1834,26 @@
 .chatComposer {
   display: flex;
   gap: 8px;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 6px 6px 6px 16px;
 }
 
 .chatComposerInput {
   flex: 1;
   min-width: 0;
-  padding: 11px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 11px;
-  background: #0a0b09;
-  color: #f4f7f1;
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
   font-size: 12.5px;
   font-family: inherit;
 }
 
 .chatComposerInput:focus {
   outline: none;
-  border-color: rgba(198, 245, 62, 0.5);
 }
 
 .chatComposerInput:disabled {
@@ -1667,12 +1862,13 @@
 
 .chatComposerSend {
   flex: none;
-  padding: 0 16px;
-  border: 1px solid #c6f53e;
-  border-radius: 11px;
-  background: #c6f53e;
-  color: #071008;
-  font: 800 11px "JetBrains Mono", monospace;
+  min-height: 34px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--cta-bg);
+  color: var(--cta-color);
+  font: 800 12px/1 var(--sans);
   cursor: pointer;
 }
 
@@ -1687,18 +1883,17 @@
   border: 1px dashed rgba(198, 245, 62, 0.4);
   border-radius: 11px;
   background: rgba(198, 245, 62, 0.06);
-  color: #c6f53e;
-  font: 700 11px "JetBrains Mono", monospace;
+  color: var(--accent-lime);
+  font: 700 11px/1 var(--mono);
   letter-spacing: 0.03em;
   cursor: pointer;
 }
 
-/* Touch-only >=44px targets for the header band (issue #451 follow-up):
-   scoped to (pointer: coarse) so a real touch device (mobile Safari,
-   CLAUDE.md rule 7's primary target) keeps a safe tap area, while a
-   mouse/trackpad ("fine" pointer) desktop uses the design's compact
-   proportions set on `.backLink`/`.headerLinkChip`/`.headerFigureToggle`
-   above. `.headerFigureBlock` also goes back to a side-by-side row here
+/* Touch-only >=44px targets (issue #451 follow-up, widened issue #460): a
+   real touch device (mobile Safari, CLAUDE.md rule 7's primary target)
+   keeps a safe tap area, while a mouse/trackpad ("fine" pointer) desktop
+   uses the design's compact proportions set on every base rule above.
+   `.headerFigureBlock` also goes back to a side-by-side row here
    specifically, since stacking two 44px-tall rows would double the band's
    height on the exact devices this rule targets. Placed at the end of the
    file, after every `(min-width: ...)` layout breakpoint, so it never
@@ -1726,8 +1921,44 @@
     justify-content: flex-end;
   }
 
+  .headerDropArt {
+    min-height: 44px;
+  }
+
+  .pillButton {
+    min-height: 44px;
+  }
+
+  .walletButton {
+    min-height: 44px;
+  }
+
+  .presetButton {
+    min-height: 44px;
+  }
+
+  .slippageButton {
+    min-height: 44px;
+  }
+
+  .feeWithdrawButton {
+    min-height: 44px;
+  }
+
+  .terminalFallbackLink {
+    min-height: 44px;
+  }
+
+  .holderBreakdownHeader {
+    min-height: 44px;
+  }
+
+  .activityTab {
+    min-height: 44px;
+  }
+
   /* Chart controls (issue #453 area 8): the base (fine-pointer) sizes above
-     are 30-32px, below the 44px touch-target floor. `.chartLineChip` is
+     are 28-32px, below the 44px touch-target floor. `.chartLineChip` is
      deliberately left out here — it's a compact, non-essential remove
      control (its exact price still reaches assistive tech via
      aria-label/title) that would overflow the narrow tool rail at 44px, so
@@ -1751,3 +1982,43 @@
   }
 }
 
+/* prefers-reduced-motion (issue #460 RULES): disables the LIVE dot pulse and
+   every chip's hover/active transition. Placed at the very end of the file,
+   after the coarse-pointer block, so it never shifts which media query the
+   mobile-first layout tests treat as "the first breakpoint", and each
+   selector gets its own rule (rather than one comma-grouped rule) so a
+   plain substring search for `${selector} {` always finds the real base
+   rule first. */
+@media (prefers-reduced-motion: reduce) {
+  .liveDot {
+    animation: none;
+  }
+
+  .chartIntervalButton {
+    transition: none;
+  }
+
+  .pillButton {
+    transition: none;
+  }
+
+  .presetButton {
+    transition: none;
+  }
+
+  .slippageButton {
+    transition: none;
+  }
+
+  .chartToolButton {
+    transition: none;
+  }
+
+  .activityTab {
+    transition: none;
+  }
+
+  .chartVolumeToggle {
+    transition: none;
+  }
+}

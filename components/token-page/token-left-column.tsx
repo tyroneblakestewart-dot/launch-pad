@@ -182,6 +182,12 @@ export function TokenLeftColumn({
   const curveView = toCurveView(curveStatus, resolvedDecimals);
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("");
+  // Tracks which preset button (0.1/0.5/1/MAX on buy, 25%/50%/75%/MAX on
+  // sell) produced the current amount, so that button alone gets the
+  // selected recipe (issue #460 RULES) — cleared the moment the user edits
+  // the amount by hand or switches side, since neither still reflects that
+  // preset's value.
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [slippageBps, setSlippageBps] = useState<number>(100);
   const [account, setAccount] = useState<Address | null>(null);
   const [nativeBalance, setNativeBalance] = useState<bigint | null>(null);
@@ -372,14 +378,19 @@ export function TokenLeftColumn({
   // what's on screen and must clear (issue #451 item 5). `submitTrade`
   // itself still sets `amount` directly (not through this helper) after a
   // genuine success, so the just-shown confirmation survives that reset.
+  // A preset's own selected state only describes an amount that came from a
+  // preset tap — any direct edit or a side switch means the field no longer
+  // reflects a specific preset's value, so both clear it.
   function updateAmount(next: string) {
     setAmount(next);
     setStatusMessage("");
+    setSelectedPreset(null);
   }
 
   function changeSide(next: Side) {
     setSide(next);
     setStatusMessage("");
+    setSelectedPreset(null);
   }
 
   function applyPreset(preset: string) {
@@ -396,16 +407,20 @@ export function TokenLeftColumn({
             ? grossNativeInForExactNet(curveView.remainingToGraduateWei)
             : null;
         const cap = graduationCap !== null && graduationCap < balanceCap ? graduationCap : balanceCap;
-        updateAmount(nativeBalance !== null ? formatEther(cap) : "");
+        setAmount(nativeBalance !== null ? formatEther(cap) : "");
       } else {
-        updateAmount(preset);
+        setAmount(preset);
       }
+      setStatusMessage("");
+      setSelectedPreset(preset);
       return;
     }
     if (tokenBalance === null || curveView.kind !== "ready") return;
     const percent = preset === "MAX" ? 100 : Number(preset.replace("%", ""));
     const portion = (tokenBalance * BigInt(percent)) / 100n;
-    updateAmount(formatUnits(portion, curveView.decimals));
+    setAmount(formatUnits(portion, curveView.decimals));
+    setStatusMessage("");
+    setSelectedPreset(preset);
   }
 
   async function submitTrade() {
@@ -502,6 +517,7 @@ export function TokenLeftColumn({
         setAmount("");
         setReceiveRaw(null);
         setSellFeeRaw(null);
+        setSelectedPreset(null);
       }
     } catch (error) {
       setStatusMessage("");
@@ -572,7 +588,14 @@ export function TokenLeftColumn({
                 className={`${styles.walletButton} ${account ? styles.walletButtonConnected : ""}`}
                 onClick={connectWallet}
               >
-                {account ? shortenAddress(account) : "Connect wallet"}
+                {account ? (
+                  <>
+                    <span className={styles.walletDot} />
+                    {shortenAddress(account)}
+                  </>
+                ) : (
+                  "Connect wallet"
+                )}
               </button>
             </div>
 
@@ -602,7 +625,12 @@ export function TokenLeftColumn({
               </div>
               <div className={styles.presetRow}>
                 {(side === "buy" ? BUY_PRESETS : SELL_PRESETS).map((preset) => (
-                  <button key={preset} type="button" className={styles.presetButton} onClick={() => applyPreset(preset)}>
+                  <button
+                    key={preset}
+                    type="button"
+                    className={`${styles.presetButton} ${selectedPreset === preset ? styles.presetButtonSelected : ""}`}
+                    onClick={() => applyPreset(preset)}
+                  >
                     {preset}
                   </button>
                 ))}

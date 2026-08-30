@@ -164,6 +164,18 @@ describe("formatNativeAmountSixSigFigsTrimmed (issue #447 item 4)", () => {
     expect(formatNativeAmountSixSigFigsTrimmed(null)).toBe("—");
     expect(formatNativeAmountSixSigFigsTrimmed(-1)).toBe("—");
   });
+
+  // Issue #460 item 10: the Stats panel's VOLUME/BUY VOL/SELL VOL (and every
+  // other fixed-decimal ETH amount on the token page) previously rounded a
+  // trade around 0.0002 ETH down to "0.0 ETH" — this is the shared helper
+  // now used everywhere that rounding happened instead.
+  it("keeps small trade-sized amounts readable instead of rounding to 0.0 (issue #460 item 10)", () => {
+    expect(formatNativeAmountSixSigFigsTrimmed(0.0002)).toBe("0.0002");
+  });
+
+  it("still reads naturally for a large whole-ETH-ish amount", () => {
+    expect(formatNativeAmountSixSigFigsTrimmed(184.2)).toBe("184.2");
+  });
 });
 
 describe("formatSignedPercent", () => {

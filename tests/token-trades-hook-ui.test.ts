@@ -225,7 +225,9 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
 
   it("configures a custom six-significant-figure priceFormat shared with the header's own formatter, so the axis never reads 0.00", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
-    expect(component).toContain('import { formatNativePriceSixSigFigs, formatSignedPercent } from "@/lib/token-page-format"');
+    expect(component).toContain(
+      'import { formatNativeAmountSixSigFigsTrimmed, formatNativePriceSixSigFigs, formatSignedPercent } from "@/lib/token-page-format"',
+    );
     expect(component).toContain('type: "custom"');
     expect(component).toContain("formatter: (price: number) => formatNativePriceSixSigFigs(price)");
   });
@@ -313,7 +315,7 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain('data-token-chart-tooltip="true"');
     expect(component).toContain("formatUtcTime(hoverInfo.time)");
     expect(component).toContain("formatSignedPercent(hoverChangePercent, 2)");
-    expect(component).toContain("{hoverInfo.volume.toFixed(1)} ETH");
+    expect(component).toContain("{formatNativeAmountSixSigFigsTrimmed(hoverInfo.volume)} ETH");
   });
 
   it("preserves the last valid tooltip over a whitespace bar (time/point present, no OHLC) instead of clearing it — only a genuine crosshair leave clears it (issue #453 area 3)", async () => {

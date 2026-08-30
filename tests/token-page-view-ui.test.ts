@@ -166,13 +166,13 @@ describe("token page header band tightened proportions (issue #451 item 3)", () 
     const css = await source("components/token-page/token-page.module.css");
     const bandStart = css.indexOf(".headerBand {");
     const bandEnd = css.indexOf("}", bandStart);
-    expect(css.slice(bandStart, bandEnd)).toContain("padding: 8px 14px;");
+    expect(css.slice(bandStart, bandEnd)).toContain("padding: 10px 16px;");
 
     const artStart = css.indexOf(".headerArtworkTile {");
     const artEnd = css.indexOf("}", artStart);
     const artRule = css.slice(artStart, artEnd);
-    expect(artRule).toContain("width: 48px;");
-    expect(artRule).toContain("height: 48px;");
+    expect(artRule).toContain("width: 50px;");
+    expect(artRule).toContain("height: 50px;");
   });
 
   it("shrinks the graduation progress track to the design's 5px height", async () => {
@@ -432,8 +432,12 @@ describe("token page trade UX correctness (issue #427)", () => {
 
   it("clears the persistent 'Trade confirmed.' status once the side, amount input or a preset changes it wouldn't otherwise stay on screen indefinitely (issue #451 item 5)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
-    expect(component).toContain("function updateAmount(next: string) {\n    setAmount(next);\n    setStatusMessage(\"\");\n  }");
-    expect(component).toContain("function changeSide(next: Side) {\n    setSide(next);\n    setStatusMessage(\"\");\n  }");
+    expect(component).toContain(
+      "function updateAmount(next: string) {\n    setAmount(next);\n    setStatusMessage(\"\");\n    setSelectedPreset(null);\n  }",
+    );
+    expect(component).toContain(
+      "function changeSide(next: Side) {\n    setSide(next);\n    setStatusMessage(\"\");\n    setSelectedPreset(null);\n  }",
+    );
 
     // The input, every preset and both Buy/Sell tabs go through the
     // clearing helpers instead of the raw setters.
@@ -447,6 +451,53 @@ describe("token page trade UX correctness (issue #427)", () => {
     const successBranchStart = component.indexOf('setStatusMessage("Trade confirmed.")');
     expect(successBranchStart).toBeGreaterThan(-1);
     expect(component.indexOf('setAmount("");', successBranchStart)).toBeGreaterThan(successBranchStart);
+  });
+});
+
+describe("token page preset selected-state (issue #460)", () => {
+  it("tracks which preset produced the current amount and clears it on a manual edit or a side switch", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain("const [selectedPreset, setSelectedPreset] = useState<string | null>(null);");
+
+    expect(component).toContain(
+      'function updateAmount(next: string) {\n    setAmount(next);\n    setStatusMessage("");\n    setSelectedPreset(null);\n  }',
+    );
+    expect(component).toContain(
+      'function changeSide(next: Side) {\n    setSide(next);\n    setStatusMessage("");\n    setSelectedPreset(null);\n  }',
+    );
+
+    const applyPresetStart = component.indexOf("function applyPreset(preset: string) {");
+    expect(applyPresetStart).toBeGreaterThan(-1);
+    const applyPresetEnd = component.indexOf("\n  async function submitTrade", applyPresetStart);
+    const applyPreset = component.slice(applyPresetStart, applyPresetEnd);
+    expect(applyPreset).toContain("setSelectedPreset(preset);");
+    // Both the buy and sell branches set it — not just one.
+    expect(applyPreset.match(/setSelectedPreset\(preset\);/g)?.length).toBe(2);
+  });
+
+  it("renders each preset button with the selected recipe only when it matches the tracked preset", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain(
+      '${styles.presetButton} ${selectedPreset === preset ? styles.presetButtonSelected : ""}',
+    );
+  });
+
+  it("clears the tracked preset on a genuine trade success alongside the amount reset", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain(
+      'setAmount("");\n        setReceiveRaw(null);\n        setSellFeeRaw(null);\n        setSelectedPreset(null);',
+    );
+  });
+
+  it("defines a distinct selected recipe in CSS, separate from the idle preset recipe", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    expect(css).toContain(".presetButtonSelected {");
+    const ruleStart = css.indexOf(".presetButtonSelected {");
+    const ruleEnd = css.indexOf("}", ruleStart);
+    const rule = css.slice(ruleStart, ruleEnd);
+    expect(rule).toContain("var(--preset-selected-border)");
+    expect(rule).toContain("var(--preset-selected-bg)");
+    expect(rule).toContain("var(--preset-selected-color)");
   });
 });
 
@@ -589,31 +640,76 @@ describe("token page mobile-first layout (issue #443 part 1: header → swap →
     expect(css).toContain("align-self: start;");
   });
 
-  it("gives every interactive control in the header band and swap panel a >=44px touch target — backLink/headerLinkChip/headerFigureToggle checked as touch-only overrides since #451's follow-up review scoped them to (pointer: coarse)", async () => {
+  it("declares no unconditional >=44px touch target on the design-sized controls (issue #460 RULES) — the floor lives only inside the (pointer: coarse) block below", async () => {
     const css = await source("components/token-page/token-page.module.css");
+    const coarseStart = css.indexOf("@media (pointer: coarse) {");
+    expect(coarseStart).toBeGreaterThan(-1);
+    const baseCss = css.slice(0, coarseStart);
+
     for (const selector of [
       ".headerDropArt",
       ".pillButton",
       ".walletButton",
       ".presetButton",
-      ".activityTab",
+      ".slippageButton",
       ".feeWithdrawButton",
       ".terminalFallbackLink",
       ".holderBreakdownHeader",
+      ".activityTab",
     ]) {
-      const ruleStart = css.indexOf(`${selector} {`);
-      expect(ruleStart, `expected a rule for ${selector}`).toBeGreaterThan(-1);
-      const ruleEnd = css.indexOf("}", ruleStart);
-      const rule = css.slice(ruleStart, ruleEnd);
-      const matchesHeightOrWidth = /(min-height|height):\s*4[4-9]px/.test(rule) || /width:\s*44px/.test(rule);
-      expect(matchesHeightOrWidth, `expected ${selector} to declare a >=44px touch target`).toBe(true);
+      // Every occurrence of the selector's own rule (not a compound rule
+      // like `.buySellTab.pillButtonActive`) outside the coarse-pointer
+      // block must declare no >=44px floor.
+      let ruleStart = baseCss.indexOf(`${selector} {`);
+      expect(ruleStart, `expected a base rule for ${selector}`).toBeGreaterThan(-1);
+      while (ruleStart !== -1) {
+        const ruleEnd = baseCss.indexOf("}", ruleStart);
+        const rule = baseCss.slice(ruleStart, ruleEnd);
+        const hasUnconditional44 = /(min-height|height):\s*4[4-9]px/.test(rule) || /width:\s*4[4-9]px/.test(rule);
+        expect(hasUnconditional44, `expected ${selector}'s base rule to declare no unconditional >=44px floor`).toBe(false);
+        ruleStart = baseCss.indexOf(`${selector} {`, ruleEnd);
+      }
     }
+  });
 
+  it("uses the design's own compact sizes on the base (fine-pointer) rules for those same controls (issue #460 companion assertion)", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const baseSizes: [string, RegExp][] = [
+      [".buySellTab", /min-height:\s*34px;/],
+      [".walletButton", /min-height:\s*34px;/],
+      [".presetButton", /min-height:\s*30px;/],
+      [".slippageButton", /min-height:\s*28px;/],
+      [".feeWithdrawButton", /min-height:\s*42px;/],
+      [".activityTab", /min-height:\s*38px;/],
+    ];
+    for (const [selector, expected] of baseSizes) {
+      const ruleStart = css.indexOf(`${selector} {`);
+      expect(ruleStart, `expected a base rule for ${selector}`).toBeGreaterThan(-1);
+      const ruleEnd = css.indexOf("}", ruleStart);
+      expect(css.slice(ruleStart, ruleEnd)).toMatch(expected);
+    }
+  });
+
+  it("gives every interactive control in the header band and swap panel a >=44px touch target under (pointer: coarse) — backLink/headerLinkChip/headerFigureToggle checked as touch-only overrides since #451's follow-up review scoped them to (pointer: coarse), widened in issue #460 to the rest of the design-sized controls", async () => {
+    const css = await source("components/token-page/token-page.module.css");
     const mediaStart = css.indexOf("@media (pointer: coarse) {");
     expect(mediaStart, "expected a (pointer: coarse) media query").toBeGreaterThan(-1);
     const mediaEnd = css.indexOf("\n}\n", mediaStart);
     const mediaBlock = css.slice(mediaStart, mediaEnd);
-    for (const selector of [".backLink", ".headerLinkChip", ".headerFigureToggle"]) {
+    for (const selector of [
+      ".backLink",
+      ".headerLinkChip",
+      ".headerFigureToggle",
+      ".headerDropArt",
+      ".pillButton",
+      ".walletButton",
+      ".presetButton",
+      ".slippageButton",
+      ".feeWithdrawButton",
+      ".terminalFallbackLink",
+      ".holderBreakdownHeader",
+      ".activityTab",
+    ]) {
       const ruleStart = mediaBlock.indexOf(`${selector} {`);
       expect(ruleStart, `expected a (pointer: coarse) rule for ${selector}`).toBeGreaterThan(-1);
       const ruleEnd = mediaBlock.indexOf("}", ruleStart);
@@ -629,7 +725,7 @@ describe("token page mobile-first layout (issue #443 part 1: header → swap →
     // Fine-pointer (base) sizes stay compact — unchanged from before.
     const baseSelectors: [string, RegExp][] = [
       [".chartVolumeToggle", /min-height:\s*32px;/],
-      [".chartIntervalButton", /min-height:\s*32px;/],
+      [".chartIntervalButton", /min-height:\s*28px;/],
       [".chartToolButton", /width:\s*30px;/],
     ];
     for (const [selector, expected] of baseSelectors) {
@@ -865,5 +961,158 @@ describe("token page polling is deduplicated to one shared poll per data source 
       expect(component, `${file} must not claim an owned independent copy`).not.toContain("owns an independent copy");
       expect(component, `${file} must not claim two independent 12s polls`).not.toContain("two independent 12s polls");
     }
+  });
+});
+
+describe("token page v2 premium surface system (issue #460)", () => {
+  it("defines the master panel recipe once, as CSS custom properties on .page, with a three-shadow stack and a 3-stop gradient", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const pageStart = css.indexOf(".page {");
+    const pageEnd = css.indexOf("\n}\n", pageStart);
+    const pageRule = css.slice(pageStart, pageEnd);
+
+    expect(pageRule).toContain("--panel-bg: linear-gradient(");
+    // 3-stop gradient: three percentage stops.
+    expect(pageRule.match(/rgba\([^)]+\)\s*(0%|34%|100%)/g)?.length).toBeGreaterThanOrEqual(3);
+    // 3-part shadow stack: inset highlight, hard outline, soft drop shadow.
+    expect(pageRule).toContain(
+      "--panel-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.07) inset, 0 0 0 1px rgba(0, 0, 0, 0.5),\n    0 30px 70px -24px rgba(0, 0, 0, 0.8);",
+    );
+  });
+
+  it("applies the master panel recipe's custom properties to every major panel class — header band, swap/stats/fee/.panel, chart panel, activity panel", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    for (const selector of [".headerBand", ".panel", ".chartPlaceholder", ".activityPanel"]) {
+      // `.chartPlaceholder`/`.activityPanel` also appear earlier as their
+      // own tiny `order:` rule in the mobile-stacking section — the real
+      // panel-recipe rule is their last occurrence in the file.
+      const ruleStart = css.lastIndexOf(`${selector} {`);
+      expect(ruleStart, `expected a rule for ${selector}`).toBeGreaterThan(-1);
+      const ruleEnd = css.indexOf("}", ruleStart);
+      const rule = css.slice(ruleStart, ruleEnd);
+      expect(rule, `expected ${selector} to use the shared panel border`).toContain("var(--panel-border)");
+      expect(rule, `expected ${selector} to use the shared panel radius`).toContain("var(--panel-radius)");
+      expect(rule, `expected ${selector} to use the shared panel background`).toContain("var(--panel-bg)");
+      expect(rule, `expected ${selector} to use the shared panel shadow`).toContain("var(--panel-shadow)");
+    }
+  });
+
+  it("makes every CTA-style button (trade CTA, fee withdraw, terminal fallback link) a solid lime fill with no gradient, site-wide", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    for (const selector of [".tradeButton", ".feeWithdrawButton", ".terminalFallbackLink"]) {
+      const ruleStart = css.indexOf(`${selector} {`);
+      expect(ruleStart, `expected a rule for ${selector}`).toBeGreaterThan(-1);
+      const ruleEnd = css.indexOf("}", ruleStart);
+      const rule = css.slice(ruleStart, ruleEnd);
+      expect(rule, `expected ${selector} to use the solid CTA background`).toContain("background: var(--cta-bg);");
+      expect(rule, `expected ${selector} to use the CTA text color`).toContain("color: var(--cta-color);");
+      expect(rule, `expected ${selector} to declare no gradient`).not.toContain("gradient");
+    }
+
+    expect(css).toContain("--cta-bg: #c6f53e;");
+    expect(css).toContain("--cta-color: #071008;");
+
+    // Buy and Sell resolve to the exact same solid recipe — never a
+    // gradient or a distinct red "sell" treatment.
+    const sharedRuleStart = css.indexOf(".tradeButtonBuy,\n.tradeButtonSell {");
+    expect(sharedRuleStart).toBeGreaterThan(-1);
+  });
+
+  it("gives the shared chip active state a border, tint background, inset+glow shadow and text-shadow glow, referenced by every chip consumer", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const pageStart = css.indexOf(".page {");
+    const pageEnd = css.indexOf("\n}\n", pageStart);
+    const pageRule = css.slice(pageStart, pageEnd);
+    expect(pageRule).toContain("--chip-active-border-color: rgba(198, 245, 62, 0.5);");
+    expect(pageRule).toContain("--chip-active-bg: linear-gradient(");
+    expect(pageRule).toContain("--chip-active-shadow: 0 1px 0 0 rgba(198, 245, 62, 0.22) inset");
+    expect(pageRule).toContain("--chip-active-text-shadow: 0 0 12px rgba(198, 245, 62, 0.45);");
+
+    for (const selector of [".pillButtonActive", ".chartIntervalButtonActive", ".chartVolumeToggleActive"]) {
+      const ruleStart = css.indexOf(`${selector} {`);
+      expect(ruleStart, `expected a rule for ${selector}`).toBeGreaterThan(-1);
+      const ruleEnd = css.indexOf("}", ruleStart);
+      const rule = css.slice(ruleStart, ruleEnd);
+      expect(rule).toContain("var(--chip-active-border-color)");
+      expect(rule).toContain("var(--chip-active-bg)");
+      expect(rule).toContain("var(--chip-active-shadow)");
+      expect(rule).toContain("var(--chip-active-text-shadow)");
+      expect(rule).toContain("var(--chip-active-color)");
+    }
+  });
+
+  it("gives every inset well (YOU PAY / YOU RECEIVE / holder breakdown dropdown) the shared inset recipe", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const fieldBoxStart = css.indexOf(".fieldBox {");
+    const fieldBoxEnd = css.indexOf("}", fieldBoxStart);
+    const fieldBoxRule = css.slice(fieldBoxStart, fieldBoxEnd);
+    expect(fieldBoxRule).toContain("var(--well-border)");
+    expect(fieldBoxRule).toContain("var(--well-bg)");
+    expect(fieldBoxRule).toContain("var(--well-shadow)");
+
+    const holderStart = css.indexOf(".holderBreakdown {");
+    const holderEnd = css.indexOf("}", holderStart);
+    const holderRule = css.slice(holderStart, holderEnd);
+    expect(holderRule).toContain("var(--well-bg)");
+    expect(holderRule).toContain("0 2px 6px 0 rgba(0, 0, 0, 0.45) inset");
+
+    const pageStart = css.indexOf(".page {");
+    const pageEnd = css.indexOf("\n}\n", pageStart);
+    const pageRule = css.slice(pageStart, pageEnd);
+    expect(pageRule).toContain(
+      "--well-bg: linear-gradient(180deg, rgba(0, 0, 0, 0.38), rgba(255, 255, 255, 0.022)), #0a0f0c;",
+    );
+    expect(pageRule).toContain("--well-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;");
+  });
+
+  it("configures the chart's grid, candle up/down and moving-average colors from the design (issue #460 section 7)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain('const UP_COLOR = "#c6f53e";');
+    expect(component).toContain('const DOWN_COLOR = "#e2564b";');
+    expect(component).toContain('const MA20_COLOR = "#c6f53e";');
+    expect(component).toContain('const MA50_COLOR = "#ffffff";');
+    expect(component).toContain('vertLines: { color: "rgba(255, 255, 255, 0.035)" }');
+    expect(component).toContain('horzLines: { color: "rgba(255, 255, 255, 0.045)" }');
+  });
+
+  it("disables the LIVE dot pulse animation and every chip's hover/active transition under prefers-reduced-motion", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const mediaStart = css.indexOf("@media (prefers-reduced-motion: reduce) {");
+    expect(mediaStart).toBeGreaterThan(-1);
+    const mediaBlock = css.slice(mediaStart);
+
+    const liveDotStart = mediaBlock.indexOf(".liveDot {");
+    expect(liveDotStart).toBeGreaterThan(-1);
+    const liveDotEnd = mediaBlock.indexOf("}", liveDotStart);
+    expect(mediaBlock.slice(liveDotStart, liveDotEnd)).toContain("animation: none;");
+
+    for (const selector of [".chartIntervalButton", ".pillButton", ".presetButton", ".slippageButton", ".activityTab", ".chartVolumeToggle"]) {
+      const ruleStart = mediaBlock.indexOf(`${selector} {`);
+      expect(ruleStart, `expected a reduced-motion rule for ${selector}`).toBeGreaterThan(-1);
+      const ruleEnd = mediaBlock.indexOf("}", ruleStart);
+      expect(mediaBlock.slice(ruleStart, ruleEnd)).toContain("transition: none;");
+    }
+  });
+
+  it("swaps the token route's font link to Inter, Archivo Black and IBM Plex Mono, no new font dependency", async () => {
+    const layout = await source("app/token/layout.tsx");
+    expect(layout).toContain("family=Archivo+Black");
+    expect(layout).toContain("family=Inter:wght@400;500;600;700;800");
+    expect(layout).toContain("family=IBM+Plex+Mono:wght@400;500;600;700");
+    expect(layout).not.toContain("family=JetBrains+Mono");
+    expect(layout).not.toContain("family=Archivo:wght");
+  });
+
+  it("uses the design's 340px left column and 18px desktop gaps, mobile spacing unchanged", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const blockStart = css.indexOf("@media (min-width: 881px)");
+    const block = css.slice(blockStart, css.indexOf("@media (min-width: 881px)", blockStart + 1));
+    expect(block).toContain("grid-template-columns: 340px minmax(620px, 1fr);");
+    expect(block).toContain("gap: 18px;");
+    expect(block).toContain(".shell {\n    gap: 18px;\n  }");
+
+    const shellStart = css.indexOf(".shell {");
+    const shellEnd = css.indexOf("}", shellStart);
+    expect(css.slice(shellStart, shellEnd)).toContain("gap: 14px;");
   });
 });

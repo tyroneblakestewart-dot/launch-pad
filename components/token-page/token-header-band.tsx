@@ -11,7 +11,7 @@ import type { TokenTrade } from "@/lib/token-trade-types";
 import {
   formatHolderCount,
   formatLaunchAge,
-  formatNativeFixed,
+  formatNativeAmountSixSigFigsTrimmed,
   formatNativePriceSixSigFigs,
   formatSignedPercent,
 } from "@/lib/token-page-format";
@@ -101,7 +101,9 @@ export function TokenHeaderBand({
   const marketCapNative = lastPrice !== null && totalSupplyWhole !== null ? lastPrice * totalSupplyWhole : null;
 
   const bigFigure =
-    mode === "price" ? `${formatNativePriceSixSigFigs(lastPrice)} ETH` : `${formatNativeFixed(marketCapNative, 2)} ETH`;
+    mode === "price"
+      ? `${formatNativePriceSixSigFigs(lastPrice)} ETH`
+      : `${formatNativeAmountSixSigFigsTrimmed(marketCapNative)} ETH`;
   const modeLabel = mode === "price" ? "PRICE · TAP FOR MCAP" : "MCAP · TAP FOR PRICE";
 
   // Change over the trades currently loaded — this design's chart has no
