@@ -384,7 +384,7 @@ describe("token page trade UX correctness (issue #427)", () => {
     const component = await source("components/token-page/token-left-column.tsx");
     expect(component).toContain("const receipt = await publicClient.waitForTransactionReceipt({ hash });");
     expect(component).toContain('receipt.status === "reverted"');
-    expect(component).toContain("describeRevertedTrade(hash)");
+    expect(component).toContain("describeTradeError(receipt)");
   });
 
   it("renders a distinct, non-muted error state for a reverted or thrown trade failure, separate from the informational status hint", async () => {
@@ -426,8 +426,8 @@ describe("token page trade UX correctness (issue #427)", () => {
   it("applies the same reverted/thrown-error handling to the creator fee withdraw flow", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
     expect(component).toContain("const [feeError, setFeeError] = useState");
-    expect(component).toContain("setFeeError(describeRevertedTrade(hash))");
-    expect(component).toContain("setFeeError(describeTradeSubmissionFailure(error))");
+    expect(component).toContain("setFeeError(describeTradeError(receipt))");
+    expect(component).toContain("setFeeError(describeTradeError(error))");
   });
 
   it("clears the persistent 'Trade confirmed.' status once the side, amount input or a preset changes it wouldn't otherwise stay on screen indefinitely (issue #451 item 5)", async () => {
@@ -901,7 +901,7 @@ describe("token page desktop layout: swap + stats + fees left, chart + tabs fill
   it("does not touch the token page's trade logic or error surfacing (issue #427) while rearranging layout and deduplicating polling (issue #444)", async () => {
     const component = await source("components/token-page/token-left-column.tsx");
     expect(component).toContain('receipt.status === "reverted"');
-    expect(component).toContain("describeRevertedTrade(hash)");
+    expect(component).toContain("describeTradeError(receipt)");
     expect(component).toContain("void refreshBalances(account);");
   });
 });
