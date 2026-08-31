@@ -30,6 +30,7 @@ import {
 import { applySlippageFloor } from "@/lib/bonding-curve-slippage";
 import type { BondingCurveGraduationStatus } from "@/lib/bonding-curve-status";
 import { CHAIN_CONFIG, ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import { describeTradeError, sanitiseTradeErrorForLogging } from "@/lib/trade-error-message";
 import { notifyTokenTradeConfirmed } from "@/lib/token-trade-events";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import { formatFeeNote, formatNativeAmountSixSigFigsTrimmed, formatTokenBalanceAmount, shortenAddress } from "@/lib/token-page-format";
@@ -99,19 +100,16 @@ function readError(error: unknown): string {
   return "The transaction failed.";
 }
 
-// Trade UX correctness fix (issue #427): a thrown error (wallet rejection,
-// RPC failure, disconnect) never reached the chain, so nothing was sent.
-function describeTradeSubmissionFailure(error: unknown): string {
-  return `${readError(error)} Nothing was sent — you can try again.`;
-}
-
 // viem's waitForTransactionReceipt() resolves normally even for a reverted
 // transaction (it only throws on a genuine RPC/timeout failure), so a plain
 // try/catch around it silently reported "Trade confirmed." for a trade that
 // actually failed on-chain. Every receipt's own `status` must be checked.
-function describeRevertedTrade(hash: `0x${string}`): string {
-  return `Transaction reverted on-chain (${shortenAddress(hash)}) — no funds were moved. Try again with a smaller amount or more slippage.`;
-}
+// The user-facing message for both a thrown submission failure (wallet
+// rejection, RPC failure, disconnect — issue #427) and a mined-but-reverted
+// receipt comes from the shared `describeTradeError` helper (issue #462),
+// which never surfaces viem's own error text (calldata, contract args, docs
+// URL, library version); the full error is separately logged to the console
+// in sanitised form for debugging.
 
 function formatSlippageLabel(bps: number): string {
   return `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 1)}%`;
@@ -284,16 +282,18 @@ export function TokenLeftColumn({
       setFeeStatusMessage(`Transaction submitted: ${shortenAddress(hash)}`);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status === "reverted") {
+        console.error("Fee withdrawal reverted on-chain:", hash);
         setFeeStatusMessage("");
-        setFeeError(describeRevertedTrade(hash));
+        setFeeError(describeTradeError(receipt));
       } else {
         setFeeStatusMessage("Fees withdrawn.");
       }
       void refreshClaimableFee(account, curveView.curve);
       void refreshBalances(account);
     } catch (error) {
+      console.error("Fee withdrawal failed:", sanitiseTradeErrorForLogging(error));
       setFeeStatusMessage("");
-      setFeeError(describeTradeSubmissionFailure(error));
+      setFeeError(describeTradeError(error));
     } finally {
       setFeeBusy(false);
     }
@@ -509,8 +509,9 @@ export function TokenLeftColumn({
       if (isCreator) void refreshClaimableFee(account, curveView.curve);
 
       if (receipt.status === "reverted") {
+        console.error("Trade reverted on-chain:", hash);
         setStatusMessage("");
-        setTradeError(describeRevertedTrade(hash));
+        setTradeError(describeTradeError(receipt));
       } else {
         setStatusMessage("Trade confirmed.");
         notifyTokenTradeConfirmed({ curveAddress: curveView.curve });
@@ -520,8 +521,9 @@ export function TokenLeftColumn({
         setSelectedPreset(null);
       }
     } catch (error) {
+      console.error("Trade failed:", sanitiseTradeErrorForLogging(error));
       setStatusMessage("");
-      setTradeError(describeTradeSubmissionFailure(error));
+      setTradeError(describeTradeError(error));
     } finally {
       setBusy(false);
     }
