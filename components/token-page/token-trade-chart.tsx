@@ -28,6 +28,7 @@ import {
   type HorizontalLine,
 } from "@/lib/token-chart-tools";
 import {
+  applyChartResize,
   applyTokenTradeChartUpdate,
   createInitialTokenTradeChartRenderState,
   type TokenTradeChartRenderState,
@@ -106,22 +107,35 @@ function formatUtcTime(unixSeconds: number): string {
  *
  * Bar width (issue #449 item 2): the time scale's own `barSpacing`/
  * `minBarSpacing` are fixed constants, so pixel width per candle stays
- * constant regardless of chart width or candle count — no normal code path
- * ever calls `setVisibleLogicalRange` or `fitContent` to force a window
- * (the deployed bug: forcing a 120-bar window on a low-trade-count token
- * spread candles to ~3x the design's width). `scrollToRealTime()` after
- * `setData()` is what puts the latest bar at the right edge instead.
+ * constant regardless of chart width or candle count — nothing here ever
+ * calls `fitContent` to force a window (the deployed bug: forcing a
+ * 120-bar window on a low-trade-count token spread candles to ~3x the
+ * design's width).
+ *
+ * Positioning on "now" (issue #467 item 1): the old `scrollToRealTime` call
+ * this component used to make, and the timeScale's own `shiftVisibleRangeOnNewBar` (explicitly disabled below),
+ * both act on the last bar that carries real series data and ignore
+ * trailing whitespace bars — since `buildChartSeriesPoints` extends the
+ * timeline with whitespace all the way to the current bucket, those
+ * built-ins left the view scrolled to the last real candle while the axis
+ * never reached the present on a token with a long trade-free tail, making
+ * the chart look permanently frozen. `lib/token-trade-chart-render.ts`'s
+ * `applyTokenTradeChartUpdate` positions and follows the timeline itself
+ * instead, via `setVisibleLogicalRange` — this component only supplies the
+ * chart's real container width (`lastAppliedSizeRef`, already tracked by the
+ * guarded ResizeObserver below) as `chartWidthPx`, and re-invokes the same
+ * resize-follow logic (`applyChartResize`) whenever that width itself
+ * changes, independent of any data poll.
  *
  * Out-of-order update crash (issue #451 follow-up): the whitespace
  * timeline's tail advances on its own clock, independent of when a trade is
  * fetched, so a trade landing in a bucket that tail has already moved past
  * produces an `update()` target that's no longer the last bar —
  * lightweight-charts throws "Cannot update oldest data" for that. The
- * incremental branch below detects this (and catches any update() throw it
- * doesn't anticipate) and falls back to a full `setData()` for every series,
- * the one exception to the no-forced-range rule above: it reads
- * `getVisibleLogicalRange()` first and restores it right after, so the
- * user's view still doesn't jump.
+ * incremental branch inside `applyTokenTradeChartUpdate` detects this (and
+ * catches any update() throw it doesn't anticipate) and falls back to a full
+ * `setData()` for every series: it reads `getVisibleLogicalRange()` first
+ * and restores it right after, so the user's view still doesn't jump.
  */
 export function TokenTradeChart({
   trades,
@@ -227,6 +241,10 @@ export function TokenTradeChart({
         rightOffset: 4,
         barSpacing: 6,
         minBarSpacing: 3,
+        // Positioning/following is owned by lib/token-trade-chart-render.ts's
+        // explicit setVisibleLogicalRange calls (issue #467 items 1-2), never
+        // this built-in — see the component doc comment above.
+        shiftVisibleRangeOnNewBar: false,
       },
       crosshair: {
         mode: CrosshairMode.Normal,
@@ -345,6 +363,24 @@ export function TokenTradeChart({
       if (lastApplied && Math.abs(lastApplied.width - width) < 1 && Math.abs(lastApplied.height - height) < 1) return;
       lastAppliedSizeRef.current = { width, height };
       chart.resize(width, height);
+
+      // Re-derives the visible range from the new width while the viewer is
+      // at the right edge (issue #467 item 1) — independent of any data
+      // poll, since a resize alone (e.g. rotating a phone) can otherwise
+      // leave the old range's bar count wrong for the new width.
+      const lastPointIndex = renderStateRef.current.points.length - 1;
+      if (renderStateRef.current.hasRenderedOnce) {
+        applyChartResize(
+          {
+            timeScale: {
+              getVisibleLogicalRange: () => chart.timeScale().getVisibleLogicalRange(),
+              setVisibleLogicalRange: (range) => chart.timeScale().setVisibleLogicalRange(range),
+            },
+          },
+          lastPointIndex,
+          width,
+        );
+      }
     });
     resizeObserver.observe(container);
 
@@ -430,7 +466,6 @@ export function TokenTradeChart({
         update: (point) => volumeSeries.update({ time: point.time as UTCTimestamp, value: point.value, color: point.color }),
       },
       timeScale: {
-        scrollToRealTime: () => chartRef.current?.timeScale().scrollToRealTime(),
         getVisibleLogicalRange: () => chartRef.current?.timeScale().getVisibleLogicalRange() ?? null,
         setVisibleLogicalRange: (range) => chartRef.current?.timeScale().setVisibleLogicalRange(range),
       },
@@ -444,6 +479,12 @@ export function TokenTradeChart({
       nowUnixSeconds: nowTick,
       startingPriceNativePerToken,
       launchedAtUnixSeconds,
+      // The same real container width the guarded ResizeObserver above
+      // tracks (issue #467 item 1) — 0 only in the sliver of time before
+      // that observer's first callback has fired, in which case the engine
+      // simply sets an empty range that the observer's own follow-up call
+      // immediately corrects.
+      chartWidthPx: lastAppliedSizeRef.current?.width ?? 0,
     });
 
     const maxPrice =

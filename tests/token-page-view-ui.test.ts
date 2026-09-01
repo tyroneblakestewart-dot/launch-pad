@@ -205,7 +205,7 @@ describe("token page header band tightened proportions (issue #451 item 3)", () 
     expect(css.slice(backLinkStart, backLinkEnd)).not.toContain("44px");
   });
 
-  it("keeps a real >=44px touch target and the side-by-side figure/link-chips layout for touch devices only, via a (pointer: coarse) media query", async () => {
+  it("keeps a real >=44px touch target for every touch device, via a bare (pointer: coarse) media query", async () => {
     const css = await source("components/token-page/token-page.module.css");
     const mediaStart = css.indexOf("@media (pointer: coarse) {");
     expect(mediaStart).toBeGreaterThan(-1);
@@ -215,7 +215,35 @@ describe("token page header band tightened proportions (issue #451 item 3)", () 
     expect(mediaBlock).toMatch(/\.backLink\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px;/s);
     expect(mediaBlock).toMatch(/\.headerLinkChip\s*\{[^}]*min-height:\s*44px;/s);
     expect(mediaBlock).toMatch(/\.headerFigureToggle\s*\{[^}]*min-height:\s*44px;/s);
-    expect(mediaBlock).toMatch(/\.headerFigureBlock\s*\{[^}]*flex-direction:\s*row;/s);
+  });
+});
+
+describe("header band mobile overflow fix (issue #467 item 5)", () => {
+  it("stacks the price figure above the link chips (column, from the base rule) at every width up to and including a narrow touch device, so a real phone never gets the wider side-by-side row that caused the overflow", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const blockStart = css.indexOf(".headerFigureBlock {");
+    const blockEnd = css.indexOf("}", blockStart);
+    expect(css.slice(blockStart, blockEnd)).toContain("flex-direction: column;");
+
+    // The bare (pointer: coarse) block (any touch device, any width) no
+    // longer sets .headerFigureBlock to a row.
+    const coarseStart = css.indexOf("@media (pointer: coarse) {");
+    const coarseEnd = css.indexOf("\n}\n", coarseStart);
+    expect(css.slice(coarseStart, coarseEnd)).not.toContain(".headerFigureBlock");
+  });
+
+  it("only widens .headerFigureBlock to a side-by-side row on a touch device that is ALSO at least 881px wide (e.g. an iPad, never a phone) — min-width-only, never max-width, matching this file's mobile-first convention", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    expect(css).not.toContain("max-width: 880px");
+
+    const wideCoarseStart = css.indexOf("@media (pointer: coarse) and (min-width: 881px) {");
+    expect(wideCoarseStart).toBeGreaterThan(-1);
+    // Must come after the bare (pointer: coarse) block so it's a deliberate, later override.
+    expect(wideCoarseStart).toBeGreaterThan(css.indexOf("@media (pointer: coarse) {"));
+
+    const wideCoarseEnd = css.indexOf("\n}\n", wideCoarseStart);
+    const wideCoarseBlock = css.slice(wideCoarseStart, wideCoarseEnd);
+    expect(wideCoarseBlock).toMatch(/\.headerFigureBlock\s*\{[^}]*flex-direction:\s*row;/s);
   });
 });
 

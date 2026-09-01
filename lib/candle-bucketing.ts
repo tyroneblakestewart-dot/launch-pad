@@ -216,6 +216,15 @@ const LAUNCH_CAPPED_PADDING_BARS = 5;
  * blank space to the left of its capped start rather than a stretched or
  * fabricated history. Omitted (no launch record) leaves the uncapped
  * ~100-bar padding exactly as before.
+ *
+ * The cap is a floor on the *padding*, never on a real candle (issue #467
+ * item 3): a launch recorded after trading had already begun (e.g. the #425
+ * recovery path) previously computed `startTime` as `max(uncappedStartTime,
+ * launchFloorTime)`, which — when the launch floor happened to land *after*
+ * the earliest real candle — silently excluded that candle from the
+ * timeline entirely, since the render loop below never iterates before
+ * `startTime`. Taking `min(earliestCandleTime, ...)` guarantees the
+ * timeline always reaches back at least as far as the first real trade.
  */
 export function buildChartSeriesPoints(
   candles: readonly Candle[],
@@ -234,7 +243,8 @@ export function buildChartSeriesPoints(
     launchedAtUnixSeconds !== null && launchedAtUnixSeconds !== undefined
       ? Math.floor(launchedAtUnixSeconds / intervalSeconds) * intervalSeconds - LAUNCH_CAPPED_PADDING_BARS * intervalSeconds
       : null;
-  const startTime = launchFloorTime !== null ? Math.max(uncappedStartTime, launchFloorTime) : uncappedStartTime;
+  const startTime =
+    launchFloorTime !== null ? Math.min(earliestTime, Math.max(uncappedStartTime, launchFloorTime)) : uncappedStartTime;
   const endTime = Math.max(currentBucketTime, latestCandleTime);
 
   const points: ChartSeriesPoint[] = [];
