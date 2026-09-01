@@ -21,6 +21,7 @@ import {
 import {
   addHorizontalLine,
   computeChartMinMove,
+  computeChartPriceDecimals,
   expandDegeneratePriceRange,
   removeHorizontalLine,
   type ChartTool,
@@ -33,7 +34,12 @@ import {
   type TokenTradeChartSeriesBundle,
 } from "@/lib/token-trade-chart-render";
 import { DEFAULT_TOKEN_DECIMALS } from "@/lib/bonding-curve-deploy-config";
-import { formatNativeAmountSixSigFigsTrimmed, formatNativePriceSixSigFigs, formatSignedPercent } from "@/lib/token-page-format";
+import {
+  formatNativeAmountSixSigFigsTrimmed,
+  formatNativePriceAtDecimals,
+  formatNativePriceSixSigFigs,
+  formatSignedPercent,
+} from "@/lib/token-page-format";
 import type { TokenTrade } from "@/lib/token-trade-types";
 import styles from "./token-page.module.css";
 
@@ -51,6 +57,13 @@ const DOWN_COLOR = "#e2564b";
 const MA20_COLOR = "#c6f53e";
 const MA50_COLOR = "#ffffff";
 const HORIZONTAL_LINE_COLOR = "#9ad4ff";
+
+// The candlestick series' priceFormat before any real data has resolved a
+// minMove of its own (issue #464 item 2) — kept as one pair of constants so
+// the mount-time priceFormat and the initial `priceDecimals` state below
+// agree with each other from the very first render.
+const INITIAL_CHART_MIN_MOVE = 0.00000001;
+const INITIAL_CHART_PRICE_DECIMALS = computeChartPriceDecimals(INITIAL_CHART_MIN_MOVE);
 
 type HoverInfo = {
   time: number;
@@ -153,13 +166,36 @@ export function TokenTradeChart({
     toolRef.current = tool;
   }, [tool]);
 
+  // Every chart price display (axis, crosshair, tooltip, last-price tag)
+  // renders at this fixed decimal count, re-derived from the chart's own
+  // current minMove whenever it changes (issue #464 item 2) — see the
+  // data-flow effect below, where it's set alongside appliedMinMoveRef.
+  const [priceDecimals, setPriceDecimals] = useState(INITIAL_CHART_PRICE_DECIMALS);
+
   // Whitespace bars advance the visible timeline "with the clock" (issue
   // #451 item 2) even when no new trade has arrived to otherwise trigger a
   // re-render — a slow, deliberately coarse tick, not a live-second clock.
+  // Browsers suspend or heavily throttle background-tab timers, so the plain
+  // 30s interval alone left a tab backgrounded overnight showing the chart
+  // frozen at its last trade (issue #464 item 1); updating immediately on
+  // mount, on the tab becoming visible again, and on window focus makes the
+  // clock catch up the moment it's actually looked at again, while the
+  // interval keeps it ticking for an already-foregrounded tab.
   const [nowTick, setNowTick] = useState(() => Math.floor(Date.now() / 1000));
   useEffect(() => {
-    const timer = window.setInterval(() => setNowTick(Math.floor(Date.now() / 1000)), 30_000);
-    return () => window.clearInterval(timer);
+    const updateNowTick = () => setNowTick(Math.floor(Date.now() / 1000));
+    updateNowTick();
+    const timer = window.setInterval(updateNowTick, 30_000);
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") updateNowTick();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", updateNowTick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", updateNowTick);
+    };
   }, []);
 
   // Mount once: create the chart + every series instance, independent of
@@ -207,8 +243,8 @@ export function TokenTradeChart({
       wickDownColor: "rgba(226, 86, 75, 0.9)",
       priceFormat: {
         type: "custom",
-        minMove: 0.00000001,
-        formatter: (price: number) => formatNativePriceSixSigFigs(price),
+        minMove: INITIAL_CHART_MIN_MOVE,
+        formatter: (price: number) => formatNativePriceAtDecimals(price, INITIAL_CHART_PRICE_DECIMALS),
       },
       // Single last-price indicator (issue #458 item 2): the series' own
       // built-in price line/last-value tag are disabled so there is exactly
@@ -415,10 +451,12 @@ export function TokenTradeChart({
     if (maxPrice !== null && maxPrice > 0) {
       const minMove = computeChartMinMove(maxPrice);
       if (minMove !== appliedMinMoveRef.current) {
+        const decimals = computeChartPriceDecimals(minMove);
         candleSeries.applyOptions({
-          priceFormat: { type: "custom", minMove, formatter: (price: number) => formatNativePriceSixSigFigs(price) },
+          priceFormat: { type: "custom", minMove, formatter: (price: number) => formatNativePriceAtDecimals(price, decimals) },
         });
         appliedMinMoveRef.current = minMove;
+        setPriceDecimals(decimals);
       }
     }
 
@@ -492,7 +530,8 @@ export function TokenTradeChart({
   const showEmptyOverlay = !error && trades !== null && trades.length === 0;
   const hasLoadError = Boolean(error) && trades === null;
 
-  const lastPriceLabel = lastPrice !== null && lastPrice !== undefined ? `${formatNativePriceSixSigFigs(lastPrice)} ETH` : "—";
+  const lastPriceLabel =
+    lastPrice !== null && lastPrice !== undefined ? `${formatNativePriceAtDecimals(lastPrice, priceDecimals)} ETH` : "—";
 
   const hoverChangePercent = hoverInfo && hoverInfo.open > 0 ? ((hoverInfo.close - hoverInfo.open) / hoverInfo.open) * 100 : null;
 
@@ -607,19 +646,19 @@ export function TokenTradeChart({
               </div>
               <div className={styles.chartTooltipRow}>
                 <span>O</span>
-                <span>{formatNativePriceSixSigFigs(hoverInfo.open)}</span>
+                <span>{formatNativePriceAtDecimals(hoverInfo.open, priceDecimals)}</span>
               </div>
               <div className={styles.chartTooltipRow}>
                 <span>H</span>
-                <span>{formatNativePriceSixSigFigs(hoverInfo.high)}</span>
+                <span>{formatNativePriceAtDecimals(hoverInfo.high, priceDecimals)}</span>
               </div>
               <div className={styles.chartTooltipRow}>
                 <span>L</span>
-                <span>{formatNativePriceSixSigFigs(hoverInfo.low)}</span>
+                <span>{formatNativePriceAtDecimals(hoverInfo.low, priceDecimals)}</span>
               </div>
               <div className={styles.chartTooltipRow}>
                 <span>C</span>
-                <span>{formatNativePriceSixSigFigs(hoverInfo.close)}</span>
+                <span>{formatNativePriceAtDecimals(hoverInfo.close, priceDecimals)}</span>
               </div>
               <div className={styles.chartTooltipRow}>
                 <span>VOL</span>
