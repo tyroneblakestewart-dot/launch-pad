@@ -19,7 +19,7 @@ describe("useTokenTrades (issue #430)", () => {
     const hook = await source("lib/use-token-trades.ts");
     expect(hook).toContain('"use client"');
     expect(hook).toContain("`/api/token-trades?curve=${curve}`");
-    expect(hook).toContain("POLL_INTERVAL_MS = 12_000");
+    expect(hook).toContain("POLL_INTERVAL_MS = 5_000");
   });
 
   it("follows the issue #403 live-refresh pattern exactly: visible-tab timer, focus/visibilitychange refetch, cleanup", async () => {
@@ -430,6 +430,13 @@ describe("TokenCenterColumn live trade wiring (issue #430)", () => {
     const component = await source("components/token-page/token-center-column.tsx");
     expect(component).toContain('explorerBaseUrl.replace("/address/", "/tx/")');
     expect(component).toContain("`${explorerTxBaseUrl}${trade.txHash}`");
+  });
+
+  it("shows a POOL badge on a post-graduation pool-venue trade row (issue #466)", async () => {
+    const component = await source("components/token-page/token-center-column.tsx");
+    expect(component).toContain('trade.venue === "pool" && <span className={styles.venueBadgePool}>POOL</span>');
+    const css = await source("components/token-page/token-page.module.css");
+    expect(css).toContain(".venueBadgePool {");
   });
 });
 

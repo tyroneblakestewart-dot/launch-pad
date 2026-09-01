@@ -570,13 +570,16 @@ export function isTokenLaunchRequestOriginAllowed(request: Request): boolean {
 
 // Token trades (issue #430): a public GET reading a bonding curve's
 // buy/sell history, polled by the token page's chart + Recent trades tab
-// on a shared 12s visible-tab timer (lib/use-token-trades.ts). A 12s timer
-// alone is 3600/12 = 300 reads/hour from a single open tab; on top of that
-// add a focus/visibilitychange refetch on every refocus and the connected
+// on a shared visible-tab timer (lib/use-token-trades.ts). issue #466
+// tightened that timer from 12s to 5s (alongside the server cache's own
+// 10s -> 4s TTL) so a graduated token's pool trades show up for other
+// viewers well under the old ~20s worst case. A 5s timer alone is
+// 3600/5 = 720 reads/hour from a single open tab; on top of that add a
+// focus/visibilitychange refetch on every refocus and the connected
 // wallet's own-trade-confirmed refetch, so the limit is set well above the
 // timer-alone floor — matching TOKEN_LAUNCH_READ_LIMIT/SUPPORT_READ_LIMIT's
 // same "generous but still bounded, per-IP per-hour" shape.
-export const TOKEN_TRADES_READ_LIMIT = 600;
+export const TOKEN_TRADES_READ_LIMIT = 1200;
 const TOKEN_TRADES_WINDOW_MS = 60 * 60 * 1000;
 
 export function consumeTokenTradesReadRateLimit(ip: string, now = Date.now()) {

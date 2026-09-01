@@ -1639,6 +1639,18 @@
   color: var(--accent-red);
 }
 
+/* Same badge recipe as .chatBadgeHolder's mint variant (issue #466), marking a Recent trades row sourced from the post-graduation locked pool rather than the bonding curve. */
+.venueBadgePool {
+  padding: 2px 7px;
+  border-radius: 99px;
+  font: 800 8px/1.4 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-mint);
+  background: rgba(145, 240, 182, 0.07);
+  border: 1px solid rgba(145, 240, 182, 0.32);
+}
+
 .dimText {
   color: var(--text-sub);
 }

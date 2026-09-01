@@ -113,6 +113,37 @@ describe("computeTradeWindowStats", () => {
     const stats = computeTradeWindowStats([last, first], 3600, DECIMALS, NOW);
     expect(stats.priceChangePercent).toBeCloseTo(100);
   });
+
+  it("counts a pool-venue trade (issue #466, post-graduation) the same as a curve trade — no venue-based filtering", () => {
+    const poolBuy = buyTrade({
+      venue: "pool",
+      wallet: "0x3333333333333333333333333333333333333333",
+      txHash: "0x0000000000000000000000000000000000000000000000000000000000c1",
+      logIndex: 0,
+      grossNativeAmountRaw: "10000000000000000",
+      feeChargedRaw: "0",
+      virtualTokenReserveRaw: undefined,
+      virtualEthReserveRaw: undefined,
+      spotPriceNativePerTokenRaw: "10000000000000000",
+    });
+    const poolSell = sellTrade({
+      venue: "pool",
+      wallet: "0x4444444444444444444444444444444444444444",
+      txHash: "0x0000000000000000000000000000000000000000000000000000000000c2",
+      logIndex: 1,
+      feeChargedRaw: "0",
+      virtualTokenReserveRaw: undefined,
+      virtualEthReserveRaw: undefined,
+      spotPriceNativePerTokenRaw: "9900000000000000",
+    });
+    const stats = computeTradeWindowStats([buyTrade(), sellTrade(), poolBuy, poolSell], 3600, DECIMALS, NOW);
+    expect(stats.buys).toBe(2);
+    expect(stats.sells).toBe(2);
+    expect(stats.buyers).toBe(2);
+    expect(stats.sellers).toBe(2);
+    expect(stats.buyVolumeNative).toBeCloseTo(0.02);
+    expect(stats.sellVolumeNative).toBeCloseTo(0.02);
+  });
 });
 
 describe("computeTotalFeesNative", () => {

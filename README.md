@@ -148,7 +148,7 @@ commit real values):
 | `HOODLUMS_BONDING_CURVE_TREASURY_ADDRESS` | Constructor `treasury_` — receives the 60% protocol fee share. |
 | `HOODLUMS_BONDING_CURVE_POSITION_MANAGER_ADDRESS` | Constructor `positionManager_` — the Uniswap V3 `NonfungiblePositionManager` `_graduate()` calls to mint the full-range graduation position. |
 | `HOODLUMS_BONDING_CURVE_UNISWAP_V3_FACTORY_ADDRESS` | Constructor `uniswapV3Factory_` — the Uniswap V3 factory `_graduate()` uses to look up or create the token/WETH pool (1% fee tier). |
-| `HOODLUMS_BONDING_CURVE_WETH9_ADDRESS` | Constructor `weth9_` — the WETH contract `_graduate()` wraps the native reserve into before seeding liquidity. |
+| `HOODLUMS_BONDING_CURVE_WETH9_ADDRESS` | Constructor `weth9_` — the WETH contract `_graduate()` wraps the native reserve into before seeding liquidity. Also read live, server-side, by `lib/server/token-trades-rpc.ts` (issue #466) to classify a graduated curve's locked pool swaps — must stay set in the runtime environment, not just for this one-off deploy script. |
 
 None of the three Uniswap V3 addresses above has a hardcoded fallback in the
 contract, this script, or `lib/bonding-curve-deploy-config.ts` — every

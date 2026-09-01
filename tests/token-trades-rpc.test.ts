@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import { WETH9_ADDRESS_ENV_VAR } from "@/lib/bonding-curve-deploy-config";
 import {
   resetTokenLaunchesStoreForTests,
   setTokenLaunchesStoreForTests,
@@ -14,6 +15,10 @@ import {
 } from "@/lib/server/token-trades-rpc";
 
 const CURVE = "0x1234567890123456789012345678901234567890";
+const POOL = "0x00000000000000000000000000000000000ff1";
+const WETH9 = "0x00000000000000000000000000000000000ff9";
+const PROJECT_TOKEN = "0x1111111111111111111111111111111111111a";
+const Q96 = 2n ** 96n;
 const LATEST_BLOCK = 1000n;
 // timestamp(blockNumber) = BASE_TIMESTAMP + blockNumber — strictly increasing
 // with block number, matching a real chain.
@@ -102,9 +107,72 @@ function failingClient() {
   } as unknown as TokenTradesReadClient;
 }
 
+function makeGraduatedLog(overrides: Record<string, unknown> = {}) {
+  return {
+    eventName: "Graduated",
+    args: { pool: POOL, tokenId: 1n, tokenLiquidity: 1n, nativeLiquidity: 1n },
+    blockNumber: 400n,
+    transactionHash: "0xGRAD",
+    logIndex: 0,
+    ...overrides,
+  };
+}
+
+function makeSwapLog(overrides: Record<string, unknown> = {}) {
+  return {
+    args: {
+      sender: "0xcccc0000000000000000000000000000000ccc",
+      recipient: "0xdddd0000000000000000000000000000000ddd",
+      // Negative token0 delta (project token leaves the pool) => a buy, when
+      // token0 is the project token and token1 is native (WETH).
+      amount0: -500_000_000_000_000_000n,
+      amount1: 10_000_000_000_000_000n,
+      sqrtPriceX96: Q96,
+      liquidity: 1n,
+      tick: 0,
+    },
+    blockNumber: 500n,
+    transactionHash: "0xSWAP1",
+    logIndex: 0,
+    ...overrides,
+  };
+}
+
+/**
+ * A fake client whose `getLogs`/`readContract` branch on the target address,
+ * so a single client instance can serve both the curve's own log range and
+ * (once graduated) its locked pool's separate Swap-log range and
+ * token0()/token1() reads (issue #466).
+ */
+function fakeClientWithPool(options: {
+  curveLogs?: unknown[];
+  poolLogs?: unknown[];
+  latest?: bigint;
+  token0?: string;
+  token1?: string;
+} = {}) {
+  const { curveLogs = [], poolLogs = [], latest = LATEST_BLOCK, token0 = PROJECT_TOKEN, token1 = WETH9 } = options;
+  const getLogs = vi.fn(async ({ address }: { address: string }) => {
+    return address.toLowerCase() === POOL.toLowerCase() ? poolLogs : curveLogs;
+  });
+  const getBlockNumber = vi.fn(async () => latest);
+  const getBlock = vi.fn(async ({ blockNumber }: { blockNumber: bigint }) => ({
+    number: blockNumber,
+    timestamp: timestampForBlock(blockNumber),
+  }));
+  const readContract = vi.fn(async ({ functionName }: { functionName: string }) => {
+    if (functionName === "token0") return token0;
+    if (functionName === "token1") return token1;
+    throw new Error(`unexpected functionName: ${functionName}`);
+  });
+  const client = { getLogs, getBlockNumber, getBlock, readContract } as unknown as TokenTradesReadClient;
+  return { client, getLogs, getBlock, getBlockNumber, readContract };
+}
+
 afterEach(() => {
   resetTokenTradesRpcForTests();
   resetTokenLaunchesStoreForTests();
+  vi.unstubAllEnvs();
 });
 
 describe("getTokenTrades", () => {
@@ -262,17 +330,17 @@ describe("getTokenTrades", () => {
     expect(getBlock).not.toHaveBeenCalled();
   });
 
-  it("reuses a cached read within the ~10s TTL instead of calling getLogs again", async () => {
+  it("reuses a cached read within the ~4s TTL instead of calling getLogs again", async () => {
     const { client, getLogs } = fakeClient();
     await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
-    await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 5_000 });
+    await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 3_000 });
     expect(getLogs).toHaveBeenCalledTimes(1);
   });
 
   it("re-reads once the TTL has elapsed", async () => {
     const { client, getLogs } = fakeClient();
     await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
-    await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 11_000 });
+    await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 5_000 });
     expect(getLogs).toHaveBeenCalledTimes(2);
   });
 
@@ -341,6 +409,161 @@ describe("getTokenTrades", () => {
       TokenTradesReadError,
     );
     expect((client as unknown as { getLogs: ReturnType<typeof vi.fn> }).getLogs).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("getTokenTrades — post-graduation pool swap ingestion (issue #466)", () => {
+  it("issues no pool read at all for a curve that hasn't graduated", async () => {
+    // fakeClient's underlying client object doesn't even implement
+    // readContract — if the pool path were mistakenly triggered, this would
+    // throw instead of silently passing.
+    const { client, getLogs } = fakeClient([makeLog()]);
+    vi.stubEnv(WETH9_ADDRESS_ENV_VAR, WETH9);
+    const trades = await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    expect(trades).toHaveLength(1);
+    expect(getLogs).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to curve-only trades when the pool has no swaps yet", async () => {
+    vi.stubEnv(WETH9_ADDRESS_ENV_VAR, WETH9);
+    const { client, getLogs } = fakeClientWithPool({ curveLogs: [makeLog(), makeGraduatedLog()], poolLogs: [] });
+    const trades = await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    expect(trades.map((t) => t.blockNumber)).toEqual(["200"]);
+    expect(getLogs).toHaveBeenCalledTimes(2);
+  });
+
+  it("merges curve trades and pool trades into one chronologically consistent list, newest first", async () => {
+    vi.stubEnv(WETH9_ADDRESS_ENV_VAR, WETH9);
+    const { client } = fakeClientWithPool({
+      curveLogs: [makeLog({ blockNumber: 200n }), makeGraduatedLog({ blockNumber: 400n })],
+      poolLogs: [makeSwapLog({ blockNumber: 500n })],
+      token0: PROJECT_TOKEN,
+      token1: WETH9,
+    });
+    const trades = await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    // Newest first, matching every other read — the pool trade (block 500)
+    // is strictly newer than the curve trade (block 200), which is itself
+    // strictly older than graduation (block 400): curve history always
+    // precedes pool history in real chronological time.
+    expect(trades.map((t) => ({ blockNumber: t.blockNumber, venue: t.venue }))).toEqual([
+      { blockNumber: "500", venue: "pool" },
+      { blockNumber: "200", venue: undefined },
+    ]);
+  });
+
+  it("only reads the pool from the graduation block onward, not from the curve's own start block", async () => {
+    vi.stubEnv(WETH9_ADDRESS_ENV_VAR, WETH9);
+    const { client, getLogs } = fakeClientWithPool({
+      curveLogs: [makeGraduatedLog({ blockNumber: 400n })],
+      poolLogs: [],
+    });
+    await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    const poolCall = getLogs.mock.calls.find((call) => (call[0] as { address: string }).address === POOL);
+    expect(poolCall).toBeDefined();
+    expect((poolCall![0] as { fromBlock: bigint }).fromBlock).toBe(400n);
+  });
+
+  it("maps a negative token0 delta to a buy when token0 is the project token and token1 is native", async () => {
+    vi.stubEnv(WETH9_ADDRESS_ENV_VAR, WETH9);
+    const { client } = fakeClientWithPool({
+      curveLogs: [makeGraduatedLog()],
+      poolLogs: [makeSwapLog({ args: { sender: "0xcccc0000000000000000000000000000000ccc", recipient: "0xdddd0000000000000000000000000000000ddd", amount0: -500_000_000_000_000_000n, amount1: 10_000_000_000_000_000n, sqrtPriceX96: Q96, liquidity: 1n, tick: 0 } })],
+      token0: PROJECT_TOKEN,
+      token1: WETH9,
+    });
+    const trades = await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    expect(trades).toEqual([
+      {
+        direction: "buy",
+        wallet: "0xdddd0000000000000000000000000000000ddd",
+        tokenAmountRaw: "500000000000000000",
+        nativeAmountRaw: "10000000000000000",
+        grossNativeAmountRaw: "10000000000000000",
+        feeChargedRaw: "0",
+        blockNumber: "500",
+        blockTimestamp: Number(timestampForBlock(500n)),
+        txHash: "0xSWAP1",
+        logIndex: 0,
+        venue: "pool",
+        spotPriceNativePerTokenRaw: (10n ** 18n).toString(),
+      },
+    ]);
+  });
+
+  it("maps a positive token0 delta to a sell, and inverts the price, when token0 is native and token1 is the project token", async () => {
+    vi.stubEnv(WETH9_ADDRESS_ENV_VAR, WETH9);
+    const { client } = fakeClientWithPool({
+      curveLogs: [makeGraduatedLog()],
+      poolLogs: [
+        makeSwapLog({
+          args: {
+            sender: "0xcccc0000000000000000000000000000000ccc",
+            recipient: "0xdddd0000000000000000000000000000000ddd",
+            // token1 (project token) flows INTO the pool from the seller (positive),
+            // token0 (native) flows OUT of the pool to the seller (negative) => a sell.
+            amount0: -10_000_000_000_000_000n,
+            amount1: 500_000_000_000_000_000n,
+            sqrtPriceX96: 2n * Q96,
+            liquidity: 1n,
+            tick: 0,
+          },
+        }),
+      ],
+      token0: WETH9,
+      token1: PROJECT_TOKEN,
+    });
+    const trades = await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    expect(trades).toEqual([
+      {
+        direction: "sell",
+        wallet: "0xcccc0000000000000000000000000000000ccc",
+        tokenAmountRaw: "500000000000000000",
+        nativeAmountRaw: "10000000000000000",
+        grossNativeAmountRaw: "10000000000000000",
+        feeChargedRaw: "0",
+        blockNumber: "500",
+        blockTimestamp: Number(timestampForBlock(500n)),
+        txHash: "0xSWAP1",
+        logIndex: 0,
+        venue: "pool",
+        spotPriceNativePerTokenRaw: "250000000000000000",
+      },
+    ]);
+  });
+
+  it("skips pool trades (without failing the whole read) when the WETH9 address env var isn't configured", async () => {
+    vi.stubEnv(WETH9_ADDRESS_ENV_VAR, "");
+    const { client, readContract } = fakeClientWithPool({
+      curveLogs: [makeLog(), makeGraduatedLog()],
+      poolLogs: [makeSwapLog()],
+    });
+    const trades = await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    expect(trades.map((t) => t.blockNumber)).toEqual(["200"]);
+    expect(readContract).not.toHaveBeenCalled();
+  });
+
+  it("skips pool trades when neither pool token matches the configured WETH9 address", async () => {
+    vi.stubEnv(WETH9_ADDRESS_ENV_VAR, WETH9);
+    const { client } = fakeClientWithPool({
+      curveLogs: [makeLog(), makeGraduatedLog()],
+      poolLogs: [makeSwapLog()],
+      token0: "0x2222222222222222222222222222222222222b",
+      token1: "0x3333333333333333333333333333333333333c",
+    });
+    const trades = await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    expect(trades.map((t) => t.blockNumber)).toEqual(["200"]);
+  });
+
+  it("caches the resolved pool token order indefinitely, reading token0/token1 only once across reads", async () => {
+    vi.stubEnv(WETH9_ADDRESS_ENV_VAR, WETH9);
+    const { client, readContract } = fakeClientWithPool({
+      curveLogs: [makeGraduatedLog()],
+      poolLogs: [makeSwapLog()],
+    });
+    await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    readContract.mockClear();
+    await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 20_000 });
+    expect(readContract).not.toHaveBeenCalled();
   });
 });
 

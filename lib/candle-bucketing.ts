@@ -51,8 +51,19 @@ export type Candle = {
  * so only the final human-scale price ever passes through `Number()`. A
  * trade missing either reserve field (an old/test fixture predating this
  * field) prices as 0 — dropped the same way a zero/invalid amount always was.
+ *
+ * issue #466: a pool trade (post-graduation) carries no curve reserves at
+ * all — its `spotPriceNativePerTokenRaw` (derived server-side from the
+ * Uniswap V3 pool's own sqrtPriceX96) is preferred instead whenever present,
+ * so the chart/header/Stats price definition stays exactly one function
+ * across graduation. Curve trades never set that field, so they fall
+ * through to the reserve-based derivation unchanged.
  */
 export function tradeSpotPriceNativePerToken(trade: TokenTrade, decimals: number): number {
+  if (trade.spotPriceNativePerTokenRaw !== undefined) {
+    const explicit = Number(formatEther(BigInt(trade.spotPriceNativePerTokenRaw)));
+    return Number.isFinite(explicit) ? explicit : 0;
+  }
   if (!trade.virtualTokenReserveRaw || !trade.virtualEthReserveRaw) return 0;
   const tokenReserve = Number(formatUnits(BigInt(trade.virtualTokenReserveRaw), decimals));
   if (!Number.isFinite(tokenReserve) || tokenReserve <= 0) return 0;

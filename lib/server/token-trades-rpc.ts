@@ -1,7 +1,9 @@
-import { createPublicClient, http, parseAbiItem, type Address, type PublicClient } from "viem";
+import { createPublicClient, http, isAddress, parseAbi, parseAbiItem, type Address, type PublicClient } from "viem";
 import { ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import { WETH9_ADDRESS_ENV_VAR } from "@/lib/bonding-curve-deploy-config";
 import { getTokenLaunchesStore } from "@/lib/server/token-launches-store";
-import type { TokenTrade } from "@/lib/token-trade-types";
+import { computePoolSpotPriceNativePerTokenRaw } from "@/lib/uniswap-v3-spot-price";
+import type { TokenTrade, TokenTradeDirection } from "@/lib/token-trade-types";
 
 /**
  * Reads a bonding curve's real buy/sell history straight from
@@ -24,6 +26,19 @@ import type { TokenTrade } from "@/lib/token-trade-types";
  * recorded launch's `created_at` (minus a safety margin), binary-searched
  * against block headers. `getCode` is not part of this module's RPC client
  * at all any more.
+ *
+ * issue #466: once a curve graduates, all trading moves to its permanently
+ * locked Uniswap V3 pool — the curve itself never emits another
+ * TokensPurchased/TokensSold. The curve's own `Graduated` event (already
+ * scanned in the same call as the trade events, at zero extra RPC cost)
+ * carries the pool address and its own block number, so pool swaps are read
+ * from exactly that block onward and merged into the same trade list, tagged
+ * `venue: "pool"`. Because `fromBlock` above always resolves to at or before
+ * the curve's creation, and creation always precedes graduation, a graduated
+ * curve's `Graduated` event can never fall outside the already-scanned
+ * [fromBlock, latest] range — there is no separate graduatedAt-timestamp
+ * fallback path to derive the graduation block a second way, since that path
+ * could never be reached.
  */
 const TOKENS_PURCHASED_EVENT = parseAbiItem(
   "event TokensPurchased(address indexed buyer, uint256 grossNativeIn, uint256 netNativeIn, uint256 tokensOut, uint256 feeCharged, uint256 virtualTokenReserve, uint256 virtualEthReserve)",
@@ -31,8 +46,18 @@ const TOKENS_PURCHASED_EVENT = parseAbiItem(
 const TOKENS_SOLD_EVENT = parseAbiItem(
   "event TokensSold(address indexed seller, uint256 tokensIn, uint256 grossNativeOut, uint256 netNativeOut, uint256 feeCharged, uint256 virtualTokenReserve, uint256 virtualEthReserve)",
 );
+/** Matches contracts/HoodlumsTestBondingCurve.sol's `Graduated` event exactly. */
+const GRADUATED_EVENT = parseAbiItem(
+  "event Graduated(address indexed pool, uint256 indexed tokenId, uint256 tokenLiquidity, uint256 nativeLiquidity)",
+);
+/** Standard Uniswap V3 pool `Swap` event — same signature on any V3 deployment. */
+const V3_SWAP_EVENT = parseAbiItem(
+  "event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)",
+);
+/** Minimal read needed to tell which side of a pool is the project token vs. native (WETH). */
+const POOL_TOKENS_ABI = parseAbi(["function token0() view returns (address)", "function token1() view returns (address)"]);
 
-const TRADES_CACHE_TTL_MS = 10_000;
+const TRADES_CACHE_TTL_MS = 4_000;
 
 // How far before the recorded launch timestamp to start scanning, so a few
 // minutes of clock/RPC-timestamp skew around the actual deployment can never
@@ -63,7 +88,7 @@ function isLogRangeError(error: unknown): boolean {
   );
 }
 
-export type TokenTradesReadClient = Pick<PublicClient, "getLogs" | "getBlockNumber" | "getBlock">;
+export type TokenTradesReadClient = Pick<PublicClient, "getLogs" | "getBlockNumber" | "getBlock" | "readContract">;
 
 export type TokenTradesDeps = {
   client?: TokenTradesReadClient;
@@ -95,6 +120,8 @@ const tradesInflight = new Map<string, Promise<TokenTrade[]>>();
 // Cached indefinitely per curve: a contract's deployment block never
 // changes, so once resolved it never needs re-deriving.
 const startBlockCache = new Map<string, bigint>();
+// Cached indefinitely per pool: which side is native never changes either.
+const poolTokenOrderCache = new Map<string, boolean>();
 let lastReadAt: number | null = null;
 let lastReadOk: boolean | null = null;
 
@@ -192,8 +219,8 @@ async function resolveStartBlock(
   return startBlock;
 }
 
-type RawTradeLog = {
-  eventName: "TokensPurchased" | "TokensSold";
+type RawCurveLog = {
+  eventName: "TokensPurchased" | "TokensSold" | "Graduated";
   args: {
     buyer?: Address;
     seller?: Address;
@@ -206,6 +233,20 @@ type RawTradeLog = {
     tokensIn?: bigint;
     virtualTokenReserve?: bigint;
     virtualEthReserve?: bigint;
+    pool?: Address;
+  };
+  blockNumber: bigint | null;
+  transactionHash: `0x${string}` | null;
+  logIndex: number | null;
+};
+
+type RawSwapLog = {
+  args: {
+    sender?: Address;
+    recipient?: Address;
+    amount0?: bigint;
+    amount1?: bigint;
+    sqrtPriceX96?: bigint;
   };
   blockNumber: bigint | null;
   transactionHash: `0x${string}` | null;
@@ -213,39 +254,66 @@ type RawTradeLog = {
 };
 
 /**
- * Reads trade logs for the whole [fromBlock, toBlock] range in a single
- * `eth_getLogs` call first — confirmed to work on this RPC even across a
- * full-chain range. Only a genuine range/size rejection triggers a
- * recursive halving fallback, so a working single call never pays for
- * extra round trips.
+ * Reads curve trade + graduation logs for the whole [fromBlock, toBlock]
+ * range in a single `eth_getLogs` call first — confirmed to work on this RPC
+ * even across a full-chain range. Only a genuine range/size rejection
+ * triggers a recursive halving fallback, so a working single call never pays
+ * for extra round trips.
  */
-async function fetchLogsInRange(
+async function fetchCurveLogsInRange(
   client: TokenTradesReadClient,
   curveAddress: Address,
   fromBlock: bigint,
   toBlock: bigint,
-): Promise<RawTradeLog[]> {
+): Promise<RawCurveLog[]> {
   try {
     const logs = await client.getLogs({
       address: curveAddress,
-      events: [TOKENS_PURCHASED_EVENT, TOKENS_SOLD_EVENT],
+      events: [TOKENS_PURCHASED_EVENT, TOKENS_SOLD_EVENT, GRADUATED_EVENT],
       fromBlock,
       toBlock,
     });
-    return logs as unknown as RawTradeLog[];
+    return logs as unknown as RawCurveLog[];
   } catch (error) {
     if (!isLogRangeError(error) || fromBlock >= toBlock) throw error;
 
     const mid = fromBlock + (toBlock - fromBlock) / 2n;
     const [lower, upper] = await Promise.all([
-      fetchLogsInRange(client, curveAddress, fromBlock, mid),
-      fetchLogsInRange(client, curveAddress, mid + 1n, toBlock),
+      fetchCurveLogsInRange(client, curveAddress, fromBlock, mid),
+      fetchCurveLogsInRange(client, curveAddress, mid + 1n, toBlock),
     ]);
     return [...lower, ...upper];
   }
 }
 
-function normalizeTradeLog(log: RawTradeLog, timestampByBlock: Map<bigint, number>): TokenTrade | null {
+/** Same single-call-first/halving strategy as `fetchCurveLogsInRange`, for a graduated curve's locked pool. */
+async function fetchPoolSwapLogsInRange(
+  client: TokenTradesReadClient,
+  poolAddress: Address,
+  fromBlock: bigint,
+  toBlock: bigint,
+): Promise<RawSwapLog[]> {
+  try {
+    const logs = await client.getLogs({
+      address: poolAddress,
+      events: [V3_SWAP_EVENT],
+      fromBlock,
+      toBlock,
+    });
+    return logs as unknown as RawSwapLog[];
+  } catch (error) {
+    if (!isLogRangeError(error) || fromBlock >= toBlock) throw error;
+
+    const mid = fromBlock + (toBlock - fromBlock) / 2n;
+    const [lower, upper] = await Promise.all([
+      fetchPoolSwapLogsInRange(client, poolAddress, fromBlock, mid),
+      fetchPoolSwapLogsInRange(client, poolAddress, mid + 1n, toBlock),
+    ]);
+    return [...lower, ...upper];
+  }
+}
+
+function normalizeTradeLog(log: RawCurveLog, timestampByBlock: Map<bigint, number>): TokenTrade | null {
   if (log.blockNumber === null || log.transactionHash === null || log.logIndex === null) return null;
   const blockTimestamp = timestampByBlock.get(log.blockNumber);
   if (blockTimestamp === undefined) return null;
@@ -286,10 +354,129 @@ function normalizeTradeLog(log: RawTradeLog, timestampByBlock: Map<bigint, numbe
 }
 
 /**
- * Reads (or reuses a ~10s cached read of) a curve's full trade history,
- * newest first. Concurrent cache misses for the same curve share one
- * in-flight read. Throws `TokenTradesReadError` on a genuine RPC failure —
- * callers must never treat that the same as a real zero-trade response.
+ * Normalizes a Uniswap V3 pool `Swap` log into a `TokenTrade` (issue #466).
+ * Uniswap convention: a positive amount means that token flowed INTO the
+ * pool (from the trader), negative means it flowed OUT (to the trader) — so
+ * a negative project-token delta is a buy (the trader received tokens).
+ * `wallet` follows the issue's own trader convention: `recipient` for a buy
+ * (who received the output), `sender` for a sell — either can be a router or
+ * aggregator contract rather than the end user's own wallet, unlike a curve
+ * trade, which the curve's own `msg.sender` always is.
+ */
+function normalizePoolSwapLog(
+  log: RawSwapLog,
+  timestampByBlock: Map<bigint, number>,
+  nativeIsToken0: boolean,
+): TokenTrade | null {
+  if (log.blockNumber === null || log.transactionHash === null || log.logIndex === null) return null;
+  const blockTimestamp = timestampByBlock.get(log.blockNumber);
+  if (blockTimestamp === undefined) return null;
+
+  const { sender, recipient, amount0, amount1, sqrtPriceX96 } = log.args;
+  if (!sender || !recipient || amount0 === undefined || amount1 === undefined || sqrtPriceX96 === undefined) return null;
+
+  const tokenDelta = nativeIsToken0 ? amount1 : amount0;
+  const nativeDelta = nativeIsToken0 ? amount0 : amount1;
+  const direction: TokenTradeDirection = tokenDelta < 0n ? "buy" : "sell";
+  const wallet = direction === "buy" ? recipient : sender;
+  const nativeAmountRaw = (nativeDelta < 0n ? -nativeDelta : nativeDelta).toString();
+
+  return {
+    direction,
+    wallet,
+    tokenAmountRaw: (tokenDelta < 0n ? -tokenDelta : tokenDelta).toString(),
+    nativeAmountRaw,
+    grossNativeAmountRaw: nativeAmountRaw,
+    feeChargedRaw: "0",
+    blockNumber: log.blockNumber.toString(),
+    blockTimestamp,
+    txHash: log.transactionHash,
+    logIndex: log.logIndex,
+    venue: "pool",
+    spotPriceNativePerTokenRaw: computePoolSpotPriceNativePerTokenRaw(sqrtPriceX96, nativeIsToken0).toString(),
+  };
+}
+
+function resolveWeth9Address(): Address | null {
+  const value = process.env[WETH9_ADDRESS_ENV_VAR];
+  return value && isAddress(value) ? (value as Address) : null;
+}
+
+/**
+ * Reads (or reuses the indefinite cache of) which side of a graduated pool
+ * is the native (WETH) leg, by comparing the pool's own `token0()`/
+ * `token1()` against the configured `HOODLUMS_BONDING_CURVE_WETH9_ADDRESS`.
+ * Returns null — never a guess — when that env var is unset/invalid or
+ * matches neither side, in which case the caller skips pool trades for this
+ * read rather than risk mislabeling buy/sell direction.
+ */
+async function resolvePoolNativeIsToken0(client: TokenTradesReadClient, poolAddress: Address): Promise<boolean | null> {
+  const key = poolAddress.toLowerCase();
+  const cached = poolTokenOrderCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const weth9 = resolveWeth9Address();
+  if (!weth9) return null;
+
+  const [token0, token1] = await Promise.all([
+    client.readContract({ address: poolAddress, abi: POOL_TOKENS_ABI, functionName: "token0" }),
+    client.readContract({ address: poolAddress, abi: POOL_TOKENS_ABI, functionName: "token1" }),
+  ]);
+
+  const wethLower = weth9.toLowerCase();
+  let nativeIsToken0: boolean;
+  if ((token0 as string).toLowerCase() === wethLower) {
+    nativeIsToken0 = true;
+  } else if ((token1 as string).toLowerCase() === wethLower) {
+    nativeIsToken0 = false;
+  } else {
+    return null;
+  }
+
+  poolTokenOrderCache.set(key, nativeIsToken0);
+  return nativeIsToken0;
+}
+
+/**
+ * Reads a graduated curve's locked pool's Swap history from `fromBlock`
+ * (the curve's own graduation block) onward. Any failure here — an
+ * unconfigured WETH9 address, an RPC error reading token0/token1, or a
+ * genuine getLogs failure — degrades to no pool trades for this read cycle
+ * rather than failing the whole response; the curve's own trade history
+ * must never be lost because the newer pool-read path had a problem.
+ */
+async function readPoolTrades(
+  client: TokenTradesReadClient,
+  poolAddress: Address,
+  fromBlock: bigint,
+  toBlock: bigint,
+): Promise<TokenTrade[]> {
+  try {
+    const nativeIsToken0 = await resolvePoolNativeIsToken0(client, poolAddress);
+    if (nativeIsToken0 === null) return [];
+
+    const swapLogs = await fetchPoolSwapLogsInRange(client, poolAddress, fromBlock, toBlock);
+    if (swapLogs.length === 0) return [];
+
+    const blockNumbers = [...new Set(swapLogs.map((log) => log.blockNumber).filter((value): value is bigint => value !== null))];
+    const blocks = await Promise.all(blockNumbers.map((blockNumber) => client.getBlock({ blockNumber })));
+    const timestampByBlock = new Map(blocks.map((block) => [block.number, Number(block.timestamp)]));
+
+    return swapLogs
+      .map((log) => normalizePoolSwapLog(log, timestampByBlock, nativeIsToken0))
+      .filter((trade): trade is TokenTrade => trade !== null);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Reads (or reuses a ~4s cached read of) a curve's full trade history,
+ * newest first — including, once graduated, its locked pool's own swap
+ * history (issue #466). Concurrent cache misses for the same curve share one
+ * in-flight read. Throws `TokenTradesReadError` on a genuine RPC failure
+ * reading the curve itself — callers must never treat that the same as a
+ * real zero-trade response.
  */
 export async function getTokenTrades(
   chainId: number,
@@ -317,16 +504,29 @@ export async function getTokenTrades(
     try {
       const latest = await client.getBlockNumber();
       const fromBlock = await resolveStartBlock(client, chainId, curveAddress, latest);
-      const logs = await fetchLogsInRange(client, curveAddress, fromBlock, latest);
+      const curveLogs = await fetchCurveLogsInRange(client, curveAddress, fromBlock, latest);
 
-      const blockNumbers = [...new Set(logs.map((log) => log.blockNumber).filter((value): value is bigint => value !== null))];
+      const graduatedLog = curveLogs.find(
+        (log): log is RawCurveLog & { blockNumber: bigint; args: { pool: Address } } =>
+          log.eventName === "Graduated" && log.blockNumber !== null && Boolean(log.args.pool),
+      );
+      const tradeLogs = curveLogs.filter((log) => log.eventName !== "Graduated");
+
+      const poolTrades = graduatedLog
+        ? await readPoolTrades(client, graduatedLog.args.pool, graduatedLog.blockNumber, latest)
+        : [];
+
+      const blockNumbers = [...new Set(tradeLogs.map((log) => log.blockNumber).filter((value): value is bigint => value !== null))];
       const blocks = await Promise.all(blockNumbers.map((blockNumber) => client.getBlock({ blockNumber })));
       const timestampByBlock = new Map(blocks.map((block) => [block.number, Number(block.timestamp)]));
 
-      const trades = logs
+      const curveTrades = tradeLogs
         .map((log) => normalizeTradeLog(log, timestampByBlock))
-        .filter((trade): trade is TokenTrade => trade !== null)
-        .sort((a, b) => b.blockTimestamp - a.blockTimestamp || b.logIndex - a.logIndex);
+        .filter((trade): trade is TokenTrade => trade !== null);
+
+      const trades = [...curveTrades, ...poolTrades].sort(
+        (a, b) => b.blockTimestamp - a.blockTimestamp || b.logIndex - a.logIndex,
+      );
 
       tradesCache.set(key, { trades, cachedAt: now });
       lastReadAt = now;
@@ -366,6 +566,7 @@ export function resetTokenTradesRpcForTests(): void {
   tradesCache.clear();
   tradesInflight.clear();
   startBlockCache.clear();
+  poolTokenOrderCache.clear();
   lastReadAt = null;
   lastReadOk = null;
 }

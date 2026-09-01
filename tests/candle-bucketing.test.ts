@@ -85,6 +85,25 @@ describe("tradeSpotPriceNativePerToken (issue #458)", () => {
     );
     expect(price).toBeCloseTo(1);
   });
+
+  it("prefers an explicit spotPriceNativePerTokenRaw (a pool trade, issue #466) over the reserve-based derivation", () => {
+    const price = tradeSpotPriceNativePerToken(
+      trade({
+        virtualTokenReserveRaw: "2000000000000000000",
+        virtualEthReserveRaw: "1000000000000000000",
+        spotPriceNativePerTokenRaw: "4000000000000000000",
+      }),
+      18,
+    );
+    expect(price).toBeCloseTo(4);
+  });
+
+  it("uses the explicit spot even with no reserve fields at all — a pool trade carries no curve reserves", () => {
+    const pool = trade({ spotPriceNativePerTokenRaw: "4000000000000000000" });
+    delete (pool as { virtualTokenReserveRaw?: string }).virtualTokenReserveRaw;
+    delete (pool as { virtualEthReserveRaw?: string }).virtualEthReserveRaw;
+    expect(tradeSpotPriceNativePerToken(pool, 18)).toBeCloseTo(4);
+  });
 });
 
 describe("bucketTradesIntoCandles (issue #458: post-trade spot price, carried-forward open)", () => {

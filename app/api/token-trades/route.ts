@@ -33,7 +33,7 @@ export const runtime = "nodejs";
 function headers(rate: ReturnType<typeof consumeTokenTradesReadRateLimit>, limit: number, extra: Record<string, string> = {}) {
   return {
     // Both client hooks already fetch with `cache: "no-store"`, and the
-    // server's own ~10s cache (lib/server/token-trades-rpc.ts) is the only
+    // server's own ~4s cache (lib/server/token-trades-rpc.ts) is the only
     // cache this response needs — a "public, max-age=10" header would let an
     // intermediate/shared cache reuse a response that carries this request's
     // own per-IP rate-limit headers for a different caller (issue #453

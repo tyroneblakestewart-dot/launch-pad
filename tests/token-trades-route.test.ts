@@ -36,6 +36,10 @@ afterEach(() => {
 });
 
 describe("GET /api/token-trades", () => {
+  it("sizes the token-detail bucket for 5s polling with headroom (issue #466: 12s -> 5s poll, 600 -> 1200/hour)", () => {
+    expect(TOKEN_TRADES_READ_LIMIT).toBe(1200);
+  });
+
   it("rejects a missing/invalid curve address", async () => {
     const response = await getTokenTradesRoute(getRequest("/api/token-trades"));
     expect(response.status).toBe(400);
@@ -105,7 +109,7 @@ describe("GET /api/token-trades", () => {
       });
 
     let last: Response | null = null;
-    for (let i = 0; i < 601; i += 1) {
+    for (let i = 0; i < TOKEN_TRADES_READ_LIMIT + 1; i += 1) {
       last = await getTokenTradesRoute(request());
     }
     expect(last?.status).toBe(429);
@@ -127,7 +131,7 @@ describe("GET /api/token-trades", () => {
 
     // Exhaust the token-detail bucket entirely from this IP.
     let lastDetail: Response | null = null;
-    for (let i = 0; i < 601; i += 1) {
+    for (let i = 0; i < TOKEN_TRADES_READ_LIMIT + 1; i += 1) {
       lastDetail = await getTokenTradesRoute(detailRequest());
     }
     expect(lastDetail?.status).toBe(429);

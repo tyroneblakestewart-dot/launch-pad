@@ -41,6 +41,24 @@ export type TokenTrade = {
    */
   virtualTokenReserveRaw?: string;
   virtualEthReserveRaw?: string;
+  /**
+   * Which venue produced this trade (issue #466): the bonding curve itself,
+   * or — once graduated — the permanently locked Uniswap V3 pool. Optional
+   * and omitted for curve trades (every pre-#466 fixture across this repo's
+   * test suite is a curve trade and keeps compiling unchanged); a curve
+   * trade's venue is "curve" by default wherever this field is read.
+   */
+  venue?: "curve" | "pool";
+  /**
+   * A pool swap's own post-trade spot price (ETH per whole token), derived
+   * server-side from the Swap event's sqrtPriceX96 — see
+   * lib/uniswap-v3-spot-price.ts. WAD-scaled (1e18) exactly like every other
+   * `...Raw` field, so it round-trips through `formatEther`.
+   * `tradeSpotPriceNativePerToken` (lib/candle-bucketing.ts) prefers this
+   * explicit value when present, falling back to the virtual-reserve
+   * derivation above for curve trades, which never set this field.
+   */
+  spotPriceNativePerTokenRaw?: string;
 };
 
 export type TokenTradesResponse = { trades: TokenTrade[] };

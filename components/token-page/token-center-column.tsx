@@ -46,7 +46,10 @@ function formatTokenAmount(amountRaw: string, decimals: number | null): string {
  * on the only chain this page supports, since `tradeLinks` is always empty
  * on Robinhood Chain Testnet) alongside Recent trades/Holders/Hoodchat, so
  * the centre column now fills the full width the old three-column desktop
- * layout split between centre and right.
+ * layout split between centre and right. Issue #466: once a curve
+ * graduates, `trades` also carries the locked pool's own swap history
+ * (`venue: "pool"`) alongside the curve's pre-graduation history — this
+ * row just adds a small POOL badge, the rest of the row is unchanged.
  */
 export function TokenCenterColumn({
   chain,
@@ -128,6 +131,7 @@ export function TokenCenterColumn({
                 <div key={`${trade.txHash}-${trade.logIndex}`} className={`${styles.activityRow} ${styles.tradesGridCols}`}>
                   <span className={trade.direction === "buy" ? styles.tradeTypeBuy : styles.tradeTypeSell}>
                     {trade.direction === "buy" ? "▲ BUY" : "▼ SELL"}
+                    {trade.venue === "pool" && <span className={styles.venueBadgePool}>POOL</span>}
                   </span>
                   <span className={styles.dimText}>{shortenAddress(trade.wallet)}</span>
                   <span className={styles.bodyText}>{formatTokenAmount(trade.tokenAmountRaw, decimals)}</span>
