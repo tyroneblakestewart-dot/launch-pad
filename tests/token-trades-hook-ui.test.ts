@@ -198,7 +198,28 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
   it("advances the whitespace-inclusive timeline with the clock via a coarse timer, independent of new trades arriving", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain("useState(() => Math.floor(Date.now() / 1000))");
-    expect(component).toContain("window.setInterval(() => setNowTick(Math.floor(Date.now() / 1000)), 30_000)");
+    expect(component).toContain("const updateNowTick = () => setNowTick(Math.floor(Date.now() / 1000));");
+    expect(component).toContain("window.setInterval(updateNowTick, 30_000)");
+  });
+
+  it("catches the whitespace clock up immediately on mount, tab-visible and window-focus, instead of waiting on the 30s interval alone (issue #464 item 1: the background-tab clock-freeze defect)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    const effectStart = component.indexOf("const updateNowTick = () => setNowTick(Math.floor(Date.now() / 1000));");
+    expect(effectStart).toBeGreaterThan(-1);
+    const effectEnd = component.indexOf("}, []);", effectStart);
+    const effectBody = component.slice(effectStart, effectEnd);
+
+    // Immediate call on mount, before the interval is ever registered.
+    expect(effectBody.indexOf("updateNowTick();")).toBeLessThan(effectBody.indexOf("window.setInterval("));
+
+    expect(effectBody).toContain('function handleVisibilityChange() {\n      if (document.visibilityState === "visible") updateNowTick();\n    }');
+    expect(effectBody).toContain('document.addEventListener("visibilitychange", handleVisibilityChange)');
+    expect(effectBody).toContain('window.addEventListener("focus", updateNowTick)');
+
+    // Both listeners and the interval are torn down on unmount.
+    expect(effectBody).toContain("window.clearInterval(timer);");
+    expect(effectBody).toContain('document.removeEventListener("visibilitychange", handleVisibilityChange);');
+    expect(effectBody).toContain('window.removeEventListener("focus", updateNowTick);');
   });
 
   it("scrolls to real time after setData instead of forcing a visible logical range (issue #449 item 2)", async () => {
@@ -223,18 +244,19 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain("chart.resize(width, height);");
   });
 
-  it("configures a custom six-significant-figure priceFormat shared with the header's own formatter, so the axis never reads 0.00", async () => {
+  it("configures a custom priceFormat clamped to the chart's own magnitude-derived decimal count, so a near-zero crosshair position never reads two dozen digits (issue #464 item 2)", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain(
-      'import { formatNativeAmountSixSigFigsTrimmed, formatNativePriceSixSigFigs, formatSignedPercent } from "@/lib/token-page-format"',
+      'import {\n  formatNativeAmountSixSigFigsTrimmed,\n  formatNativePriceAtDecimals,\n  formatNativePriceSixSigFigs,\n  formatSignedPercent,\n} from "@/lib/token-page-format";',
     );
     expect(component).toContain('type: "custom"');
-    expect(component).toContain("formatter: (price: number) => formatNativePriceSixSigFigs(price)");
+    expect(component).toContain("formatter: (price: number) => formatNativePriceAtDecimals(price, INITIAL_CHART_PRICE_DECIMALS)");
   });
 
   it("re-derives minMove from the data's own magnitude and re-applies it only when it changes, instead of a fixed value below real testnet prices (issue #451 item 1)", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain("computeChartMinMove,");
+    expect(component).toContain("computeChartPriceDecimals,");
     expect(component).toContain('from "@/lib/token-chart-tools"');
     expect(component).toContain(
       "nextState.candles.length > 0 ? Math.max(...nextState.candles.map((candle) => candle.high)) : startingPriceNativePerToken",
@@ -242,6 +264,22 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain("computeChartMinMove(maxPrice)");
     expect(component).toContain("if (minMove !== appliedMinMoveRef.current) {");
     expect(component).toContain("candleSeries.applyOptions({");
+  });
+
+  it("re-derives the shared price-decimals count alongside minMove, and applies it to the tooltip and the top last-price label, not just the axis (issue #464 item 2)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain("const decimals = computeChartPriceDecimals(minMove);");
+    expect(component).toContain(
+      'priceFormat: { type: "custom", minMove, formatter: (price: number) => formatNativePriceAtDecimals(price, decimals) },',
+    );
+    expect(component).toContain("setPriceDecimals(decimals);");
+    expect(component).toContain(
+      '`${formatNativePriceAtDecimals(lastPrice, priceDecimals)} ETH`',
+    );
+    expect(component).toContain("formatNativePriceAtDecimals(hoverInfo.open, priceDecimals)");
+    expect(component).toContain("formatNativePriceAtDecimals(hoverInfo.high, priceDecimals)");
+    expect(component).toContain("formatNativePriceAtDecimals(hoverInfo.low, priceDecimals)");
+    expect(component).toContain("formatNativePriceAtDecimals(hoverInfo.close, priceDecimals)");
   });
 
   it("disables the candle series' own built-in price line/last-value tag — there must be exactly one last-price indicator on the chart (issue #458 item 2)", async () => {
@@ -309,7 +347,7 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain("onClick={retry}");
   });
 
-  it("shows a crosshair tooltip with time (UTC), change %, OHLC at six significant figures, and VOL in ETH", async () => {
+  it("shows a crosshair tooltip with time (UTC), change %, OHLC at the chart's clamped decimal precision, and VOL in ETH", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain("chart.subscribeCrosshairMove(");
     expect(component).toContain('data-token-chart-tooltip="true"');

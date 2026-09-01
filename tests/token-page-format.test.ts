@@ -7,6 +7,7 @@ import {
   formatLaunchAge,
   formatNativeAmountSixSigFigsTrimmed,
   formatNativeFixed,
+  formatNativePriceAtDecimals,
   formatNativePriceSixSigFigs,
   formatPriceChange,
   formatSignedPercent,
@@ -131,6 +132,29 @@ describe("formatNativePriceSixSigFigs", () => {
   });
 });
 
+describe("formatNativePriceAtDecimals (issue #464 item 2)", () => {
+  it("formats at exactly the given decimal count, not the value's own significant figures", () => {
+    expect(formatNativePriceAtDecimals(3.3e-26, 14)).toBe("0.00000000000000");
+    expect(formatNativePriceAtDecimals(2.5e-9, 14)).toBe("0.00000000250000");
+    expect(formatNativePriceAtDecimals(6e-8, 14)).toBe("0.00000006000000");
+  });
+
+  it("rounds instead of truncating", () => {
+    expect(formatNativePriceAtDecimals(0.123456, 2)).toBe("0.12");
+    expect(formatNativePriceAtDecimals(0.125, 2)).toBe("0.13");
+  });
+
+  it("returns an em dash for null, non-finite or negative input", () => {
+    expect(formatNativePriceAtDecimals(null, 6)).toBe("—");
+    expect(formatNativePriceAtDecimals(Number.NaN, 6)).toBe("—");
+    expect(formatNativePriceAtDecimals(-1, 6)).toBe("—");
+  });
+
+  it("clamps a negative decimal count to zero instead of throwing", () => {
+    expect(formatNativePriceAtDecimals(4.2, -1)).toBe("4");
+  });
+});
+
 describe("formatNativeFixed", () => {
   it("formats at the given decimal precision", () => {
     expect(formatNativeFixed(3.126, 2)).toBe("3.13");
@@ -143,7 +167,7 @@ describe("formatNativeFixed", () => {
   });
 });
 
-describe("formatNativeAmountSixSigFigsTrimmed (issue #447 item 4)", () => {
+describe("formatNativeAmountSixSigFigsTrimmed (issue #447 item 4, tiny-amount floor added in issue #464 item 3)", () => {
   it("trims trailing zeros off a whole-number amount", () => {
     expect(formatNativeAmountSixSigFigsTrimmed(4)).toBe("4");
   });
@@ -175,6 +199,27 @@ describe("formatNativeAmountSixSigFigsTrimmed (issue #447 item 4)", () => {
 
   it("still reads naturally for a large whole-ETH-ish amount", () => {
     expect(formatNativeAmountSixSigFigsTrimmed(184.2)).toBe("184.2");
+  });
+
+  // Issue #464 item 3: a curve reserve of a handful of wei previously
+  // rendered its full 18-decimal value, e.g.
+  // "0.000000000000000001 / 0.01 ETH". Every call site already appends its
+  // own " ETH" suffix, so the floor text below reads "<0.000001 ETH" once
+  // concatenated, matching the issue's exact wording.
+  it("floors 1 wei (below 0.000001 ETH) to the '<0.000001' floor text", () => {
+    expect(formatNativeAmountSixSigFigsTrimmed(0.000000000000000001)).toBe("<0.000001");
+  });
+
+  it("floors 5e-7 (below 0.000001 ETH) to the '<0.000001' floor text", () => {
+    expect(formatNativeAmountSixSigFigsTrimmed(5e-7)).toBe("<0.000001");
+  });
+
+  it("formats exactly 0.000001 ETH (the floor boundary itself) normally, not as the floor text", () => {
+    expect(formatNativeAmountSixSigFigsTrimmed(1e-6)).toBe("0.000001");
+  });
+
+  it("formats exactly zero as a bare '0', not the floor text", () => {
+    expect(formatNativeAmountSixSigFigsTrimmed(0)).toBe("0");
   });
 });
 

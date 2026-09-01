@@ -98,6 +98,24 @@ export function formatNativePriceSixSigFigs(value: number | null): string {
 }
 
 /**
+ * Formats a native-currency price at a fixed decimal count (issue #464 item
+ * 2), instead of `formatNativePriceSixSigFigs`'s six-significant-figures-of-
+ * the-value-itself precision. The token page's chart derives `decimals`
+ * once from its own current `minMove`
+ * (`lib/token-chart-tools.ts`'s `computeChartPriceDecimals`) and uses this
+ * for every price it shows — axis labels, the crosshair label, the OHLC
+ * tooltip and the last-price tag — so a near-zero crosshair position (e.g.
+ * `3.3e-26` against a chart whose prices sit around `6e-8`) reads as zero at
+ * the chart's own precision instead of two dozen digits. The header band's
+ * own big price figure is unaffected — it keeps
+ * `formatNativePriceSixSigFigs`.
+ */
+export function formatNativePriceAtDecimals(value: number | null, decimals: number): string {
+  if (value === null || !Number.isFinite(value) || value < 0) return "—";
+  return value.toFixed(Math.max(0, decimals));
+}
+
+/**
  * Formats a token balance with thousands separators and at most two decimal
  * places, e.g. `74,503.26` (issue #458 item 4) — the swap panel's sell-side
  * "bal" figure previously rendered a token balance at full 18-decimal
@@ -127,8 +145,19 @@ export function formatNativeFixed(value: number | null, decimals: number): strin
  * shown as `0.0` and a `0.0000099` raised amount shown as `0.00`), so this
  * reuses `formatNativePriceSixSigFigs`'s magnitude-aware precision and then
  * strips the zeros it pads on to hit exactly six significant figures.
+ *
+ * Floored below 0.000001 ETH (issue #464 item 3): a curve reserve of a
+ * handful of wei previously rendered its full 18-decimal value, e.g.
+ * "0.000000000000000001 / 0.01 ETH". Every caller already appends its own
+ * " ETH" suffix (`${formatNativeAmountSixSigFigsTrimmed(x)} ETH"`), so the
+ * floor and zero cases below return the bare `"<0.000001"` / `"0"` text,
+ * not the full unit string, to stay consistent with every other value this
+ * helper returns.
  */
 export function formatNativeAmountSixSigFigsTrimmed(value: number | null): string {
+  if (value === null || !Number.isFinite(value) || value < 0) return "—";
+  if (value === 0) return "0";
+  if (value < 0.000001) return "<0.000001";
   const formatted = formatNativePriceSixSigFigs(value);
   if (formatted === "—" || !formatted.includes(".")) return formatted;
   return formatted.replace(/0+$/, "").replace(/\.$/, "");

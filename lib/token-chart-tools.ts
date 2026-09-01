@@ -54,3 +54,21 @@ export function computeChartMinMove(maxPrice: number): number {
   const exponent = Math.floor(Math.log10(maxPrice));
   return Math.max(MIN_MOVE_FLOOR, 10 ** (exponent - 6));
 }
+
+/**
+ * Derives the fixed decimal count every chart price display should render
+ * at — axis labels, the crosshair label, the OHLC tooltip and the
+ * last-price tag (issue #464 item 2) — from the exact same `minMove`
+ * `computeChartMinMove` derives: `decimals = -log10(minMove)`. Formatting
+ * relative to the chart's own price magnitude, rather than each individual
+ * value's own significant figures, is what keeps a near-zero crosshair
+ * position (e.g. `3.3e-26` on a chart whose prices sit around `6e-8`) from
+ * rendering two dozen digits — a value below one `minMove` simply rounds to
+ * zero at this precision instead. `minMove` is always an exact power of ten
+ * (or `MIN_MOVE_FLOOR` itself), so `Math.round` only ever cleans up
+ * floating-point log noise, never masks a genuine fractional decimal count.
+ */
+export function computeChartPriceDecimals(minMove: number): number {
+  if (!Number.isFinite(minMove) || minMove <= 0) return 6;
+  return Math.max(0, Math.round(-Math.log10(minMove)));
+}
