@@ -349,6 +349,39 @@ describe("applyTokenTradeChartUpdate — first load / timeframe change vs. incre
   });
 });
 
+describe("applyTokenTradeChartUpdate — sub-minute capped timeline threading (issue #470 item 2)", () => {
+  it("caps a 1S render's rendered series to the width-derived bar cap instead of one whitespace point per second across the whole history", () => {
+    const chart = createFakeChart();
+    const fourDaysAgo = 0;
+    const now = 4 * 86_400;
+    const trades = [
+      tradeAtPrice(0.01, { blockTimestamp: fourDaysAgo }),
+      tradeAtPrice(0.02, { blockTimestamp: now - 5, logIndex: 1 }),
+    ];
+
+    const state = applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), {
+      trades,
+      decimals: DECIMALS,
+      interval: "1s",
+      timeframe: "1s",
+      nowUnixSeconds: now,
+      startingPriceNativePerToken: null,
+      launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+
+    // At 600px / 6px-per-bar the cap is 2*100 = 200 points, far fewer than
+    // the ~4-day, one-point-per-second uncapped timeline would be.
+    expect(state.points.length).toBeLessThanOrEqual(200);
+    expect(state.points[state.points.length - 1].time).toBe(now);
+    // The recent trade (5s before "now", inside the capped window) must
+    // still be present as a real candle.
+    const recentPoint = state.points.find((point) => point.time === now - 5);
+    expect(recentPoint).toBeDefined();
+    expect(chart.candle.getData().some((point) => "open" in point && point.time === now - 5)).toBe(true);
+  });
+});
+
 describe("computeInitialVisibleLogicalRange (issue #467 item 1)", () => {
   it("derives the visible bar count from chart width / fixed barSpacing, positioning `to` at the last point index plus the fixed right offset", () => {
     const lastPointIndex = 999;

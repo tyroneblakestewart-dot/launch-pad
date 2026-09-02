@@ -107,19 +107,44 @@ describe("buildCandleGeometry", () => {
   });
 
   it("colours a bar green when its candle closed at or above its open, red otherwise", () => {
-    // Both trades land in the same bucket (30s apart, well under the 1m
-    // interval) so the candle's open/close differ within one bar, rather
-    // than producing two single-trade (open === close) doji candles.
+    // Both trades share the exact same blockTimestamp, so they land in the
+    // same bucket regardless of which interval pickInterval selects (issue
+    // #470 item 1 added 1S/15S/1M ahead of 5M, so a zero-span pair now
+    // resolves to the finest interval, "1s", rather than always "5m") —
+    // the candle's open/close differ within that one bar, rather than
+    // producing two single-trade (open === close) doji candles.
     const up = buildCandleGeometry([
       trade({ blockTimestamp: 0, nativeAmountRaw: "10000000000000000", logIndex: 0 }),
-      trade({ blockTimestamp: 30, nativeAmountRaw: "20000000000000000", logIndex: 1 }),
+      trade({ blockTimestamp: 0, nativeAmountRaw: "20000000000000000", logIndex: 1 }),
     ]);
     const down = buildCandleGeometry([
       trade({ blockTimestamp: 0, nativeAmountRaw: "20000000000000000", logIndex: 0 }),
-      trade({ blockTimestamp: 30, nativeAmountRaw: "10000000000000000", logIndex: 1 }),
+      trade({ blockTimestamp: 0, nativeAmountRaw: "10000000000000000", logIndex: 1 }),
     ]);
     expect(up.bars.some((bar) => bar.color === SPARKLINE_UP_COLOR)).toBe(true);
     expect(down.bars.some((bar) => bar.color === SPARKLINE_DOWN_COLOR)).toBe(true);
+  });
+
+  it("picks a sub-minute interval for a short burst of trades instead of always collapsing them into one 5M candle (issue #470 item 1: the sparkline/mini-chart's finest-interval-under-cap rule now reaches 1S/15S/1M too)", () => {
+    const trades: TokenTrade[] = [];
+    for (let i = 0; i < 10; i += 1) {
+      trades.push(
+        trade({
+          blockTimestamp: i * 2,
+          logIndex: i,
+          nativeAmountRaw: String(BigInt(10_000_000_000_000_000n + BigInt(i) * 1_000_000_000_000_000n)),
+        }),
+      );
+    }
+    const result = buildCandleGeometry(trades);
+    expect(result.hasData).toBe(true);
+    // 10 trades 2s apart (18s span) now resolve to 1S buckets — one candle
+    // per trade — rather than the pre-#470 single 5M candle.
+    expect(result.bars.length).toBeGreaterThan(1);
+    expect(result.bars.length).toBeLessThanOrEqual(20);
+    for (const bar of result.bars) {
+      expectFiniteBar(bar);
+    }
   });
 
   it("scales geometry to a custom width/height when provided", () => {

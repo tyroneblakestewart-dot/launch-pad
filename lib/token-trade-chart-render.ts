@@ -1,6 +1,7 @@
 import {
   bucketTradesIntoCandles,
   buildChartSeriesPoints,
+  CHART_BAR_SPACING_PX,
   computeMovingAverage,
   diffCandles,
   diffChartSeriesPoints,
@@ -73,9 +74,6 @@ export type ChartTimeScaleLike = {
   getVisibleLogicalRange(): VisibleLogicalRange | null;
   setVisibleLogicalRange(range: VisibleLogicalRange): void;
 };
-
-/** Matches the chart's own timeScale `barSpacing` option (token-trade-chart.tsx) — fixed pixel width per bar, independent of chart width or candle count (issue #449 item 2), so this range computation only ever changes how many bars are visible, never how wide one bar renders. */
-const CHART_BAR_SPACING_PX = 6;
 
 /** Matches the chart's own timeScale `rightOffset` option — empty bars reserved past the last timeline point. */
 const CHART_RIGHT_OFFSET_BARS = 4;
@@ -154,7 +152,7 @@ export type ApplyTokenTradeChartUpdateInput = {
   nowUnixSeconds: number;
   startingPriceNativePerToken: number | null;
   launchedAtUnixSeconds: number | null;
-  /** The chart's real container width in pixels (issue #467 item 1) — the same value the component's guarded ResizeObserver tracks. Drives how many bars the initial/positioned range shows; never affects bar width itself. */
+  /** The chart's real container width in pixels (issue #467 item 1) — the same value the component's guarded ResizeObserver tracks. Drives how many bars the initial/positioned range shows (never bar width itself), and — on a sub-minute interval only (issue #470 item 2) — how far back buildChartSeriesPoints's timeline reaches. */
   chartWidthPx: number;
 };
 
@@ -196,7 +194,7 @@ export function applyTokenTradeChartUpdate(
   const candles = bucketTradesIntoCandles(trades, interval, decimals, startingPriceNativePerToken ?? undefined);
   const ma20 = computeMovingAverage(candles, MA20_PERIOD);
   const ma50 = computeMovingAverage(candles, MA50_PERIOD);
-  const points = buildChartSeriesPoints(candles, interval, nowUnixSeconds, launchedAtUnixSeconds);
+  const points = buildChartSeriesPoints(candles, interval, nowUnixSeconds, launchedAtUnixSeconds, chartWidthPx);
 
   const isFirstLoadOrTimeframeChange =
     !previousState.hasRenderedOnce || previousState.timeframe !== timeframe || previousState.resolvedInterval !== interval;
