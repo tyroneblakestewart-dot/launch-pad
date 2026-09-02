@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import { resetCurveProgressCacheForTests } from "@/lib/server/curve-progress-cache";
 import {
   resetTokenLaunchesStoreForTests,
   setTokenLaunchesStoreForTests,
@@ -46,6 +47,9 @@ function fakeLaunchesStore(overrides: Partial<TokenLaunchesStore> = {}): TokenLa
       return null;
     },
     async findTokenLaunchCreatedAtByCurveAddress() {
+      return null;
+    },
+    async findTokenLaunchGraduatedAtByCurveAddress() {
       return null;
     },
     async markGraduated() {},
@@ -102,9 +106,105 @@ function failingClient() {
   } as unknown as TokenTradesReadClient;
 }
 
+// --- issue #466: post-graduation pool swap fixtures ---
+
+const POOL = "0xffff00000000000000000000000000000000000f";
+const TOKEN_ADDRESS = "0xaaaa00000000000000000000000000000000000a";
+const WETH_ADDRESS = "0xeeee00000000000000000000000000000000000e";
+const SWAP_SENDER = "0x5555000000000000000000000000000000000005";
+const SWAP_RECIPIENT = "0x6666000000000000000000000000000000000006";
+// sqrtPriceX96 for price = 1 (2^96 exactly) — a "known value" per
+// lib/uniswap-v3-spot-price.ts's own tests, reused here so the raw spot
+// price is trivially checkable by hand: 1 native per whole token.
+const SQRT_PRICE_X96_ONE = 79228162514264337593543950336n;
+
+function makeGraduatedLog(overrides: Record<string, unknown> = {}) {
+  return {
+    eventName: "Graduated",
+    args: { pool: POOL, tokenId: 1n, tokenLiquidity: 1n, nativeLiquidity: 1n },
+    blockNumber: 400n,
+    transactionHash: "0xGRAD",
+    logIndex: 5,
+    ...overrides,
+  };
+}
+
+function makeSwapLog(overrides: Record<string, unknown> = {}) {
+  return {
+    eventName: "Swap",
+    args: {
+      sender: SWAP_SENDER,
+      recipient: SWAP_RECIPIENT,
+      // Negative token0 delta: token0 left the pool to the trader (a buy
+      // when the platform token is token0).
+      amount0: -500_000_000_000_000_000n,
+      amount1: 10_000_000_000_000_000n,
+      sqrtPriceX96: SQRT_PRICE_X96_ONE,
+      liquidity: 1n,
+      tick: 0,
+    },
+    blockNumber: 500n,
+    transactionHash: "0xSWAP1",
+    logIndex: 0,
+    ...overrides,
+  };
+}
+
+/** Answers both the curve's `token()` and the pool's `token0()` reads used by resolveTokenIsToken0, and (optionally) getCurveProgress's own graduation-status reads. */
+function readContractFor({
+  tokenIsToken0,
+  liquidityPool = null,
+}: {
+  tokenIsToken0: boolean;
+  liquidityPool?: string | null;
+}) {
+  return vi.fn(async ({ functionName }: { functionName: string }) => {
+    if (functionName === "token") return TOKEN_ADDRESS;
+    if (functionName === "token0") return tokenIsToken0 ? TOKEN_ADDRESS : WETH_ADDRESS;
+    if (functionName === "funded") return true;
+    if (functionName === "graduated") return liquidityPool !== null;
+    if (functionName === "realNativeReserve") return 0n;
+    if (functionName === "graduationTarget") return 1n;
+    if (functionName === "liquidityPool") return liquidityPool ?? "0x0000000000000000000000000000000000000000";
+    throw new Error(`unexpected readContract call: ${functionName}`);
+  });
+}
+
+function fakeClientWithPool({
+  curveLogs = [],
+  poolLogs = [],
+  latest = LATEST_BLOCK,
+  readContract,
+}: {
+  curveLogs?: unknown[];
+  poolLogs?: unknown[];
+  latest?: bigint;
+  readContract?: ReturnType<typeof vi.fn>;
+}) {
+  const getLogs = vi.fn(async ({ address }: { address: string }) =>
+    address.toLowerCase() === POOL.toLowerCase() ? poolLogs : curveLogs,
+  );
+  const getBlockNumber = vi.fn(async () => latest);
+  const getBlock = vi.fn(async ({ blockNumber }: { blockNumber: bigint }) => ({
+    number: blockNumber,
+    timestamp: timestampForBlock(blockNumber),
+  }));
+  const defaultReadContract = vi.fn(async () => {
+    throw new Error("readContract not mocked");
+  });
+  const client = {
+    getLogs,
+    getBlockNumber,
+    getBlock,
+    readContract: readContract ?? defaultReadContract,
+  } as unknown as TokenTradesReadClient;
+  return { client, getLogs, getBlock, getBlockNumber };
+}
+
 afterEach(() => {
   resetTokenTradesRpcForTests();
   resetTokenLaunchesStoreForTests();
+  resetCurveProgressCacheForTests();
 });
 
 describe("getTokenTrades", () => {
@@ -130,6 +230,7 @@ describe("getTokenTrades", () => {
         feeChargedRaw: "100000000000000",
         virtualTokenReserveRaw: "1",
         virtualEthReserveRaw: "1",
+        venue: "curve",
       },
     ]);
   });
@@ -167,6 +268,7 @@ describe("getTokenTrades", () => {
         feeChargedRaw: "100000000000000",
         virtualTokenReserveRaw: "1",
         virtualEthReserveRaw: "1",
+        venue: "curve",
       },
     ]);
   });
@@ -262,17 +364,17 @@ describe("getTokenTrades", () => {
     expect(getBlock).not.toHaveBeenCalled();
   });
 
-  it("reuses a cached read within the ~10s TTL instead of calling getLogs again", async () => {
+  it("reuses a cached read within the ~4s TTL instead of calling getLogs again", async () => {
     const { client, getLogs } = fakeClient();
     await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
-    await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 5_000 });
+    await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 3_000 });
     expect(getLogs).toHaveBeenCalledTimes(1);
   });
 
   it("re-reads once the TTL has elapsed", async () => {
     const { client, getLogs } = fakeClient();
     await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
-    await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 11_000 });
+    await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 5_000 });
     expect(getLogs).toHaveBeenCalledTimes(2);
   });
 
@@ -341,6 +443,167 @@ describe("getTokenTrades", () => {
       TokenTradesReadError,
     );
     expect((client as unknown as { getLogs: ReturnType<typeof vi.fn> }).getLogs).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("getTokenTrades — post-graduation pool swaps (issue #466)", () => {
+  it("a non-graduated curve issues no pool read at all", async () => {
+    const { client, getLogs } = fakeClientWithPool({ curveLogs: [makeLog()] });
+    const trades = await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    expect(trades).toHaveLength(1);
+    expect(trades[0].venue).toBe("curve");
+    // Only the curve's own address was ever queried — never the pool.
+    expect(getLogs).toHaveBeenCalledTimes(1);
+    expect((getLogs.mock.calls[0][0] as { address: string }).address).toBe(CURVE);
+  });
+
+  it("reads pool swaps once the curve's own Graduated event is found, merging chronologically with curve trades (token is token0)", async () => {
+    const readContract = readContractFor({ tokenIsToken0: true });
+    const { client, getLogs } = fakeClientWithPool({
+      curveLogs: [makeLog({ blockNumber: 200n }), makeGraduatedLog()],
+      poolLogs: [makeSwapLog({ blockNumber: 500n })],
+      readContract,
+    });
+
+    const trades = await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+
+    expect(trades.map((t) => t.blockNumber)).toEqual(["500", "200"]);
+    expect(trades[1].venue).toBe("curve");
+
+    const poolTrade = trades[0];
+    expect(poolTrade.venue).toBe("pool");
+    // amount0 negative -> token0 (the platform token, since tokenIsToken0)
+    // left the pool to the trader -> buy, credited to the swap's recipient.
+    expect(poolTrade.direction).toBe("buy");
+    expect(poolTrade.wallet).toBe(SWAP_RECIPIENT);
+    expect(poolTrade.tokenAmountRaw).toBe("500000000000000000");
+    expect(poolTrade.nativeAmountRaw).toBe("10000000000000000");
+    expect(poolTrade.grossNativeAmountRaw).toBe("10000000000000000");
+    expect(poolTrade.feeChargedRaw).toBe("0");
+    // sqrtPriceX96 for price=1 and token0=platform token -> 1 native per token.
+    expect(poolTrade.spotPriceNativePerTokenRaw).toBe("1000000000000000000");
+
+    // The pool's own address was queried too, from the Graduated event's block.
+    const poolCall = getLogs.mock.calls.find((call) => (call[0] as { address: string }).address === POOL);
+    expect(poolCall).toBeDefined();
+    expect((poolCall?.[0] as { fromBlock: bigint }).fromBlock).toBe(400n);
+  });
+
+  it("maps direction correctly when the platform token is token1 (WETH is token0)", async () => {
+    const readContract = readContractFor({ tokenIsToken0: false });
+    const { client } = fakeClientWithPool({
+      curveLogs: [makeGraduatedLog()],
+      poolLogs: [
+        makeSwapLog({
+          // token is token1 here: a positive amount1 delta means the token
+          // left the pool to the trader -> buy.
+          args: {
+            sender: SWAP_SENDER,
+            recipient: SWAP_RECIPIENT,
+            amount0: 10_000_000_000_000_000n,
+            amount1: -500_000_000_000_000_000n,
+            sqrtPriceX96: SQRT_PRICE_X96_ONE,
+            liquidity: 1n,
+            tick: 0,
+          },
+        }),
+      ],
+      readContract,
+    });
+
+    const trades = await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    expect(trades).toHaveLength(1);
+    expect(trades[0].direction).toBe("buy");
+    expect(trades[0].wallet).toBe(SWAP_RECIPIENT);
+    expect(trades[0].tokenAmountRaw).toBe("500000000000000000");
+    expect(trades[0].nativeAmountRaw).toBe("10000000000000000");
+    // Price=1 is symmetric regardless of ordering.
+    expect(trades[0].spotPriceNativePerTokenRaw).toBe("1000000000000000000");
+  });
+
+  it("maps a sell (positive token delta) to the swap's sender", async () => {
+    const readContract = readContractFor({ tokenIsToken0: true });
+    const { client } = fakeClientWithPool({
+      curveLogs: [makeGraduatedLog()],
+      poolLogs: [
+        makeSwapLog({
+          args: {
+            sender: SWAP_SENDER,
+            recipient: SWAP_RECIPIENT,
+            amount0: 500_000_000_000_000_000n,
+            amount1: -10_000_000_000_000_000n,
+            sqrtPriceX96: SQRT_PRICE_X96_ONE,
+            liquidity: 1n,
+            tick: 0,
+          },
+        }),
+      ],
+      readContract,
+    });
+
+    const trades = await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    expect(trades).toHaveLength(1);
+    expect(trades[0].direction).toBe("sell");
+    expect(trades[0].wallet).toBe(SWAP_SENDER);
+  });
+
+  it("falls back to no trade list explosion when the pool has no swaps yet (graduated, zero pool trades)", async () => {
+    const readContract = readContractFor({ tokenIsToken0: true });
+    const { client } = fakeClientWithPool({
+      curveLogs: [makeLog({ blockNumber: 200n }), makeGraduatedLog()],
+      poolLogs: [],
+      readContract,
+    });
+
+    const trades = await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    expect(trades.map((t) => t.venue)).toEqual(["curve"]);
+  });
+
+  it("resolves the pool address/graduation block via a direct status read + recorded graduated_at when the Graduated event isn't in the fetched range", async () => {
+    const graduatedAt = new Date((BASE_TIMESTAMP + 300) * 1000 + SAFETY_MARGIN_SECONDS * 1000);
+    setTokenLaunchesStoreForTests(
+      fakeLaunchesStore({
+        findTokenLaunchGraduatedAtByCurveAddress: async () => graduatedAt,
+      }),
+    );
+    const readContract = readContractFor({ tokenIsToken0: true, liquidityPool: POOL });
+    const { client, getLogs } = fakeClientWithPool({
+      // No Graduated log in the (bounded-fallback-window) curve range.
+      curveLogs: [],
+      poolLogs: [makeSwapLog({ blockNumber: 500n })],
+      readContract,
+    });
+
+    const trades = await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    expect(trades).toHaveLength(1);
+    expect(trades[0].venue).toBe("pool");
+
+    const poolCall = getLogs.mock.calls.find((call) => (call[0] as { address: string }).address === POOL);
+    expect(poolCall).toBeDefined();
+    // Binary-searched to land on the block whose timestamp matches
+    // graduatedAt minus the safety margin, exactly like the curve's own
+    // creation-timestamp resolution.
+    expect((poolCall?.[0] as { fromBlock: bigint }).fromBlock).toBe(300n);
+  });
+
+  it("caches the resolved pool address/start block indefinitely across separate reads", async () => {
+    const readContract = readContractFor({ tokenIsToken0: true });
+    const { client, getLogs } = fakeClientWithPool({
+      curveLogs: [makeGraduatedLog()],
+      poolLogs: [],
+      readContract,
+    });
+
+    await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 0 });
+    getLogs.mockClear();
+    readContract.mockClear();
+    await getTokenTrades(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, CURVE, { client, now: 20_000 });
+
+    // The pool's Swap log read still happens every read (fresh trade data),
+    // but token-order resolution (readContract) is never repeated.
+    expect(readContract).not.toHaveBeenCalled();
+    const poolCall = getLogs.mock.calls.find((call) => (call[0] as { address: string }).address === POOL);
+    expect(poolCall).toBeDefined();
   });
 });
 

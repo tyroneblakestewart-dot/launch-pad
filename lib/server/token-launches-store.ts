@@ -55,6 +55,8 @@ export interface TokenLaunchesStore {
   findByTokenAddress(chainId: number, tokenAddress: string): Promise<TokenLaunch | null>;
   /** Case-insensitive lookup of the earliest `created_at` recorded for a given curve address, or null when Postgres is unconfigured or no record exists — lets lib/server/token-trades-rpc.ts derive a safe eth_getLogs start block from a real timestamp instead of a historical eth_getCode binary search, which the pruned Robinhood RPC does not support (issue #434). */
   findTokenLaunchCreatedAtByCurveAddress(chainId: number, curveAddress: string): Promise<Date | null>;
+  /** Case-insensitive lookup of the recorded `graduated_at` for a given curve address, or null when Postgres is unconfigured, no record exists, or the record isn't marked graduated yet — lets lib/server/token-trades-rpc.ts's post-graduation pool swap read (issue #466) fall back to a real timestamp when the curve's own Graduated event wasn't captured by the (possibly bounded-window) curve log scan. */
+  findTokenLaunchGraduatedAtByCurveAddress(chainId: number, curveAddress: string): Promise<Date | null>;
   /** Marks a launch graduated. A no-op (not an error) once already graduated, so an opportunistic re-check from the read API never double-writes. */
   markGraduated(chainId: number, tokenAddress: string, graduatedAt: Date): Promise<void>;
   countLast24h(): Promise<number>;
@@ -82,6 +84,9 @@ const unconfiguredStore: TokenLaunchesStore = {
     return null;
   },
   async findTokenLaunchCreatedAtByCurveAddress() {
+    return null;
+  },
+  async findTokenLaunchGraduatedAtByCurveAddress() {
     return null;
   },
   async markGraduated() {
@@ -237,6 +242,17 @@ export function createPostgresTokenLaunchesStore(databaseUrl: string): TokenLaun
       );
       const row = result.rows[0];
       return row ? asDate(row.created_at) : null;
+    },
+
+    async findTokenLaunchGraduatedAtByCurveAddress(chainId, curveAddress) {
+      const result = await pool.query<{ graduated_at: Date | string | null }>(
+        `SELECT graduated_at FROM token_launches
+          WHERE chain_id = $1 AND LOWER(curve_address) = LOWER($2) AND graduated = TRUE
+          ORDER BY graduated_at ASC LIMIT 1`,
+        [chainId, curveAddress],
+      );
+      const row = result.rows[0];
+      return row?.graduated_at ? asDate(row.graduated_at) : null;
     },
 
     async markGraduated(chainId, tokenAddress, graduatedAt) {
