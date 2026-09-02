@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   addHorizontalLine,
+  chartIntervalShowsSeconds,
+  chartTickIntervalMs,
   computeChartMinMove,
   computeChartPriceDecimals,
   expandDegeneratePriceRange,
@@ -106,5 +108,38 @@ describe("computeChartPriceDecimals (issue #464 item 2: axis/crosshair/tooltip p
     const decimals = computeChartPriceDecimals(computeChartMinMove(6e-8));
     expect(formatNativePriceAtDecimals(2.5e-9, decimals)).toBe("0.00000000250000");
     expect(formatNativePriceAtDecimals(6e-8, decimals)).toBe("0.00000006000000");
+  });
+});
+
+describe("chartTickIntervalMs (issue #470 item 3: per-interval clock)", () => {
+  it("ticks every second on 1S", () => {
+    expect(chartTickIntervalMs("1s")).toBe(1_000);
+  });
+
+  it("ticks every 15 seconds on 15S", () => {
+    expect(chartTickIntervalMs("15s")).toBe(15_000);
+  });
+
+  it("caps at 30 seconds from 1M up — 1M, 5M, 15M, 1H, 6H and 1D all tick every 30s", () => {
+    for (const interval of ["1m", "5m", "15m", "1h", "6h", "1d"] as const) {
+      expect(chartTickIntervalMs(interval)).toBe(30_000);
+    }
+  });
+
+  it("keeps the 30s cadence when no interval has resolved yet", () => {
+    expect(chartTickIntervalMs(null)).toBe(30_000);
+  });
+});
+
+describe("chartIntervalShowsSeconds (issue #470 item 4: seconds-visible time axis)", () => {
+  it("shows seconds for 1S and 15S only", () => {
+    expect(chartIntervalShowsSeconds("1s")).toBe(true);
+    expect(chartIntervalShowsSeconds("15s")).toBe(true);
+  });
+
+  it("stays HH:MM (no seconds) for every other interval, including null", () => {
+    for (const interval of ["1m", "5m", "15m", "1h", "6h", "1d", null] as const) {
+      expect(chartIntervalShowsSeconds(interval)).toBe(false);
+    }
   });
 });

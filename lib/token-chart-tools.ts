@@ -1,3 +1,5 @@
+import { CANDLE_INTERVAL_SECONDS, type CandleInterval } from "@/lib/candle-bucketing";
+
 // Pure client-side state for the token chart's drawing-tool rail (issue
 // #445): crosshair (default) and a removable horizontal price line. Kept
 // dependency-free of lightweight-charts and the chart component itself, per
@@ -71,4 +73,24 @@ export function computeChartMinMove(maxPrice: number): number {
 export function computeChartPriceDecimals(minMove: number): number {
   if (!Number.isFinite(minMove) || minMove <= 0) return 6;
   return Math.max(0, Math.round(-Math.log10(minMove)));
+}
+
+/** The current-bucket clock's own tick cap — coarser intervals never need to redraw the still-open bar faster than this (issue #470 item 3). */
+const MAX_CHART_TICK_SECONDS = 30;
+
+/**
+ * The current-bucket clock's tick interval in milliseconds: `min(interval
+ * seconds, 30)` — 1s on 1S, 15s on 15S, 30s from 1M up (issue #470 item 3),
+ * so a sub-minute timeframe's still-open bar advances roughly once per real
+ * bucket instead of lagging up to 30s behind it. `null` (interval not yet
+ * resolved, e.g. trades still loading) keeps the previous fixed 30s cadence.
+ */
+export function chartTickIntervalMs(interval: CandleInterval | null): number {
+  const seconds = interval ? CANDLE_INTERVAL_SECONDS[interval] : MAX_CHART_TICK_SECONDS;
+  return Math.min(seconds, MAX_CHART_TICK_SECONDS) * 1000;
+}
+
+/** Whether the chart's time axis, crosshair and tooltip should render seconds for this interval — 1S/15S only (issue #470 item 4); everywhere else stays HH:MM. */
+export function chartIntervalShowsSeconds(interval: CandleInterval | null): boolean {
+  return interval === "1s" || interval === "15s";
 }

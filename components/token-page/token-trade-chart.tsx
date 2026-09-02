@@ -20,6 +20,8 @@ import {
 } from "@/lib/candle-bucketing";
 import {
   addHorizontalLine,
+  chartIntervalShowsSeconds,
+  chartTickIntervalMs,
   computeChartMinMove,
   computeChartPriceDecimals,
   expandDegeneratePriceRange,
@@ -31,6 +33,7 @@ import {
   applyChartResize,
   applyTokenTradeChartUpdate,
   createInitialTokenTradeChartRenderState,
+  type ChartBar,
   type TokenTradeChartRenderState,
   type TokenTradeChartSeriesBundle,
 } from "@/lib/token-trade-chart-render";
@@ -45,6 +48,9 @@ import type { TokenTrade } from "@/lib/token-trade-types";
 import styles from "./token-page.module.css";
 
 const TIMEFRAME_LABELS: Record<ChartTimeframe, string> = {
+  "1s": "1S",
+  "15s": "15S",
+  "1m": "1M",
   "5m": "5M",
   "15m": "15M",
   "1h": "1H",
@@ -75,11 +81,34 @@ type HoverInfo = {
   volume: number;
 };
 
-function formatUtcTime(unixSeconds: number): string {
+/** Adapts the engine's ChartBar (always a full OHLC bar — issue #470 addendum, no whitespace variant left) into lightweight-charts' own candlestick datum shape, passing the flat-candle colour override through only when present. */
+function toCandlestickDatum(point: ChartBar): {
+  time: UTCTimestamp;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  color?: string;
+  wickColor?: string;
+} {
+  return {
+    time: point.time as UTCTimestamp,
+    open: point.open,
+    high: point.high,
+    low: point.low,
+    close: point.close,
+    ...(point.color ? { color: point.color, wickColor: point.wickColor } : {}),
+  };
+}
+
+/** `showSeconds` renders "HH:MM:SS UTC" for the 1S/15S timeframes (issue #470 item 4); every other timeframe keeps "HH:MM UTC". */
+function formatUtcTime(unixSeconds: number, showSeconds: boolean): string {
   const date = new Date(unixSeconds * 1000);
   const hh = String(date.getUTCHours()).padStart(2, "0");
   const mm = String(date.getUTCMinutes()).padStart(2, "0");
-  return `${hh}:${mm} UTC`;
+  if (!showSeconds) return `${hh}:${mm} UTC`;
+  const ss = String(date.getUTCSeconds()).padStart(2, "0");
+  return `${hh}:${mm}:${ss} UTC`;
 }
 
 /**
@@ -114,22 +143,23 @@ function formatUtcTime(unixSeconds: number): string {
  *
  * Positioning on "now" (issue #467 item 1): the old `scrollToRealTime` call
  * this component used to make, and the timeScale's own `shiftVisibleRangeOnNewBar` (explicitly disabled below),
- * both act on the last bar that carries real series data and ignore
- * trailing whitespace bars — since `buildChartSeriesPoints` extends the
- * timeline with whitespace all the way to the current bucket, those
- * built-ins left the view scrolled to the last real candle while the axis
- * never reached the present on a token with a long trade-free tail, making
- * the chart look permanently frozen. `lib/token-trade-chart-render.ts`'s
- * `applyTokenTradeChartUpdate` positions and follows the timeline itself
- * instead, via `setVisibleLogicalRange` — this component only supplies the
- * chart's real container width (`lastAppliedSizeRef`, already tracked by the
- * guarded ResizeObserver below) as `chartWidthPx`, and re-invokes the same
- * resize-follow logic (`applyChartResize`) whenever that width itself
- * changes, independent of any data poll.
+ * both act on the last bar that carries real series data — since
+ * `buildChartSeriesPoints` extends the timeline with a candle (flat-filled
+ * where there's no trade, issue #470 addendum) all the way to the current
+ * bucket, those built-ins left the view scrolled to the last real candle
+ * while the axis never reached the present on a token with a long
+ * trade-free tail, making the chart look permanently frozen.
+ * `lib/token-trade-chart-render.ts`'s `applyTokenTradeChartUpdate` positions
+ * and follows the timeline itself instead, via `setVisibleLogicalRange` —
+ * this component only supplies the chart's real container width
+ * (`lastAppliedSizeRef`, already tracked by the guarded ResizeObserver
+ * below) as `chartWidthPx`, and re-invokes the same resize-follow logic
+ * (`applyChartResize`) whenever that width itself changes, independent of
+ * any data poll.
  *
- * Out-of-order update crash (issue #451 follow-up): the whitespace
- * timeline's tail advances on its own clock, independent of when a trade is
- * fetched, so a trade landing in a bucket that tail has already moved past
+ * Out-of-order update crash (issue #451 follow-up): the timeline's tail
+ * advances on its own clock, independent of when a trade is fetched, so a
+ * trade landing in a bucket that tail has already moved past
  * produces an `update()` target that's no longer the last bar —
  * lightweight-charts throws "Cannot update oldest data" for that. The
  * incremental branch inside `applyTokenTradeChartUpdate` detects this (and
@@ -153,7 +183,7 @@ export function TokenTradeChart({
   stale: boolean;
   retry: () => void;
   startingPriceNativePerToken: number | null;
-  /** Unix seconds the token launched, when known — caps how far the pre-trade whitespace padding can reach (issue #458 item 5). */
+  /** Unix seconds the token launched, when known — anchors where the flat-filled pre-trade timeline starts (issue #458 item 5, superseded by issue #470's flat-fill addendum). */
   launchedAtUnixSeconds: number | null;
   pairLabel: string;
 }) {
@@ -180,26 +210,38 @@ export function TokenTradeChart({
     toolRef.current = tool;
   }, [tool]);
 
+  const resolvedInterval = useMemo(() => {
+    if (trades === null) return null;
+    return resolveChartInterval(timeframe, trades, decimals ?? DEFAULT_TOKEN_DECIMALS);
+  }, [trades, decimals, timeframe]);
+
   // Every chart price display (axis, crosshair, tooltip, last-price tag)
   // renders at this fixed decimal count, re-derived from the chart's own
   // current minMove whenever it changes (issue #464 item 2) — see the
   // data-flow effect below, where it's set alongside appliedMinMoveRef.
   const [priceDecimals, setPriceDecimals] = useState(INITIAL_CHART_PRICE_DECIMALS);
 
-  // Whitespace bars advance the visible timeline "with the clock" (issue
-  // #451 item 2) even when no new trade has arrived to otherwise trigger a
-  // re-render — a slow, deliberately coarse tick, not a live-second clock.
-  // Browsers suspend or heavily throttle background-tab timers, so the plain
-  // 30s interval alone left a tab backgrounded overnight showing the chart
-  // frozen at its last trade (issue #464 item 1); updating immediately on
-  // mount, on the tab becoming visible again, and on window focus makes the
-  // clock catch up the moment it's actually looked at again, while the
-  // interval keeps it ticking for an already-foregrounded tab.
+  // The flat-filled timeline advances "with the clock" (issue #451 item 2,
+  // flat-filled instead of whitespace since issue #470's addendum) even when
+  // no new trade has arrived to otherwise trigger a re-render — a
+  // deliberately coarse tick, not a live-second clock, sized to the
+  // resolved interval itself (issue #470 item 3): `chartTickIntervalMs`
+  // returns `min(intervalSeconds, 30)` seconds, so 1S ticks every second,
+  // 15S every 15s, and 1M-and-coarser keep the original 30s cadence. The
+  // effect depends on `resolvedInterval` so switching timeframes re-arms the
+  // timer at the newly resolved interval's own cadence. Browsers suspend or
+  // heavily throttle background-tab timers, so the interval alone left a tab
+  // backgrounded overnight showing the chart frozen at its last trade (issue
+  // #464 item 1); updating immediately on mount, on the tab becoming visible
+  // again, and on window focus makes the clock catch up the moment it's
+  // actually looked at again, while the interval keeps it ticking for an
+  // already-foregrounded tab.
   const [nowTick, setNowTick] = useState(() => Math.floor(Date.now() / 1000));
   useEffect(() => {
     const updateNowTick = () => setNowTick(Math.floor(Date.now() / 1000));
     updateNowTick();
-    const timer = window.setInterval(updateNowTick, 30_000);
+    const tickMs = chartTickIntervalMs(resolvedInterval);
+    const timer = window.setInterval(updateNowTick, tickMs);
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") updateNowTick();
     }
@@ -210,7 +252,14 @@ export function TokenTradeChart({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", updateNowTick);
     };
-  }, []);
+  }, [resolvedInterval]);
+
+  // Seconds-visible time axis (issue #470 item 4): 1S/15S read HH:MM:SS,
+  // every other timeframe stays HH:MM. Applied reactively rather than at
+  // chart-creation time since the resolved interval can change after mount.
+  useEffect(() => {
+    chartRef.current?.applyOptions({ timeScale: { secondsVisible: chartIntervalShowsSeconds(resolvedInterval) } });
+  }, [resolvedInterval]);
 
   // Mount once: create the chart + every series instance, independent of
   // trade count. A manual ResizeObserver replaces `autoSize: true` (see the
@@ -330,10 +379,10 @@ export function TokenTradeChart({
         | { open: number; high: number; low: number; close: number }
         | undefined;
       if (!bar) {
-        // A whitespace bar has a time/point but no OHLC — preserve the last
-        // valid hover info instead of flickering the tooltip closed while
-        // the crosshair is still genuinely over the chart (issue #453
-        // area 3).
+        // No bar at this exact crosshair time (e.g. right at a chart edge
+        // before data has fully loaded) — preserve the last valid hover info
+        // instead of flickering the tooltip closed while the crosshair is
+        // still genuinely over the chart (issue #453 area 3).
         return;
       }
       const volumeBar = param.seriesData.get(volumeSeries) as { value: number } | undefined;
@@ -400,11 +449,6 @@ export function TokenTradeChart({
     };
   }, []);
 
-  const resolvedInterval = useMemo(() => {
-    if (trades === null) return null;
-    return resolveChartInterval(timeframe, trades, decimals ?? DEFAULT_TOKEN_DECIMALS);
-  }, [trades, decimals, timeframe]);
-
   // The one shared spot price (issue #458 item 1) — never a second,
   // independently-computed last price. Every on-chart price indicator (the
   // small label above, the dashed last-price line below, and the candle
@@ -437,20 +481,8 @@ export function TokenTradeChart({
 
     const seriesBundle: TokenTradeChartSeriesBundle = {
       candleSeries: {
-        setData: (data) =>
-          candleSeries.setData(
-            data.map((point) =>
-              "open" in point
-                ? { time: point.time as UTCTimestamp, open: point.open, high: point.high, low: point.low, close: point.close }
-                : { time: point.time as UTCTimestamp },
-            ),
-          ),
-        update: (point) =>
-          candleSeries.update(
-            "open" in point
-              ? { time: point.time as UTCTimestamp, open: point.open, high: point.high, low: point.low, close: point.close }
-              : { time: point.time as UTCTimestamp },
-          ),
+        setData: (data) => candleSeries.setData(data.map(toCandlestickDatum)),
+        update: (point) => candleSeries.update(toCandlestickDatum(point)),
       },
       ma20Series: {
         setData: (data) => ma20Series.setData(data.map((point) => ({ time: point.time as UTCTimestamp, value: point.value }))),
@@ -488,7 +520,7 @@ export function TokenTradeChart({
     });
 
     const maxPrice =
-      nextState.candles.length > 0 ? Math.max(...nextState.candles.map((candle) => candle.high)) : startingPriceNativePerToken;
+      nextState.points.length > 0 ? Math.max(...nextState.points.map((point) => point.high)) : startingPriceNativePerToken;
     if (maxPrice !== null && maxPrice > 0) {
       const minMove = computeChartMinMove(maxPrice);
       if (minMove !== appliedMinMoveRef.current) {
@@ -678,7 +710,7 @@ export function TokenTradeChart({
           {hoverInfo && (
             <div className={styles.chartTooltip} data-token-chart-tooltip="true">
               <div className={styles.chartTooltipHeader}>
-                <span>{formatUtcTime(hoverInfo.time)}</span>
+                <span>{formatUtcTime(hoverInfo.time, chartIntervalShowsSeconds(resolvedInterval))}</span>
                 {hoverChangePercent !== null && (
                   <span className={hoverChangePercent >= 0 ? styles.priceChangeUp : styles.priceChangeDown}>
                     {formatSignedPercent(hoverChangePercent, 2)}

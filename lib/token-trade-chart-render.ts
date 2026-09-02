@@ -1,14 +1,12 @@
 import {
   bucketTradesIntoCandles,
   buildChartSeriesPoints,
+  CHART_BAR_SPACING_PX,
   computeMovingAverage,
   diffCandles,
-  diffChartSeriesPoints,
   diffTimeSeries,
-  isCandlePoint,
   type Candle,
   type CandleInterval,
-  type ChartSeriesPoint,
   type ChartTimeframe,
   type MovingAveragePoint,
 } from "@/lib/candle-bucketing";
@@ -30,34 +28,41 @@ import type { TokenTrade } from "@/lib/token-trade-types";
 // Positioning is now owned entirely by this file (issue #467 items 1-2),
 // replacing the old `scrollToRealTime` call. Both that lightweight-charts
 // built-in and the chart's own `shiftVisibleRangeOnNewBar` option act on the
-// last bar that carries *series data* and ignore trailing whitespace bars — but
-// `buildChartSeriesPoints` deliberately extends the timeline with whitespace
-// all the way to the current bucket, so on a token with a long trade-free
-// tail those built-ins left the view scrolled to the last real candle while
-// every later whitespace bar (and the axis' reach to "now") sat off-screen
-// to the right, making the chart look permanently frozen. `computeInitial
-// VisibleLogicalRange` positions on the LAST timeline point (a real candle or
-// the current-time whitespace bar) instead, and the incremental-update branch
-// below tracks whether the viewer is "at the right edge" and, if so, shifts
-// the range by exactly the number of newly appended points on every update —
-// following the clock — while leaving the range untouched the moment the
-// viewer has scrolled left.
+// last bar that carries *series data* and ignore trailing whitespace bars —
+// but `buildChartSeriesPoints` deliberately extends the timeline with a
+// candle (flat-filled where there's no trade, issue #470 addendum — formerly
+// bare whitespace) all the way to the current bucket, so on a token with a
+// long trade-free tail those built-ins left the view scrolled to the last
+// real candle while every later bar (and the axis' reach to "now") sat
+// off-screen to the right, making the chart look permanently frozen.
+// `computeInitialVisibleLogicalRange` positions on the LAST timeline point
+// (a real candle or the current-time flat bar) instead, and the
+// incremental-update branch below tracks whether the viewer is "at the right
+// edge" and, if so, shifts the range by exactly the number of newly appended
+// points on every update — following the clock — while leaving the range
+// untouched the moment the viewer has scrolled left.
 
-type ChartBar = { time: number; open: number; high: number; low: number; close: number };
-type ChartSeriesDatum = ChartBar | { time: number };
+export type ChartBar = { time: number; open: number; high: number; low: number; close: number; color?: string; wickColor?: string };
 type VolumeDatum = { time: number; value: number; color: string };
 type LinePoint = { time: number; value: number };
 
-export function candleToBar(candle: Candle): ChartBar {
-  return { time: candle.time, open: candle.open, high: candle.high, low: candle.low, close: candle.close };
-}
+/** The design's flat-candle colour (#6f746e) at 60% opacity — a "no trade" bucket reads as neutral, never up or down (issue #470 addendum). */
+const FLAT_CANDLE_COLOR = "rgba(111, 116, 110, 0.6)";
+/** Fully transparent — the volume pane shows nothing for a flat (zero-volume) bucket (issue #470 addendum). */
+const FLAT_VOLUME_COLOR = "rgba(111, 116, 110, 0)";
 
-/** Converts a whitespace-inclusive timeline point to what the candlestick series expects: an OHLC bar, or a bare-time WhitespaceData point. */
-export function pointToSeriesDatum(point: ChartSeriesPoint): ChartSeriesDatum {
-  return isCandlePoint(point) ? candleToBar(point) : { time: point.time };
+/** Converts a candle (real or flat-filled) into what the candlestick series expects, applying the flat-candle colour override only when `isFlat` — a real candle carries no per-bar override at all, so it renders via the series' own default up/down colours. */
+export function candleToBar(candle: Candle): ChartBar {
+  const bar: ChartBar = { time: candle.time, open: candle.open, high: candle.high, low: candle.low, close: candle.close };
+  if (candle.isFlat) {
+    bar.color = FLAT_CANDLE_COLOR;
+    bar.wickColor = FLAT_CANDLE_COLOR;
+  }
+  return bar;
 }
 
 export function volumeBarColor(candle: Candle): string {
+  if (candle.isFlat) return FLAT_VOLUME_COLOR;
   return candle.close >= candle.open ? "rgba(198, 245, 62, 0.35)" : "rgba(141, 145, 140, 0.35)";
 }
 
@@ -73,9 +78,6 @@ export type ChartTimeScaleLike = {
   getVisibleLogicalRange(): VisibleLogicalRange | null;
   setVisibleLogicalRange(range: VisibleLogicalRange): void;
 };
-
-/** Matches the chart's own timeScale `barSpacing` option (token-trade-chart.tsx) — fixed pixel width per bar, independent of chart width or candle count (issue #449 item 2), so this range computation only ever changes how many bars are visible, never how wide one bar renders. */
-const CHART_BAR_SPACING_PX = 6;
 
 /** Matches the chart's own timeScale `rightOffset` option — empty bars reserved past the last timeline point. */
 const CHART_RIGHT_OFFSET_BARS = 4;
@@ -122,7 +124,7 @@ export function applyChartResize(
 }
 
 export type TokenTradeChartSeriesBundle = {
-  candleSeries: ChartSeriesLike<ChartSeriesDatum>;
+  candleSeries: ChartSeriesLike<ChartBar>;
   ma20Series: ChartSeriesLike<LinePoint>;
   ma50Series: ChartSeriesLike<LinePoint>;
   volumeSeries: ChartSeriesLike<VolumeDatum>;
@@ -130,8 +132,8 @@ export type TokenTradeChartSeriesBundle = {
 };
 
 export type TokenTradeChartRenderState = {
-  points: ChartSeriesPoint[];
-  candles: Candle[];
+  /** The flat-filled, gap-free timeline (issue #470 addendum) — every entry is a real Candle, real or flat-filled; this single array now drives the candlestick series, the volume series and both moving averages, since a flat bucket is a real bar for all three. */
+  points: Candle[];
   ma20: MovingAveragePoint[];
   ma50: MovingAveragePoint[];
   timeframe: ChartTimeframe | null;
@@ -140,7 +142,7 @@ export type TokenTradeChartRenderState = {
 };
 
 export function createInitialTokenTradeChartRenderState(): TokenTradeChartRenderState {
-  return { points: [], candles: [], ma20: [], ma50: [], timeframe: null, resolvedInterval: null, hasRenderedOnce: false };
+  return { points: [], ma20: [], ma50: [], timeframe: null, resolvedInterval: null, hasRenderedOnce: false };
 }
 
 const MA20_PERIOD = 20;
@@ -163,16 +165,19 @@ export type ApplyTokenTradeChartUpdateInput = {
  * bring `series` up to date from `previousState`, returning the new state to
  * persist for the next call. `series.setData()` (which resets the visible
  * range) only ever runs on the very first call or a timeframe/resolved-
- * interval change; every other call diffs the freshly-rebucketed candles/
- * MAs/whitespace-inclusive timeline against `previousState` and calls
+ * interval change; every other call diffs the freshly-rebucketed, flat-filled
+ * timeline (`points` — issue #470 addendum: every bucket is a real candle,
+ * flat-filled where there's no trade) against `previousState` and calls
  * `series.update()` for just the mutated last bar and any newly appended
- * ones. A trade landing in a bucket the whitespace timeline's own clock has
- * already advanced past would make that bucket's `update()` target no
- * longer the last rendered bar — lightweight-charts throws "Cannot update
- * oldest data" for that — so an out-of-order pre-check, and a try/catch
- * around the incremental path for anything the pre-check doesn't anticipate,
- * both fall back to a full `setData()` that reads and restores the visible
- * logical range so the user's scroll position doesn't jump.
+ * ones — including a trade converting a flat bucket into a real one in the
+ * same slot/time, exactly like the old whitespace-to-candle transition. A
+ * trade landing in a bucket the timeline's own clock has already advanced
+ * past would make that bucket's `update()` target no longer the last
+ * rendered bar — lightweight-charts throws "Cannot update oldest data" for
+ * that — so an out-of-order pre-check, and a try/catch around the
+ * incremental path for anything the pre-check doesn't anticipate, both fall
+ * back to a full `setData()` that reads and restores the visible logical
+ * range so the user's scroll position doesn't jump.
  *
  * Positioning (issue #467 items 1-2): the first-load/timeframe-change branch
  * sets an explicit width-derived range via `computeInitialVisibleLogicalRange`
@@ -194,25 +199,24 @@ export function applyTokenTradeChartUpdate(
     input;
 
   const candles = bucketTradesIntoCandles(trades, interval, decimals, startingPriceNativePerToken ?? undefined);
-  const ma20 = computeMovingAverage(candles, MA20_PERIOD);
-  const ma50 = computeMovingAverage(candles, MA50_PERIOD);
-  const points = buildChartSeriesPoints(candles, interval, nowUnixSeconds, launchedAtUnixSeconds);
+  const points = buildChartSeriesPoints(candles, interval, nowUnixSeconds, launchedAtUnixSeconds, startingPriceNativePerToken, chartWidthPx);
+  const ma20 = computeMovingAverage(points, MA20_PERIOD);
+  const ma50 = computeMovingAverage(points, MA50_PERIOD);
 
   const isFirstLoadOrTimeframeChange =
     !previousState.hasRenderedOnce || previousState.timeframe !== timeframe || previousState.resolvedInterval !== interval;
 
   if (isFirstLoadOrTimeframeChange) {
-    series.candleSeries.setData(points.map(pointToSeriesDatum));
+    series.candleSeries.setData(points.map(candleToBar));
     series.ma20Series.setData(ma20.map((point) => ({ time: point.time, value: point.value })));
     series.ma50Series.setData(ma50.map((point) => ({ time: point.time, value: point.value })));
-    series.volumeSeries.setData(candles.map((candle) => ({ time: candle.time, value: candle.volume, color: volumeBarColor(candle) })));
+    series.volumeSeries.setData(points.map((point) => ({ time: point.time, value: point.volume, color: volumeBarColor(point) })));
     const lastPointIndex = points.length - 1;
     if (lastPointIndex >= 0) {
       series.timeScale.setVisibleLogicalRange(computeInitialVisibleLogicalRange(lastPointIndex, chartWidthPx));
     }
   } else {
-    const pointsDiff = diffChartSeriesPoints(previousState.points, points);
-    const candleDiff = diffCandles(previousState.candles, candles);
+    const pointsDiff = diffCandles(previousState.points, points);
     const ma20Diff = diffTimeSeries(previousState.ma20, ma20, (a, b) => a.value === b.value);
     const ma50Diff = diffTimeSeries(previousState.ma50, ma50, (a, b) => a.value === b.value);
 
@@ -227,9 +231,9 @@ export function applyTokenTradeChartUpdate(
     let needsFullResync = hasOutOfOrderUpdate;
     if (!needsFullResync) {
       try {
-        for (const point of [...pointsDiff.updated, ...pointsDiff.appended]) series.candleSeries.update(pointToSeriesDatum(point));
-        for (const candle of [...candleDiff.updated, ...candleDiff.appended]) {
-          series.volumeSeries.update({ time: candle.time, value: candle.volume, color: volumeBarColor(candle) });
+        for (const point of [...pointsDiff.updated, ...pointsDiff.appended]) {
+          series.candleSeries.update(candleToBar(point));
+          series.volumeSeries.update({ time: point.time, value: point.volume, color: volumeBarColor(point) });
         }
         for (const point of [...ma20Diff.updated, ...ma20Diff.appended]) series.ma20Series.update({ time: point.time, value: point.value });
         for (const point of [...ma50Diff.updated, ...ma50Diff.appended]) series.ma50Series.update({ time: point.time, value: point.value });
@@ -239,10 +243,10 @@ export function applyTokenTradeChartUpdate(
     }
 
     if (needsFullResync) {
-      series.candleSeries.setData(points.map(pointToSeriesDatum));
+      series.candleSeries.setData(points.map(candleToBar));
       series.ma20Series.setData(ma20.map((point) => ({ time: point.time, value: point.value })));
       series.ma50Series.setData(ma50.map((point) => ({ time: point.time, value: point.value })));
-      series.volumeSeries.setData(candles.map((candle) => ({ time: candle.time, value: candle.volume, color: volumeBarColor(candle) })));
+      series.volumeSeries.setData(points.map((point) => ({ time: point.time, value: point.volume, color: volumeBarColor(point) })));
       if (rangeBeforeUpdate) series.timeScale.setVisibleLogicalRange(rangeBeforeUpdate);
     }
 
@@ -254,5 +258,5 @@ export function applyTokenTradeChartUpdate(
     }
   }
 
-  return { points, candles, ma20, ma50, timeframe, resolvedInterval: interval, hasRenderedOnce: true };
+  return { points, ma20, ma50, timeframe, resolvedInterval: interval, hasRenderedOnce: true };
 }

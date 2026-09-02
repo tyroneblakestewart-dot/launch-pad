@@ -163,11 +163,20 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain("hasLoadError");
   });
 
-  it("offers the design's 5M/15M/1H/6H/1D/ALL timeframe rail, defaulting to 1H", async () => {
+  it("offers the extended 1S/15S/1M/5M/15M/1H/6H/1D/ALL timeframe rail (issue #470 item 1), defaulting to 1H", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain('useState<ChartTimeframe>("1h")');
     expect(component).toContain("CHART_TIMEFRAMES.map");
+    expect(component).toContain('"1s": "1S"');
+    expect(component).toContain('"15s": "15S"');
+    expect(component).toContain('"1m": "1M"');
     expect(component).toContain('all: "ALL"');
+
+    const bucketing = await source("lib/candle-bucketing.ts");
+    expect(bucketing).toContain('export const CANDLE_INTERVALS: readonly CandleInterval[] = ["1s", "15s", "1m", "5m", "15m", "1h", "6h", "1d"];');
+    // The rail itself renders CHART_TIMEFRAMES directly (see the assertion
+    // above), and CHART_TIMEFRAMES's own length (nine: eight intervals plus
+    // ALL) is covered directly in tests/candle-bucketing.test.ts.
   });
 
   it("never calls fitContent to force a visible window — bar width is fixed via barSpacing instead (issue #449 item 2: the 3x-wide-candle defect)", async () => {
@@ -200,25 +209,42 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
   it("delegates the whole update/resync decision to the pure engine instead of re-implementing it inline", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain(
-      'import {\n  applyChartResize,\n  applyTokenTradeChartUpdate,\n  createInitialTokenTradeChartRenderState,\n  type TokenTradeChartRenderState,\n  type TokenTradeChartSeriesBundle,\n} from "@/lib/token-trade-chart-render";',
+      'import {\n  applyChartResize,\n  applyTokenTradeChartUpdate,\n  createInitialTokenTradeChartRenderState,\n  type ChartBar,\n  type TokenTradeChartRenderState,\n  type TokenTradeChartSeriesBundle,\n} from "@/lib/token-trade-chart-render";',
     );
     expect(component).toContain("applyTokenTradeChartUpdate(seriesBundle, renderStateRef.current, {");
     expect(component).not.toContain("needsFullResync");
     expect(component).not.toContain("diffChartSeriesPoints(");
   });
 
-  it("advances the whitespace-inclusive timeline with the clock via a coarse timer, independent of new trades arriving", async () => {
+  it("advances the flat-filled timeline with the clock via a per-interval timer, independent of new trades arriving (issue #470 item 3)", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain("useState(() => Math.floor(Date.now() / 1000))");
     expect(component).toContain("const updateNowTick = () => setNowTick(Math.floor(Date.now() / 1000));");
-    expect(component).toContain("window.setInterval(updateNowTick, 30_000)");
+    expect(component).toContain("const tickMs = chartTickIntervalMs(resolvedInterval);");
+    expect(component).toContain("window.setInterval(updateNowTick, tickMs)");
+    expect(component).toContain(
+      'import {\n  addHorizontalLine,\n  chartIntervalShowsSeconds,\n  chartTickIntervalMs,',
+    );
   });
 
-  it("catches the whitespace clock up immediately on mount, tab-visible and window-focus, instead of waiting on the 30s interval alone (issue #464 item 1: the background-tab clock-freeze defect)", async () => {
+  it("re-arms the tick timer whenever the resolved interval changes, so 1S ticks every second and 15S every 15s (issue #470 item 3)", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     const effectStart = component.indexOf("const updateNowTick = () => setNowTick(Math.floor(Date.now() / 1000));");
     expect(effectStart).toBeGreaterThan(-1);
-    const effectEnd = component.indexOf("}, []);", effectStart);
+    const effectEnd = component.indexOf("}, [resolvedInterval]);", effectStart);
+    expect(effectEnd).toBeGreaterThan(effectStart);
+    const effectBody = component.slice(effectStart, effectEnd);
+    expect(effectBody).toContain("chartTickIntervalMs(resolvedInterval)");
+
+    const toolsModule = await source("lib/token-chart-tools.ts");
+    expect(toolsModule).toContain("export function chartTickIntervalMs(interval: CandleInterval | null): number {");
+  });
+
+  it("catches the clock up immediately on mount, tab-visible and window-focus, instead of waiting on the interval alone (issue #464 item 1: the background-tab clock-freeze defect)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    const effectStart = component.indexOf("const updateNowTick = () => setNowTick(Math.floor(Date.now() / 1000));");
+    expect(effectStart).toBeGreaterThan(-1);
+    const effectEnd = component.indexOf("}, [resolvedInterval]);", effectStart);
     const effectBody = component.slice(effectStart, effectEnd);
 
     // Immediate call on mount, before the interval is ever registered.
@@ -232,6 +258,21 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(effectBody).toContain("window.clearInterval(timer);");
     expect(effectBody).toContain('document.removeEventListener("visibilitychange", handleVisibilityChange);');
     expect(effectBody).toContain('window.removeEventListener("focus", updateNowTick);');
+  });
+
+  it("enables secondsVisible on the time axis for 1S/15S only, applied reactively as the resolved interval changes (issue #470 item 4)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain(
+      "chartRef.current?.applyOptions({ timeScale: { secondsVisible: chartIntervalShowsSeconds(resolvedInterval) } });",
+    );
+    const toolsModule = await source("lib/token-chart-tools.ts");
+    expect(toolsModule).toContain('return interval === "1s" || interval === "15s";');
+  });
+
+  it("shows seconds in the crosshair tooltip time only for 1S/15S, via the same chartIntervalShowsSeconds helper", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain("function formatUtcTime(unixSeconds: number, showSeconds: boolean): string {");
+    expect(component).toContain("{formatUtcTime(hoverInfo.time, chartIntervalShowsSeconds(resolvedInterval))}");
   });
 
   it("positions on the timeline's last point via an explicit width-derived visible logical range on the first load/timeframe-change branch, sourced from the guarded ResizeObserver's own tracked width (issue #467 item 1)", async () => {
@@ -281,7 +322,7 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain("computeChartPriceDecimals,");
     expect(component).toContain('from "@/lib/token-chart-tools"');
     expect(component).toContain(
-      "nextState.candles.length > 0 ? Math.max(...nextState.candles.map((candle) => candle.high)) : startingPriceNativePerToken",
+      "nextState.points.length > 0 ? Math.max(...nextState.points.map((point) => point.high)) : startingPriceNativePerToken",
     );
     expect(component).toContain("computeChartMinMove(maxPrice)");
     expect(component).toContain("if (minMove !== appliedMinMoveRef.current) {");
@@ -337,8 +378,8 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain("chart.addLineSeries({\n      color: MA20_COLOR");
     expect(component).toContain("chart.addLineSeries({\n      color: MA50_COLOR");
     const engine = await source("lib/token-trade-chart-render.ts");
-    expect(engine).toContain("computeMovingAverage(candles, MA20_PERIOD)");
-    expect(engine).toContain("computeMovingAverage(candles, MA50_PERIOD)");
+    expect(engine).toContain("computeMovingAverage(points, MA20_PERIOD)");
+    expect(engine).toContain("computeMovingAverage(points, MA50_PERIOD)");
   });
 
   it("adds a volume histogram pane hidden by default, with a toggle button", async () => {
@@ -373,7 +414,7 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain("chart.subscribeCrosshairMove(");
     expect(component).toContain('data-token-chart-tooltip="true"');
-    expect(component).toContain("formatUtcTime(hoverInfo.time)");
+    expect(component).toContain("formatUtcTime(hoverInfo.time, chartIntervalShowsSeconds(resolvedInterval))");
     expect(component).toContain("formatSignedPercent(hoverChangePercent, 2)");
     expect(component).toContain("{formatNativeAmountSixSigFigsTrimmed(hoverInfo.volume)} ETH");
   });
@@ -416,7 +457,7 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain('priceScaleId: "chart-volume"');
     const engine = await source("lib/token-trade-chart-render.ts");
-    expect(engine).toContain("volumeBarColor(candle)");
+    expect(engine).toContain("volumeBarColor(point)");
   });
 
   it("never touches horizontal price lines from the data-flow/timeframe effect — the lines effect depends only on horizontalLines, so a timeframe change can't clear or move a drawn line (issue #453 area 6)", async () => {

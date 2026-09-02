@@ -3,10 +3,10 @@ import { tradeSpotPriceNativePerToken } from "@/lib/candle-bucketing";
 import {
   applyChartResize,
   applyTokenTradeChartUpdate,
+  candleToBar,
   computeInitialVisibleLogicalRange,
   createInitialTokenTradeChartRenderState,
   isAtChartRightEdge,
-  pointToSeriesDatum,
   volumeBarColor,
   type ChartSeriesLike,
   type ChartTimeScaleLike,
@@ -79,7 +79,7 @@ function createFakeTimeScale(): { timeScale: ChartTimeScaleLike; getRange: () =>
 
 type FakeChart = {
   bundle: TokenTradeChartSeriesBundle;
-  candle: ReturnType<typeof createFakeSeries<ReturnType<typeof pointToSeriesDatum>>>;
+  candle: ReturnType<typeof createFakeSeries<ReturnType<typeof candleToBar>>>;
   ma20: ReturnType<typeof createFakeSeries<{ time: number; value: number }>>;
   ma50: ReturnType<typeof createFakeSeries<{ time: number; value: number }>>;
   volume: ReturnType<typeof createFakeSeries<{ time: number; value: number; color: string }>>;
@@ -89,7 +89,7 @@ type FakeChart = {
 };
 
 function createFakeChart(): FakeChart {
-  const candle = createFakeSeries<ReturnType<typeof pointToSeriesDatum>>();
+  const candle = createFakeSeries<ReturnType<typeof candleToBar>>();
   const ma20 = createFakeSeries<{ time: number; value: number }>();
   const ma50 = createFakeSeries<{ time: number; value: number }>();
   const volume = createFakeSeries<{ time: number; value: number; color: string }>();
@@ -250,6 +250,46 @@ describe("applyTokenTradeChartUpdate — incremental sell candle (issue #458 ite
     const volumeBar = chart.volume.getData().find((point) => point.time === FIVE_MINUTES * 3);
     expect(volumeBar).toBeDefined();
     expect(volumeBar!.color).toBe(volumeBarColor({ time: FIVE_MINUTES * 3, open: 0.01, high: 0.005, low: 0.005, close: 0.005, volume: 0 }));
+  });
+});
+
+describe("applyTokenTradeChartUpdate — a trade converts a flat candle in place (issue #470 addendum)", () => {
+  it("updates the same slot/time when a trade lands in a previously-flat current bucket, without a second setData", () => {
+    const chart = createFakeChart();
+
+    let state = applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), {
+      trades: [],
+      decimals: DECIMALS,
+      interval: "5m",
+      timeframe: "5m",
+      nowUnixSeconds: 0,
+      startingPriceNativePerToken: 0.01,
+      launchedAtUnixSeconds: 0,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+    expect(chart.candle.setDataCalls).toBe(1);
+    const flatBar = chart.candle.getData().find((point) => point.time === 0);
+    expect(flatBar).toMatchObject({ open: 0.01, close: 0.01 });
+    expect(state.points[0]).toMatchObject({ time: 0, isFlat: true });
+
+    const trade = tradeAtPrice(0.02, { blockTimestamp: 0 });
+    state = applyTokenTradeChartUpdate(chart.bundle, state, {
+      trades: [trade],
+      decimals: DECIMALS,
+      interval: "5m",
+      timeframe: "5m",
+      nowUnixSeconds: 0,
+      startingPriceNativePerToken: 0.01,
+      launchedAtUnixSeconds: 0,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+
+    // Still exactly one setData — the trade was applied via update(), same slot/time.
+    expect(chart.candle.setDataCalls).toBe(1);
+    const dataAfter = chart.candle.getData();
+    expect(dataAfter).toHaveLength(1);
+    expect(dataAfter[0]).toMatchObject({ time: 0, open: 0.01, close: 0.02 });
+    expect(state.points[0].isFlat).toBeFalsy();
   });
 });
 

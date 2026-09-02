@@ -107,19 +107,41 @@ describe("buildCandleGeometry", () => {
   });
 
   it("colours a bar green when its candle closed at or above its open, red otherwise", () => {
-    // Both trades land in the same bucket (30s apart, well under the 1m
-    // interval) so the candle's open/close differ within one bar, rather
-    // than producing two single-trade (open === close) doji candles.
+    // Both trades share the exact same timestamp (distinct log index) so
+    // they land in the same bucket regardless of which interval pickInterval
+    // resolves to (issue #470 item 1 added finer 1S/15S/1M intervals ahead
+    // of 5M, so two trades merely seconds apart could otherwise land in
+    // separate single-trade doji buckets instead of one bucket with a real
+    // open/close difference).
     const up = buildCandleGeometry([
       trade({ blockTimestamp: 0, nativeAmountRaw: "10000000000000000", logIndex: 0 }),
-      trade({ blockTimestamp: 30, nativeAmountRaw: "20000000000000000", logIndex: 1 }),
+      trade({ blockTimestamp: 0, nativeAmountRaw: "20000000000000000", logIndex: 1 }),
     ]);
     const down = buildCandleGeometry([
       trade({ blockTimestamp: 0, nativeAmountRaw: "20000000000000000", logIndex: 0 }),
-      trade({ blockTimestamp: 30, nativeAmountRaw: "10000000000000000", logIndex: 1 }),
+      trade({ blockTimestamp: 0, nativeAmountRaw: "10000000000000000", logIndex: 1 }),
     ]);
     expect(up.bars.some((bar) => bar.color === SPARKLINE_UP_COLOR)).toBe(true);
     expect(down.bars.some((bar) => bar.color === SPARKLINE_DOWN_COLOR)).toBe(true);
+  });
+
+  it("resolves to a sub-minute interval for a rapid trade burst instead of always collapsing to 5M, while keeping the bar count within the ≤20 cap (issue #470 item 1)", () => {
+    const trades: TokenTrade[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      trades.push(
+        trade({
+          blockTimestamp: i,
+          logIndex: i,
+          nativeAmountRaw: String(BigInt(10_000_000_000_000_000n + BigInt(i) * 1_000_000_000_000_000n)),
+        }),
+      );
+    }
+    const result = buildCandleGeometry(trades);
+    expect(result.hasData).toBe(true);
+    // One second apart: finer than 5M can now resolve, showing real
+    // per-second structure instead of collapsing into a single flat blob.
+    expect(result.bars.length).toBeGreaterThan(1);
+    expect(result.bars.length).toBeLessThanOrEqual(20);
   });
 
   it("scales geometry to a custom width/height when provided", () => {

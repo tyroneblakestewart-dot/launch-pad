@@ -2,26 +2,32 @@ import { formatEther, formatUnits } from "viem";
 import type { TokenTrade } from "./token-trade-types";
 
 // Pure OHLCV candle bucketing for the token page's live chart (issue #430,
-// extended by issue #445), dependency-free so it's unit-testable without a
-// network call or a chart library, matching lib/token-page-format.ts's own
-// no-dependency style.
+// extended by issue #445, #458, #467 and #470), dependency-free so it's
+// unit-testable without a network call or a chart library, matching
+// lib/token-page-format.ts's own no-dependency style.
 
 /** A fixed, directly-bucketable candle width. "all" is a UI-only selection (see resolveChartInterval) — never passed to bucketTradesIntoCandles itself. */
-export type CandleInterval = "5m" | "15m" | "1h" | "6h" | "1d";
+export type CandleInterval = "1s" | "15s" | "1m" | "5m" | "15m" | "1h" | "6h" | "1d";
 
 export type ChartTimeframe = CandleInterval | "all";
 
-export const CANDLE_INTERVALS: readonly CandleInterval[] = ["5m", "15m", "1h", "6h", "1d"];
+export const CANDLE_INTERVALS: readonly CandleInterval[] = ["1s", "15s", "1m", "5m", "15m", "1h", "6h", "1d"];
 
 export const CHART_TIMEFRAMES: readonly ChartTimeframe[] = [...CANDLE_INTERVALS, "all"];
 
 export const CANDLE_INTERVAL_SECONDS: Record<CandleInterval, number> = {
+  "1s": 1,
+  "15s": 15,
+  "1m": 60,
   "5m": 300,
   "15m": 900,
   "1h": 3600,
   "6h": 21600,
   "1d": 86400,
 };
+
+/** Fixed pixel width per bar — matches the chart's own timeScale `barSpacing` option (components/token-page/token-trade-chart.tsx), the single source of truth shared by lib/token-trade-chart-render.ts's positioning math and this file's sub-minute timeline cap below. */
+export const CHART_BAR_SPACING_PX = 6;
 
 /** ALL picks the coarsest-necessary interval keeping the full history at or under this bar count (issue #445 item 2). */
 const ALL_TIMEFRAME_MAX_BARS = 200;
@@ -35,6 +41,13 @@ export type Candle = {
   close: number;
   /** Total native-currency (ETH) volume traded in this bucket, post-fee amounts summed. */
   volume: number;
+  /**
+   * True for a gap bucket that had no trade, flat-filled at the previous
+   * candle's close with zero volume (issue #470 addendum) instead of the old
+   * whitespace gap-filler. Absent (falsy) for a real trade candle from
+   * `bucketTradesIntoCandles`.
+   */
+  isFlat?: boolean;
 };
 
 /**
@@ -92,6 +105,10 @@ export function tradeSpotPriceNativePerToken(trade: TokenTrade, decimals: number
  * max/min spot price *after each trade in the bucket* — deliberately not
  * widened by the carried-forward open — matching the curve's own quote
  * sequence for that bucket.
+ *
+ * Only ever produces a candle for a bucket that actually had a trade — gap
+ * buckets (no trade at all) are the concern of `buildChartSeriesPoints`
+ * below, which flat-fills them.
  */
 export function bucketTradesIntoCandles(
   trades: TokenTrade[],
@@ -141,7 +158,10 @@ export function bucketTradesIntoCandles(
  * most ALL_TIMEFRAME_MAX_BARS, falling back to the coarsest available
  * interval when even that still exceeds the cap (a token with a very long,
  * very active trading history) — "ALL" should read as one legible chart,
- * never hundreds of hairline bars.
+ * never hundreds of hairline bars. With 1S/15S/1M available (issue #470
+ * item 1), a very short-lived trading history can resolve all the way down
+ * to a sub-minute interval — this loop is generic over CANDLE_INTERVALS and
+ * needed no change for that to work.
  */
 export function resolveAllTimeframeInterval(trades: TokenTrade[], decimals: number): CandleInterval {
   for (const interval of CANDLE_INTERVALS) {
@@ -161,9 +181,9 @@ export function resolveChartInterval(timeframe: ChartTimeframe, trades: TokenTra
  * can retroactively add a trade to it), comparing index-for-index over the
  * overlapping prefix and treating anything past `previous.length` as new
  * covers every real case cheaply. Used to turn a freshly-rebucketed
- * candle/moving-average/volume array into the minimal set of
- * `series.update()` calls a chart needs, instead of a `setData()` replace
- * that would jump the view (issue #445's core live-update fix).
+ * candle/moving-average array into the minimal set of `series.update()`
+ * calls a chart needs, instead of a `setData()` replace that would jump the
+ * view (issue #445's core live-update fix).
  */
 export function diffTimeSeries<T extends { time: number }>(
   previous: readonly T[],
@@ -179,121 +199,134 @@ export function diffTimeSeries<T extends { time: number }>(
   return { updated, appended };
 }
 
-/** diffTimeSeries specialised for OHLCV candles. */
+/**
+ * diffTimeSeries specialised for OHLCV candles — including the flat-filled
+ * gap candles `buildChartSeriesPoints` now emits (issue #470 addendum):
+ * `isFlat` is compared alongside OHLCV so a flat candle turning into a real
+ * one is always reported as a change even in the (business-rule-impossible,
+ * but not type-guaranteed) case its OHLCV happened to already match.
+ */
 export function diffCandles(previous: readonly Candle[], next: readonly Candle[]): { updated: Candle[]; appended: Candle[] } {
   return diffTimeSeries(
     previous,
     next,
-    (a, b) => a.open === b.open && a.high === b.high && a.low === b.low && a.close === b.close && a.volume === b.volume,
+    (a, b) =>
+      a.open === b.open &&
+      a.high === b.high &&
+      a.low === b.low &&
+      a.close === b.close &&
+      a.volume === b.volume &&
+      !!a.isFlat === !!b.isFlat,
   );
 }
 
-/** A gap bucket with no trade — lightweight-charts' WhitespaceData shape (time only, no OHLC). */
-export type ChartWhitespacePoint = { time: number };
-
-/** What the chart's candlestick series actually renders: a real candle, or a whitespace gap-filler. */
-export type ChartSeriesPoint = Candle | ChartWhitespacePoint;
-
-export function isCandlePoint(point: ChartSeriesPoint): point is Candle {
-  return "open" in point;
-}
-
-/** How many whitespace bars to pad in before the first real candle, so the axis has real structure on first load even with very few trades (issue #451 item 2). */
+/** How many flat-filled bars to show before the first real candle when no launch timestamp is known at all (issue #451 item 2 / #470 addendum) — gives the axis real structure on first load even with very few trades. When `launchedAtUnixSeconds` *is* known, the timeline starts exactly at launch instead (see buildChartSeriesPoints below), which needs no such arbitrary buffer. */
 const PRE_TRADE_PADDING_BARS = 100;
-
-/** How many bars of padding survive the launch-age cap (issue #458 item 5) — enough that the first real candle still reads as "recent activity", not a lone bar glued to the left edge. */
-const LAUNCH_CAPPED_PADDING_BARS = 5;
 
 /**
  * Builds the exact linear timeline the chart's candlestick series should
- * render (issue #451 item 2): every real candle from `bucketTradesIntoCandles`
- * in its own slot, plus a whitespace point for every bucket that has no
- * trade — from ~`PRE_TRADE_PADDING_BARS` bars before the first real candle
- * (or before "now" when there is no trade yet) through the current bucket,
- * so a trade from an hour ago is never placed directly beside a trade from
- * seconds ago (which previously collapsed the time axis to a single label),
- * and the still-open current bucket is always present even with zero trades
- * in it. Never synthesizes a price — a gap bucket is whitespace, not a
- * flat/interpolated candle. `nowUnixSeconds` is a parameter rather than this
- * pure function reaching for the system clock, so the caller controls when
- * "now" advances.
+ * render: every real candle from `bucketTradesIntoCandles` in its own slot,
+ * plus a flat candle — open/high/low/close all equal to the previous
+ * candle's close, zero volume, `isFlat: true` — for every bucket that has no
+ * trade (issue #470 addendum; previously a bare whitespace point with no
+ * OHLC at all), from the token's launch (or ~`PRE_TRADE_PADDING_BARS` bars
+ * before the first real candle when no launch timestamp is known) through
+ * the current bucket, so the still-open current bucket is always present
+ * even with zero trades in it and a trade from an hour ago is never placed
+ * directly beside a trade from seconds ago. `startingPriceNativePerToken`
+ * seeds the very first flat candle (and every gap before the first real
+ * trade) at the curve's own starting price; with neither a starting price
+ * nor any real candle yet, flat candles fall back to 0. `nowUnixSeconds` is
+ * a parameter rather than this pure function reaching for the system clock,
+ * so the caller controls when "now" advances.
  *
- * `launchedAtUnixSeconds` (issue #458 item 5) caps how far left that padding
- * can reach: on a coarse timeframe (1D) a token launched days ago would
- * otherwise pad ~100 bars *of that width* — literally months — behind its
- * own first trade. The timeline is never allowed to start earlier than
- * `launchedAtUnixSeconds` minus `LAUNCH_CAPPED_PADDING_BARS` bars; since bar
- * width stays fixed regardless of window size, a young token simply shows
- * blank space to the left of its capped start rather than a stretched or
- * fabricated history. Omitted (no launch record) leaves the uncapped
- * ~100-bar padding exactly as before.
+ * `launchedAtUnixSeconds` anchors the timeline's start at the token's real
+ * launch bucket (never later than the earliest real candle — issue #467
+ * item 3, a launch recorded after trading had already begun must never
+ * exclude an early trade) rather than the old fixed-bar-count padding: since
+ * every gap bucket now carries a real (if flat) price, there is no longer
+ * any need to fabricate an arbitrary buffer before it — the flat fill from
+ * launch to the first trade *is* the token's real history. Omitted (no
+ * launch record) falls back to `PRE_TRADE_PADDING_BARS` bars of flat-filled
+ * padding before the first real candle, or before "now" when there is no
+ * trade at all yet.
  *
- * The cap is a floor on the *padding*, never on a real candle (issue #467
- * item 3): a launch recorded after trading had already begun (e.g. the #425
- * recovery path) previously computed `startTime` as `max(uncappedStartTime,
- * launchFloorTime)`, which — when the launch floor happened to land *after*
- * the earliest real candle — silently excluded that candle from the
- * timeline entirely, since the render loop below never iterates before
- * `startTime`. Taking `min(earliestCandleTime, ...)` guarantees the
- * timeline always reaches back at least as far as the first real trade.
+ * Sub-minute cap (issue #470 item 2): 1S/15S would otherwise flat-fill one
+ * bar per second across a token's *entire* life once it's more than a few
+ * minutes old — for `interval` under 60 seconds, the timeline is capped to
+ * the most recent `2 × ceil(chartWidthPx / CHART_BAR_SPACING_PX)` bars
+ * ending at the current bucket (twice the visible bar count, so scrolling
+ * left one screen still has data). This only ever moves the start *later*
+ * (dropping earlier bars, real or flat) — a real candle older than the
+ * capped window simply falls outside the rendered timeline on that
+ * interval; 1M and coarser intervals are entirely unaffected.
+ * `chartWidthPx` missing/zero (e.g. before the component's ResizeObserver
+ * has fired once) falls back to `FALLBACK_CHART_WIDTH_PX` rather than
+ * skipping the cap outright, so an old token's 1S view is never briefly
+ * uncapped on first paint.
  */
+const FALLBACK_CHART_WIDTH_PX = 600;
+
 export function buildChartSeriesPoints(
   candles: readonly Candle[],
   interval: CandleInterval,
   nowUnixSeconds: number,
   launchedAtUnixSeconds?: number | null,
-): ChartSeriesPoint[] {
+  startingPriceNativePerToken?: number | null,
+  chartWidthPx?: number,
+): Candle[] {
   const intervalSeconds = CANDLE_INTERVAL_SECONDS[interval];
   const currentBucketTime = Math.floor(nowUnixSeconds / intervalSeconds) * intervalSeconds;
 
   const candleByTime = new Map(candles.map((candle) => [candle.time, candle]));
-  const earliestTime = candles.length > 0 ? candles[0].time : currentBucketTime;
+  const earliestCandleTime = candles.length > 0 ? candles[0].time : null;
   const latestCandleTime = candles.length > 0 ? candles[candles.length - 1].time : currentBucketTime;
-  const uncappedStartTime = earliestTime - PRE_TRADE_PADDING_BARS * intervalSeconds;
-  const launchFloorTime =
+  const launchBucketTime =
     launchedAtUnixSeconds !== null && launchedAtUnixSeconds !== undefined
-      ? Math.floor(launchedAtUnixSeconds / intervalSeconds) * intervalSeconds - LAUNCH_CAPPED_PADDING_BARS * intervalSeconds
+      ? Math.floor(launchedAtUnixSeconds / intervalSeconds) * intervalSeconds
       : null;
-  const startTime =
-    launchFloorTime !== null ? Math.min(earliestTime, Math.max(uncappedStartTime, launchFloorTime)) : uncappedStartTime;
+
+  let startTime: number;
+  if (launchBucketTime !== null) {
+    startTime = earliestCandleTime !== null ? Math.min(launchBucketTime, earliestCandleTime) : launchBucketTime;
+  } else if (earliestCandleTime !== null) {
+    startTime = earliestCandleTime - PRE_TRADE_PADDING_BARS * intervalSeconds;
+  } else {
+    startTime = currentBucketTime - PRE_TRADE_PADDING_BARS * intervalSeconds;
+  }
+
   const endTime = Math.max(currentBucketTime, latestCandleTime);
 
-  const points: ChartSeriesPoint[] = [];
+  if (intervalSeconds < 60) {
+    const width = chartWidthPx && chartWidthPx > 0 ? chartWidthPx : FALLBACK_CHART_WIDTH_PX;
+    const maxBars = 2 * Math.ceil(width / CHART_BAR_SPACING_PX);
+    const cappedStartTime = endTime - (maxBars - 1) * intervalSeconds;
+    startTime = Math.max(startTime, cappedStartTime);
+  }
+
+  const points: Candle[] = [];
+  let previousClose = startingPriceNativePerToken ?? 0;
   for (let time = startTime; time <= endTime; time += intervalSeconds) {
-    points.push(candleByTime.get(time) ?? { time });
+    const real = candleByTime.get(time);
+    if (real) {
+      points.push(real);
+      previousClose = real.close;
+    } else {
+      points.push({ time, open: previousClose, high: previousClose, low: previousClose, close: previousClose, volume: 0, isFlat: true });
+    }
   }
   return points;
-}
-
-/**
- * diffTimeSeries specialised for the whitespace-inclusive chart timeline
- * (issue #451 item 2). A whitespace-to-candle transition (a trade lands in a
- * bucket that was previously empty) always counts as a change — it's
- * reported as `updated` when the slot already existed in `previous`, so the
- * chart's live-update path calls `series.update()` on that slot the same
- * way it would for a mutated real candle.
- */
-export function diffChartSeriesPoints(
-  previous: readonly ChartSeriesPoint[],
-  next: readonly ChartSeriesPoint[],
-): { updated: ChartSeriesPoint[]; appended: ChartSeriesPoint[] } {
-  return diffTimeSeries(previous, next, chartSeriesPointsEqual);
-}
-
-function chartSeriesPointsEqual(a: ChartSeriesPoint, b: ChartSeriesPoint): boolean {
-  const aIsCandle = isCandlePoint(a);
-  const bIsCandle = isCandlePoint(b);
-  if (aIsCandle !== bIsCandle) return false;
-  if (!aIsCandle || !bIsCandle) return true;
-  return a.open === b.open && a.high === b.high && a.low === b.low && a.close === b.close && a.volume === b.volume;
 }
 
 export type MovingAveragePoint = { time: number; value: number };
 
 /**
- * Simple moving average of candle closes. Fewer than `period` candles yields
- * no points at all — the line begins only once enough data exists, rather
- * than an inaccurate average over a short window.
+ * Simple moving average of candle closes — run over the flat-filled
+ * timeline from `buildChartSeriesPoints`, not just the sparse real-trade
+ * candles, so a gap bucket's flat close genuinely participates in the
+ * average (issue #470 addendum: "flat candles are real bars"). Fewer than
+ * `period` candles yields no points at all — the line begins only once
+ * enough data exists, rather than an inaccurate average over a short window.
  */
 export function computeMovingAverage(candles: readonly Candle[], period: number): MovingAveragePoint[] {
   if (period <= 0 || candles.length < period) return [];
