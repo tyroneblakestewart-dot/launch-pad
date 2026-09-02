@@ -19,7 +19,7 @@ describe("useTokenTrades (issue #430)", () => {
     const hook = await source("lib/use-token-trades.ts");
     expect(hook).toContain('"use client"');
     expect(hook).toContain("`/api/token-trades?curve=${curve}`");
-    expect(hook).toContain("POLL_INTERVAL_MS = 12_000");
+    expect(hook).toContain("POLL_INTERVAL_MS = 5_000");
   });
 
   it("follows the issue #403 live-refresh pattern exactly: visible-tab timer, focus/visibilitychange refetch, cleanup", async () => {
@@ -482,6 +482,24 @@ describe("TokenCenterColumn live trade wiring (issue #430)", () => {
     const colsStart = css.indexOf(".tradesGridCols {");
     const colsEnd = css.indexOf("}", colsStart);
     expect(css.slice(colsStart, colsEnd)).toContain("grid-template-columns: 64px 1fr 110px 96px 56px;");
+  });
+
+  it("renders a small POOL badge on a post-graduation pool-swap row, inside the wallet cell (issue #466)", async () => {
+    const component = await source("components/token-page/token-center-column.tsx");
+    expect(component).toContain('trade.venue === "pool" ? <span className={styles.poolBadge}>POOL</span> : null');
+
+    // The badge lives inside a flex-wrapping wallet cell, not a new grid
+    // column — the trades table's fixed five-column layout is unchanged.
+    const walletCellStart = component.indexOf("<span className={styles.tradeWalletCell}>");
+    expect(walletCellStart).toBeGreaterThan(-1);
+    const walletCellEnd = component.indexOf("styles.bodyText", walletCellStart);
+    const walletCellBlock = component.slice(walletCellStart, walletCellEnd);
+    expect(walletCellBlock).toContain("{shortenAddress(trade.wallet)}");
+    expect(walletCellBlock).toContain("poolBadge");
+
+    const css = await source("components/token-page/token-page.module.css");
+    expect(css).toContain(".poolBadge {");
+    expect(css).toContain(".tradeWalletCell {");
   });
 });
 

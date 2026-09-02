@@ -53,7 +53,10 @@ function formatTradeEthAmount(nativeAmountRaw: string): string {
  * on the only chain this page supports, since `tradeLinks` is always empty
  * on Robinhood Chain Testnet) alongside Recent trades/Holders/Hoodchat, so
  * the centre column now fills the full width the old three-column desktop
- * layout split between centre and right.
+ * layout split between centre and right. Issue #466 extends `trades` with
+ * post-graduation Uniswap V3 pool swaps (`venue: "pool"`), so a pool row
+ * here just gets a small POOL badge next to its wallet — the trade data
+ * flow itself is unchanged.
  */
 export function TokenCenterColumn({
   chain,
@@ -137,7 +140,10 @@ export function TokenCenterColumn({
                 return (
                   <div key={`${trade.txHash}-${trade.logIndex}`} className={`${styles.activityRow} ${styles.tradesGridCols}`}>
                     <span className={directionColorClass}>{trade.direction === "buy" ? "▲ BUY" : "▼ SELL"}</span>
-                    <span className={styles.dimText}>{shortenAddress(trade.wallet)}</span>
+                    <span className={styles.tradeWalletCell}>
+                      <span className={styles.dimText}>{shortenAddress(trade.wallet)}</span>
+                      {trade.venue === "pool" ? <span className={styles.poolBadge}>POOL</span> : null}
+                    </span>
                     <span className={`${styles.bodyText} ${styles.tradesCellRight}`}>
                       {formatTokenAmount(trade.tokenAmountRaw, decimals)}
                     </span>

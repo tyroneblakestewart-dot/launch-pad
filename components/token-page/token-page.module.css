@@ -1653,6 +1653,32 @@
   color: var(--text-sub);
 }
 
+/* Recent trades wallet cell (issue #466): flex-wraps the shortened address
+   against an optional POOL badge on a post-graduation pool-swap row, inside
+   the wallet column's own 1fr track — never widening the trades table's
+   fixed Type/Amount/ETH/Time columns. */
+.tradeWalletCell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Same small-pill recipe as .chatBadgeHolder's mint variant (issue #443
+   part 1), reused here to mark a Recent trades row sourced from the locked
+   Uniswap V3 pool rather than the bonding curve. */
+.poolBadge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  font: 800 8px/1.4 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-mint);
+  background: rgba(145, 240, 182, 0.07);
+  border: 1px solid rgba(145, 240, 182, 0.32);
+  white-space: nowrap;
+}
+
 .bodyText {
   color: var(--text-body);
 }
