@@ -105,7 +105,7 @@ describe("GET /api/token-trades", () => {
       });
 
     let last: Response | null = null;
-    for (let i = 0; i < 601; i += 1) {
+    for (let i = 0; i < 1201; i += 1) {
       last = await getTokenTradesRoute(request());
     }
     expect(last?.status).toBe(429);
@@ -127,7 +127,7 @@ describe("GET /api/token-trades", () => {
 
     // Exhaust the token-detail bucket entirely from this IP.
     let lastDetail: Response | null = null;
-    for (let i = 0; i < 601; i += 1) {
+    for (let i = 0; i < 1201; i += 1) {
       lastDetail = await getTokenTradesRoute(detailRequest());
     }
     expect(lastDetail?.status).toBe(429);

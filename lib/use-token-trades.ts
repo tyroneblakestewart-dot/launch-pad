@@ -5,13 +5,18 @@ import { mergeTokenTrades } from "@/lib/token-trades-merge";
 import { TOKEN_TRADE_CONFIRMED_EVENT } from "@/lib/token-trade-events";
 import type { TokenTrade } from "@/lib/token-trade-types";
 
-const POLL_INTERVAL_MS = 12_000;
+// Tightened from 12s to 5s (issue #466) so a post-graduation pool trade (or
+// a curve trade) is visible to other viewers within roughly one poll tick
+// instead of up to ~20s — paired with the server cache TTL dropping to 4s
+// (lib/server/token-trades-rpc.ts) and TOKEN_TRADES_READ_LIMIT raised to
+// 1200/hour (lib/server/api-protection.ts) to keep headroom under the new cadence.
+const POLL_INTERVAL_MS = 5_000;
 
 /**
  * Live-updating GET /api/token-trades read, shared by the Recent trades tab
  * and the candlestick chart (issue #430 requirement 4: "one shared poll for
  * chart and trades tab, not two"). Follows lib/use-token-launches.ts's issue
- * #403 live-refresh pattern exactly: a visible-tab-only 12s timer, an
+ * #403 live-refresh pattern exactly: a visible-tab-only 5s timer, an
  * immediate refetch on focus/visibilitychange, and silent in-place updates
  * (never resets to "loading" on a background refresh). Also refetches
  * immediately on TOKEN_TRADE_CONFIRMED_EVENT so the connected wallet's own
