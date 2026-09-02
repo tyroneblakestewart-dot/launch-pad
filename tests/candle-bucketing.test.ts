@@ -407,6 +407,35 @@ describe("buildChartSeriesPoints launch-age padding cap (issue #458 item 5)", ()
   });
 });
 
+describe("buildChartSeriesPoints never drops a real candle earlier than the launch floor (issue #467 item 3)", () => {
+  it("retains a candle from ~2 hours before launchedAt on 5M, even though the launch floor alone would sit after it", () => {
+    // A launch recorded after trading had already begun (e.g. the #425
+    // recovery path): the launch floor (launchedAt - 5 bars) lands well
+    // after the early trade's own bucket, so the old max()-only clamp would
+    // have started the timeline past it, silently excluding it.
+    const launchedAtUnixSeconds = 10_000;
+    const earlyTrade = tradeAtPrice(0.01, { blockTimestamp: 2_800 }); // ~2h before launch
+    const laterTrade = tradeAtPrice(0.012, { blockTimestamp: 10_050, logIndex: 1 });
+    const candles = bucketTradesIntoCandles([earlyTrade, laterTrade], "5m", 18);
+    const points = buildChartSeriesPoints(candles, "5m", 10_200, launchedAtUnixSeconds);
+
+    const intervalSeconds = 300;
+    const launchFloorTime = Math.floor(launchedAtUnixSeconds / intervalSeconds) * intervalSeconds - 5 * intervalSeconds;
+    expect(candles[0].time).toBeLessThan(launchFloorTime); // sanity: this is exactly the case the old clamp mishandled
+
+    const earlyCandlePoint = points.find((point) => point.time === candles[0].time);
+    expect(earlyCandlePoint).toBeDefined();
+    expect(isCandlePoint(earlyCandlePoint!)).toBe(true);
+    expect(points[0].time).toBe(candles[0].time);
+  });
+
+  // The padding (as opposed to a real candle) still caps at the launch floor
+  // for a token with no early trades — already covered above by "caps the
+  // timeline's start at launchedAt minus 5 bars..." (issue #458 item 5),
+  // unaffected by this fix since that scenario's `earliestTime` already sits
+  // at or after the launch floor.
+});
+
 describe("diffChartSeriesPoints (issue #451 item 2: whitespace-inclusive live updates)", () => {
   it("reports nothing changed for two identical whitespace-inclusive timelines", () => {
     const previous: ChartSeriesPoint[] = [{ time: 0 }, { time: 300 }];

@@ -134,8 +134,11 @@
    fine-pointer desktop. `.headerDropArt`/`.headerLinkChip`/
    `.headerFigureToggle`/`.backLink` carry no unconditional 44px floor —
    that floor lives only inside the (pointer: coarse) block at the end of
-   this file, alongside `.headerFigureBlock`'s row layout, which keeps a
-   touch device's larger targets from doubling the band's height. */
+   this file. `.headerFigureBlock`'s own base rule below already stacks the
+   price figure above the link chips in a column, safe at any width; a
+   separate (pointer: coarse) and (min-width: 881px) block near the end of
+   this file widens it to a side-by-side row only on a touch device wide
+   enough for that to stay safe (issue #467 item 5). */
 
 .headerBand {
   display: flex;
@@ -1606,8 +1609,15 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+/* Column widths match the design reference exactly (issue #467 item 4):
+   TYPE / WALLET / AMOUNT / ETH / TIME at 64px 1fr 110px 96px 56px
+   (design/token-page-v2/hoodlums-token-page-v2.html line 308). */
 .tradesGridCols {
-  grid-template-columns: 76px 1fr 1fr 78px;
+  grid-template-columns: 64px 1fr 110px 96px 56px;
+}
+
+.tradesCellRight {
+  text-align: right;
 }
 
 .holdersGridCols {
@@ -1893,12 +1903,15 @@
    real touch device (mobile Safari, CLAUDE.md rule 7's primary target)
    keeps a safe tap area, while a mouse/trackpad ("fine" pointer) desktop
    uses the design's compact proportions set on every base rule above.
-   `.headerFigureBlock` also goes back to a side-by-side row here
-   specifically, since stacking two 44px-tall rows would double the band's
-   height on the exact devices this rule targets. Placed at the end of the
-   file, after every `(min-width: ...)` layout breakpoint, so it never
-   changes which media query the mobile-first layout tests treat as "the
-   first breakpoint". */
+   `.headerFigureBlock`'s side-by-side row (issue #467 item 5: moved to a
+   separate, wider-only block below) used to live here unconditionally, but
+   a real phone is also `pointer: coarse` — forcing that row layout at
+   390px is what pushed the price figure's own nowrap text and the link
+   chips past the viewport edge, since flex-shrink can shrink a box but
+   can't shrink nowrap text below its own rendered width. Placed at the end
+   of the file, after every `(min-width: ...)` layout breakpoint, so it
+   never changes which media query the mobile-first layout tests treat as
+   "the first breakpoint". */
 @media (pointer: coarse) {
   .backLink {
     width: 44px;
@@ -1911,14 +1924,6 @@
 
   .headerFigureToggle {
     min-height: 44px;
-  }
-
-  .headerFigureBlock {
-    flex-direction: row;
-    align-items: center;
-    gap: 14px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
   }
 
   .headerDropArt {
@@ -1979,6 +1984,32 @@
   .chartToolButton {
     width: 44px;
     height: 44px;
+  }
+}
+
+/* ---- header band figure/chips row, wide touch devices only (issue #467
+   item 5) ----
+   `.headerFigureBlock`'s base rule (above, near `.headerBand`) already
+   stacks the price figure above the link chips in a column — safe at any
+   width, since it never needs more than the wider of the two rows' own
+   content width. The previous `(pointer: coarse)` block instead forced
+   this into a side-by-side row unconditionally, to keep two 44px touch
+   targets from doubling the band's height — a reasonable trade on a WIDE
+   touch device (e.g. an iPad) but the actual cause of the reported 390px
+   overflow on a real phone, which is `pointer: coarse` too: side-by-side
+   summed both rows' widths on one line, and nowrap text can't shrink below
+   its own rendered width the way a box can, so it spilled past the
+   viewport instead of wrapping. Requiring `min-width: 881px` alongside
+   `pointer: coarse` keeps every mobile-first CSS convention in this file
+   min-width-only (never max-width) while still only ever applying the row
+   layout on a touch device wide enough for it to be safe. */
+@media (pointer: coarse) and (min-width: 881px) {
+  .headerFigureBlock {
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 }
 

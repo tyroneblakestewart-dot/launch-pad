@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { formatEther } from "viem";
 import { TokenChatPanel } from "@/components/token-page/token-chat-panel";
 import { TokenTradeChart } from "@/components/token-page/token-trade-chart";
-import { formatHolderPercent, formatTimeAgoSeconds, shortenAddress } from "@/lib/token-page-format";
+import { formatHolderPercent, formatNativeAmountSixSigFigsTrimmed, formatTimeAgoSeconds, shortenAddress } from "@/lib/token-page-format";
 import type { TokenMarketStats } from "@/lib/server/token-market-stats";
 import type { TokenTrade } from "@/lib/token-trade-types";
 import type { SupportedChain } from "@/lib/types";
@@ -22,6 +23,12 @@ function formatTokenAmount(amountRaw: string, decimals: number | null): string {
   const value = Number(amountRaw) / 10 ** (decimals ?? 18);
   if (!Number.isFinite(value)) return "—";
   return value.toLocaleString("en-US", { maximumFractionDigits: value < 1 ? 6 : 2 });
+}
+
+/** `nativeAmountRaw` is already the post-fee ETH amount that priced the trade (lib/token-trade-types.ts) — the design's dedicated ETH column (issue #467 item 4). */
+function formatTradeEthAmount(nativeAmountRaw: string): string {
+  const value = Number(formatEther(BigInt(nativeAmountRaw)));
+  return formatNativeAmountSixSigFigsTrimmed(Number.isFinite(value) ? value : null);
 }
 
 /**
@@ -121,26 +128,33 @@ export function TokenCenterColumn({
               <div className={`${styles.activityHeaderRow} ${styles.tradesGridCols}`}>
                 <span>Type</span>
                 <span>Wallet</span>
-                <span>Amount</span>
-                <span style={{ textAlign: "right" }}>Time</span>
+                <span className={styles.tradesCellRight}>Amount</span>
+                <span className={styles.tradesCellRight}>ETH</span>
+                <span className={styles.tradesCellRight}>Time</span>
               </div>
-              {trades.map((trade) => (
-                <div key={`${trade.txHash}-${trade.logIndex}`} className={`${styles.activityRow} ${styles.tradesGridCols}`}>
-                  <span className={trade.direction === "buy" ? styles.tradeTypeBuy : styles.tradeTypeSell}>
-                    {trade.direction === "buy" ? "▲ BUY" : "▼ SELL"}
-                  </span>
-                  <span className={styles.dimText}>{shortenAddress(trade.wallet)}</span>
-                  <span className={styles.bodyText}>{formatTokenAmount(trade.tokenAmountRaw, decimals)}</span>
-                  <a
-                    className={styles.faintText}
-                    href={`${explorerTxBaseUrl}${trade.txHash}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {formatTimeAgoSeconds(trade.blockTimestamp)}
-                  </a>
-                </div>
-              ))}
+              {trades.map((trade) => {
+                const directionColorClass = trade.direction === "buy" ? styles.tradeTypeBuy : styles.tradeTypeSell;
+                return (
+                  <div key={`${trade.txHash}-${trade.logIndex}`} className={`${styles.activityRow} ${styles.tradesGridCols}`}>
+                    <span className={directionColorClass}>{trade.direction === "buy" ? "▲ BUY" : "▼ SELL"}</span>
+                    <span className={styles.dimText}>{shortenAddress(trade.wallet)}</span>
+                    <span className={`${styles.bodyText} ${styles.tradesCellRight}`}>
+                      {formatTokenAmount(trade.tokenAmountRaw, decimals)}
+                    </span>
+                    <span className={`${directionColorClass} ${styles.tradesCellRight}`}>
+                      {formatTradeEthAmount(trade.nativeAmountRaw)}
+                    </span>
+                    <a
+                      className={`${styles.faintText} ${styles.tradesCellRight}`}
+                      href={`${explorerTxBaseUrl}${trade.txHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {formatTimeAgoSeconds(trade.blockTimestamp)}
+                    </a>
+                  </div>
+                );
+              })}
             </div>
           )
         ) : tab === "holders" ? (

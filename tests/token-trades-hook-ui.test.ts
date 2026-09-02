@@ -176,6 +176,18 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).not.toContain("resolveInitialVisibleRange");
   });
 
+  it("never calls scrollToRealTime — positioning on the timeline's last point (including trailing whitespace) is owned by the pure engine's explicit visible-logical-range calls instead (issue #467 item 1)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).not.toContain("scrollToRealTime(");
+    const engine = await source("lib/token-trade-chart-render.ts");
+    expect(engine).not.toContain("scrollToRealTime(");
+  });
+
+  it("disables the built-in shiftVisibleRangeOnNewBar — the component owns following the clock itself (issue #467 item 2)", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain("shiftVisibleRangeOnNewBar: false");
+  });
+
   // The out-of-order pre-check, the try/catch full-resync fallback, and the
   // "only setData on first load/timeframe change, otherwise diff+update"
   // decision (issue #445/#451 follow-up) were extracted to a pure,
@@ -188,7 +200,7 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
   it("delegates the whole update/resync decision to the pure engine instead of re-implementing it inline", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain(
-      'import {\n  applyTokenTradeChartUpdate,\n  createInitialTokenTradeChartRenderState,\n  type TokenTradeChartRenderState,\n  type TokenTradeChartSeriesBundle,\n} from "@/lib/token-trade-chart-render";',
+      'import {\n  applyChartResize,\n  applyTokenTradeChartUpdate,\n  createInitialTokenTradeChartRenderState,\n  type TokenTradeChartRenderState,\n  type TokenTradeChartSeriesBundle,\n} from "@/lib/token-trade-chart-render";',
     );
     expect(component).toContain("applyTokenTradeChartUpdate(seriesBundle, renderStateRef.current, {");
     expect(component).not.toContain("needsFullResync");
@@ -222,11 +234,21 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(effectBody).toContain('window.removeEventListener("focus", updateNowTick);');
   });
 
-  it("scrolls to real time after setData instead of forcing a visible logical range (issue #449 item 2)", async () => {
+  it("positions on the timeline's last point via an explicit width-derived visible logical range on the first load/timeframe-change branch, sourced from the guarded ResizeObserver's own tracked width (issue #467 item 1)", async () => {
     const engine = await source("lib/token-trade-chart-render.ts");
-    expect(engine).toContain("series.timeScale.scrollToRealTime();");
+    expect(engine).toContain("series.timeScale.setVisibleLogicalRange(computeInitialVisibleLogicalRange(lastPointIndex, chartWidthPx));");
     const component = await source("components/token-page/token-trade-chart.tsx");
-    expect(component).toContain("scrollToRealTime: () => chartRef.current?.timeScale().scrollToRealTime()");
+    expect(component).toContain("chartWidthPx: lastAppliedSizeRef.current?.width ?? 0,");
+  });
+
+  it("re-derives the visible range on resize while at the right edge, via the same pure applyChartResize helper the data-flow effect's positioning shares", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    const resizeStart = component.indexOf("const resizeObserver = new ResizeObserver((entries) => {");
+    expect(resizeStart).toBeGreaterThan(-1);
+    const resizeEnd = component.indexOf("resizeObserver.observe(container);", resizeStart);
+    const resizeBody = component.slice(resizeStart, resizeEnd);
+    expect(resizeBody).toContain("applyChartResize(");
+    expect(resizeBody).toContain("renderStateRef.current.hasRenderedOnce");
   });
 
   it("fixes bar spacing/right offset to a constant pixel width, independent of chart width or candle count (issue #449 item 2)", async () => {
@@ -430,6 +452,36 @@ describe("TokenCenterColumn live trade wiring (issue #430)", () => {
     const component = await source("components/token-page/token-center-column.tsx");
     expect(component).toContain('explorerBaseUrl.replace("/address/", "/tx/")');
     expect(component).toContain("`${explorerTxBaseUrl}${trade.txHash}`");
+  });
+
+  it("renders a design-matching TYPE/WALLET/AMOUNT/ETH/TIME table: a dedicated ETH column from the post-fee native amount, coloured by side, right-aligned alongside AMOUNT (issue #467 item 4)", async () => {
+    const component = await source("components/token-page/token-center-column.tsx");
+    expect(component).toContain("import { formatEther } from \"viem\";");
+    expect(component).toContain("function formatTradeEthAmount(nativeAmountRaw: string): string {");
+    expect(component).toContain("formatTradeEthAmount(trade.nativeAmountRaw)");
+
+    // Header row: five columns in the design's order, AMOUNT/ETH/TIME right-aligned.
+    const headerStart = component.indexOf("<div className={`${styles.activityHeaderRow} ${styles.tradesGridCols}`}>");
+    expect(headerStart).toBeGreaterThan(-1);
+    const headerEnd = component.indexOf("</div>", headerStart);
+    const headerBlock = component.slice(headerStart, headerEnd);
+    expect(headerBlock).toContain("<span>Type</span>");
+    expect(headerBlock).toContain("<span>Wallet</span>");
+    expect(headerBlock).toContain("<span className={styles.tradesCellRight}>Amount</span>");
+    expect(headerBlock).toContain("<span className={styles.tradesCellRight}>ETH</span>");
+    expect(headerBlock).toContain("<span className={styles.tradesCellRight}>Time</span>");
+
+    // The ETH cell shares the same buy/sell colour class as the TYPE badge — never an independent colour decision.
+    expect(component).toContain("const directionColorClass = trade.direction === \"buy\" ? styles.tradeTypeBuy : styles.tradeTypeSell;");
+    expect(component).toContain("<span className={directionColorClass}>{trade.direction === \"buy\" ? \"▲ BUY\" : \"▼ SELL\"}</span>");
+    expect(component).toContain("<span className={`${directionColorClass} ${styles.tradesCellRight}`}>");
+  });
+
+  it("sizes the trades grid columns to the design's exact widths (TYPE/WALLET/AMOUNT/ETH/TIME)", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const colsStart = css.indexOf(".tradesGridCols {");
+    const colsEnd = css.indexOf("}", colsStart);
+    expect(css.slice(colsStart, colsEnd)).toContain("grid-template-columns: 64px 1fr 110px 96px 56px;");
   });
 });
 

@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { tradeSpotPriceNativePerToken } from "@/lib/candle-bucketing";
 import {
+  applyChartResize,
   applyTokenTradeChartUpdate,
+  computeInitialVisibleLogicalRange,
   createInitialTokenTradeChartRenderState,
+  isAtChartRightEdge,
   pointToSeriesDatum,
   volumeBarColor,
   type ChartSeriesLike,
   type ChartTimeScaleLike,
   type TokenTradeChartSeriesBundle,
+  type VisibleLogicalRange,
 } from "@/lib/token-trade-chart-render";
 import type { TokenTrade } from "@/lib/token-trade-types";
 
@@ -59,19 +63,18 @@ function createFakeSeries<T extends TimeKeyed>() {
   };
 }
 
-function createFakeTimeScale(): { timeScale: ChartTimeScaleLike; scrollToRealTimeCalls: () => number } {
-  let visibleRange: { from: number; to: number } | null = { from: 0, to: 10 };
-  let scrollToRealTimeCalls = 0;
+/** Starts with no range set (mirrors a freshly created real chart) — every test that needs an initial in-place range sets one explicitly via the first applyTokenTradeChartUpdate call, exactly like production. */
+function createFakeTimeScale(): { timeScale: ChartTimeScaleLike; getRange: () => VisibleLogicalRange | null; setRangeCalls: () => number } {
+  let visibleRange: VisibleLogicalRange | null = null;
+  let setRangeCalls = 0;
   const timeScale: ChartTimeScaleLike = {
-    scrollToRealTime: () => {
-      scrollToRealTimeCalls += 1;
-    },
     getVisibleLogicalRange: () => visibleRange,
     setVisibleLogicalRange: (range) => {
+      setRangeCalls += 1;
       visibleRange = range;
     },
   };
-  return { timeScale, scrollToRealTimeCalls: () => scrollToRealTimeCalls };
+  return { timeScale, getRange: () => visibleRange, setRangeCalls: () => setRangeCalls };
 }
 
 type FakeChart = {
@@ -80,7 +83,9 @@ type FakeChart = {
   ma20: ReturnType<typeof createFakeSeries<{ time: number; value: number }>>;
   ma50: ReturnType<typeof createFakeSeries<{ time: number; value: number }>>;
   volume: ReturnType<typeof createFakeSeries<{ time: number; value: number; color: string }>>;
-  scrollToRealTimeCalls: () => number;
+  timeScale: ChartTimeScaleLike;
+  getRange: () => VisibleLogicalRange | null;
+  setRangeCalls: () => number;
 };
 
 function createFakeChart(): FakeChart {
@@ -88,7 +93,7 @@ function createFakeChart(): FakeChart {
   const ma20 = createFakeSeries<{ time: number; value: number }>();
   const ma50 = createFakeSeries<{ time: number; value: number }>();
   const volume = createFakeSeries<{ time: number; value: number; color: string }>();
-  const { timeScale, scrollToRealTimeCalls } = createFakeTimeScale();
+  const { timeScale, getRange, setRangeCalls } = createFakeTimeScale();
 
   const bundle: TokenTradeChartSeriesBundle = {
     candleSeries: candle.series,
@@ -98,11 +103,14 @@ function createFakeChart(): FakeChart {
     timeScale,
   };
 
-  return { bundle, candle, ma20, ma50, volume, scrollToRealTimeCalls };
+  return { bundle, candle, ma20, ma50, volume, timeScale, getRange, setRangeCalls };
 }
 
 const DECIMALS = 18;
 const FIVE_MINUTES = 300;
+
+/** The fixed container width used by every test below that doesn't itself vary width — matches a typical desktop chart panel. */
+const CHART_WIDTH_PX = 600;
 
 /** A trade priced at exactly `price` ETH per whole token via its post-trade virtual reserves. */
 function tradeAtPrice(price: number, overrides: Partial<TokenTrade> = {}): TokenTrade {
@@ -149,6 +157,7 @@ describe("applyTokenTradeChartUpdate — incremental sell candle (issue #458 ite
       nowUnixSeconds: 600,
       startingPriceNativePerToken: null,
       launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
     });
     expect(chart.candle.setDataCalls).toBe(1);
     const bucket0AfterRender1 = chart.candle.getData().find((point) => point.time === 0);
@@ -164,6 +173,7 @@ describe("applyTokenTradeChartUpdate — incremental sell candle (issue #458 ite
       nowUnixSeconds: 7_200,
       startingPriceNativePerToken: null,
       launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
     });
 
     // Still exactly one setData call — the sell was applied via update(), not a resync.
@@ -192,6 +202,7 @@ describe("applyTokenTradeChartUpdate — incremental sell candle (issue #458 ite
       nowUnixSeconds: 10_800,
       startingPriceNativePerToken: null,
       launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
     });
 
     expect(chart.candle.setDataCalls).toBe(1);
@@ -223,6 +234,7 @@ describe("applyTokenTradeChartUpdate — incremental sell candle (issue #458 ite
       nowUnixSeconds: 0,
       startingPriceNativePerToken: null,
       launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
     });
     applyTokenTradeChartUpdate(chart.bundle, state, {
       trades: [sell, buy],
@@ -232,6 +244,7 @@ describe("applyTokenTradeChartUpdate — incremental sell candle (issue #458 ite
       nowUnixSeconds: FIVE_MINUTES * 3,
       startingPriceNativePerToken: null,
       launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
     });
 
     const volumeBar = chart.volume.getData().find((point) => point.time === FIVE_MINUTES * 3);
@@ -253,10 +266,26 @@ describe("applyTokenTradeChartUpdate — first load / timeframe change vs. incre
       nowUnixSeconds: 0,
       startingPriceNativePerToken: null,
       launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
     });
     expect(chart.candle.setDataCalls).toBe(1);
     expect(chart.candle.updateCalls).toBe(0);
-    expect(chart.scrollToRealTimeCalls()).toBe(1);
+  });
+
+  it("positions on the timeline's last point (never scrollToRealTime) after the initial setData, via an explicit width-derived visible logical range (issue #467 item 1)", () => {
+    const chart = createFakeChart();
+    const state = applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), {
+      trades,
+      decimals: DECIMALS,
+      interval: "5m",
+      timeframe: "5m",
+      nowUnixSeconds: 0,
+      startingPriceNativePerToken: null,
+      launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+    const lastPointIndex = state.points.length - 1;
+    expect(chart.getRange()).toEqual(computeInitialVisibleLogicalRange(lastPointIndex, CHART_WIDTH_PX));
   });
 
   it("forces a full setData resync (and restores the visible range) on a timeframe change, never an incremental update", () => {
@@ -270,6 +299,7 @@ describe("applyTokenTradeChartUpdate — first load / timeframe change vs. incre
       nowUnixSeconds: 0,
       startingPriceNativePerToken: null,
       launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
     });
     applyTokenTradeChartUpdate(chart.bundle, state, {
       trades,
@@ -279,6 +309,7 @@ describe("applyTokenTradeChartUpdate — first load / timeframe change vs. incre
       nowUnixSeconds: 0,
       startingPriceNativePerToken: null,
       launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
     });
     expect(chart.candle.setDataCalls).toBe(2);
   });
@@ -294,6 +325,7 @@ describe("applyTokenTradeChartUpdate — first load / timeframe change vs. incre
       nowUnixSeconds: 600,
       startingPriceNativePerToken: null,
       launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
     });
 
     // Force the fake candle series into a state where the next update() call
@@ -308,10 +340,183 @@ describe("applyTokenTradeChartUpdate — first load / timeframe change vs. incre
       nowUnixSeconds: 900,
       startingPriceNativePerToken: null,
       launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
     });
 
     // The forced resync must have called setData again rather than letting
     // the update() throw break the whole update.
     expect(chart.candle.setDataCalls).toBe(2);
+  });
+});
+
+describe("computeInitialVisibleLogicalRange (issue #467 item 1)", () => {
+  it("derives the visible bar count from chart width / fixed barSpacing, positioning `to` at the last point index plus the fixed right offset", () => {
+    const lastPointIndex = 999;
+    for (const chartWidthPx of [600, 1400, 2400]) {
+      const range = computeInitialVisibleLogicalRange(lastPointIndex, chartWidthPx);
+      const expectedTo = lastPointIndex + 4; // fixed rightOffset, matching the chart's own timeScale option
+      const expectedVisibleBars = Math.floor(chartWidthPx / 6); // fixed barSpacing
+      expect(range.to).toBe(expectedTo);
+      expect(range.to - range.from).toBe(expectedVisibleBars);
+    }
+  });
+
+  it("never widens per candle count — only per width — so bar pixel width stays fixed regardless of how many bars exist", () => {
+    const narrow = computeInitialVisibleLogicalRange(10, 600);
+    const wide = computeInitialVisibleLogicalRange(10_000, 600);
+    expect(wide.to - wide.from).toBe(narrow.to - narrow.from);
+  });
+});
+
+describe("isAtChartRightEdge / applyChartResize (issue #467 items 1-2)", () => {
+  it("treats a null range (chart not yet positioned) as being at the right edge", () => {
+    expect(isAtChartRightEdge(null, 500)).toBe(true);
+  });
+
+  it("is true when the range's `to` is at or within one bar of the last point index, false once scrolled further left", () => {
+    expect(isAtChartRightEdge({ from: 400, to: 500 }, 500)).toBe(true);
+    expect(isAtChartRightEdge({ from: 399, to: 499 }, 500)).toBe(true); // within one bar
+    expect(isAtChartRightEdge({ from: 300, to: 400 }, 500)).toBe(false);
+  });
+
+  it("recomputes the range from the new width on resize while at the right edge", () => {
+    const chart = createFakeChart();
+    chart.timeScale.setVisibleLogicalRange(computeInitialVisibleLogicalRange(100, CHART_WIDTH_PX));
+    applyChartResize(chart.bundle, 100, 1400);
+    expect(chart.getRange()).toEqual(computeInitialVisibleLogicalRange(100, 1400));
+  });
+
+  it("leaves the range untouched on resize when the viewer has scrolled left", () => {
+    const chart = createFakeChart();
+    const scrolledRange: VisibleLogicalRange = { from: 0, to: 50 };
+    chart.timeScale.setVisibleLogicalRange(scrolledRange);
+    applyChartResize(chart.bundle, 500, 1400);
+    expect(chart.getRange()).toEqual(scrolledRange);
+  });
+
+  it("does nothing when there is no timeline yet (negative last index)", () => {
+    const chart = createFakeChart();
+    applyChartResize(chart.bundle, -1, 1400);
+    expect(chart.setRangeCalls()).toBe(0);
+  });
+});
+
+describe("applyTokenTradeChartUpdate — follow the clock (issue #467 item 2)", () => {
+  it("shifts the visible range by exactly the number of newly appended timeline points when the viewer is at the right edge", () => {
+    const chart = createFakeChart();
+    let state = applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), {
+      trades: [tradeAtPrice(0.01, { blockTimestamp: 0 })],
+      decimals: DECIMALS,
+      interval: "5m",
+      timeframe: "5m",
+      nowUnixSeconds: 0,
+      startingPriceNativePerToken: null,
+      launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+    const rangeBefore = chart.getRange()!;
+    const pointsBefore = state.points.length;
+
+    // The clock advances by two whitespace bars with no new trade.
+    state = applyTokenTradeChartUpdate(chart.bundle, state, {
+      trades: [tradeAtPrice(0.01, { blockTimestamp: 0 })],
+      decimals: DECIMALS,
+      interval: "5m",
+      timeframe: "5m",
+      nowUnixSeconds: FIVE_MINUTES * 2,
+      startingPriceNativePerToken: null,
+      launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+
+    const appendedCount = state.points.length - pointsBefore;
+    expect(appendedCount).toBeGreaterThan(0);
+    expect(chart.getRange()).toEqual({ from: rangeBefore.from + appendedCount, to: rangeBefore.to + appendedCount });
+  });
+
+  it("leaves the visible range alone when the viewer has scrolled left, even though new points were appended", () => {
+    const chart = createFakeChart();
+    let state = applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), {
+      trades: [tradeAtPrice(0.01, { blockTimestamp: 0 })],
+      decimals: DECIMALS,
+      interval: "5m",
+      timeframe: "5m",
+      nowUnixSeconds: 0,
+      startingPriceNativePerToken: null,
+      launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+
+    // Simulate the viewer scrolling back to the very start of the timeline.
+    const scrolledRange: VisibleLogicalRange = { from: 0, to: 50 };
+    chart.timeScale.setVisibleLogicalRange(scrolledRange);
+    const setRangeCallsBeforeUpdate = chart.setRangeCalls();
+
+    state = applyTokenTradeChartUpdate(chart.bundle, state, {
+      trades: [tradeAtPrice(0.01, { blockTimestamp: 0 })],
+      decimals: DECIMALS,
+      interval: "5m",
+      timeframe: "5m",
+      nowUnixSeconds: FIVE_MINUTES * 2,
+      startingPriceNativePerToken: null,
+      launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+
+    expect(state.points.length).toBeGreaterThan(0);
+    expect(chart.getRange()).toEqual(scrolledRange);
+    expect(chart.setRangeCalls()).toBe(setRangeCallsBeforeUpdate);
+  });
+
+  it("re-applies the follow rule after the out-of-order full-resync fallback: the range is restored, then shifted by the appended count", () => {
+    const chart = createFakeChart();
+    let state = applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), {
+      trades: [tradeAtPrice(0.01, { blockTimestamp: 0 })],
+      decimals: DECIMALS,
+      interval: "5m",
+      timeframe: "5m",
+      nowUnixSeconds: 600,
+      startingPriceNativePerToken: null,
+      launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+    const rangeBefore = chart.getRange()!;
+    const pointsBefore = state.points.length;
+
+    // Force the next update() call to throw, triggering the full-resync fallback.
+    chart.candle.series.update({ time: 100_000 });
+
+    state = applyTokenTradeChartUpdate(chart.bundle, state, {
+      trades: [tradeAtPrice(0.01, { blockTimestamp: 0 })],
+      decimals: DECIMALS,
+      interval: "5m",
+      timeframe: "5m",
+      nowUnixSeconds: 900,
+      startingPriceNativePerToken: null,
+      launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+
+    const appendedCount = state.points.length - pointsBefore;
+    expect(appendedCount).toBeGreaterThan(0);
+    expect(chart.getRange()).toEqual({ from: rangeBefore.from + appendedCount, to: rangeBefore.to + appendedCount });
+  });
+});
+
+describe("no code path calls scrollToRealTime or fitContent (issue #467 item 6)", () => {
+  it("the engine no longer calls, or exposes an interface member for, scrollToRealTime/fitContent — positioning is owned entirely by the visible-logical-range functions above", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const source = await fs.readFile(path.join(process.cwd(), "lib/token-trade-chart-render.ts"), "utf8");
+    expect(source).not.toContain("scrollToRealTime(");
+    expect(source).not.toContain("fitContent(");
+  });
+
+  it("the real chart component no longer calls scrollToRealTime or fitContent on the time scale", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const source = await fs.readFile(path.join(process.cwd(), "components/token-page/token-trade-chart.tsx"), "utf8");
+    expect(source).not.toContain("scrollToRealTime(");
+    expect(source).not.toContain("fitContent(");
   });
 });
