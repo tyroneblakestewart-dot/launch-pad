@@ -13,6 +13,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import {
+  CANDLE_INTERVAL_SECONDS,
   CHART_TIMEFRAMES,
   resolveChartInterval,
   tradeSpotPriceNativePerToken,
@@ -45,6 +46,9 @@ import type { TokenTrade } from "@/lib/token-trade-types";
 import styles from "./token-page.module.css";
 
 const TIMEFRAME_LABELS: Record<ChartTimeframe, string> = {
+  "1s": "1S",
+  "15s": "15S",
+  "1m": "1M",
   "5m": "5M",
   "15m": "15M",
   "1h": "1H",
@@ -52,6 +56,11 @@ const TIMEFRAME_LABELS: Record<ChartTimeframe, string> = {
   "1d": "1D",
   all: "ALL",
 };
+
+/** Only these two chips show seconds — a 1H/1D-labelled timestamp would misleadingly imply second-level precision it doesn't have (issue #470 item 4). */
+function showsSecondsForTimeframe(timeframe: ChartTimeframe): boolean {
+  return timeframe === "1s" || timeframe === "15s";
+}
 
 const UP_COLOR = "#c6f53e";
 const DOWN_COLOR = "#e2564b";
@@ -75,11 +84,13 @@ type HoverInfo = {
   volume: number;
 };
 
-function formatUtcTime(unixSeconds: number): string {
+function formatUtcTime(unixSeconds: number, includeSeconds: boolean): string {
   const date = new Date(unixSeconds * 1000);
   const hh = String(date.getUTCHours()).padStart(2, "0");
   const mm = String(date.getUTCMinutes()).padStart(2, "0");
-  return `${hh}:${mm} UTC`;
+  if (!includeSeconds) return `${hh}:${mm} UTC`;
+  const ss = String(date.getUTCSeconds()).padStart(2, "0");
+  return `${hh}:${mm}:${ss} UTC`;
 }
 
 /**
@@ -186,20 +197,31 @@ export function TokenTradeChart({
   // data-flow effect below, where it's set alongside appliedMinMoveRef.
   const [priceDecimals, setPriceDecimals] = useState(INITIAL_CHART_PRICE_DECIMALS);
 
+  const resolvedInterval = useMemo(() => {
+    if (trades === null) return null;
+    return resolveChartInterval(timeframe, trades, decimals ?? DEFAULT_TOKEN_DECIMALS);
+  }, [trades, decimals, timeframe]);
+
   // Whitespace bars advance the visible timeline "with the clock" (issue
   // #451 item 2) even when no new trade has arrived to otherwise trigger a
-  // re-render — a slow, deliberately coarse tick, not a live-second clock.
-  // Browsers suspend or heavily throttle background-tab timers, so the plain
-  // 30s interval alone left a tab backgrounded overnight showing the chart
-  // frozen at its last trade (issue #464 item 1); updating immediately on
-  // mount, on the tab becoming visible again, and on window focus makes the
-  // clock catch up the moment it's actually looked at again, while the
-  // interval keeps it ticking for an already-foregrounded tab.
+  // re-render. The tick itself is min(intervalSeconds, 30) — 1s on 1S, 15s on
+  // 15S, and the prior fixed 30s everywhere from 1M up (issue #470 item 3):
+  // a coarse timeframe never needs a live-second clock, but a sub-minute one
+  // does, or its own current-bucket whitespace bar would lag up to 30
+  // buckets behind "now". Falls back to 1H's 30s cadence before the first
+  // trades response has resolved an interval at all. Browsers suspend or
+  // heavily throttle background-tab timers, so the interval alone left a tab
+  // backgrounded overnight showing the chart frozen at its last trade (issue
+  // #464 item 1); updating immediately on mount, on the tab becoming visible
+  // again, and on window focus makes the clock catch up the moment it's
+  // actually looked at again, while the interval keeps it ticking for an
+  // already-foregrounded tab.
+  const clockIntervalSeconds = Math.min(CANDLE_INTERVAL_SECONDS[resolvedInterval ?? "1h"], 30);
   const [nowTick, setNowTick] = useState(() => Math.floor(Date.now() / 1000));
   useEffect(() => {
     const updateNowTick = () => setNowTick(Math.floor(Date.now() / 1000));
     updateNowTick();
-    const timer = window.setInterval(updateNowTick, 30_000);
+    const timer = window.setInterval(updateNowTick, clockIntervalSeconds * 1000);
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") updateNowTick();
     }
@@ -210,7 +232,7 @@ export function TokenTradeChart({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", updateNowTick);
     };
-  }, []);
+  }, [clockIntervalSeconds]);
 
   // Mount once: create the chart + every series instance, independent of
   // trade count. A manual ResizeObserver replaces `autoSize: true` (see the
@@ -400,10 +422,15 @@ export function TokenTradeChart({
     };
   }, []);
 
-  const resolvedInterval = useMemo(() => {
-    if (trades === null) return null;
-    return resolveChartInterval(timeframe, trades, decimals ?? DEFAULT_TOKEN_DECIMALS);
-  }, [trades, decimals, timeframe]);
+  // Seconds only ever show on 1S/15S (issue #470 item 4) — every coarser
+  // timeframe keeps the existing HH:MM axis. The chart is already created by
+  // the mount effect above by the time this one first runs (same commit,
+  // declared after it), and applyOptions on an already-mounted time scale
+  // takes effect immediately, unlike the createChart-time option above,
+  // which only sets the *initial* value.
+  useEffect(() => {
+    chartRef.current?.applyOptions({ timeScale: { secondsVisible: showsSecondsForTimeframe(timeframe) } });
+  }, [timeframe]);
 
   // The one shared spot price (issue #458 item 1) — never a second,
   // independently-computed last price. Every on-chart price indicator (the
@@ -678,7 +705,7 @@ export function TokenTradeChart({
           {hoverInfo && (
             <div className={styles.chartTooltip} data-token-chart-tooltip="true">
               <div className={styles.chartTooltipHeader}>
-                <span>{formatUtcTime(hoverInfo.time)}</span>
+                <span>{formatUtcTime(hoverInfo.time, showsSecondsForTimeframe(timeframe))}</span>
                 {hoverChangePercent !== null && (
                   <span className={hoverChangePercent >= 0 ? styles.priceChangeUp : styles.priceChangeDown}>
                     {formatSignedPercent(hoverChangePercent, 2)}

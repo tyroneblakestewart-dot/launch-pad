@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildChartSeriesPoints,
   bucketTradesIntoCandles,
+  CANDLE_INTERVALS,
+  CANDLE_INTERVAL_SECONDS,
+  CHART_TIMEFRAMES,
   computeMovingAverage,
   diffCandles,
   diffChartSeriesPoints,
@@ -41,6 +44,22 @@ function tradeAtPrice(price: number, overrides: Partial<TokenTrade> = {}): Token
     ...overrides,
   });
 }
+
+describe("CANDLE_INTERVALS / CANDLE_INTERVAL_SECONDS / CHART_TIMEFRAMES (issue #470 item 1)", () => {
+  it("adds 1S/15S/1M ahead of the existing 5M-1D set, finest to coarsest", () => {
+    expect(CANDLE_INTERVALS).toEqual(["1s", "15s", "1m", "5m", "15m", "1h", "6h", "1d"]);
+  });
+
+  it("gives each new interval its correct bucket width in seconds", () => {
+    expect(CANDLE_INTERVAL_SECONDS["1s"]).toBe(1);
+    expect(CANDLE_INTERVAL_SECONDS["15s"]).toBe(15);
+    expect(CANDLE_INTERVAL_SECONDS["1m"]).toBe(60);
+  });
+
+  it("renders the rail in the issue's exact order: 1S · 15S · 1M · 5M · 15M · 1H · 6H · 1D · ALL", () => {
+    expect(CHART_TIMEFRAMES).toEqual(["1s", "15s", "1m", "5m", "15m", "1h", "6h", "1d", "all"]);
+  });
+});
 
 describe("tradeSpotPriceNativePerToken (issue #458)", () => {
   it("divides the curve's own post-trade virtual ETH reserve by its virtual token reserve — never the trade's own average price", () => {
@@ -246,8 +265,26 @@ describe("bucketTradesIntoCandles (issue #458: post-trade spot price, carried-fo
 
 describe("resolveAllTimeframeInterval / resolveChartInterval", () => {
   it("picks the finest interval whose full-history bar count stays at or under the cap", () => {
+    // Each of these 5 trades lands in its own distinct bucket at every
+    // interval down to 1S (they're 60s apart, never colliding), so the
+    // bucket count is just the trade count (5) — trivially under the cap —
+    // at the very finest interval. Since issue #470 item 1 added 1S/15S/1M
+    // ahead of 5M, this now resolves finer than the pre-#470 "5m" answer,
+    // exactly per the resolver's own "finest interval that still fits" rule.
     const trades = Array.from({ length: 5 }, (_, i) => tradeAtPrice(0.01, { blockTimestamp: i * 60, logIndex: i }));
-    expect(resolveAllTimeframeInterval(trades, 18)).toBe("5m");
+    expect(resolveAllTimeframeInterval(trades, 18)).toBe("1s");
+  });
+
+  it("resolves to a sub-minute interval for a token whose entire trading history spans only a few seconds (issue #470 item 1)", () => {
+    const trades = Array.from({ length: 4 }, (_, i) => tradeAtPrice(0.01, { blockTimestamp: i * 2, logIndex: i }));
+    expect(resolveAllTimeframeInterval(trades, 18)).toBe("1s");
+  });
+
+  it("widens past 1S into 15S once 1S alone would produce too many buckets (issue #470 item 1)", () => {
+    // 300 trades one second apart span 300 distinct 1S buckets (over the
+    // 200-bar cap), but only 20 distinct 15S buckets.
+    const trades = Array.from({ length: 300 }, (_, i) => tradeAtPrice(0.01, { blockTimestamp: i, logIndex: i }));
+    expect(resolveAllTimeframeInterval(trades, 18)).toBe("15s");
   });
 
   it("widens to a coarser interval once the finest one would produce too many bars", () => {
@@ -457,6 +494,55 @@ describe("buildChartSeriesPoints never drops a real candle earlier than the laun
   // timeline's start at launchedAt minus 5 bars..." (issue #458 item 5),
   // unaffected by this fix since that scenario's `earliestTime` already sits
   // at or after the launch floor.
+});
+
+describe("buildChartSeriesPoints sub-minute capped timeline (issue #470 item 2)", () => {
+  const FOUR_DAYS = 4 * 86_400;
+  const CHART_WIDTH_PX = 1400;
+
+  it("caps a 1S timeline over a 4-day history at ~470 points and still ends at the current second", () => {
+    const candles: Candle[] = [
+      { time: 0, open: 1, high: 1, low: 1, close: 1, volume: 1 }, // 4 days old — must be dropped
+      { time: FOUR_DAYS - 5, open: 1, high: 1, low: 1, close: 1, volume: 1 }, // 5s before "now" — must survive
+    ];
+    const points = buildChartSeriesPoints(candles, "1s", FOUR_DAYS, null, CHART_WIDTH_PX);
+
+    expect(points.length).toBeLessThanOrEqual(470);
+    expect(points[points.length - 1].time).toBe(FOUR_DAYS);
+    expect(points.some((point) => point.time === 0)).toBe(false);
+  });
+
+  it("never drops a real candle that falls inside the capped window", () => {
+    const candles: Candle[] = [
+      { time: 0, open: 1, high: 1, low: 1, close: 1, volume: 1 },
+      { time: FOUR_DAYS - 5, open: 2, high: 2, low: 2, close: 2, volume: 3 },
+    ];
+    const points = buildChartSeriesPoints(candles, "1s", FOUR_DAYS, null, CHART_WIDTH_PX);
+    const recentCandle = points.find((point) => point.time === FOUR_DAYS - 5);
+    expect(recentCandle).toBeDefined();
+    expect(isCandlePoint(recentCandle!)).toBe(true);
+    expect((recentCandle as Candle).close).toBe(2);
+  });
+
+  it("leaves 5M (60s and above) completely unaffected by chartWidthPx", () => {
+    const candles: Candle[] = [
+      { time: 0, open: 1, high: 1, low: 1, close: 1, volume: 1 },
+      { time: FOUR_DAYS, open: 2, high: 2, low: 2, close: 2, volume: 1 },
+    ];
+    const withoutWidth = buildChartSeriesPoints(candles, "5m", FOUR_DAYS);
+    const withWidth = buildChartSeriesPoints(candles, "5m", FOUR_DAYS, null, CHART_WIDTH_PX);
+    expect(withWidth).toEqual(withoutWidth);
+  });
+
+  it("leaves the timeline uncapped when chartWidthPx is omitted (backward compatible with every pre-#470 call site)", () => {
+    const candles: Candle[] = [
+      { time: 0, open: 1, high: 1, low: 1, close: 1, volume: 1 },
+      { time: 300, open: 2, high: 2, low: 2, close: 2, volume: 1 },
+    ];
+    const points = buildChartSeriesPoints(candles, "1s", 300);
+    expect(points.some((point) => point.time === 0)).toBe(true);
+    expect(points.length).toBeGreaterThan(300);
+  });
 });
 
 describe("diffChartSeriesPoints (issue #451 item 2: whitespace-inclusive live updates)", () => {

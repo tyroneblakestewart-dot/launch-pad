@@ -6,22 +6,28 @@ import type { TokenTrade } from "./token-trade-types";
 // network call or a chart library, matching lib/token-page-format.ts's own
 // no-dependency style.
 
-/** A fixed, directly-bucketable candle width. "all" is a UI-only selection (see resolveChartInterval) — never passed to bucketTradesIntoCandles itself. */
-export type CandleInterval = "5m" | "15m" | "1h" | "6h" | "1d";
+/** A fixed, directly-bucketable candle width. "all" is a UI-only selection (see resolveChartInterval) — never passed to bucketTradesIntoCandles itself. Ordered finest to coarsest — callers that pick "the first/last interval" (resolveAllTimeframeInterval, token-candle-geometry.ts's pickInterval) depend on that order. */
+export type CandleInterval = "1s" | "15s" | "1m" | "5m" | "15m" | "1h" | "6h" | "1d";
 
 export type ChartTimeframe = CandleInterval | "all";
 
-export const CANDLE_INTERVALS: readonly CandleInterval[] = ["5m", "15m", "1h", "6h", "1d"];
+export const CANDLE_INTERVALS: readonly CandleInterval[] = ["1s", "15s", "1m", "5m", "15m", "1h", "6h", "1d"];
 
 export const CHART_TIMEFRAMES: readonly ChartTimeframe[] = [...CANDLE_INTERVALS, "all"];
 
 export const CANDLE_INTERVAL_SECONDS: Record<CandleInterval, number> = {
+  "1s": 1,
+  "15s": 15,
+  "1m": 60,
   "5m": 300,
   "15m": 900,
   "1h": 3600,
   "6h": 21600,
   "1d": 86400,
 };
+
+/** Matches the chart's own timeScale `barSpacing` option (token-trade-chart.tsx) — the single source of truth shared with lib/token-trade-chart-render.ts's visible-range math and this file's own sub-minute timeline cap below. */
+export const CHART_BAR_SPACING_PX = 6;
 
 /** ALL picks the coarsest-necessary interval keeping the full history at or under this bar count (issue #445 item 2). */
 const ALL_TIMEFRAME_MAX_BARS = 200;
@@ -205,6 +211,21 @@ const PRE_TRADE_PADDING_BARS = 100;
 const LAUNCH_CAPPED_PADDING_BARS = 5;
 
 /**
+ * On a sub-minute interval (1S/15S), a token's whole trading life is one
+ * whitespace bar per second/15-seconds — a multi-day-old token would emit
+ * tens of thousands of timeline points at 1S, most of it padding no chart
+ * will ever scroll to. Capped to twice the bars a chart of `chartWidthPx`
+ * could ever show at once (issue #470 item 2), so the timeline still reaches
+ * comfortably past both edges of the visible window without growing
+ * unbounded. Intervals of 1M and coarser are unaffected — their whole-history
+ * bar counts already stay small.
+ */
+function computeSubminuteBarsCap(chartWidthPx: number): number | null {
+  if (chartWidthPx <= 0) return null;
+  return 2 * Math.ceil(chartWidthPx / CHART_BAR_SPACING_PX);
+}
+
+/**
  * Builds the exact linear timeline the chart's candlestick series should
  * render (issue #451 item 2): every real candle from `bucketTradesIntoCandles`
  * in its own slot, plus a whitespace point for every bucket that has no
@@ -236,12 +257,21 @@ const LAUNCH_CAPPED_PADDING_BARS = 5;
  * timeline entirely, since the render loop below never iterates before
  * `startTime`. Taking `min(earliestCandleTime, ...)` guarantees the
  * timeline always reaches back at least as far as the first real trade.
+ *
+ * `chartWidthPx` (issue #470 item 2) additionally clamps the start on a
+ * sub-minute interval (1S/15S) to the most recent `computeSubminuteBarsCap`
+ * bars ending at `endTime` — never dropping a real candle inside that
+ * window, since the render loop below still walks every bucket from the
+ * (possibly raised) start through `endTime` and includes any real candle it
+ * finds there. Omitted or non-positive (chart not measured yet) leaves 1S/15S
+ * uncapped, matching every other interval's existing behaviour.
  */
 export function buildChartSeriesPoints(
   candles: readonly Candle[],
   interval: CandleInterval,
   nowUnixSeconds: number,
   launchedAtUnixSeconds?: number | null,
+  chartWidthPx = 0,
 ): ChartSeriesPoint[] {
   const intervalSeconds = CANDLE_INTERVAL_SECONDS[interval];
   const currentBucketTime = Math.floor(nowUnixSeconds / intervalSeconds) * intervalSeconds;
@@ -254,9 +284,17 @@ export function buildChartSeriesPoints(
     launchedAtUnixSeconds !== null && launchedAtUnixSeconds !== undefined
       ? Math.floor(launchedAtUnixSeconds / intervalSeconds) * intervalSeconds - LAUNCH_CAPPED_PADDING_BARS * intervalSeconds
       : null;
-  const startTime =
+  let startTime =
     launchFloorTime !== null ? Math.min(earliestTime, Math.max(uncappedStartTime, launchFloorTime)) : uncappedStartTime;
   const endTime = Math.max(currentBucketTime, latestCandleTime);
+
+  if (intervalSeconds < 60) {
+    const subminuteBarsCap = computeSubminuteBarsCap(chartWidthPx);
+    if (subminuteBarsCap !== null) {
+      const subminuteStartTime = endTime - (subminuteBarsCap - 1) * intervalSeconds;
+      startTime = Math.max(startTime, subminuteStartTime);
+    }
+  }
 
   const points: ChartSeriesPoint[] = [];
   for (let time = startTime; time <= endTime; time += intervalSeconds) {
