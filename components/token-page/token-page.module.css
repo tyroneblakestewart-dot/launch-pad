@@ -1487,6 +1487,21 @@
   cursor: pointer;
 }
 
+.chartDebugPanel {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  max-width: min(360px, calc(100% - 16px));
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(6, 9, 7, 0.88);
+  color: rgba(239, 244, 236, 0.82);
+  font: 500 9.5px/1.6 var(--mono);
+  pointer-events: none;
+}
+
 .chartTooltip {
   position: absolute;
   top: 14px;

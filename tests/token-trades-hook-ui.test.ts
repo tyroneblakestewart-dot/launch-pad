@@ -76,7 +76,7 @@ describe("useTokenTrades (issue #430)", () => {
     expect(hook).toContain('setError("Could not load trade history. Try again shortly.");');
     expect(hook).toContain("setStale(true);");
     expect(hook).toContain("setStale(false);");
-    expect(hook).toContain("return { trades, error, stale, retry: load };");
+    expect(hook).toContain("return { trades, error, stale, retry: load, lastPollAtRef };");
   });
 });
 
@@ -202,7 +202,7 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
   it("delegates the whole update/resync decision to the pure engine instead of re-implementing it inline", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain(
-      'import {\n  applyChartResize,\n  applyTokenTradeChartUpdate,\n  createInitialTokenTradeChartRenderState,\n  type TokenTradeChartRenderState,\n  type TokenTradeChartSeriesBundle,\n} from "@/lib/token-trade-chart-render";',
+      'import {\n  applyChartResize,\n  applyTokenTradeChartUpdate,\n  computeInitialVisibleLogicalRange,\n  createInitialTokenTradeChartRenderState,\n  isAtChartRightEdge,\n  isFlatCandle,\n  type TokenTradeChartRenderState,\n  type TokenTradeChartSeriesBundle,\n  type TokenTradeChartUpdateMode,\n} from "@/lib/token-trade-chart-render";',
     );
     expect(component).toContain("applyTokenTradeChartUpdate(seriesBundle, renderStateRef.current, {");
     expect(component).not.toContain("needsFullResync");
@@ -356,13 +356,15 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(effectBody).toContain("lastPriceLineRef.current.applyOptions({ price: lastPrice });");
     expect(effectBody).toContain("candleSeries.createPriceLine({");
     expect(effectBody).toContain("lineStyle: LineStyle.Dashed");
-    expect(effectBody).toContain("color: UP_COLOR");
+    expect(effectBody).toContain("color: LAST_PRICE_LINE_COLOR");
     expect(effectBody).toContain("candleSeries.removePriceLine(lastPriceLineRef.current);");
   });
 
   it("never computes its own separate last price — it derives from the same shared trades/starting-price source as the header, using the curve's actual post-trade spot price (issue #458 item 1)", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
-    expect(component).toContain('import {\n  CANDLE_INTERVAL_SECONDS,\n  CHART_TIMEFRAMES,\n  resolveChartInterval,\n  tradeSpotPriceNativePerToken,');
+    expect(component).toContain(
+      'import {\n  CANDLE_INTERVAL_SECONDS,\n  CHART_BAR_SPACING_PX,\n  CHART_TIMEFRAMES,\n  resolveChartInterval,\n  tradeSpotPriceNativePerToken,',
+    );
     expect(component).toContain("tradeSpotPriceNativePerToken(trades[0], decimals ?? DEFAULT_TOKEN_DECIMALS)");
     expect(component).toContain(": startingPriceNativePerToken;");
   });
@@ -471,6 +473,81 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
     expect(component).toContain("title={removeLabel}");
     expect(component).toContain("aria-label={removeLabel}");
     expect(component).not.toContain("{formatNativePriceSixSigFigs(line.price)} ×");
+  });
+});
+
+describe("TokenTradeChart ?chartDebug=1 readout (issue #472 item 2)", () => {
+  it("reads the flag once from the real browser URL, defaulting to false so the panel never renders on the very first (server-matching) render", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain("const [chartDebug, setChartDebug] = useState(false);");
+    expect(component).toContain('if (typeof window === "undefined") return;');
+    expect(component).toContain('setChartDebug(new URLSearchParams(window.location.search).get("chartDebug") === "1");');
+  });
+
+  it("never renders, computes, or schedules the debug snapshot's timer unless chartDebug is true, and clears the snapshot the moment it turns off", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain("const [chartDebugSnapshot, setChartDebugSnapshot] = useState<ChartDebugSnapshot | null>(null);");
+    expect(component).toContain("if (!chartDebug) {\n      setChartDebugSnapshot(null);\n      return;\n    }");
+    expect(component).toContain("{chartDebugSnapshot && (");
+  });
+
+  it("every field in the snapshot traces to a real ref/state/prop the chart already maintains — nothing hard-coded — and is read inside an effect, never during render", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    const snapshotStart = component.indexOf("function computeSnapshot(): ChartDebugSnapshot {");
+    const snapshotEnd = component.indexOf("setChartDebugSnapshot(computeSnapshot());", snapshotStart);
+    expect(snapshotStart).toBeGreaterThan(-1);
+    const snapshotBody = component.slice(snapshotStart, snapshotEnd);
+
+    expect(snapshotBody).toContain("new Date().toISOString()");
+    expect(snapshotBody).toContain("new Date(nowTick * 1000).toISOString()");
+    expect(snapshotBody).toContain("const timelinePoints = renderStateRef.current.points;");
+    expect(snapshotBody).toContain("chartRef.current?.timeScale().getVisibleLogicalRange()");
+    expect(snapshotBody).toContain("lastAppliedSizeRef.current?.width");
+    expect(snapshotBody).toContain("renderStateRef.current.candles.filter((candle) => !isFlatCandle(candle)).length");
+    expect(snapshotBody).toContain("isAtChartRightEdge(debugVisibleRange, lastPointIndex)");
+    expect(snapshotBody).toContain("renderStateRef.current.lastUpdateMode");
+    expect(snapshotBody).toContain("lastUpdateAtMsRef.current !== null ? new Date(lastUpdateAtMsRef.current).toISOString() : null");
+    expect(snapshotBody).toContain(
+      "tradesLastPollAtRef.current !== null ? new Date(tradesLastPollAtRef.current).toISOString() : null",
+    );
+    expect(snapshotBody).toContain("trades?.length ?? 0");
+
+    // computeSnapshot is only ever invoked from inside this effect's own
+    // body/interval callback — never during render, which the React refs
+    // lint rule (and this repo's `npm run lint`) forbids for `.current` reads.
+    const effectStart = component.lastIndexOf("useEffect(() => {", snapshotStart);
+    const effectDepsIndex = component.indexOf(
+      "}, [chartDebug, trades, timeframe, resolvedInterval, nowTick, clockIntervalSeconds, tradesLastPollAtRef]);",
+      snapshotStart,
+    );
+    expect(effectStart).toBeGreaterThan(-1);
+    expect(effectDepsIndex).toBeGreaterThan(snapshotStart);
+  });
+
+  it("logs the computed initial range and last bar time to the console on a genuine timeframe change, gated on the same flag, and never on first load", async () => {
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain("const previousTimeframeForDebugRef = useRef<ChartTimeframe | null>(null);");
+    expect(component).toContain(
+      "if (chartDebug && previousTimeframeForDebugRef.current !== null && previousTimeframeForDebugRef.current !== timeframe) {",
+    );
+    expect(component).toContain('console.log("[chartDebug] timeframe change", {');
+    expect(component).toContain("initialRange: lastPointIndex >= 0 ? computeInitialVisibleLogicalRange(lastPointIndex,");
+    expect(component).toContain("lastBarTime: lastPointIndex >= 0 ? nextState.points[lastPointIndex].time : null,");
+    expect(component).toContain("previousTimeframeForDebugRef.current = timeframe;");
+  });
+
+  it("accepts a tradesLastPollAtRef prop threaded from useTokenTrades through TokenCenterColumn, rather than tracking its own poll timestamp", async () => {
+    const hook = await source("lib/use-token-trades.ts");
+    expect(hook).toContain("const lastPollAtRef = useRef<number | null>(null);");
+    expect(hook).toContain("lastPollAtRef.current = Date.now();");
+
+    const view = await source("components/token-page/token-page-view.tsx");
+    expect(view).toContain("lastPollAtRef: tradesLastPollAtRef");
+    expect(view).toContain("tradesLastPollAtRef={tradesLastPollAtRef}");
+
+    const centerColumn = await source("components/token-page/token-center-column.tsx");
+    expect(centerColumn).toContain("tradesLastPollAtRef,");
+    expect(centerColumn).toContain("tradesLastPollAtRef={tradesLastPollAtRef}");
   });
 });
 

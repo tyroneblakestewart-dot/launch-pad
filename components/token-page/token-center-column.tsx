@@ -68,6 +68,7 @@ export function TokenCenterColumn({
   tradesError,
   tradesStale,
   retryTrades,
+  tradesLastPollAtRef,
   startingPriceNativePerToken,
   launchedAtUnixSeconds,
 }: {
@@ -80,6 +81,8 @@ export function TokenCenterColumn({
   tradesError: string | null;
   tradesStale: boolean;
   retryTrades: () => void;
+  /** Timestamp ref of the most recent /api/token-trades poll attempt, for the ?chartDebug=1 readout (issue #472 item 2) — a ref (not state) since lib/use-token-trades.ts never re-renders for it. */
+  tradesLastPollAtRef: { current: number | null };
   startingPriceNativePerToken: number | null;
   launchedAtUnixSeconds: number | null;
 }) {
@@ -99,6 +102,7 @@ export function TokenCenterColumn({
           error={tradesError}
           stale={tradesStale}
           retry={retryTrades}
+          tradesLastPollAtRef={tradesLastPollAtRef}
           startingPriceNativePerToken={startingPriceNativePerToken}
           launchedAtUnixSeconds={launchedAtUnixSeconds}
           pairLabel={`${symbol ?? "TOKEN"} / ETH`}

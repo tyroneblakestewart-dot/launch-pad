@@ -14,9 +14,11 @@ import {
 } from "lightweight-charts";
 import {
   CANDLE_INTERVAL_SECONDS,
+  CHART_BAR_SPACING_PX,
   CHART_TIMEFRAMES,
   resolveChartInterval,
   tradeSpotPriceNativePerToken,
+  type CandleInterval,
   type ChartTimeframe,
 } from "@/lib/candle-bucketing";
 import {
@@ -31,9 +33,13 @@ import {
 import {
   applyChartResize,
   applyTokenTradeChartUpdate,
+  computeInitialVisibleLogicalRange,
   createInitialTokenTradeChartRenderState,
+  isAtChartRightEdge,
+  isFlatCandle,
   type TokenTradeChartRenderState,
   type TokenTradeChartSeriesBundle,
+  type TokenTradeChartUpdateMode,
 } from "@/lib/token-trade-chart-render";
 import { DEFAULT_TOKEN_DECIMALS } from "@/lib/bonding-curve-deploy-config";
 import {
@@ -67,6 +73,8 @@ const DOWN_COLOR = "#e2564b";
 const MA20_COLOR = "#c6f53e";
 const MA50_COLOR = "#ffffff";
 const HORIZONTAL_LINE_COLOR = "#9ad4ff";
+/** UP_COLOR at lowered opacity (issue #472 item 1) — a solid last-price line drawn on top of a flat candle's own (now brighter) grey body made that body unreadable underneath it; the dashed line stays legible at 0.45 while letting a flat body show through. */
+const LAST_PRICE_LINE_COLOR = "rgba(198, 245, 62, 0.45)";
 
 // The candlestick series' priceFormat before any real data has resolved a
 // minMove of its own (issue #464 item 2) — kept as one pair of constants so
@@ -82,6 +90,28 @@ type HoverInfo = {
   low: number;
   close: number;
   volume: number;
+};
+
+/** ?chartDebug=1 readout shape (issue #472 item 2) — every field traces to a real ref/state/prop, computed only while the flag is on. */
+type ChartDebugSnapshot = {
+  nowIso: string;
+  nowTickIso: string;
+  timeframe: ChartTimeframe;
+  resolvedInterval: CandleInterval | null;
+  tickIntervalMs: number;
+  timelineFirstBarTime: number | null;
+  timelineLastBarTime: number | null;
+  timelineCount: number;
+  realCandleCount: number;
+  visibleRange: { from: number; to: number } | null;
+  visibleRangeToBarTime: number | null;
+  chartWidthPx: number;
+  visibleBarCountFromWidth: number;
+  atRightEdge: boolean;
+  lastUpdateMode: TokenTradeChartUpdateMode | null;
+  lastUpdateAtIso: string | null;
+  lastTradesPollAtIso: string | null;
+  tradeCount: number;
 };
 
 function formatUtcTime(unixSeconds: number, includeSeconds: boolean): string {
@@ -154,6 +184,7 @@ export function TokenTradeChart({
   error,
   stale,
   retry,
+  tradesLastPollAtRef,
   startingPriceNativePerToken,
   launchedAtUnixSeconds,
   pairLabel,
@@ -163,6 +194,8 @@ export function TokenTradeChart({
   error: string | null;
   stale: boolean;
   retry: () => void;
+  /** Ref to the timestamp of the most recent /api/token-trades poll attempt, for the ?chartDebug=1 readout (issue #472 item 2) — otherwise unused. */
+  tradesLastPollAtRef: { current: number | null };
   startingPriceNativePerToken: number | null;
   /** Unix seconds the token launched, when known — caps how far the pre-trade whitespace padding can reach (issue #458 item 5). */
   launchedAtUnixSeconds: number | null;
@@ -173,6 +206,18 @@ export function TokenTradeChart({
   const [tool, setTool] = useState<ChartTool>("crosshair");
   const [horizontalLines, setHorizontalLines] = useState<HorizontalLine[]>([]);
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
+
+  // ?chartDebug=1 gate (issue #472 item 2) — read once on mount from the
+  // real browser URL rather than useSearchParams, so this purely visual dev
+  // aid never forces the page into a Suspense boundary. Starts false on
+  // every render (including the very first), so server/client markup always
+  // matches and the panel genuinely never renders without the flag.
+  const [chartDebug, setChartDebug] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setChartDebug(new URLSearchParams(window.location.search).get("chartDebug") === "1");
+  }, []);
+  const [chartDebugSnapshot, setChartDebugSnapshot] = useState<ChartDebugSnapshot | null>(null);
 
   const plotRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -186,6 +231,12 @@ export function TokenTradeChart({
   const appliedMinMoveRef = useRef<number | null>(null);
   const toolRef = useRef<ChartTool>(tool);
   const lastAppliedSizeRef = useRef<{ width: number; height: number } | null>(null);
+  // Debug-only bookkeeping (issue #472 item 2) — when was the render state's
+  // own lastUpdateMode last set, and what was the timeframe on the previous
+  // data-flow effect run (so a genuine timeframe change, not just any
+  // full-resync, is what gets console-logged per item 3).
+  const lastUpdateAtMsRef = useRef<number | null>(null);
+  const previousTimeframeForDebugRef = useRef<ChartTimeframe | null>(null);
 
   useEffect(() => {
     toolRef.current = tool;
@@ -464,20 +515,12 @@ export function TokenTradeChart({
 
     const seriesBundle: TokenTradeChartSeriesBundle = {
       candleSeries: {
-        setData: (data) =>
-          candleSeries.setData(
-            data.map((point) =>
-              "open" in point
-                ? { time: point.time as UTCTimestamp, open: point.open, high: point.high, low: point.low, close: point.close }
-                : { time: point.time as UTCTimestamp },
-            ),
-          ),
-        update: (point) =>
-          candleSeries.update(
-            "open" in point
-              ? { time: point.time as UTCTimestamp, open: point.open, high: point.high, low: point.low, close: point.close }
-              : { time: point.time as UTCTimestamp },
-          ),
+        // A flat candle's per-bar color/borderColor/wickColor overrides
+        // (issue #472 item 1) must survive this adapter — spreading the
+        // whole point, rather than picking OHLC fields by name, is what
+        // carries them through to the real series.
+        setData: (data) => candleSeries.setData(data.map((point) => ({ ...point, time: point.time as UTCTimestamp }))),
+        update: (point) => candleSeries.update({ ...point, time: point.time as UTCTimestamp }),
       },
       ma20Series: {
         setData: (data) => ma20Series.setData(data.map((point) => ({ time: point.time as UTCTimestamp, value: point.value }))),
@@ -513,6 +556,22 @@ export function TokenTradeChart({
       // immediately corrects.
       chartWidthPx: lastAppliedSizeRef.current?.width ?? 0,
     });
+    lastUpdateAtMsRef.current = Date.now();
+
+    // Console capture backing up the ?chartDebug=1 screenshot (issue #472
+    // item 3) — only on a genuine timeframe change (previousTimeframeForDebugRef
+    // already held a value, and it differs from the current one), never on
+    // the very first load or a same-timeframe re-render.
+    if (chartDebug && previousTimeframeForDebugRef.current !== null && previousTimeframeForDebugRef.current !== timeframe) {
+      const lastPointIndex = nextState.points.length - 1;
+      console.log("[chartDebug] timeframe change", {
+        timeframe,
+        resolvedInterval,
+        initialRange: lastPointIndex >= 0 ? computeInitialVisibleLogicalRange(lastPointIndex, lastAppliedSizeRef.current?.width ?? 0) : null,
+        lastBarTime: lastPointIndex >= 0 ? nextState.points[lastPointIndex].time : null,
+      });
+    }
+    previousTimeframeForDebugRef.current = timeframe;
 
     const maxPrice =
       nextState.candles.length > 0 ? Math.max(...nextState.candles.map((candle) => candle.high)) : startingPriceNativePerToken;
@@ -529,7 +588,53 @@ export function TokenTradeChart({
     }
 
     renderStateRef.current = nextState;
-  }, [trades, decimals, resolvedInterval, timeframe, nowTick, startingPriceNativePerToken, launchedAtUnixSeconds]);
+  }, [trades, decimals, resolvedInterval, timeframe, nowTick, startingPriceNativePerToken, launchedAtUnixSeconds, chartDebug]);
+
+  // ?chartDebug=1 readout (issue #472 item 2) — recomputes straight from the
+  // same refs/state/props the chart itself is driven by, never a separately
+  // tracked or hard-coded value. Declared as its own effect (rather than
+  // computed inline during render, which the React refs lint rule forbids
+  // for `.current` reads) that both recomputes whenever real chart inputs
+  // change and re-arms a 500ms timer so the wall-clock reading and the
+  // visible-range/"at right edge" fields stay live between real updates too.
+  // Runs after the data-flow effect above in the same commit (later-declared
+  // effects run after earlier ones), so it always sees this render's fresh
+  // renderStateRef/lastUpdateAtMsRef, not the previous render's.
+  useEffect(() => {
+    if (!chartDebug) {
+      setChartDebugSnapshot(null);
+      return;
+    }
+    function computeSnapshot(): ChartDebugSnapshot {
+      const timelinePoints = renderStateRef.current.points;
+      const lastPointIndex = timelinePoints.length - 1;
+      const debugVisibleRange = chartRef.current?.timeScale().getVisibleLogicalRange() ?? null;
+      const debugChartWidthPx = lastAppliedSizeRef.current?.width ?? 0;
+      return {
+        nowIso: new Date().toISOString(),
+        nowTickIso: new Date(nowTick * 1000).toISOString(),
+        timeframe,
+        resolvedInterval,
+        tickIntervalMs: clockIntervalSeconds * 1000,
+        timelineFirstBarTime: timelinePoints[0]?.time ?? null,
+        timelineLastBarTime: timelinePoints[lastPointIndex]?.time ?? null,
+        timelineCount: timelinePoints.length,
+        realCandleCount: renderStateRef.current.candles.filter((candle) => !isFlatCandle(candle)).length,
+        visibleRange: debugVisibleRange,
+        visibleRangeToBarTime: debugVisibleRange ? (timelinePoints[Math.round(debugVisibleRange.to)]?.time ?? null) : null,
+        chartWidthPx: debugChartWidthPx,
+        visibleBarCountFromWidth: debugChartWidthPx > 0 ? Math.floor(debugChartWidthPx / CHART_BAR_SPACING_PX) : 0,
+        atRightEdge: isAtChartRightEdge(debugVisibleRange, lastPointIndex),
+        lastUpdateMode: renderStateRef.current.lastUpdateMode,
+        lastUpdateAtIso: lastUpdateAtMsRef.current !== null ? new Date(lastUpdateAtMsRef.current).toISOString() : null,
+        lastTradesPollAtIso: tradesLastPollAtRef.current !== null ? new Date(tradesLastPollAtRef.current).toISOString() : null,
+        tradeCount: trades?.length ?? 0,
+      };
+    }
+    setChartDebugSnapshot(computeSnapshot());
+    const timer = window.setInterval(() => setChartDebugSnapshot(computeSnapshot()), 500);
+    return () => window.clearInterval(timer);
+  }, [chartDebug, trades, timeframe, resolvedInterval, nowTick, clockIntervalSeconds, tradesLastPollAtRef]);
 
   // Single last-price indicator (issue #458 item 2): the one dashed
   // last-price line on the chart, driven by the exact same spot price the
@@ -551,7 +656,7 @@ export function TokenTradeChart({
     } else {
       lastPriceLineRef.current = candleSeries.createPriceLine({
         price: lastPrice,
-        color: UP_COLOR,
+        color: LAST_PRICE_LINE_COLOR,
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
@@ -690,6 +795,33 @@ export function TokenTradeChart({
           )}
 
           <div ref={plotRef} className={styles.chartCanvas} data-token-chart-canvas="true" />
+
+          {chartDebugSnapshot && (
+            <div className={styles.chartDebugPanel} data-token-chart-debug="true">
+              <div>now {chartDebugSnapshot.nowIso}</div>
+              <div>nowTick {chartDebugSnapshot.nowTickIso}</div>
+              <div>
+                tf {chartDebugSnapshot.timeframe} → {chartDebugSnapshot.resolvedInterval ?? "—"} (tick {chartDebugSnapshot.tickIntervalMs}ms)
+              </div>
+              <div>
+                bars {chartDebugSnapshot.timelineFirstBarTime ?? "—"}..{chartDebugSnapshot.timelineLastBarTime ?? "—"} (#
+                {chartDebugSnapshot.timelineCount}, real {chartDebugSnapshot.realCandleCount})
+              </div>
+              <div>
+                range {chartDebugSnapshot.visibleRange ? `${chartDebugSnapshot.visibleRange.from.toFixed(1)}..${chartDebugSnapshot.visibleRange.to.toFixed(1)}` : "—"} → bar@to {chartDebugSnapshot.visibleRangeToBarTime ?? "—"}
+              </div>
+              <div>
+                width {chartDebugSnapshot.chartWidthPx}px (~{chartDebugSnapshot.visibleBarCountFromWidth} bars) edge{" "}
+                {String(chartDebugSnapshot.atRightEdge)}
+              </div>
+              <div>
+                update {chartDebugSnapshot.lastUpdateMode ?? "—"} @ {chartDebugSnapshot.lastUpdateAtIso ?? "—"}
+              </div>
+              <div>
+                trades poll {chartDebugSnapshot.lastTradesPollAtIso ?? "—"} (#{chartDebugSnapshot.tradeCount})
+              </div>
+            </div>
+          )}
 
           {showEmptyOverlay && (
             <div className={styles.chartEmptyOverlay} data-token-chart-empty="true">

@@ -38,6 +38,12 @@ export function useTokenTrades(curveAddress: string | null) {
   const [trades, setTrades] = useState<TokenTrade[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
+  // Timestamp of the most recent poll attempt, success or failure (issue
+  // #472 item 2's debug readout) — a ref rather than state, since it exists
+  // purely for a debug overlay that polls this value itself and would
+  // otherwise force a needless extra re-render of the whole token page on
+  // every 5s poll tick.
+  const lastPollAtRef = useRef<number | null>(null);
   const curveRef = useRef(curveAddress);
   const tradesRef = useRef<TokenTrade[] | null>(null);
   // Which curve's request is currently in flight, if any — scoped per-curve
@@ -67,6 +73,7 @@ export function useTokenTrades(curveAddress: string | null) {
   }, [curveAddress]);
 
   const load = useCallback(async () => {
+    lastPollAtRef.current = Date.now();
     const curve = curveRef.current;
     if (!curve) {
       tradesRef.current = [];
@@ -162,5 +169,5 @@ export function useTokenTrades(curveAddress: string | null) {
     };
   }, [curveAddress, load]);
 
-  return { trades, error, stale, retry: load };
+  return { trades, error, stale, retry: load, lastPollAtRef };
 }
