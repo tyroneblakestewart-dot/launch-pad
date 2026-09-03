@@ -1093,14 +1093,45 @@ describe("token page v2 premium surface system (issue #460)", () => {
     expect(pageRule).toContain("--well-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;");
   });
 
-  it("configures the chart's grid, candle up/down and moving-average colors from the design (issue #460 section 7)", async () => {
+  it("configures the chart's candle up/down and moving-average colors from the design, with the grid OFF as the design ships it (issue #460 section 7, corrected to the design's data-props defaults)", async () => {
+    // #460 quoted red and grid colours from the design file's fallback / grid-on
+    // branch; the committed design's editable defaults are downColor #8d918c
+    // and showGrid false, which is what the owner approved (3 Sep visual pass).
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain('const UP_COLOR = "#c6f53e";');
-    expect(component).toContain('const DOWN_COLOR = "#e2564b";');
+    expect(component).toContain('const DOWN_COLOR = "#8d918c";');
     expect(component).toContain('const MA20_COLOR = "#c6f53e";');
     expect(component).toContain('const MA50_COLOR = "#ffffff";');
-    expect(component).toContain('vertLines: { color: "rgba(255, 255, 255, 0.035)" }');
-    expect(component).toContain('horzLines: { color: "rgba(255, 255, 255, 0.045)" }');
+    expect(component).toContain('wickDownColor: "rgba(141, 145, 140, 0.9)"');
+    expect(component).toContain("vertLines: { visible: false }");
+    expect(component).toContain("horzLines: { visible: false }");
+    expect(component).not.toContain("#e2564b");
+  });
+
+  it("binds the page's down colour and grid visibility to the committed design's own data-props defaults, so they cannot drift from the approved design again", async () => {
+    const design = await source("design/token-page-v2/hoodlums-token-page-v2.html");
+    const encoded = design.match(/data-props="([^"]*)"/)?.[1] ?? "";
+    const props = JSON.parse(encoded.replace(/&quot;/g, '"').replace(/&amp;/g, "&")) as Record<string, { default?: unknown }>;
+    expect(props.downColor?.default).toBe("#8d918c");
+    expect(props.showGrid?.default).toBe(false);
+
+    const component = await source("components/token-page/token-trade-chart.tsx");
+    expect(component).toContain(`const DOWN_COLOR = "${props.downColor?.default}";`);
+    const css = await source("components/token-page/token-page.module.css");
+    expect(css).toContain(`--accent-down: ${props.downColor?.default};`);
+  });
+
+  it("uses the down token — never red — for SELL rows, negative stats values, the split bar's right half and the negative change pill; red remains for error states only", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    for (const selector of ["\n.tradeTypeSell {", "\n.statsPairValueDown {", "\n.statsSplitBarRight {", "\n.priceChangeDown {"]) {
+      const start = css.indexOf(selector);
+      expect(start, `expected a rule for ${selector.trim()}`).toBeGreaterThan(-1);
+      const rule = css.slice(start, css.indexOf("}", start));
+      expect(rule, `${selector.trim()} should use the down token`).toContain("var(--accent-down)");
+      expect(rule, `${selector.trim()} must not use red`).not.toMatch(/accent-red|226, 86, 75|e2564b/);
+    }
+    const errStart = css.indexOf(".tradeErrorText {");
+    expect(css.slice(errStart, css.indexOf("}", errStart))).toContain("rgba(226, 86, 75, 0.35)");
   });
 
   it("disables the LIVE dot pulse animation and every chip's hover/active transition under prefers-reduced-motion", async () => {

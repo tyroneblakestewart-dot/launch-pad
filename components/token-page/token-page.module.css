@@ -31,6 +31,12 @@
   --text-disabled: #4a4f49;
   --accent-lime: #c6f53e;
   --accent-red: #e2564b;
+  /* The design's `downColor` token (design/token-page-v2, data-props default
+     #8d918c — the grey option, not red). Every "down" state uses it: down
+     candles and wicks, SELL rows, negative stats values, the split bar's
+     right half, the negative change pill. `--accent-red` stays for genuine
+     error states only. */
+  --accent-down: #8d918c;
   --accent-mint: #91f0b6;
   --text-on-lime: #071008;
   --mono: "IBM Plex Mono", monospace;
@@ -1123,7 +1129,7 @@
 
 .statsPairValueDown {
   font: 700 13px/1 var(--mono);
-  color: var(--accent-red);
+  color: var(--accent-down);
 }
 
 .statsPairValueNeutral {
@@ -1151,7 +1157,7 @@
 .statsSplitBarRight {
   display: block;
   height: 100%;
-  background: var(--accent-red);
+  background: var(--accent-down);
   opacity: 0.85;
 }
 
@@ -1583,9 +1589,9 @@
 }
 
 .priceChangeDown {
-  color: var(--accent-red);
-  background: linear-gradient(180deg, rgba(226, 86, 75, 0.16), rgba(226, 86, 75, 0.04));
-  border: 1px solid rgba(226, 86, 75, 0.34);
+  color: var(--accent-down);
+  background: linear-gradient(180deg, rgba(141, 145, 140, 0.16), rgba(141, 145, 140, 0.04));
+  border: 1px solid rgba(141, 145, 140, 0.34);
 }
 
 /* ---- activity tabs (recent trades / holders), issue #460 section 8 ---- */
@@ -1718,7 +1724,7 @@
   align-items: center;
   gap: 5px;
   font-weight: 700;
-  color: var(--accent-red);
+  color: var(--accent-down);
 }
 
 .dimText {

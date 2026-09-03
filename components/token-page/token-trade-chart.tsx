@@ -69,7 +69,10 @@ function showsSecondsForTimeframe(timeframe: ChartTimeframe): boolean {
 }
 
 const UP_COLOR = "#c6f53e";
-const DOWN_COLOR = "#e2564b";
+// The design's `downColor` token default is the grey option #8d918c (not red);
+// see design/token-page-v2 data-props. Down candles, wicks and every other
+// "down" state on the page share it.
+const DOWN_COLOR = "#8d918c";
 const MA20_COLOR = "#c6f53e";
 const MA50_COLOR = "#ffffff";
 const HORIZONTAL_LINE_COLOR = "#9ad4ff";
@@ -306,10 +309,12 @@ export function TokenTradeChart({
         fontFamily: "'IBM Plex Mono', monospace",
       },
       grid: {
-        // Horizontal/vertical grid lines carry deliberately different
-        // opacities per the design (issue #460 section 7).
-        vertLines: { color: "rgba(255, 255, 255, 0.035)" },
-        horzLines: { color: "rgba(255, 255, 255, 0.045)" },
+        // The design ships with its grid OFF (design/token-page-v2
+        // data-props: showGrid default false). Issue #460 section 7 quoted
+        // grid colours from the file's grid-on branch, which is not the
+        // owner's chosen default.
+        vertLines: { visible: false },
+        horzLines: { visible: false },
       },
       rightPriceScale: { borderColor: "rgba(255, 255, 255, 0.07)" },
       timeScale: {
@@ -336,7 +341,7 @@ export function TokenTradeChart({
       downColor: DOWN_COLOR,
       borderVisible: false,
       wickUpColor: "rgba(198, 245, 62, 0.9)",
-      wickDownColor: "rgba(226, 86, 75, 0.9)",
+      wickDownColor: "rgba(141, 145, 140, 0.9)",
       priceFormat: {
         type: "custom",
         minMove: INITIAL_CHART_MIN_MOVE,
