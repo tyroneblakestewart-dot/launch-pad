@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addHorizontalLine,
   computeChartMinMove,
+  MIN_MOVE_FLOOR,
   computeChartPriceDecimals,
   expandDegeneratePriceRange,
   removeHorizontalLine,
@@ -66,14 +67,58 @@ describe("computeChartMinMove (issue #451 item 1: no axis tick labels below minM
     expect(computeChartMinMove(1)).toBeCloseTo(1e-6, 12);
   });
 
-  it("floors at 1e-18 instead of returning zero/subnormal for a vanishingly small price", () => {
-    expect(computeChartMinMove(1e-30)).toBe(1e-18);
+  it("floors at MIN_MOVE_FLOOR (1e-15) instead of returning zero/subnormal for a vanishingly small price", () => {
+    expect(MIN_MOVE_FLOOR).toBe(1e-15);
+    expect(computeChartMinMove(1e-30)).toBe(1e-15);
   });
 
-  it("floors at 1e-18 for a non-finite or non-positive price instead of throwing", () => {
-    expect(computeChartMinMove(0)).toBe(1e-18);
-    expect(computeChartMinMove(-1)).toBe(1e-18);
-    expect(computeChartMinMove(NaN)).toBe(1e-18);
+  it("floors at MIN_MOVE_FLOOR for a non-finite or non-positive price instead of throwing", () => {
+    expect(computeChartMinMove(0)).toBe(MIN_MOVE_FLOOR);
+    expect(computeChartMinMove(-1)).toBe(MIN_MOVE_FLOOR);
+    expect(computeChartMinMove(NaN)).toBe(MIN_MOVE_FLOOR);
+  });
+
+  // lightweight-charts@4.1.3 derives `base = Math.round(1 / minMove)` for the
+  // price scale's tick-span calculator and requires it to be an exact power
+  // of ten (`isBaseDecimal`) or at least factorable into 2s and 5s, else it
+  // throws "unexpected base" during axis layout and takes the page down with
+  // it. These two helpers replicate that check verbatim from the library's
+  // own source so the floor can never regress below what the library accepts.
+  function libraryIsBaseDecimal(value: number): boolean {
+    if (value < 0) return false;
+    for (let current = value; current > 1; current /= 10) {
+      if (current % 10 !== 0) return false;
+    }
+    return true;
+  }
+  function libraryAcceptsBase(base: number): boolean {
+    if (libraryIsBaseDecimal(base)) return true;
+    let dividers = 0;
+    for (let rest = base; rest !== 1; ) {
+      if (rest % 2 === 0) rest /= 2;
+      else if (rest % 5 === 0) rest /= 5;
+      else return false;
+      dividers += 1;
+      if (dividers > 100) return false;
+    }
+    return true;
+  }
+
+  it("documents the defect: a 1e-18 minMove yields a base lightweight-charts rejects, 1e-15 does not", () => {
+    expect(Math.round(1 / 1e-18)).toBe(999999999999999900);
+    expect(libraryAcceptsBase(Math.round(1 / 1e-18))).toBe(false);
+    expect(libraryAcceptsBase(Math.round(1 / 1e-15))).toBe(true);
+    expect(Number.isSafeInteger(Math.round(1 / MIN_MOVE_FLOOR))).toBe(true);
+  });
+
+  it("yields a library-safe base for every price magnitude from 1e-30 to 1e6, including the first pump.fun-shaped curve's starting price", () => {
+    const prices = [0.0035 / 1_073_000_000, 3e-12, 2.5e-9, 6e-8, 1.3e-9, 0.5, 1, 1_000_000];
+    for (let exponent = -30; exponent <= 6; exponent += 1) prices.push(3.3 * 10 ** exponent);
+    for (const price of prices) {
+      const base = Math.round(1 / computeChartMinMove(price));
+      expect(Number.isSafeInteger(base)).toBe(true);
+      expect(libraryAcceptsBase(base)).toBe(true);
+    }
   });
 });
 
