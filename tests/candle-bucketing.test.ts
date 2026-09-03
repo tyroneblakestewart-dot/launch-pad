@@ -338,6 +338,63 @@ describe("resolveAllTimeframeInterval sized from the flat-filled timeline span (
   });
 });
 
+describe("buildChartSeriesPoints anchored sub-minute window (issue #472 follow-up 2)", () => {
+  const WIDTH = 1116;
+  const CAP = 2 * Math.ceil(WIDTH / 6); // 372
+  const TRADE_AT = 15;
+  const LAUNCH_AT = 10;
+  const NOW = 172_800;
+
+  function pointsAt(interval: "1s" | "15s", now: number) {
+    const candles = bucketTradesIntoCandles([tradeAtPrice(0.01, { blockTimestamp: TRADE_AT })], interval, 18);
+    return buildChartSeriesPoints(candles, interval, now, LAUNCH_AT, WIDTH, 1e-6);
+  }
+
+  it("holds the window's head STILL across consecutive ticks, so an ordinary tick is a pure append the incremental path can render", () => {
+    // A head that moved every tick was invisible to diffChartSeriesPoints
+    // (index-for-index, never comparing `time`), which reported "nothing
+    // changed" for a timeline of identical flat bars — the freeze this anchor
+    // exists to prevent.
+    const a = pointsAt("1s", NOW);
+    const b = pointsAt("1s", NOW + 1);
+    expect(b[0].time).toBe(a[0].time);
+    expect(b.length).toBe(a.length + 1);
+    expect(b[b.length - 1].time).toBe(NOW + 1);
+  });
+
+  it("keeps the head still for a long run of ticks, re-anchoring at most once per cap buckets", () => {
+    const heads = new Set<number>();
+    for (let i = 0; i < CAP; i++) heads.add(pointsAt("1s", NOW + i).time ?? pointsAt("1s", NOW + i)[0].time);
+    expect(heads.size).toBeLessThanOrEqual(2);
+  });
+
+  it("stays bounded between the cap and twice the cap however far the clock advances", () => {
+    for (const offset of [0, 1, 37, 200, 371, 372, 373, 800, 5_000]) {
+      const length = pointsAt("1s", NOW + offset).length;
+      expect(length).toBeGreaterThanOrEqual(CAP);
+      expect(length).toBeLessThanOrEqual(2 * CAP);
+    }
+  });
+
+  it("always ends at the current bucket, and every bar in the window is real (never whitespace) once a price is known", () => {
+    for (const interval of ["1s", "15s"] as const) {
+      const step = interval === "1s" ? 1 : 15;
+      const now = NOW + 7 * step;
+      const points = pointsAt(interval, now);
+      expect(points[points.length - 1].time).toBe(Math.floor(now / step) * step);
+      expect(points.every(isCandlePoint)).toBe(true);
+    }
+  });
+
+  it("leaves 1M and coarser intervals uncapped and unanchored, exactly as before", () => {
+    const candles = bucketTradesIntoCandles([tradeAtPrice(0.01, { blockTimestamp: TRADE_AT })], "1m", 18);
+    const a = buildChartSeriesPoints(candles, "1m", NOW, LAUNCH_AT, WIDTH, 1e-6);
+    const b = buildChartSeriesPoints(candles, "1m", NOW + 60, LAUNCH_AT, WIDTH, 1e-6);
+    expect(a[0].time).toBe(b[0].time);
+    expect(b.length).toBe(a.length + 1);
+  });
+});
+
 describe("diffTimeSeries / diffCandles", () => {
   function candle(overrides: Partial<Candle> = {}): Candle {
     return { time: 0, open: 1, high: 1, low: 1, close: 1, volume: 1, ...overrides };
@@ -530,7 +587,8 @@ describe("buildChartSeriesPoints (issue #451 item 2: gaps and time axis; flat-fi
     const trades = [tradeAtPrice(0.02, { blockTimestamp: 0 })];
     const candles = bucketTradesIntoCandles(trades, "1s", 18);
     const points = buildChartSeriesPoints(candles, "1s", twoDays, 0, 1116, 0.001);
-    expect(points.length).toBe(2 * Math.ceil(1116 / 6));
+    expect(points.length).toBeGreaterThanOrEqual(2 * Math.ceil(1116 / 6));
+    expect(points.length).toBeLessThanOrEqual(2 * 2 * Math.ceil(1116 / 6));
     expect(points[0].time).toBeGreaterThan(0);
     expect(points.every((point) => isCandlePoint(point) && point.close === 0.02 && point.volume === 0)).toBe(true);
     expect(points[points.length - 1].time).toBe(twoDays);
@@ -606,14 +664,20 @@ describe("buildChartSeriesPoints sub-minute capped timeline (issue #470 item 2)"
   const FOUR_DAYS = 4 * 86_400;
   const CHART_WIDTH_PX = 1400;
 
-  it("caps a 1S timeline over a 4-day history at ~470 points and still ends at the current second", () => {
+  it("caps a 1S timeline over a 4-day history to a bounded window and still ends at the current second", () => {
     const candles: Candle[] = [
       { time: 0, open: 1, high: 1, low: 1, close: 1, volume: 1 }, // 4 days old — must be dropped
       { time: FOUR_DAYS - 5, open: 1, high: 1, low: 1, close: 1, volume: 1 }, // 5s before "now" — must survive
     ];
     const points = buildChartSeriesPoints(candles, "1s", FOUR_DAYS, null, CHART_WIDTH_PX);
 
-    expect(points.length).toBeLessThanOrEqual(470);
+    // Since issue #472's follow-up the window is anchored rather than sliding
+    // (so an ordinary tick stays a pure append instead of a whole-array
+    // replacement the index-wise diff could not even see), which makes its
+    // length vary between the cap and twice the cap rather than sitting at
+    // exactly the cap. Still bounded, and still a tiny fraction of the ~345,600
+    // points an uncapped 4-day 1S timeline would carry.
+    expect(points.length).toBeLessThanOrEqual(2 * 2 * Math.ceil(CHART_WIDTH_PX / 6));
     expect(points[points.length - 1].time).toBe(FOUR_DAYS);
     expect(points.some((point) => point.time === 0)).toBe(false);
   });

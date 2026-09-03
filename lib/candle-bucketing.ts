@@ -272,17 +272,43 @@ const LAUNCH_CAPPED_PADDING_BARS = 5;
 
 /**
  * On a sub-minute interval (1S/15S), a token's whole trading life is one
- * whitespace bar per second/15-seconds — a multi-day-old token would emit
- * tens of thousands of timeline points at 1S, most of it padding no chart
- * will ever scroll to. Capped to twice the bars a chart of `chartWidthPx`
- * could ever show at once (issue #470 item 2), so the timeline still reaches
- * comfortably past both edges of the visible window without growing
- * unbounded. Intervals of 1M and coarser are unaffected — their whole-history
- * bar counts already stay small.
+ * bar per second/15-seconds — a multi-day-old token would emit tens of
+ * thousands of timeline points at 1S, most of it no chart will ever scroll
+ * to. Capped to twice the bars a chart of `chartWidthPx` could ever show at
+ * once (issue #470 item 2), so the timeline still reaches comfortably past
+ * both edges of the visible window without growing unbounded. Intervals of 1M
+ * and coarser are unaffected — their whole-history bar counts already stay
+ * small. The cap is applied at a quantised anchor
+ * (`computeAnchoredSubminuteStartTime`) rather than as a start that slides
+ * every tick — see there for why a sliding window froze the chart outright.
  */
 function computeSubminuteBarsCap(chartWidthPx: number): number | null {
   if (chartWidthPx <= 0) return null;
   return 2 * Math.ceil(chartWidthPx / CHART_BAR_SPACING_PX);
+}
+
+/**
+ * The sub-minute window's start bucket, quantised to a multiple of the cap so
+ * it holds STILL as the clock ticks instead of sliding one bucket per second.
+ *
+ * A start that advanced every tick made every live update a whole-array
+ * replacement — and, worse, invisible to `diffChartSeriesPoints`, which
+ * compares index-for-index and never compares `time`: once no traded candle sat
+ * inside a slid window, every index held an identical flat bar, the diff
+ * reported no change at all, and the rendered series froze at whatever bucket
+ * was current when the chart first loaded (the axis then trailing "now" by
+ * exactly the time since page load). Anchoring the start makes the common case
+ * a pure append that the incremental path renders with one `series.update()` —
+ * genuinely smooth — and leaves a re-anchor to happen once every `capBars`
+ * buckets instead of always; `applyTokenTradeChartUpdate` detects that rare
+ * jump explicitly and resyncs rather than trusting the index-wise diff.
+ *
+ * The window therefore holds between `capBars` and `2 * capBars` bars, still
+ * bounded (≈744 at 1S on a 1116px chart) exactly as issue #470 item 2 required.
+ */
+function computeAnchoredSubminuteStartTime(endTime: number, intervalSeconds: number, capBars: number): number {
+  const endBucketIndex = Math.floor(endTime / intervalSeconds);
+  return Math.floor((endBucketIndex - capBars + 1) / capBars) * capBars * intervalSeconds;
 }
 
 /**
@@ -333,8 +359,8 @@ function computeSubminuteBarsCap(chartWidthPx: number): number | null {
  * timeline always reaches back at least as far as the first real trade.
  *
  * `chartWidthPx` (issue #470 item 2) additionally clamps the start on a
- * sub-minute interval (1S/15S) to the most recent `computeSubminuteBarsCap`
- * bars ending at `endTime` — never dropping a real candle inside that
+ * sub-minute interval (1S/15S) to a quantised anchor holding at most about
+ * twice `computeSubminuteBarsCap` bars ending at `endTime` — never dropping a real candle inside that
  * window, since the render loop below still walks every bucket from the
  * (possibly raised) start through `endTime` and includes any real candle it
  * finds there. Omitted or non-positive (chart not measured yet) leaves 1S/15S
@@ -366,8 +392,7 @@ export function buildChartSeriesPoints(
   if (intervalSeconds < 60) {
     const subminuteBarsCap = computeSubminuteBarsCap(chartWidthPx);
     if (subminuteBarsCap !== null) {
-      const subminuteStartTime = endTime - (subminuteBarsCap - 1) * intervalSeconds;
-      startTime = Math.max(startTime, subminuteStartTime);
+      startTime = Math.max(startTime, computeAnchoredSubminuteStartTime(endTime, intervalSeconds, subminuteBarsCap));
     }
   }
 

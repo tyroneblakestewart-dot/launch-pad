@@ -1261,3 +1261,62 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   only). `npm run build` — succeeds. `npm run test:contracts` not run (no
   contract changes). No visual pass was possible from this session — the
   owner verifies on the deployed WERDE page.
+
+- Token chart 1S/15S real-time freeze (second defect on the same PR branch as
+  the flat-fill above; found after the owner reported "no candles, not smooth
+  in any timeframe" on a screenshot that was still running `main`). The flat
+  fill made the timeline end in a real bar, but on the sub-minute intervals
+  nothing ever reached the chart at all. `computeSubminuteBarsCap` capped
+  1S/15S to a window whose start **slid one bucket per tick**, so every logical
+  index referred to a different bucket each render — and
+  `diffChartSeriesPoints` compares index-for-index while
+  `chartSeriesPointsEqual` never compares `time`. Once no traded candle sat
+  inside the window (a two-day-old token at 1S), every index held an identical
+  flat bar, the diff reported `{updated: [], appended: []}`, and **zero
+  `series.update()` calls were ever made**: the rendered series stayed pinned to
+  whatever bucket was current when the chart first loaded while the engine's own
+  state marched on, so the axis trailed "now" by exactly the time since page
+  load (the owner's screenshot showed 07:23 against a 07:27 clock, four minutes
+  after loading). Reproduced directly through the real engine against a fake
+  series before any fix: 60 ticks at 1S gave `setData=1, update=0`, series tail
+  frozen at load time, lag 60s; 15S identical with lag 900s. Fix, chart-only, in
+  two parts. **(1) `lib/candle-bucketing.ts`** — the sub-minute cap is now
+  applied at a quantised anchor (`computeAnchoredSubminuteStartTime`: start
+  bucket = `floor((endBucket − cap + 1) / cap) * cap`) instead of a sliding
+  start, so the head holds still and an ordinary tick is a **pure append** the
+  incremental path renders with one `series.update()` — genuinely smooth, and
+  identical in kind to how 1M-and-coarser already behaved. The window is still
+  bounded, now between `cap` and `2 * cap` bars (≈372–744 at 1S on a 1116px
+  chart) rather than exactly `cap`. **(2) `lib/token-trade-chart-render.ts`** —
+  `applyTokenTradeChartUpdate` computes a signed `windowSlideBars` from the
+  head's movement *before* diffing and, when non-zero, takes a new
+  `"window-slide"` branch that resyncs all four series via `setData` and then
+  either re-derives the width-based range (viewer at the right edge) or shifts
+  the previous range by `−windowSlideBars` (viewer scrolled left, so the same
+  wall-clock bars stay in view). The value is signed and tested with `!== 0`
+  because a width increase enlarges the cap and moves the head *earlier*. A new
+  `"window-slide"` member joins the `TokenTradeChartUpdateMode` union, so the
+  existing `?chartDebug=1` readout names this path when it runs. After the fix,
+  the same replay gives 60 ticks at 1S → **60 `update()` calls, no extra
+  `setData`, lag 0**; 15S → 59 updates plus exactly one re-anchor `setData`,
+  lag 0. **Tests changed rather than only added (rule 8, stated plainly):** four
+  cases asserted the *sliding* window's exact bar count (`toBe(200)`,
+  `toBe(2 * ceil(1116/6))`, `toBeLessThanOrEqual(470)`, and one 1S window-length
+  equality) — that contract genuinely changed, so each now asserts the bounded
+  `cap … 2 * cap` window instead. New coverage: the head holding still across
+  consecutive ticks, the bounded length across a wide range of clock offsets,
+  every window bar being real and ending at the current bucket, 1M staying
+  unanchored, the series tail tracking the clock with no lag at both 1S and 15S,
+  1S ticks being exactly one `update()` each with no extra `setData`, the
+  re-anchor taking the `window-slide` branch and landing on the current bucket,
+  and a scrolled-left viewer keeping the same wall-clock bars across a
+  re-anchor. Deliberately not done: bars near the window's head do fall out of
+  view at a re-anchor for a viewer scrolled far left — an accepted consequence
+  of capping at all, noted in the test. The 1M-and-coarser uncapped-timeline
+  follow-up from the entry above still stands. Validated this session, on the
+  final commit: `npm run test:app` — 287 test files / 3285 tests passing.
+  `npm run lint` — 0 errors (12 pre-existing warnings only). `npm run build` —
+  succeeds. `npm run test:contracts` not run (no contract changes). No visual
+  pass was possible from this session — the owner verifies on the deployed page,
+  which requires this branch to be merged first, since `main` still carries both
+  defects.

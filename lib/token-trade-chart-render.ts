@@ -1,6 +1,7 @@
 import {
   bucketTradesIntoCandles,
   buildChartSeriesPoints,
+  CANDLE_INTERVAL_SECONDS,
   CHART_BAR_SPACING_PX,
   computeMovingAverage,
   diffCandles,
@@ -184,8 +185,8 @@ export type TokenTradeChartSeriesBundle = {
   timeScale: ChartTimeScaleLike;
 };
 
-/** Which branch the most recent applyTokenTradeChartUpdate call took (issue #472 item 2's debug readout) — "initial" is the very first render, "full-resync" covers both a timeframe/interval change and the out-of-order/crash fallback, "incremental" is the normal update()-only path. */
-export type TokenTradeChartUpdateMode = "initial" | "incremental" | "full-resync";
+/** Which branch the most recent applyTokenTradeChartUpdate call took (issue #472 item 2's debug readout) — "initial" is the very first render, "full-resync" covers both a timeframe/interval change and the out-of-order/crash fallback, "window-slide" is the sub-minute window re-anchoring, "incremental" is the normal update()-only path. */
+export type TokenTradeChartUpdateMode = "initial" | "incremental" | "full-resync" | "window-slide";
 
 export type TokenTradeChartRenderState = {
   points: ChartSeriesPoint[];
@@ -273,6 +274,17 @@ export function applyTokenTradeChartUpdate(
 
   const isFirstLoadOrTimeframeChange =
     !previousState.hasRenderedOnce || previousState.timeframe !== timeframe || previousState.resolvedInterval !== interval;
+
+  // How far the timeline's head moved since the last render, in bars. Non-zero
+  // only when the sub-minute window re-anchors, or when a width change resizes
+  // that window (which can move the head EARLIER — hence a signed value and a
+  // `!== 0` test rather than a positive-only one).
+  const previousHeadTime = previousState.points.length > 0 ? previousState.points[0].time : null;
+  const nextHeadTime = points.length > 0 ? points[0].time : null;
+  const windowSlideBars =
+    !isFirstLoadOrTimeframeChange && previousHeadTime !== null && nextHeadTime !== null
+      ? Math.round((nextHeadTime - previousHeadTime) / CANDLE_INTERVAL_SECONDS[interval])
+      : 0;
   let lastUpdateMode: TokenTradeChartUpdateMode = !previousState.hasRenderedOnce ? "initial" : "incremental";
 
   if (isFirstLoadOrTimeframeChange) {
@@ -284,6 +296,36 @@ export function applyTokenTradeChartUpdate(
     const lastPointIndex = points.length - 1;
     if (lastPointIndex >= 0) {
       series.timeScale.setVisibleLogicalRange(computeInitialVisibleLogicalRange(lastPointIndex, chartWidthPx));
+    }
+  } else if (windowSlideBars !== 0) {
+    // The sub-minute window re-anchored (computeAnchoredSubminuteStartTime), so
+    // every logical index now refers to a DIFFERENT bucket than it did last
+    // render. diffChartSeriesPoints compares index-for-index and never compares
+    // `time`, so on a timeline of identical flat bars it would report "nothing
+    // changed" and the chart would silently freeze — the defect this branch
+    // exists to make impossible. A shifted timeline can only be applied whole.
+    lastUpdateMode = "window-slide";
+    const previousLastIndex = previousState.points.length - 1;
+    const rangeBeforeSlide = series.timeScale.getVisibleLogicalRange();
+    const wasAtRightEdge = isAtChartRightEdge(rangeBeforeSlide, previousLastIndex);
+
+    series.candleSeries.setData(points.map(toSeriesDatum));
+    series.ma20Series.setData(ma20.map((point) => ({ time: point.time, value: point.value })));
+    series.ma50Series.setData(ma50.map((point) => ({ time: point.time, value: point.value })));
+    series.volumeSeries.setData(candles.map((candle) => ({ time: candle.time, value: candle.volume, color: volumeBarColor(candle) })));
+
+    const lastPointIndex = points.length - 1;
+    if (lastPointIndex >= 0) {
+      if (wasAtRightEdge) {
+        series.timeScale.setVisibleLogicalRange(computeInitialVisibleLogicalRange(lastPointIndex, chartWidthPx));
+      } else if (rangeBeforeSlide) {
+        // Subtracting the slide keeps the SAME BAR TIMES in view: every bar the
+        // viewer was looking at moved `windowSlideBars` indices to the left.
+        series.timeScale.setVisibleLogicalRange({
+          from: rangeBeforeSlide.from - windowSlideBars,
+          to: rangeBeforeSlide.to - windowSlideBars,
+        });
+      }
     }
   } else {
     const pointsDiff = diffChartSeriesPoints(previousState.points, points);
