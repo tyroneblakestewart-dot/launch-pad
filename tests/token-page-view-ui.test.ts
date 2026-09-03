@@ -1144,3 +1144,110 @@ describe("token page v2 premium surface system (issue #460)", () => {
     expect(css.slice(shellStart, shellEnd)).toContain("gap: 14px;");
   });
 });
+
+describe("token page UI fidelity against design/token-page-v2 (owner visual pass, 3 Sep)", () => {
+  it("header band: DROP ART lives inside the art tile and the holders / launched / chain meta row is always rendered — never an either/or", async () => {
+    const component = await source("components/token-page/token-header-band.tsx");
+    const tileStart = component.indexOf("className={styles.headerArtworkTile}");
+    const identityStart = component.indexOf("className={styles.headerIdentity}");
+    const dropArt = component.indexOf("<button type=\"button\" className={styles.headerDropArt}>");
+    const metaRow = component.indexOf("className={styles.headerMetaRow}");
+    expect(tileStart).toBeGreaterThan(-1);
+    expect(identityStart).toBeGreaterThan(tileStart);
+    // DROP ART is a child of the tile, before the identity block begins.
+    expect(dropArt).toBeGreaterThan(tileStart);
+    expect(dropArt).toBeLessThan(identityStart);
+    // The meta row sits in the identity block and is not gated on showDropArt.
+    expect(metaRow).toBeGreaterThan(identityStart);
+    const identityBlock = component.slice(identityStart, metaRow);
+    expect(identityBlock).not.toContain("showDropArt ?");
+  });
+
+  it("header band: the DROP ART label uses the design's tile-text recipe (mono 700 6.5px/1.6, #6f746e) and fills the tile with no border of its own", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const start = css.indexOf(".headerDropArt {");
+    const rule = css.slice(start, css.indexOf("}", start));
+    expect(rule).toContain("font: 700 6.5px/1.6 var(--mono);");
+    expect(rule).toContain("letter-spacing: 0.1em;");
+    expect(rule).toContain("color: var(--text-faint);");
+    expect(rule).toContain("border: 0;");
+    expect(rule).toContain("width: 100%;");
+    expect(rule).toContain("height: 100%;");
+  });
+
+  it("swap panel: the Buy/Sell track stretches to fill its row via a swap-only modifier, while the shared .tabGroup (also used by Stats/Audit) stays content-sized", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const groupStart = css.indexOf(".buySellGroup {");
+    expect(groupStart).toBeGreaterThan(-1);
+    expect(css.slice(groupStart, css.indexOf("}", groupStart))).toContain("flex: 1;");
+    const tabStart = css.indexOf(".tabGroup {");
+    expect(css.slice(tabStart, css.indexOf("}", tabStart))).not.toContain("flex: 1;");
+
+    const left = await source("components/token-page/token-left-column.tsx");
+    expect(left).toContain("className={`${styles.tabGroup} ${styles.buySellGroup}`}");
+    const stats = await source("components/token-page/token-stats-audit-panel.tsx");
+    expect(stats).toContain("className={styles.tabGroup}");
+    expect(stats).not.toContain("buySellGroup");
+  });
+
+  it("lower tabs: trade and holder rows are the design's rounded row cards inside a padded 4px-gap list, not separator-divided full-width rows", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const listStart = css.indexOf(".activityList {");
+    expect(listStart).toBeGreaterThan(-1);
+    const list = css.slice(listStart, css.indexOf("}", listStart));
+    expect(list).toContain("gap: 4px;");
+    expect(list).toContain("padding: 12px 18px 16px;");
+
+    const rowStart = css.indexOf(".activityRow {");
+    const row = css.slice(rowStart, css.indexOf("}", rowStart));
+    expect(row).toContain("border-radius: 9px;");
+    expect(row).toContain("border: 1px solid rgba(255, 255, 255, 0.06);");
+    expect(row).toContain("background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.008));");
+    expect(row).toContain("padding: 9px 10px;");
+    expect(row).not.toContain("border-bottom");
+
+    const headerStart = css.indexOf(".activityHeaderRow {");
+    const header = css.slice(headerStart, css.indexOf("}", headerStart));
+    expect(header).toContain("font: 700 8.5px/1 var(--mono);");
+    expect(header).toContain("letter-spacing: 0.13em;");
+    expect(header).not.toContain("border-bottom");
+
+    const centre = await source("components/token-page/token-center-column.tsx");
+    expect(centre.match(/className=\{styles\.activityList\}/g)?.length).toBe(2);
+  });
+
+  it("holders rows follow the design's order and widths: rank 26px, wallet, 130px share bar, then a right-aligned 52px percentage", async () => {
+    const css = await source("components/token-page/token-page.module.css");
+    const start = css.indexOf(".holdersGridCols {");
+    expect(css.slice(start, css.indexOf("}", start))).toContain("grid-template-columns: 26px 1fr 130px 52px;");
+
+    const centre = await source("components/token-page/token-center-column.tsx");
+    const rowStart = centre.indexOf("className={`${styles.activityRow} ${styles.holdersGridCols}`}");
+    // Ends at the note rendered after the holders map — the row's own inline
+    // width style contains "))}" so that can't be used as a terminator.
+    const block = centre.slice(rowStart, centre.indexOf("Liquidity pool address excluded", rowStart));
+    const rank = block.indexOf("styles.rankText");
+    const wallet = block.indexOf("styles.dimText");
+    const bar = block.indexOf("styles.shareBarTrack");
+    const pct = block.indexOf("formatHolderPercent(holder.percent)");
+    expect(rank).toBeGreaterThan(-1);
+    expect(wallet).toBeGreaterThan(rank);
+    expect(bar).toBeGreaterThan(wallet);
+    expect(pct).toBeGreaterThan(bar);
+    expect(block.slice(pct - 80, pct)).toContain("styles.tradesCellRight");
+  });
+
+  it("swap CTA reads \"Buy $TICKER\" / \"Sell $TICKER\" (design), sourced from the same ticker expression the header band uses, with a bare-verb fallback", async () => {
+    const view = await source("components/token-page/token-page-view.tsx");
+    expect(view).toContain("const ticker = launch?.ticker || (marketStats.supported && marketStats.symbol) || null;");
+    expect(view).toContain("ticker={ticker}");
+    const header = await source("components/token-page/token-header-band.tsx");
+    expect(header).toContain("const ticker = launch?.ticker || (marketStats.supported && marketStats.symbol) || null;");
+
+    const left = await source("components/token-page/token-left-column.tsx");
+    expect(left).toContain("ticker: string | null;");
+    expect(left).toContain("ticker ? `${sideVerb} $${ticker}` : sideVerb");
+    expect(left).toContain("`Connect wallet to ${side}`");
+  });
+});
+

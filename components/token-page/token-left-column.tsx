@@ -126,6 +126,8 @@ type TokenLeftColumnProps = {
   curveStatus: TokenCurveStatus;
   /** The page-level shared trades poll (issue #444), forwarded straight through to the Stats/Audit panel. */
   trades: TokenTrade[] | null;
+  /** The token's ticker as the header band shows it (launch record first, then Blockscout), for the CTA label — design: "Buy $HOODS". */
+  ticker: string | null;
 };
 
 /**
@@ -172,6 +174,7 @@ export function TokenLeftColumn({
   factoryMinted,
   curveStatus,
   trades,
+  ticker,
 }: TokenLeftColumnProps) {
   const chainInfo = CHAIN_CONFIG[chainId];
   const displaySymbol = marketStats.supported && marketStats.symbol ? marketStats.symbol : null;
@@ -539,7 +542,10 @@ export function TokenLeftColumn({
         : formatEther(receiveRaw);
 
   const tradeDisabled = !curveReady || !account || !amount || receiveRaw === null || busy;
-  const tradeLabel = !account ? `Connect wallet to ${side}` : busy ? "Submitting…" : side === "buy" ? "Buy" : "Sell";
+  // Design CTA label carries the ticker ("Buy $HOODS" / "Sell $HOODS"); a
+  // token with no known ticker falls back to the bare verb.
+  const sideVerb = side === "buy" ? "Buy" : "Sell";
+  const tradeLabel = !account ? `Connect wallet to ${side}` : busy ? "Submitting…" : ticker ? `${sideVerb} $${ticker}` : sideVerb;
 
   // Honest fee breakdown shown before every signature (issue #412 Part 2):
   // a buy's 1% fee is a pure function of its gross input, computed with the
@@ -569,7 +575,7 @@ export function TokenLeftColumn({
         {curveView.kind === "ready" && curveView.graduation.state !== "graduated" ? (
           <div className={`${styles.panel} ${styles.swapPanel}`}>
             <div className={styles.swapTopRow}>
-              <div className={styles.tabGroup}>
+              <div className={`${styles.tabGroup} ${styles.buySellGroup}`}>
                 <button
                   type="button"
                   className={`${styles.pillButton} ${styles.buySellTab} ${side === "buy" ? styles.pillButtonActive : ""}`}

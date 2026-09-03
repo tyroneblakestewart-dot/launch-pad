@@ -131,7 +131,7 @@ export function TokenCenterColumn({
           ) : trades.length === 0 ? (
             <p className={styles.emptyState}>No trades recorded yet.</p>
           ) : (
-            <div>
+            <div className={styles.activityList}>
               <div className={`${styles.activityHeaderRow} ${styles.tradesGridCols}`}>
                 <span>Type</span>
                 <span>Wallet</span>
@@ -171,24 +171,26 @@ export function TokenCenterColumn({
           holders.length === 0 ? (
             <p className={styles.emptyState}>No holder data found for this token yet.</p>
           ) : (
-            <div>
+            <div className={styles.activityList}>
               <div className={`${styles.activityHeaderRow} ${styles.holdersGridCols}`}>
                 <span>Rank</span>
                 <span>Wallet</span>
-                <span>% supply</span>
                 <span>Share</span>
+                <span className={styles.tradesCellRight}>% supply</span>
               </div>
               {holders.map((holder, index) => (
+                // Design order (design/token-page-v2 holders rows): rank, wallet,
+                // share bar, then the percentage right-aligned in the last column.
                 <div key={holder.address} className={`${styles.activityRow} ${styles.holdersGridCols}`}>
                   <span className={styles.rankText}>#{index + 1}</span>
                   <span className={styles.dimText}>{shortenAddress(holder.address)}</span>
-                  <span className={styles.bodyText}>{formatHolderPercent(holder.percent)}</span>
                   <span className={styles.shareBarTrack}>
                     <span
                       className={styles.shareBarFill}
                       style={{ width: `${Math.min(100, Math.max(2, holder.percent || 0))}%` }}
                     />
                   </span>
+                  <span className={`${styles.bodyText} ${styles.tradesCellRight}`}>{formatHolderPercent(holder.percent)}</span>
                 </div>
               ))}
               <p className={styles.mutedNote} style={{ padding: "11px 16px" }}>
