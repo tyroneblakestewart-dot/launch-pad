@@ -1405,10 +1405,8 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   design file and issue #460's spec first: the master panel recipe (3-stop
   gradient, inset hairline, black ring, deep shadow) is present on every panel,
   the CTA is a solid `#c6f53e` in all four rules (the design-tool commentary
-  calling it a gradient was wrong about the code), SELL rows are red per the
-  design's own `dn` colour, and the 340px left column is as specified — none
-  of those were changed. Five genuine discrepancies were found in code and
-  fixed. **(1) Header band** — `token-header-band.tsx` rendered
+  calling it a gradient was wrong about the code), and the 340px left column is as specified — none of those were changed.
+  Seven genuine discrepancies were found in code and fixed. **(1) Header band** — `token-header-band.tsx` rendered
   `showDropArt ? <DROP ART pill> : <meta row>`, so the token's creator (the
   only viewer who ever sees DROP ART) never saw the holders / launched / chain
   line at all; the design shows both, with DROP ART as the art tile's own
@@ -1437,16 +1435,34 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   text classes keep their meaning elsewhere. The `64px 1fr 110px 96px 56px`
   trade grid is unchanged. **(5) Holders rows** — reordered to the design's
   rank, wallet, share bar, then right-aligned percentage, with the design's
-  `26px 1fr 130px 52px` columns and `700 10px` rank. New source-pattern tests
-  pin each of the five (DROP ART inside the tile and no `showDropArt ?` gate
+  `26px 1fr 130px 52px` columns and `700 10px` rank. **(6) Down colour** — every "down" state (SELL rows, negative stats values,
+  the split bar's right half, the negative change pill, down candles and
+  wicks) used red `#e2564b`, and an earlier draft of this very entry defended
+  that as "the design's own `dn` colour". It is not: the design's `dn` is the
+  editable `downColor` prop, whose committed `data-props` default is the grey
+  option **`#8d918c`** (options red / orange / grey); issue #460's "red" was
+  quoted from the code's `?? '#e2564b'` fallback, not the owner's chosen
+  default. A single `--accent-down: #8d918c` token now drives all of those;
+  `--accent-red` remains for genuine error states only (`.tradeErrorText`).
+  **(7) Chart grid** — the design's `showGrid` default is `false`; the page
+  drew a grid. `createChart`'s grid lines are now `visible: false`; #460
+  section 7's grid colours came from the file's grid-on branch. A new test
+  decodes the design file's own `data-props` and asserts `DOWN_COLOR` and
+  `--accent-down` equal its `downColor` default and that `showGrid` is false,
+  so these two can never drift from the committed design again. **Tests
+  changed rather than only added (rule 8, stated plainly):** the #460
+  section 7 chart-options test asserted `DOWN_COLOR = "#e2564b"` and the two
+  grid colours — it pinned values the design does not use — and was rewritten
+  to the design's defaults. New source-pattern tests
+  pin each of the first five (DROP ART inside the tile and no `showDropArt ?` gate
   around the meta row; the tile-text recipe; `.buySellGroup` present on the
   swap track only; row-card recipe and list wrapper on both lists; holders
-  order/columns; the shared ticker expression and CTA label). No existing
-  assertion was changed. Not done: the design colours the meta row's numbers
+  order/columns; the shared ticker expression and CTA label). No other existing assertion
+  was changed. Not done: the design colours the meta row's numbers
   (`2,417`, `2D AGO`) `#c3c9c4` against the label's `#8d918c`; the current
   labels are single strings pinned by existing tests, so that split was left
   for a follow-up. Validated this session, on the final commit: `npm run
-  test:app` — 287 test files / 3295 tests passing. `npm run lint` — 0 errors
+  test:app` — 287 test files / 3297 tests passing. `npm run lint` — 0 errors
   (12 pre-existing warnings only). `npm run build` — succeeds. No visual pass
   was possible from this session — the owner compares the deployed page with
   the design after merge.
