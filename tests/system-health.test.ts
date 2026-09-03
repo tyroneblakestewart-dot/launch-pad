@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   checkClientErrorsHealth,
   checkContentFilterHealth,
   checkContractsHealth,
   checkDatabaseHealth,
+  contractsClient,
+  HEALTH_CHECK_TIMEOUT_MS,
+  setContractsClientForTests,
   checkDeploymentHealth,
   checkHoodchatHealth,
   checkOperationsCostHealth,
@@ -91,9 +94,20 @@ describe("checkDatabaseHealth", () => {
   });
 
   it("is red when the ping never resolves before the timeout", async () => {
-    const result = await checkDatabaseHealth({ ping: () => new Promise(() => {}) });
-    expect(result).toMatchObject({ id: "database", status: "red" });
-  }, 10_000);
+    // Fake timers rather than a real 5s wait (issue #475), matching
+    // tests/public-health-route.test.ts's own hung-probe test. Waiting for
+    // real time made this the single slowest test in the suite and left it
+    // needing an explicit 10s override just to outrun vitest's default
+    // timeout — a margin that shrinks on a loaded CI runner.
+    vi.useFakeTimers();
+    try {
+      const pending = checkDatabaseHealth({ ping: () => new Promise(() => {}) });
+      await vi.advanceTimersByTimeAsync(HEALTH_CHECK_TIMEOUT_MS);
+      expect(await pending).toMatchObject({ id: "database", status: "red" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it("is amber when DATABASE_URL is not configured", async () => {
     const result = await checkDatabaseHealth({ databaseUrl: "" });
@@ -515,5 +529,38 @@ describe("getSystemHealth", () => {
     expect(byId.deployment.status).toBe("green");
     expect(byId.contracts.status).toBe("amber");
     expect(byId["website-generation"].status).toBe("amber");
+  });
+});
+
+describe("contracts RPC is never real in tests (issue #475)", () => {
+  it("tests/setup.ts installs a failing client by default, so a check that injects nothing can never reach the network", async () => {
+    // Deliberately injects nothing — this asserts the global default from
+    // tests/setup.ts is in force. Before it existed, this call built a real
+    // viem client pointed at the live Robinhood testnet RPC.
+    await expect(contractsClient(46630, undefined).getChainId()).rejects.toThrow(/RPC is disabled in tests/);
+  });
+
+  it("contractsClient returns the injected client outright, so no real client is constructed even when an rpcUrl is passed", () => {
+    const fake = { getChainId: async () => 46630, readContract: async () => null };
+    setContractsClientForTests(fake as never);
+    expect(contractsClient(46630, "https://rpc.example.invalid")).toBe(fake);
+  });
+
+  it("an uninjected contracts health check goes through that client rather than the network, and still reports red", async () => {
+    let calls = 0;
+    setContractsClientForTests({
+      getChainId: async () => {
+        calls += 1;
+        throw new Error("RPC is disabled in tests");
+      },
+      readContract: async () => {
+        calls += 1;
+        throw new Error("RPC is disabled in tests");
+      },
+    } as never);
+
+    const result = await checkContractsHealth();
+    expect(calls).toBeGreaterThan(0);
+    expect(result).toMatchObject({ id: "contracts", status: "red" });
   });
 });
