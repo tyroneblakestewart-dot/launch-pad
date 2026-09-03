@@ -29,20 +29,25 @@ import type { TokenTrade } from "@/lib/token-trade-types";
 // lives here, unchanged in behaviour from before the extraction.
 //
 // Positioning is now owned entirely by this file (issue #467 items 1-2),
-// replacing the old `scrollToRealTime` call. Both that lightweight-charts
-// built-in and the chart's own `shiftVisibleRangeOnNewBar` option act on the
-// last bar that carries *series data* and ignore trailing whitespace bars — but
-// `buildChartSeriesPoints` deliberately extends the timeline with whitespace
-// all the way to the current bucket, so on a token with a long trade-free
-// tail those built-ins left the view scrolled to the last real candle while
-// every later whitespace bar (and the axis' reach to "now") sat off-screen
-// to the right, making the chart look permanently frozen. `computeInitial
-// VisibleLogicalRange` positions on the LAST timeline point (a real candle or
-// the current-time whitespace bar) instead, and the incremental-update branch
+// replacing the old `scrollToRealTime` call. `computeInitialVisibleLogicalRange`
+// positions on the LAST timeline point, and the incremental-update branch
 // below tracks whether the viewer is "at the right edge" and, if so, shifts
 // the range by exactly the number of newly appended points on every update —
 // following the clock — while leaving the range untouched the moment the
 // viewer has scrolled left.
+//
+// That only works because the timeline's tail is made of *real bars* (issue
+// #472 follow-up). lightweight-charts filters whitespace rows out of every
+// series' row list before computing the time scale's base index, and
+// `_correctOffset` clamps the right offset to roughly one screen width
+// (width / barSpacing − 2 bars) past that base index — so with a whitespace
+// tail, a requested range ending at "now" was silently clamped back to just
+// past the last trade, leaving the view pinned to the launch candle with an
+// empty grid after it no matter what this file asked for (and, on a capped
+// 1S window that started after the only trade, no real bar at all to
+// anchor). `buildChartSeriesPoints` therefore carries the previous close
+// forward as a flat candle for every trade-free bucket, so the current
+// bucket is always a real bar the library is willing to follow.
 
 type ChartBar = {
   time: number;
@@ -259,7 +264,7 @@ export function applyTokenTradeChartUpdate(
   const candles = bucketTradesIntoCandles(trades, interval, decimals, startingPriceNativePerToken ?? undefined);
   const ma20 = computeMovingAverage(candles, MA20_PERIOD);
   const ma50 = computeMovingAverage(candles, MA50_PERIOD);
-  const points = buildChartSeriesPoints(candles, interval, nowUnixSeconds, launchedAtUnixSeconds, chartWidthPx);
+  const points = buildChartSeriesPoints(candles, interval, nowUnixSeconds, launchedAtUnixSeconds, chartWidthPx, startingPriceNativePerToken);
   const flatCandleMinBodyHeight = computeFlatCandleMinBodyHeight(
     candles,
     candles.length > 0 ? candles[candles.length - 1].close : startingPriceNativePerToken ?? 0,

@@ -1198,3 +1198,66 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   changes were checked by reading the code and by the new unit/fixture
   tests, not on a live deployed page; flagged for the owner to confirm by
   trading on a live bonding-curve token.
+
+- Token chart flat-fill — the timeline now genuinely ends in a real bar
+  (issue #472 follow-up; the "no candles / not smooth in any timeframe"
+  defect seen on WERDE after #473 deployed). Root cause, proven against
+  `lightweight-charts@4.1.3`'s own source rather than inferred: the
+  flat-filled timeline #471/#472 describe was never built in the data
+  layer. `bucketTradesIntoCandles` only ever emitted a candle for a bucket
+  that contained a trade, and `buildChartSeriesPoints` filled every gap
+  with a whitespace `{ time }` point (its doc comment said so). The library
+  filters whitespace rows out of every series' row list before computing
+  the time scale's base index, then clamps the right offset to roughly one
+  screen width (`width / barSpacing − 2` bars) past that base index — so
+  the width-derived range the engine requested (ending ~2,900 bars past
+  the single WERDE candle at 1M) was silently clamped back to just past
+  the launch candle: one lime bar at the left edge, an empty grid after it,
+  the axis two days behind "now". On 1S the capped 372-bar window started
+  long after the only trade and contained no real bar at all, so there was
+  nothing to anchor. #472's `isFlatCandle`/`candleToBar` paint was correct
+  but unreachable — the only flat candle that could exist was a
+  single-trade bucket with no starting price to open from. Fix, chart-only
+  (`lib/candle-bucketing.ts`): `buildChartSeriesPoints` now carries the
+  previous close forward as a real flat candle (open = high = low = close,
+  volume 0) for every trade-free bucket once any price is known — from the
+  launch bucket at the curve's starting price when `launchedAtUnixSeconds`
+  and a positive `startingPriceNativePerToken` (new optional sixth
+  parameter, threaded from `applyTokenTradeChartUpdate`) are both known,
+  else from the first traded candle; buckets before any known price stay
+  whitespace, and a capped 1S window that starts after the last trade
+  still carries that trade's close, never a re-seeded starting price.
+  Nothing is interpolated or invented — a flat bar is the price that
+  genuinely stood during that bucket. `bucketTradesIntoCandles` itself is
+  unchanged, so MA20/MA50, the volume series, the Stats panel, the homepage
+  sparkline and mini candles keep reading traded candles only. Because
+  "ALL" previously sized itself from the traded-bucket count alone (a
+  two-day-old single-trade token resolved to 1S — six minutes of history),
+  `resolveAllTimeframeInterval`/`resolveChartInterval` accept optional
+  `nowUnixSeconds`/`launchedAtUnixSeconds` and, when given, pick the finest
+  interval whose flat-filled span (earlier of launch and first trade → now)
+  fits the existing 200-bar cap (WERDE → 15M); the trade-count-only rule is
+  kept when no "now" is supplied. `components/token-page/token-trade-chart.tsx`
+  moves its `nowTick` state above the `resolvedInterval` memo so "ALL" can
+  read the clock. **Tests changed rather than only added (rule 8, stated
+  plainly):** the five #451 `buildChartSeriesPoints` cases asserting that
+  gap buckets are whitespace, and one #451 case asserting the timeline's
+  candle points exactly equal `bucketTradesIntoCandles`' output, pinned
+  the defect itself and were rewritten to assert the flat-fill contract;
+  the `tests/token-trades-hook-ui.test.ts` source-string assertion on the
+  `resolvedInterval` memo was updated to the new signature. New coverage:
+  the WERDE shape at 1M and 1S (last point is a real bar at the current
+  bucket; a capped 1S window is all real bars at the old close), the
+  starting-price seed from the launch bucket, the span-sized ALL resolver,
+  and — through the fake-series engine harness — that the last datum
+  reaching `setData` is a flat-coloured OHLC bar and that advancing "now"
+  by one bucket appends exactly one flat bar via `update()` and shifts the
+  range by one. Deliberately not done: 1M-and-coarser timelines remain
+  uncapped (bar count = token age ÷ interval; a 60-day-old token at 1M is
+  ~86k flat bars where it was ~86k whitespace points before) — extending
+  #470's sub-minute cap to every interval is a named follow-up. Validated
+  this session, on the final commit: `npm run test:app` — 287 test files /
+  3273 tests passing. `npm run lint` — 0 errors (12 pre-existing warnings
+  only). `npm run build` — succeeds. `npm run test:contracts` not run (no
+  contract changes). No visual pass was possible from this session — the
+  owner verifies on the deployed WERDE page.

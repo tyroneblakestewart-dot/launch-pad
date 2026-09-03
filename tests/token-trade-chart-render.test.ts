@@ -626,3 +626,69 @@ describe("isFlatCandle / candleToBar — flat-candle visibility (issue #472 item
     expect(bucket0?.color).toBe(FLAT_CANDLE_COLOR);
   });
 });
+
+
+describe("applyTokenTradeChartUpdate — flat-filled timeline reaches the series (issue #472 follow-up)", () => {
+  it("the last datum handed to setData on first load is a real OHLC bar at the current bucket, flat-coloured, not a whitespace point", () => {
+    const chart = createFakeChart();
+    const now = 6 * FIVE_MINUTES;
+    const state = applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), {
+      trades: [tradeAtPrice(0.01, { blockTimestamp: 0 })],
+      decimals: DECIMALS,
+      interval: "5m",
+      timeframe: "5m",
+      nowUnixSeconds: now,
+      startingPriceNativePerToken: 0.001,
+      launchedAtUnixSeconds: 0,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+    const data = chart.candle.getData();
+    const last = data[data.length - 1];
+    expect(last.time).toBe(now);
+    expect("open" in last).toBe(true);
+    if ("open" in last) expect(last.color).toBe(FLAT_CANDLE_COLOR);
+    expect(state.points[state.points.length - 1].time).toBe(now);
+    // The requested range ends at the last real bar plus the fixed right
+    // offset — inside the library's own clamp, so it is honoured as-is.
+    expect(chart.getRange()).toEqual(computeInitialVisibleLogicalRange(state.points.length - 1, CHART_WIDTH_PX));
+  });
+
+  it("advancing now by one bucket appends exactly one flat bar through update() and shifts the range by one — the chart follows the clock", () => {
+    const chart = createFakeChart();
+    const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 })];
+    const base = { trades, decimals: DECIMALS, interval: "5m" as const, timeframe: "5m" as const, startingPriceNativePerToken: 0.001, launchedAtUnixSeconds: 0, chartWidthPx: CHART_WIDTH_PX };
+    const first = applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), { ...base, nowUnixSeconds: 0 });
+    const rangeBefore = chart.getRange();
+    const updateCallsBefore = chart.candle.updateCalls;
+
+    const second = applyTokenTradeChartUpdate(chart.bundle, first, { ...base, nowUnixSeconds: FIVE_MINUTES });
+
+    expect(second.lastUpdateMode).toBe("incremental");
+    expect(chart.candle.updateCalls - updateCallsBefore).toBe(1);
+    expect(second.points.length - first.points.length).toBe(1);
+    const data = chart.candle.getData();
+    const last = data[data.length - 1];
+    expect(last.time).toBe(FIVE_MINUTES);
+    expect("open" in last && last.color === FLAT_CANDLE_COLOR).toBe(true);
+    expect(chart.getRange()).toEqual({ from: rangeBefore!.from + 1, to: rangeBefore!.to + 1 });
+  });
+
+  it("a 1S window that starts long after the only trade renders flat bars at that trade's close, so the capped window is never an all-whitespace series with no bar to anchor", () => {
+    const chart = createFakeChart();
+    const now = 4 * 86_400;
+    applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), {
+      trades: [tradeAtPrice(0.02, { blockTimestamp: 0 })],
+      decimals: DECIMALS,
+      interval: "1s",
+      timeframe: "1s",
+      nowUnixSeconds: now,
+      startingPriceNativePerToken: 0.001,
+      launchedAtUnixSeconds: 0,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+    const data = chart.candle.getData();
+    expect(data.length).toBe(200);
+    expect(data.every((datum) => "open" in datum)).toBe(true);
+    expect(data[data.length - 1].time).toBe(now);
+  });
+});
