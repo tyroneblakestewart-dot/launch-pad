@@ -10,6 +10,7 @@ import {
   formatNativePriceAtDecimals,
   formatNativePriceSixSigFigs,
   formatPriceChange,
+  formatSharePercent,
   formatSignedPercent,
   formatTimeAgoSeconds,
   formatTokenBalanceAmount,
@@ -45,6 +46,20 @@ describe("formatHolderCount", () => {
 
   it("returns an em dash for null", () => {
     expect(formatHolderCount(null)).toBe("—");
+  });
+});
+
+describe("formatSharePercent", () => {
+  it("formats a Holder-breakdown share at one decimal place", () => {
+    expect(formatSharePercent(18.43)).toBe("18.4%");
+    expect(formatSharePercent(4.2)).toBe("4.2%");
+    expect(formatSharePercent(100)).toBe("100.0%");
+  });
+
+  it("renders a real zero as 0.0% but an unknown as an em dash", () => {
+    expect(formatSharePercent(0)).toBe("0.0%");
+    expect(formatSharePercent(null)).toBe("—");
+    expect(formatSharePercent(Number.NaN)).toBe("—");
   });
 });
 

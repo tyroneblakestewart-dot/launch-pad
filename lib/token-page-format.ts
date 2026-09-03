@@ -24,6 +24,17 @@ export function formatHolderCount(value: number | null): string {
   return value.toLocaleString("en-US");
 }
 
+/**
+ * Formats a Holder-breakdown share of supply (Top 10 % / Dev % / Snipers %)
+ * at the design's one decimal place — "18.4%". `null` (row not computable)
+ * renders as "—", never as "0.0%": a real zero is a real number, an unknown
+ * is a dash.
+ */
+export function formatSharePercent(percent: number | null): string {
+  if (percent === null || !Number.isFinite(percent)) return "—";
+  return `${percent.toFixed(1)}%`;
+}
+
 /** Formats a holder's percent of supply, matching `TokenHolderStats`'s `<0.01` floor. */
 export function formatHolderPercent(percent: number | null): string {
   if (percent === null || !Number.isFinite(percent)) return "—";

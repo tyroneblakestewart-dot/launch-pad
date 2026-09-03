@@ -185,4 +185,40 @@ describe("buildTokenLaunchesPipeline", () => {
     });
     expect(stageById(pipeline, "trades-read")).toMatchObject({ status: "red" });
   });
+
+  it("reports holder-stats-read amber when the cache has never been warmed (token page v2 part 3, rule 10)", async () => {
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: {},
+      getServiceControl: async () => activeControl(),
+      readTokenHolderStatsReadHealth: () => ({ lastReadAt: null, lastReadOk: null, ageMs: null }),
+    });
+    expect(stageById(pipeline, "holder-stats-read")).toMatchObject({ status: "amber" });
+  });
+
+  it("reports holder-stats-read green with the read age after a successful read", async () => {
+    const pipeline = await buildTokenLaunchesPipeline({
+      env: {},
+      getServiceControl: async () => activeControl(),
+      readTokenHolderStatsReadHealth: () => ({ lastReadAt: 1000, lastReadOk: true, ageMs: 5000 }),
+    });
+    const stage = stageById(pipeline, "holder-stats-read");
+    expect(stage.status).toBe("green");
+    expect(stage.message).toContain("5s ago");
+  });
+
+  it("reports holder-stats-read red after a failed read, in both the configured and unconfigured DATABASE_URL branches", async () => {
+    const configured = await buildTokenLaunchesPipeline({
+      env: { DATABASE_URL: "postgres://test" },
+      getServiceControl: async () => activeControl(),
+      readTokenHolderStatsReadHealth: () => ({ lastReadAt: 1000, lastReadOk: false, ageMs: 3000 }),
+    });
+    expect(stageById(configured, "holder-stats-read")).toMatchObject({ status: "red" });
+    const unconfigured = await buildTokenLaunchesPipeline({
+      env: {},
+      getServiceControl: async () => activeControl(),
+      readTokenHolderStatsReadHealth: () => ({ lastReadAt: 1000, lastReadOk: false, ageMs: 3000 }),
+    });
+    expect(stageById(unconfigured, "holder-stats-read")).toMatchObject({ status: "red" });
+    expect(unconfigured.stages.map((stage) => stage.id)).toEqual(configured.stages.map((stage) => stage.id));
+  });
 });

@@ -9,7 +9,13 @@ import {
   TRADE_STATS_WINDOW_SECONDS,
   type TradeStatsWindowKey,
 } from "@/lib/token-trade-stats";
-import { formatHolderCount, formatNativeAmountSixSigFigsTrimmed, formatSignedPercent } from "@/lib/token-page-format";
+import {
+  formatHolderCount,
+  formatNativeAmountSixSigFigsTrimmed,
+  formatSharePercent,
+  formatSignedPercent,
+} from "@/lib/token-page-format";
+import type { TokenHolderBreakdown } from "@/lib/token-holder-stats-types";
 import type { TokenTrade } from "@/lib/token-trade-types";
 import styles from "./token-page.module.css";
 
@@ -29,6 +35,8 @@ export type TokenStatsAuditPanelProps = {
   trades: TokenTrade[] | null;
   decimals: number;
   holderCount: number | null;
+  /** Top 10 % / Dev % / Snipers % from the page-level `useTokenHolderStats` poll (token page v2 part 3); null renders every row as "—". */
+  holderBreakdown: TokenHolderBreakdown | null;
   /** Whether this token was minted by the Hoodlums factory — false shows the unverified/dimmed audit treatment. */
   factoryMinted: boolean;
 };
@@ -40,7 +48,7 @@ export type TokenStatsAuditPanelProps = {
  * pure, unit-tested `lib/token-trade-stats.ts`, filtered by the panel's own
  * 5M/1H/24H selector (distinct from the chart's own timeframe rail).
  */
-export function TokenStatsAuditPanel({ trades, decimals, holderCount, factoryMinted }: TokenStatsAuditPanelProps) {
+export function TokenStatsAuditPanel({ trades, decimals, holderCount, holderBreakdown, factoryMinted }: TokenStatsAuditPanelProps) {
   const [tab, setTab] = useState<StatsTab>("stats");
   const [windowKey, setWindowKey] = useState<TradeStatsWindowKey>("24h");
   const [breakdownOpen, setBreakdownOpen] = useState(false);
@@ -180,15 +188,15 @@ export function TokenStatsAuditPanel({ trades, decimals, holderCount, factoryMin
                 </div>
                 <div className={styles.holderBreakdownRow}>
                   <span className={styles.statsPairLabel}>TOP 10 %</span>
-                  <span className={styles.statsPairValueNeutral}>—</span>
+                  <span className={styles.statsPairValueNeutral}>{formatSharePercent(holderBreakdown?.top10Percent ?? null)}</span>
                 </div>
                 <div className={styles.holderBreakdownRow}>
                   <span className={styles.statsPairLabel}>DEV %</span>
-                  <span className={styles.statsPairValueNeutral}>—</span>
+                  <span className={styles.statsPairValueNeutral}>{formatSharePercent(holderBreakdown?.devPercent ?? null)}</span>
                 </div>
                 <div className={styles.holderBreakdownRow} title="Wallets that bought within the first 10 blocks after launch">
                   <span className={styles.statsPairLabel}>SNIPERS % ⓘ</span>
-                  <span className={styles.statsPairValueNeutral}>—</span>
+                  <span className={styles.statsPairValueNeutral}>{formatSharePercent(holderBreakdown?.snipersPercent ?? null)}</span>
                 </div>
                 <div className={styles.holderBreakdownRow}>
                   <span className={styles.statsPairLabel}>TOTAL FEES</span>
