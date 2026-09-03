@@ -44,18 +44,70 @@ import type { TokenTrade } from "@/lib/token-trade-types";
 // following the clock — while leaving the range untouched the moment the
 // viewer has scrolled left.
 
-type ChartBar = { time: number; open: number; high: number; low: number; close: number };
+type ChartBar = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  color?: string;
+  borderColor?: string;
+  wickColor?: string;
+};
 type ChartSeriesDatum = ChartBar | { time: number };
 type VolumeDatum = { time: number; value: number; color: string };
 type LinePoint = { time: number; value: number };
 
-export function candleToBar(candle: Candle): ChartBar {
-  return { time: candle.time, open: candle.open, high: candle.high, low: candle.low, close: candle.close };
+/** #8d918c @ 85% opacity — deliberately brighter than the chart's own #6f746e axis/label ink, which is what made a flat candle's zero-height body read as empty space under the lime last-price line (issue #472 item 1). */
+export const FLAT_CANDLE_COLOR = "rgba(141, 145, 140, 0.85)";
+
+const FLAT_CANDLE_MIN_BODY_HEIGHT_RATIO = 0.0015;
+/** Matches expandDegeneratePriceRange's own ±5% convention (lib/token-chart-tools.ts) for the one case both functions share: every candle in view sits at the exact same price, so there is no real span to take a fraction of. */
+const FLAT_CANDLE_DEGENERATE_PRICE_RATIO = 0.05;
+
+/** A flat candle: no trade within the bucket moved the price away from the carried-forward open, so open/high/low/close all collapse to one value — a real candlestick series draws this as a bare 1px line, not a body. */
+export function isFlatCandle(candle: Pick<Candle, "open" | "high" | "low" | "close">): boolean {
+  return candle.open === candle.high && candle.high === candle.low && candle.low === candle.close;
 }
 
-/** Converts a whitespace-inclusive timeline point to what the candlestick series expects: an OHLC bar, or a bare-time WhitespaceData point. */
-export function pointToSeriesDatum(point: ChartSeriesPoint): ChartSeriesDatum {
-  return isCandlePoint(point) ? candleToBar(point) : { time: point.time };
+/**
+ * The minimum price-space body height a flat candle is stretched to so it
+ * renders as a visible body instead of a bare wick line (issue #472 item 1).
+ * lightweight-charts has no "minimum pixel body height" option for a
+ * candlestick series, so this approximates the requested ~2px minimum in
+ * price space instead: a small fraction of the full high/low span across
+ * every candle currently rendered, which scales with the chart's own zoom
+ * and price magnitude without a real chart instance to measure actual
+ * pixels against. Falls back to a percentage of the flat price itself
+ * (mirroring expandDegeneratePriceRange) only when every rendered candle
+ * shares the exact same price, so that span is itself zero.
+ */
+export function computeFlatCandleMinBodyHeight(candles: readonly Candle[], flatPrice: number): number {
+  const span = candles.length > 0 ? Math.max(...candles.map((candle) => candle.high)) - Math.min(...candles.map((candle) => candle.low)) : 0;
+  if (span > 0) return span * FLAT_CANDLE_MIN_BODY_HEIGHT_RATIO;
+  return flatPrice > 0 ? flatPrice * FLAT_CANDLE_DEGENERATE_PRICE_RATIO : FLAT_CANDLE_DEGENERATE_PRICE_RATIO;
+}
+
+export function candleToBar(candle: Candle, minBodyHeight: number): ChartBar {
+  if (!isFlatCandle(candle)) {
+    return { time: candle.time, open: candle.open, high: candle.high, low: candle.low, close: candle.close };
+  }
+  const halfHeight = minBodyHeight / 2;
+  return {
+    time: candle.time,
+    open: candle.close - halfHeight,
+    high: candle.close + halfHeight,
+    low: candle.close - halfHeight,
+    close: candle.close + halfHeight,
+    color: FLAT_CANDLE_COLOR,
+    borderColor: FLAT_CANDLE_COLOR,
+    wickColor: FLAT_CANDLE_COLOR,
+  };
+}
+
+/** Converts a whitespace-inclusive timeline point to what the candlestick series expects: an OHLC bar (flat-stretched per computeFlatCandleMinBodyHeight when needed), or a bare-time WhitespaceData point. */
+export function pointToSeriesDatum(point: ChartSeriesPoint, minBodyHeight: number): ChartSeriesDatum {
+  return isCandlePoint(point) ? candleToBar(point, minBodyHeight) : { time: point.time };
 }
 
 export function volumeBarColor(candle: Candle): string {
@@ -127,6 +179,9 @@ export type TokenTradeChartSeriesBundle = {
   timeScale: ChartTimeScaleLike;
 };
 
+/** Which branch the most recent applyTokenTradeChartUpdate call took (issue #472 item 2's debug readout) — "initial" is the very first render, "full-resync" covers both a timeframe/interval change and the out-of-order/crash fallback, "incremental" is the normal update()-only path. */
+export type TokenTradeChartUpdateMode = "initial" | "incremental" | "full-resync";
+
 export type TokenTradeChartRenderState = {
   points: ChartSeriesPoint[];
   candles: Candle[];
@@ -135,10 +190,20 @@ export type TokenTradeChartRenderState = {
   timeframe: ChartTimeframe | null;
   resolvedInterval: CandleInterval | null;
   hasRenderedOnce: boolean;
+  lastUpdateMode: TokenTradeChartUpdateMode | null;
 };
 
 export function createInitialTokenTradeChartRenderState(): TokenTradeChartRenderState {
-  return { points: [], candles: [], ma20: [], ma50: [], timeframe: null, resolvedInterval: null, hasRenderedOnce: false };
+  return {
+    points: [],
+    candles: [],
+    ma20: [],
+    ma50: [],
+    timeframe: null,
+    resolvedInterval: null,
+    hasRenderedOnce: false,
+    lastUpdateMode: null,
+  };
 }
 
 const MA20_PERIOD = 20;
@@ -195,12 +260,19 @@ export function applyTokenTradeChartUpdate(
   const ma20 = computeMovingAverage(candles, MA20_PERIOD);
   const ma50 = computeMovingAverage(candles, MA50_PERIOD);
   const points = buildChartSeriesPoints(candles, interval, nowUnixSeconds, launchedAtUnixSeconds, chartWidthPx);
+  const flatCandleMinBodyHeight = computeFlatCandleMinBodyHeight(
+    candles,
+    candles.length > 0 ? candles[candles.length - 1].close : startingPriceNativePerToken ?? 0,
+  );
+  const toSeriesDatum = (point: ChartSeriesPoint) => pointToSeriesDatum(point, flatCandleMinBodyHeight);
 
   const isFirstLoadOrTimeframeChange =
     !previousState.hasRenderedOnce || previousState.timeframe !== timeframe || previousState.resolvedInterval !== interval;
+  let lastUpdateMode: TokenTradeChartUpdateMode = !previousState.hasRenderedOnce ? "initial" : "incremental";
 
   if (isFirstLoadOrTimeframeChange) {
-    series.candleSeries.setData(points.map(pointToSeriesDatum));
+    if (previousState.hasRenderedOnce) lastUpdateMode = "full-resync";
+    series.candleSeries.setData(points.map(toSeriesDatum));
     series.ma20Series.setData(ma20.map((point) => ({ time: point.time, value: point.value })));
     series.ma50Series.setData(ma50.map((point) => ({ time: point.time, value: point.value })));
     series.volumeSeries.setData(candles.map((candle) => ({ time: candle.time, value: candle.volume, color: volumeBarColor(candle) })));
@@ -225,7 +297,7 @@ export function applyTokenTradeChartUpdate(
     let needsFullResync = hasOutOfOrderUpdate;
     if (!needsFullResync) {
       try {
-        for (const point of [...pointsDiff.updated, ...pointsDiff.appended]) series.candleSeries.update(pointToSeriesDatum(point));
+        for (const point of [...pointsDiff.updated, ...pointsDiff.appended]) series.candleSeries.update(toSeriesDatum(point));
         for (const candle of [...candleDiff.updated, ...candleDiff.appended]) {
           series.volumeSeries.update({ time: candle.time, value: candle.volume, color: volumeBarColor(candle) });
         }
@@ -237,7 +309,8 @@ export function applyTokenTradeChartUpdate(
     }
 
     if (needsFullResync) {
-      series.candleSeries.setData(points.map(pointToSeriesDatum));
+      lastUpdateMode = "full-resync";
+      series.candleSeries.setData(points.map(toSeriesDatum));
       series.ma20Series.setData(ma20.map((point) => ({ time: point.time, value: point.value })));
       series.ma50Series.setData(ma50.map((point) => ({ time: point.time, value: point.value })));
       series.volumeSeries.setData(candles.map((candle) => ({ time: candle.time, value: candle.volume, color: volumeBarColor(candle) })));
@@ -252,5 +325,5 @@ export function applyTokenTradeChartUpdate(
     }
   }
 
-  return { points, candles, ma20, ma50, timeframe, resolvedInterval: interval, hasRenderedOnce: true };
+  return { points, candles, ma20, ma50, timeframe, resolvedInterval: interval, hasRenderedOnce: true, lastUpdateMode };
 }

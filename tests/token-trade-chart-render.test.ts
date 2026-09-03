@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { tradeSpotPriceNativePerToken } from "@/lib/candle-bucketing";
+import { tradeSpotPriceNativePerToken, type Candle } from "@/lib/candle-bucketing";
 import {
   applyChartResize,
   applyTokenTradeChartUpdate,
+  candleToBar,
+  computeFlatCandleMinBodyHeight,
   computeInitialVisibleLogicalRange,
   createInitialTokenTradeChartRenderState,
+  FLAT_CANDLE_COLOR,
   isAtChartRightEdge,
+  isFlatCandle,
   pointToSeriesDatum,
   volumeBarColor,
   type ChartSeriesLike,
@@ -551,5 +555,74 @@ describe("no code path calls scrollToRealTime or fitContent (issue #467 item 6)"
     const source = await fs.readFile(path.join(process.cwd(), "components/token-page/token-trade-chart.tsx"), "utf8");
     expect(source).not.toContain("scrollToRealTime(");
     expect(source).not.toContain("fitContent(");
+  });
+});
+
+describe("isFlatCandle / candleToBar — flat-candle visibility (issue #472 item 1)", () => {
+  const flatCandle: Candle = { time: 0, open: 0.01, high: 0.01, low: 0.01, close: 0.01, volume: 0 };
+  const realCandle: Candle = { time: 0, open: 0.01, high: 0.02, low: 0.009, close: 0.015, volume: 0 };
+
+  it("identifies a flat candle (open = high = low = close) and a real one correctly", () => {
+    expect(isFlatCandle(flatCandle)).toBe(true);
+    expect(isFlatCandle(realCandle)).toBe(false);
+  });
+
+  it("a flat candle's rendered datum carries the flat colour and the minimum-height rule; a real candle does not", () => {
+    const minBodyHeight = 0.0002;
+    const flatBar = candleToBar(flatCandle, minBodyHeight);
+    expect(flatBar.color).toBe(FLAT_CANDLE_COLOR);
+    expect(flatBar.borderColor).toBe(FLAT_CANDLE_COLOR);
+    expect(flatBar.wickColor).toBe(FLAT_CANDLE_COLOR);
+    expect(flatBar.high - flatBar.low).toBeCloseTo(minBodyHeight);
+    // Centred on the flat candle's own price — never shifted up or down.
+    expect((flatBar.high + flatBar.low) / 2).toBeCloseTo(flatCandle.close);
+
+    const realBar = candleToBar(realCandle, minBodyHeight);
+    expect(realBar.color).toBeUndefined();
+    expect(realBar.borderColor).toBeUndefined();
+    expect(realBar.wickColor).toBeUndefined();
+    expect(realBar).toMatchObject({ open: realCandle.open, high: realCandle.high, low: realCandle.low, close: realCandle.close });
+  });
+
+  it("pointToSeriesDatum applies the same treatment to a candle point, and leaves a whitespace point untouched", () => {
+    const flatDatum = pointToSeriesDatum(flatCandle, 0.0002);
+    expect(flatDatum).toMatchObject({ color: FLAT_CANDLE_COLOR });
+
+    const whitespaceDatum = pointToSeriesDatum({ time: 300 }, 0.0002);
+    expect(whitespaceDatum).toEqual({ time: 300 });
+  });
+
+  it("sizes the minimum body height from a fraction of the full rendered high/low span, and falls back to a percentage of the price itself only when every candle shares one price", () => {
+    const candles: Candle[] = [
+      { time: 0, open: 0.01, high: 0.012, low: 0.008, close: 0.01, volume: 0 },
+      { time: 300, open: 0.01, high: 0.01, low: 0.01, close: 0.01, volume: 0 },
+    ];
+    const span = 0.012 - 0.008;
+    expect(computeFlatCandleMinBodyHeight(candles, 0.01)).toBeCloseTo(span * 0.0015);
+
+    const allFlatCandles: Candle[] = [
+      { time: 0, open: 0.01, high: 0.01, low: 0.01, close: 0.01, volume: 0 },
+      { time: 300, open: 0.01, high: 0.01, low: 0.01, close: 0.01, volume: 0 },
+    ];
+    expect(computeFlatCandleMinBodyHeight(allFlatCandles, 0.01)).toBeCloseTo(0.01 * 0.05);
+  });
+
+  it("applyTokenTradeChartUpdate renders a flat candle's colour override through the full setData path (a single-trade bucket with no prior open carries forward is flat by construction)", () => {
+    const chart = createFakeChart();
+    const singleTrade = tradeAtPrice(0.02, { blockTimestamp: 0 });
+
+    applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), {
+      trades: [singleTrade],
+      decimals: DECIMALS,
+      interval: "5m",
+      timeframe: "5m",
+      nowUnixSeconds: 0,
+      startingPriceNativePerToken: null,
+      launchedAtUnixSeconds: null,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+
+    const bucket0 = chart.candle.getData().find((point) => point.time === 0) as { color?: string } | undefined;
+    expect(bucket0?.color).toBe(FLAT_CANDLE_COLOR);
   });
 });

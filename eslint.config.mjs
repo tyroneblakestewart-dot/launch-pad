@@ -27,6 +27,13 @@ const eslintConfig = defineConfig([
       "components/liquidity-lab.tsx",
       "components/bonding-curve-graduation-status.tsx",
       "components/token-page/token-left-column.tsx",
+      // Both effects flagged here are the standard hydration-safe pattern
+      // (default false/null, flip to the real value only after mount) —
+      // ?chartDebug=1 must read `window.location.search`, which isn't
+      // available during SSR, and the debug snapshot's own live values can
+      // only be read from lightweight-charts refs inside an effect, never
+      // during render (issue #472 item 2).
+      "components/token-page/token-trade-chart.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",
