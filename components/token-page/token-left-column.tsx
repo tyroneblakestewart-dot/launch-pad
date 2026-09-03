@@ -11,6 +11,7 @@ import {
   http,
   parseEther,
   parseUnits,
+  recoverMessageAddress,
   type Address,
 } from "viem";
 import {
@@ -33,6 +34,21 @@ import { CHAIN_CONFIG, ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } f
 import { describeTradeError, sanitiseTradeErrorForLogging } from "@/lib/trade-error-message";
 import { notifyTokenTradeConfirmed } from "@/lib/token-trade-events";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
+import type { Eip1193Provider } from "@/lib/wallet-provider";
+import {
+  QUICK_TRADE_BUY_PRESETS_ETH,
+  QUICK_TRADE_SELL_PRESETS_PERCENT,
+  QUICK_TRADE_SLIPPAGE_OPTIONS_BPS,
+  buildQuickTradeConsentMessage,
+  clearQuickTradeRecord,
+  normaliseQuickTradeSettings,
+  planQuickBuy,
+  quickSellAmountRaw,
+  readQuickTradeRecord,
+  writeQuickTradeRecord,
+  type QuickTradeRecord,
+  type QuickTradeSettings,
+} from "@/lib/quick-trade";
 import { formatFeeNote, formatNativeAmountSixSigFigsTrimmed, formatTokenBalanceAmount, shortenAddress } from "@/lib/token-page-format";
 import type { TokenTrade } from "@/lib/token-trade-types";
 import type { TokenCurveStatus } from "@/lib/use-token-curve-status";
@@ -50,6 +66,15 @@ const chain = defineChain({
   blockExplorers: { default: { name: "Robinhood Chain Explorer", url: ROBINHOOD_TESTNET.blockExplorerUrls[0] } },
   testnet: true,
 });
+
+/** EIP-1193 event surface, optional on the shared provider type — only used to follow `accountsChanged`. */
+type EventfulProvider = Eip1193Provider & {
+  on?: (event: string, listener: (...args: unknown[]) => void) => void;
+  removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
+};
+
+/** How long a quick trade waits for the live quote before giving up with a plain message instead of hanging. */
+const QUICK_TRADE_QUOTE_TIMEOUT_MS = 8_000;
 
 const BUY_PRESETS = ["0.1", "0.5", "1", "MAX"] as const;
 const SELL_PRESETS = ["25%", "50%", "75%", "MAX"] as const;
@@ -202,6 +227,17 @@ export function TokenLeftColumn({
   const [feeBusy, setFeeBusy] = useState(false);
   const [feeStatusMessage, setFeeStatusMessage] = useState("");
   const [feeError, setFeeError] = useState("");
+  // Quick Trade (lib/quick-trade.ts): the verified per-wallet record when the
+  // connected wallet has signed the consent and it checks out, else null.
+  const [quickTrade, setQuickTrade] = useState<QuickTradeRecord | null>(null);
+  const [quickTradeEditing, setQuickTradeEditing] = useState(false);
+  const [quickTradeBusy, setQuickTradeBusy] = useState(false);
+  // Which side a one-tap trade is waiting on: it fills the ordinary form
+  // (side, amount, preset, slippage) and lets the existing quote effect run,
+  // then the effect below hands off to the very same submitTrade() the CTA
+  // uses — one trade path, every guard applies, nothing duplicated.
+  const [quickTradePending, setQuickTradePending] = useState<Side | null>(null);
+  const [quoteFailed, setQuoteFailed] = useState(false);
 
   const curveReady = curveView.kind === "ready";
 
@@ -231,6 +267,71 @@ export function TokenLeftColumn({
   useEffect(() => {
     if (account) void refreshBalances(account);
   }, [account, refreshBalances]);
+
+  // Restore the wallet across a refresh WITHOUT prompting: eth_accounts is a
+  // passive read that only returns an account the wallet has already
+  // authorised for this site (the header band does the same). The
+  // account-request prompt is never issued here — that belongs to the
+  // explicit Connect button alone.
+  // Also follows the wallet's own account switches so the panel never trades
+  // from a stale address.
+  useEffect(() => {
+    let cancelled = false;
+    const provider = getInjectedEvmProvider() as EventfulProvider | undefined;
+    if (!provider) return;
+    provider
+      .request({ method: "eth_accounts" })
+      .then((accounts) => {
+        if (!cancelled && Array.isArray(accounts)) setAccount(accounts[0] ? (accounts[0] as Address) : null);
+      })
+      .catch(() => {});
+    const handleAccountsChanged = (...args: unknown[]) => {
+      const accounts = args[0];
+      setAccount(Array.isArray(accounts) && accounts[0] ? (accounts[0] as Address) : null);
+    };
+    provider.on?.("accountsChanged", handleAccountsChanged);
+    return () => {
+      cancelled = true;
+      provider.removeListener?.("accountsChanged", handleAccountsChanged);
+    };
+  }, []);
+
+  // Quick Trade only ever activates for the wallet that signed for it: the
+  // stored consent is re-verified against the connected account on every
+  // load and account switch, and anything that does not check out is
+  // discarded rather than trusted.
+  useEffect(() => {
+    let cancelled = false;
+    setQuickTradeEditing(false);
+    setQuickTradePending(null);
+    if (!account || typeof window === "undefined") {
+      setQuickTrade(null);
+      return;
+    }
+    const record = readQuickTradeRecord(window.localStorage, account);
+    if (!record) {
+      setQuickTrade(null);
+      return;
+    }
+    recoverMessageAddress({ message: record.message, signature: record.signature })
+      .then((signer) => {
+        if (cancelled) return;
+        if (signer.toLowerCase() === account.toLowerCase()) {
+          setQuickTrade(record);
+        } else {
+          clearQuickTradeRecord(window.localStorage, account);
+          setQuickTrade(null);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        clearQuickTradeRecord(window.localStorage, account);
+        setQuickTrade(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [account]);
 
   // Creator fee panel data (issue #412 Part 2): only meaningful once the
   // curve is loaded and the connected wallet is confirmed on-chain as its
@@ -315,6 +416,7 @@ export function TokenLeftColumn({
       return;
     }
 
+    setQuoteFailed(false);
     const handle = setTimeout(async () => {
       try {
         const publicClient = createPublicClient({ chain, transport: http(ROBINHOOD_TESTNET.rpcUrls[0]) });
@@ -350,11 +452,40 @@ export function TokenLeftColumn({
       } catch {
         setReceiveRaw(null);
         setSellFeeRaw(null);
+        setQuoteFailed(true);
       }
     }, 350);
 
     return () => clearTimeout(handle);
   }, [amount, side, curveView]);
+
+  // Hand-off for a one-tap trade: once the ordinary quote for the amount it
+  // filled in has arrived, call the very same submitTrade() the CTA uses. A
+  // quote failure or an unreasonably long wait clears the pending state with a
+  // plain message instead of leaving the buttons stuck.
+  useEffect(() => {
+    if (!quickTradePending) return;
+    if (side !== quickTradePending) return;
+    if (busy) return;
+    if (receiveRaw !== null) {
+      setQuickTradePending(null);
+      void submitTrade();
+      return;
+    }
+    if (quoteFailed) {
+      setQuickTradePending(null);
+      setTradeError("Couldn't fetch a live quote for that quick trade. Try again in a moment.");
+      return;
+    }
+    const timeout = setTimeout(() => {
+      setQuickTradePending(null);
+      setTradeError("The live quote took too long. Try the quick trade again.");
+    }, QUICK_TRADE_QUOTE_TIMEOUT_MS);
+    return () => clearTimeout(timeout);
+    // submitTrade is a hoisted function declaration reading the current
+    // render's state, which is exactly what this hand-off needs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickTradePending, side, busy, receiveRaw, quoteFailed]);
 
   async function connectWallet() {
     setStatusMessage("");
@@ -394,6 +525,91 @@ export function TokenLeftColumn({
     setSide(next);
     setStatusMessage("");
     setSelectedPreset(null);
+  }
+
+  /** Signs the plain-English consent in the wallet and stores it, keyed by this wallet, in this browser only. */
+  async function enableQuickTrade() {
+    if (!account || quickTradeBusy) return;
+    setQuickTradeBusy(true);
+    setTradeError("");
+    setStatusMessage("");
+    try {
+      const provider = getInjectedEvmProvider();
+      if (!provider) throw new Error("EVM wallet disconnected.");
+      const walletClient = createWalletClient({ chain, transport: custom(provider) });
+      const signedAt = new Date().toISOString();
+      const message = buildQuickTradeConsentMessage(account, window.location.host, signedAt);
+      const signature = await walletClient.signMessage({ account, message });
+      const defaults = normaliseQuickTradeSettings({
+        buyPresetEth: side === "buy" ? selectedPreset : undefined,
+        sellPresetPercent: undefined,
+        slippageBps,
+      });
+      const record: QuickTradeRecord = { ...defaults, message, signature, signedAt };
+      writeQuickTradeRecord(window.localStorage, account, record);
+      setQuickTrade(record);
+      setStatusMessage("Quick trade is on for this wallet in this browser.");
+    } catch (error) {
+      setTradeError(describeTradeError(error));
+    } finally {
+      setQuickTradeBusy(false);
+    }
+  }
+
+  function disableQuickTrade() {
+    if (account && typeof window !== "undefined") clearQuickTradeRecord(window.localStorage, account);
+    setQuickTrade(null);
+    setQuickTradeEditing(false);
+    setQuickTradePending(null);
+    setStatusMessage("Quick trade is off.");
+  }
+
+  function updateQuickTradeSettings(partial: Partial<QuickTradeSettings>) {
+    if (!quickTrade || !account) return;
+    const next: QuickTradeRecord = { ...quickTrade, ...normaliseQuickTradeSettings({ ...quickTrade, ...partial }) };
+    writeQuickTradeRecord(window.localStorage, account, next);
+    setQuickTrade(next);
+  }
+
+  /**
+   * One tap: fills the ordinary form from the stored presets and lets the
+   * existing quote → submitTrade() path run (see the hand-off effect above).
+   * The wallet's own confirmation is the one step that never goes away.
+   */
+  function startQuickTrade(nextSide: Side) {
+    if (!quickTrade || !account || curveView.kind !== "ready" || busy || quickTradePending) return;
+    setTradeError("");
+    setStatusMessage("");
+    if (nextSide === "buy") {
+      const plan = planQuickBuy(parseEther(quickTrade.buyPresetEth), nativeBalance, curveView.remainingToGraduateWei);
+      if (!plan.ok) {
+        setTradeError(
+          plan.reason === "insufficient-balance"
+            ? `Not enough ETH for a ${quickTrade.buyPresetEth} ETH quick buy.`
+            : "Nothing is left to buy before graduation.",
+        );
+        return;
+      }
+      setSide("buy");
+      setAmount(formatEther(plan.grossWei));
+      setSelectedPreset(plan.clampedToGraduation ? "MAX" : quickTrade.buyPresetEth);
+      if (plan.clampedToGraduation) setStatusMessage("Quick buy capped at what's left to graduation.");
+    } else {
+      if (tokenBalance === null || tokenBalance <= 0n) {
+        setTradeError("No tokens in this wallet to quick sell.");
+        return;
+      }
+      const tokensIn = quickSellAmountRaw(tokenBalance, quickTrade.sellPresetPercent);
+      if (tokensIn <= 0n) {
+        setTradeError("That share of your balance rounds to zero tokens.");
+        return;
+      }
+      setSide("sell");
+      setAmount(formatUnits(tokensIn, curveView.decimals));
+      setSelectedPreset(quickTrade.sellPresetPercent === 100 ? "MAX" : `${quickTrade.sellPresetPercent}%`);
+    }
+    setSlippageBps(quickTrade.slippageBps);
+    setQuickTradePending(nextSide);
   }
 
   function applyPreset(preset: string) {
@@ -605,6 +821,104 @@ export function TokenLeftColumn({
                   "Connect wallet"
                 )}
               </button>
+            </div>
+
+            <div className={styles.quickTrade} data-quick-trade={quickTrade ? "on" : "off"}>
+              <div className={styles.quickTradeHeader}>
+                <span className={styles.quickTradeTitle}>⚡ Quick trade</span>
+                {quickTrade ? (
+                  <div className={styles.quickTradeHeaderActions}>
+                    <button type="button" className={styles.quickTradeLink} onClick={() => setQuickTradeEditing((value) => !value)}>
+                      {quickTradeEditing ? "Done" : "Edit"}
+                    </button>
+                    <button type="button" className={styles.quickTradeLink} onClick={disableQuickTrade}>
+                      Turn off
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.quickTradeEnable}
+                    onClick={account ? enableQuickTrade : connectWallet}
+                    disabled={quickTradeBusy}
+                  >
+                    {quickTradeBusy ? "Waiting for wallet…" : account ? "Enable" : "Connect wallet"}
+                  </button>
+                )}
+              </div>
+              {quickTrade ? (
+                <>
+                  <div className={styles.quickTradeActions}>
+                    <button
+                      type="button"
+                      className={`${styles.quickTradeButton} ${styles.quickTradeButtonBuy}`}
+                      onClick={() => startQuickTrade("buy")}
+                      disabled={!curveReady || busy || quickTradePending !== null}
+                    >
+                      {quickTradePending === "buy" ? "Quoting…" : `Buy ${quickTrade.buyPresetEth} ETH`}
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.quickTradeButton} ${styles.quickTradeButtonSell}`}
+                      onClick={() => startQuickTrade("sell")}
+                      disabled={!curveReady || busy || quickTradePending !== null}
+                    >
+                      {quickTradePending === "sell" ? "Quoting…" : `Sell ${quickTrade.sellPresetPercent}%`}
+                    </button>
+                  </div>
+                  {quickTradeEditing ? (
+                    <div className={styles.quickTradeSettings}>
+                      <div className={styles.quickTradeSettingsRow}>
+                        <span className={styles.quickTradeSettingsLabel}>Buy</span>
+                        {QUICK_TRADE_BUY_PRESETS_ETH.map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            className={`${styles.presetButton} ${quickTrade.buyPresetEth === preset ? styles.presetButtonSelected : ""}`}
+                            onClick={() => updateQuickTradeSettings({ buyPresetEth: preset })}
+                          >
+                            {preset} ETH
+                          </button>
+                        ))}
+                      </div>
+                      <div className={styles.quickTradeSettingsRow}>
+                        <span className={styles.quickTradeSettingsLabel}>Sell</span>
+                        {QUICK_TRADE_SELL_PRESETS_PERCENT.map((percent) => (
+                          <button
+                            key={percent}
+                            type="button"
+                            className={`${styles.presetButton} ${quickTrade.sellPresetPercent === percent ? styles.presetButtonSelected : ""}`}
+                            onClick={() => updateQuickTradeSettings({ sellPresetPercent: percent })}
+                          >
+                            {percent === 100 ? "MAX" : `${percent}%`}
+                          </button>
+                        ))}
+                      </div>
+                      <div className={styles.quickTradeSettingsRow}>
+                        <span className={styles.quickTradeSettingsLabel}>Slip</span>
+                        {QUICK_TRADE_SLIPPAGE_OPTIONS_BPS.map((bps) => (
+                          <button
+                            key={bps}
+                            type="button"
+                            className={`${styles.pillButton} ${styles.slippageButton} ${quickTrade.slippageBps === bps ? styles.pillButtonActive : ""}`}
+                            onClick={() => updateQuickTradeSettings({ slippageBps: bps })}
+                          >
+                            {formatSlippageLabel(bps)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className={styles.quickTradeSummary}>
+                      One tap sends the trade to your wallet to confirm · {formatSlippageLabel(quickTrade.slippageBps)} slippage
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className={styles.quickTradeSummary}>
+                  One-tap buy and sell. Sign once to turn it on — every trade still confirms in your wallet.
+                </p>
+              )}
             </div>
 
             <div className={styles.fieldBox}>

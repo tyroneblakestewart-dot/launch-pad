@@ -1282,3 +1282,76 @@ describe("token page UI fidelity against design/token-page-v2 (owner visual pass
   });
 });
 
+describe("swap panel wallet persistence across refresh", () => {
+  it("restores the connected wallet on mount with a passive eth_accounts read and follows accountsChanged, never prompting on load", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain('.request({ method: "eth_accounts" })');
+    expect(component).toContain('provider.on?.("accountsChanged", handleAccountsChanged);');
+    expect(component).toContain('provider.removeListener?.("accountsChanged", handleAccountsChanged);');
+    // eth_requestAccounts (the popup) appears exactly once, inside the explicit connectWallet().
+    expect(component.match(/eth_requestAccounts/g)?.length).toBe(1);
+    const connectStart = component.indexOf("async function connectWallet()");
+    const connectEnd = component.indexOf("\n  }\n", connectStart);
+    expect(component.slice(connectStart, connectEnd)).toContain("eth_requestAccounts");
+  });
+});
+
+describe("Quick Trade (opt-in, non-custodial, one tap to the wallet's own confirmation)", () => {
+  it("enables only by a wallet signature over the plain-English consent, stored per wallet in this browser, and verified against the connected wallet on every load", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain("walletClient.signMessage({ account, message })");
+    expect(component).toContain("buildQuickTradeConsentMessage(account, window.location.host, signedAt)");
+    expect(component).toContain("writeQuickTradeRecord(window.localStorage, account, record);");
+    expect(component).toContain("readQuickTradeRecord(window.localStorage, account)");
+    expect(component).toContain("recoverMessageAddress({ message: record.message, signature: record.signature })");
+    expect(component).toContain("signer.toLowerCase() === account.toLowerCase()");
+    // A consent that does not verify is discarded, never trusted.
+    expect(component).toContain("clearQuickTradeRecord(window.localStorage, account);");
+  });
+
+  it("routes a one-tap trade through the very same submitTrade() the CTA uses, after the ordinary live quote — one trade path, every guard applies", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    const handoffStart = component.indexOf("if (!quickTradePending) return;");
+    expect(handoffStart).toBeGreaterThan(-1);
+    const handoff = component.slice(handoffStart, component.indexOf("}, [quickTradePending", handoffStart));
+    expect(handoff).toContain("void submitTrade();");
+    expect(handoff).toContain("if (busy) return;");
+    expect(handoff).toContain("QUICK_TRADE_QUOTE_TIMEOUT_MS");
+    // Exactly one place in the component calls writeContract for a buy and one for a sell — quick trade adds none.
+    expect(component.match(/functionName: "buy"/g)?.length).toBe(1);
+    expect(component.match(/functionName: "sell"/g)?.length).toBe(1);
+  });
+
+  it("plans a quick buy with the shared graduation clamp and balance check, and a quick sell as an exact share of the token balance", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain("planQuickBuy(parseEther(quickTrade.buyPresetEth), nativeBalance, curveView.remainingToGraduateWei)");
+    expect(component).toContain("quickSellAmountRaw(tokenBalance, quickTrade.sellPresetPercent)");
+    expect(component).toContain("setSlippageBps(quickTrade.slippageBps);");
+  });
+
+  it("never touches key material — no private key, seed or mnemonic handling anywhere in the swap panel or the Quick Trade module", async () => {
+    for (const path of ["components/token-page/token-left-column.tsx", "lib/quick-trade.ts"]) {
+      const text = (await source(path)).toLowerCase();
+      expect(text, path).not.toMatch(/privatekey|private_key|mnemonic|seed phrase|seedphrase/);
+    }
+  });
+
+  it("renders the quick buttons only while the verified record exists, styles Buy with the solid CTA fill and Sell with the down token, and gives the controls a 44px floor only under (pointer: coarse)", async () => {
+    const component = await source("components/token-page/token-left-column.tsx");
+    expect(component).toContain('data-quick-trade={quickTrade ? "on" : "off"}');
+    expect(component).toContain('onClick={() => startQuickTrade("buy")}');
+    expect(component).toContain('onClick={() => startQuickTrade("sell")}');
+
+    const css = await source("components/token-page/token-page.module.css");
+    const buyStart = css.indexOf(".quickTradeButtonBuy {");
+    expect(css.slice(buyStart, css.indexOf("}", buyStart))).toContain("background: var(--cta-bg);");
+    const sellStart = css.indexOf(".quickTradeButtonSell {");
+    expect(css.slice(sellStart, css.indexOf("}", sellStart))).toContain("141, 145, 140");
+    const baseStart = css.indexOf(".quickTradeButton {");
+    expect(css.slice(baseStart, css.indexOf("}", baseStart))).not.toMatch(/min-height:\s*4[4-9]px/);
+    const coarseStart = css.indexOf("@media (pointer: coarse) {");
+    const coarse = css.slice(coarseStart, css.indexOf("\n}\n", coarseStart));
+    expect(coarse).toContain(".quickTradeButton {\n    min-height: 44px;");
+  });
+});
+

@@ -1466,3 +1466,57 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   (12 pre-existing warnings only). `npm run build` — succeeds. No visual pass
   was possible from this session — the owner compares the deployed page with
   the design after merge.
+
+- Token page: wallet persists across refresh, and opt-in Quick Trade (owner
+  request, 3 Sep). **Bug** — the swap panel's `account` was only ever set
+  inside `connectWallet()` via `eth_requestAccounts`, so every page refresh
+  showed "Connect wallet" again even though the header band (which already
+  did a passive `eth_accounts` read) knew the wallet. `token-left-column.tsx`
+  now restores the account on mount with the same passive `eth_accounts` read
+  (which only returns an account the wallet has already authorised for the
+  site — never a popup) and follows `accountsChanged` with a cleaned-up
+  listener; `eth_requestAccounts` remains only in the explicit Connect button
+  (asserted: exactly one occurrence, inside `connectWallet`). **Quick Trade**
+  — the owner asked for an "instant buy" a user can switch on for a
+  fast-paced trading loop. Stated plainly: Hoodlums is non-custodial (rule 4),
+  so every trade still requires the wallet's own confirmation; Quick Trade
+  removes everything before that tap (type an amount → wait for the quote →
+  press the CTA), not the confirmation itself. A signature-less buy would need
+  session keys / account abstraction — a custody-adjacent design that is an
+  owner decision, deliberately not built. New pure module `lib/quick-trade.ts`
+  (unit-tested in Node with an injected storage): the plain-English consent
+  message (bound to host and wallet, states that every trade still confirms
+  in the wallet and that Hoodlums never holds keys or funds), per-wallet
+  storage under one static `hoodlums.quickTrade.v1` key (following
+  `hoodlums.support.lastSeen.v1`'s map shape), preset normalisation
+  (buy 0.1/0.5/1 ETH, sell 25/50/75/100 %, slippage 50/100/300 bps),
+  `quickSellAmountRaw` (exact integer share) and `planQuickBuy` (clamps to the
+  exact gross that nets to what is left to graduate via the form's own
+  `grossNativeInForExactNet`, refuses an unaffordable preset up front, never
+  treats an unread balance as zero). The user enables it by signing that
+  consent with `walletClient.signMessage`; the record is re-verified with
+  `recoverMessageAddress` against the connected wallet on every load and
+  account switch, and anything that does not verify is cleared, never
+  trusted. A one-tap Buy/Sell fills the ORDINARY form (side, amount, preset,
+  slippage) and, once the existing debounced quote has arrived, an effect
+  hands off to the very same `submitTrade()` the CTA uses — one trade path,
+  so the graduation clamp, slippage floor, fee note, revert detection and
+  `TOKEN_TRADE_CONFIRMED_EVENT` all apply unchanged and `submitTrade` itself
+  was not refactored (its pinned test slices are intact; asserted: exactly
+  one `functionName: "buy"` and one `"sell"` in the component). A failed or
+  slow quote clears the pending state with a plain message (8s timeout).
+  UI: an inset well under the Buy/Sell row — Enable (or Connect wallet) when
+  off; when on, `Buy 0.1 ETH` (solid CTA recipe) and `Sell 25%` (down token),
+  an Edit row reusing the preset/slippage chips, and Turn off. Touch targets
+  44px only under `(pointer: coarse)`. **Rule 10, stated plainly:** Quick
+  Trade has no server component — the consent and presets never leave the
+  browser — so there is nothing for System Health to monitor and no route to
+  log from; an Activity-log entry for "quick trade enabled" would need a new
+  wallet-signed server route and is left as an owner decision (it would also
+  be the first place the app records a UI preference server-side). No
+  existing test assertion was changed. Not verified on a real mobile Safari
+  device this pass (rule 7) — the new well and buttons were checked by
+  reading the CSS against the existing 390px behaviour, not on-device.
+  Validated this session, on the final commit: `npm run test:app` — 288 test
+  files / 3313 tests passing. `npm run lint` — 0 errors (12 pre-existing
+  warnings only). `npm run build` — succeeds.
