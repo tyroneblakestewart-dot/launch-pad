@@ -1,4 +1,4 @@
-import { createPublicClient, http } from "viem";
+import { createPublicClient, http, type PublicClient } from "viem";
 import { getBondingCurveAddress, HOODLUMS_BONDING_CURVE_READ_ABI } from "@/lib/bonding-curve-config";
 import { ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { getCurveLaunchPipelineAddress } from "@/lib/curve-launch-pipeline-config";
@@ -184,7 +184,32 @@ export async function checkContractsHealth(deps: {
   }
 }
 
-export function contractsClient(chainId: number, rpcUrl: string | undefined) {
+/** The narrow slice of a viem `PublicClient` every on-chain health check actually uses. */
+export type ContractsClientLike = Pick<PublicClient, "getChainId" | "readContract">;
+
+let contractsClientForTests: ContractsClientLike | null = null;
+
+/**
+ * Test-only seam for the on-chain health checks' RPC client, following the
+ * same pattern as `setPublicHealthPingForTests` / `setAdminSessionStoreForTests`.
+ *
+ * Without it, any test that reaches these checks through their HTTP routes
+ * (which pass no injectable deps of their own) makes REAL network calls to the
+ * Robinhood testnet RPC. `buildContractsPipeline` issues three of them
+ * sequentially, each wrapped in its own `HEALTH_CHECK_TIMEOUT_MS` — a worst
+ * case of 15s against vitest's 5000ms default test timeout, which is what made
+ * `tests/admin-health-pipeline-endpoint.test.ts` flaky under load (issue #475).
+ * `tests/setup.ts` installs an instantly-failing default for every test, which
+ * matches what the network does in CI anyway, minus the latency. Focused
+ * contracts tests are unaffected: they pass explicit `client`/`readFactory`/
+ * `readBondingCurve` deps, which take precedence over this client entirely.
+ */
+export function setContractsClientForTests(client: ContractsClientLike | null): void {
+  contractsClientForTests = client;
+}
+
+export function contractsClient(chainId: number, rpcUrl: string | undefined): ContractsClientLike {
+  if (contractsClientForTests) return contractsClientForTests;
   const resolvedRpcUrl = rpcUrl ?? ROBINHOOD_TESTNET.rpcUrls[0];
   return createPublicClient({
     chain: {

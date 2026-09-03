@@ -1365,3 +1365,36 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   `npm run build` — succeeds. `npm run test:contracts` not run (no contract
   changes). Still no visual pass from this session — the owner verifies on the
   deployed page after merge.
+
+- Test suite no longer makes real RPC calls (issue #475). A run intermittently
+  reported `1 failed / 3285 passed`. Root cause: the on-chain health checks are
+  reachable through their admin HTTP routes (`/api/admin/health`,
+  `/api/admin/health/pipeline`), which pass no injectable deps, so those tests
+  hit the **live Robinhood testnet RPC**. `buildContractsPipeline` issues three
+  reads sequentially (`readChainId`, `readFactory`, `readBondingCurve`), each
+  wrapped in its own `HEALTH_CHECK_TIMEOUT_MS` (5s) — a worst case of 15s
+  against vitest's 5000ms DEFAULT test timeout, since `vitest.config.ts` sets no
+  `testTimeout`. CI runs on 2-core `ubuntu-latest`, fewer cores than the dev box
+  the timings were measured on, so CI was more exposed, not less. Fix:
+  `lib/server/system-health.ts` gains `setContractsClientForTests`, a seam on
+  `contractsClient()` following the existing `setPublicHealthPingForTests` /
+  `setAdminSessionStoreForTests` pattern — one override covers both
+  `checkContractsHealth` and `buildContractsPipeline`, since both resolve their
+  client through that function. `tests/setup.ts` installs an instantly-failing
+  client for every test, which is faithful (no RPC is reachable from CI, so
+  these stages were already resolving red) and removes only the latency. Focused
+  contracts tests are untouched: they pass explicit `client`/`readFactory`/
+  `readBondingCurve` deps, which take precedence. Separately,
+  `tests/system-health.test.ts`'s hung-ping case now uses fake timers instead of
+  a real 5s wait, matching `tests/public-health-route.test.ts`'s own hung-probe
+  test, and no longer needs its `10_000` override. Measured effect:
+  `admin-health-pipeline-endpoint` 2373ms -> 15ms, `admin-endpoints` 2503ms ->
+  101ms, `system-health` 5041ms -> 24ms, whole-suite test execution 24s -> 9.65s,
+  and the slowest single test is now 250ms against the 5000ms default (a 20x
+  margin, where it was previously 5001ms against 5000ms). No test assertions
+  were weakened or removed — three new guards were added instead, asserting the
+  default failing client is installed, that `contractsClient` returns an
+  injected client outright, and that an uninjected contracts check goes through
+  it rather than the network. Validated this session, on the final commit:
+  `npm run test:app` — 287 test files / 3289 tests passing. `npm run lint` — 0
+  errors (12 pre-existing warnings only). `npm run build` — succeeds.
