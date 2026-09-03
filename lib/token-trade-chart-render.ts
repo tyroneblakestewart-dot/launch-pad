@@ -67,53 +67,55 @@ type LinePoint = { time: number; value: number };
 /** #8d918c @ 85% opacity — deliberately brighter than the chart's own #6f746e axis/label ink, which is what made a flat candle's zero-height body read as empty space under the lime last-price line (issue #472 item 1). */
 export const FLAT_CANDLE_COLOR = "rgba(141, 145, 140, 0.85)";
 
-const FLAT_CANDLE_MIN_BODY_HEIGHT_RATIO = 0.0015;
-/** Matches expandDegeneratePriceRange's own ±5% convention (lib/token-chart-tools.ts) for the one case both functions share: every candle in view sits at the exact same price, so there is no real span to take a fraction of. */
-const FLAT_CANDLE_DEGENERATE_PRICE_RATIO = 0.05;
-
-/** A flat candle: no trade within the bucket moved the price away from the carried-forward open, so open/high/low/close all collapse to one value — a real candlestick series draws this as a bare 1px line, not a body. */
+/** A flat candle: no trade within the bucket moved the price away from the carried-forward open, so open/high/low/close all collapse to one value. A candlestick series draws that as a thin horizontal line at the price — and a RUN of them (which is what the flat-filled timeline produces between trades) reads as one continuous flat line, exactly like every other trading chart. */
 export function isFlatCandle(candle: Pick<Candle, "open" | "high" | "low" | "close">): boolean {
   return candle.open === candle.high && candle.high === candle.low && candle.low === candle.close;
 }
 
 /**
- * The minimum price-space body height a flat candle is stretched to so it
- * renders as a visible body instead of a bare wick line (issue #472 item 1).
- * lightweight-charts has no "minimum pixel body height" option for a
- * candlestick series, so this approximates the requested ~2px minimum in
- * price space instead: a small fraction of the full high/low span across
- * every candle currently rendered, which scales with the chart's own zoom
- * and price magnitude without a real chart instance to measure actual
- * pixels against. Falls back to a percentage of the flat price itself
- * (mirroring expandDegeneratePriceRange) only when every rendered candle
- * shares the exact same price, so that span is itself zero.
+ * A candle as the candlestick series should render it. A flat bar keeps its
+ * REAL open/high/low/close and is distinguished only by colour.
+ *
+ * It is deliberately never stretched to a minimum body height. Issue #472 did
+ * stretch it, back when the only flat candle that could exist was a lone
+ * single-trade bucket; once the timeline was flat-filled between trades
+ * (#472's follow-up) that stretch became actively wrong in two ways:
+ *
+ *  - The stretch was a fraction of the FULL history's high/low span, but the
+ *    price scale autoscales to the RENDERED bars. In a window of nothing but
+ *    flat bars the only thing defining the visible range was the stretch
+ *    itself, so every bar filled the plot — a solid wall of grey columns
+ *    instead of a flat line (seen on WERDE at 1S, where a ~9.2e-11 stretch
+ *    sat against a genuine visible range of ~1.2e-10).
+ *  - `subscribeCrosshairMove` reads the rendered bar, so the tooltip reported
+ *    the stretched open/close as if they were real and computed a non-zero
+ *    percentage change for a bucket in which nothing traded (+0.14% on a
+ *    zero-volume bar). Fabricated numbers, which this project does not ship.
+ *
+ * A genuinely flat window is kept legible by the series'
+ * `autoscaleInfoProvider` instead (`expandDegeneratePriceRange`), which pads a
+ * zero-height price range by ±5% — the honest fix, since it moves the axis
+ * rather than the data.
  */
-export function computeFlatCandleMinBodyHeight(candles: readonly Candle[], flatPrice: number): number {
-  const span = candles.length > 0 ? Math.max(...candles.map((candle) => candle.high)) - Math.min(...candles.map((candle) => candle.low)) : 0;
-  if (span > 0) return span * FLAT_CANDLE_MIN_BODY_HEIGHT_RATIO;
-  return flatPrice > 0 ? flatPrice * FLAT_CANDLE_DEGENERATE_PRICE_RATIO : FLAT_CANDLE_DEGENERATE_PRICE_RATIO;
-}
-
-export function candleToBar(candle: Candle, minBodyHeight: number): ChartBar {
+export function candleToBar(candle: Candle): ChartBar {
   if (!isFlatCandle(candle)) {
     return { time: candle.time, open: candle.open, high: candle.high, low: candle.low, close: candle.close };
   }
-  const halfHeight = minBodyHeight / 2;
   return {
     time: candle.time,
-    open: candle.close - halfHeight,
-    high: candle.close + halfHeight,
-    low: candle.close - halfHeight,
-    close: candle.close + halfHeight,
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
     color: FLAT_CANDLE_COLOR,
     borderColor: FLAT_CANDLE_COLOR,
     wickColor: FLAT_CANDLE_COLOR,
   };
 }
 
-/** Converts a whitespace-inclusive timeline point to what the candlestick series expects: an OHLC bar (flat-stretched per computeFlatCandleMinBodyHeight when needed), or a bare-time WhitespaceData point. */
-export function pointToSeriesDatum(point: ChartSeriesPoint, minBodyHeight: number): ChartSeriesDatum {
-  return isCandlePoint(point) ? candleToBar(point, minBodyHeight) : { time: point.time };
+/** Converts a timeline point to what the candlestick series expects: an OHLC bar (flat bars carrying their real prices and the flat colour), or a bare-time WhitespaceData point. */
+export function pointToSeriesDatum(point: ChartSeriesPoint): ChartSeriesDatum {
+  return isCandlePoint(point) ? candleToBar(point) : { time: point.time };
 }
 
 export function volumeBarColor(candle: Candle): string {
@@ -266,11 +268,7 @@ export function applyTokenTradeChartUpdate(
   const ma20 = computeMovingAverage(candles, MA20_PERIOD);
   const ma50 = computeMovingAverage(candles, MA50_PERIOD);
   const points = buildChartSeriesPoints(candles, interval, nowUnixSeconds, launchedAtUnixSeconds, chartWidthPx, startingPriceNativePerToken);
-  const flatCandleMinBodyHeight = computeFlatCandleMinBodyHeight(
-    candles,
-    candles.length > 0 ? candles[candles.length - 1].close : startingPriceNativePerToken ?? 0,
-  );
-  const toSeriesDatum = (point: ChartSeriesPoint) => pointToSeriesDatum(point, flatCandleMinBodyHeight);
+  const toSeriesDatum = (point: ChartSeriesPoint) => pointToSeriesDatum(point);
 
   const isFirstLoadOrTimeframeChange =
     !previousState.hasRenderedOnce || previousState.timeframe !== timeframe || previousState.resolvedInterval !== interval;

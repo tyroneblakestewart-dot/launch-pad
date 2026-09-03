@@ -1321,6 +1321,51 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   which requires this branch to be merged first, since `main` still carries both
   defects.
 
+- Token chart flat bars no longer stretched — the grey wall and the fabricated
+  tooltip (third defect on the same PR branch; the owner's 1S recording after
+  the anchored-window fix showed seconds moving correctly but the plot filled
+  edge-to-edge with solid grey columns). Issue #472 stretched every flat candle
+  to a "minimum body height" so a lone flat bar would not render as a bare 1px
+  line. `computeFlatCandleMinBodyHeight` sized that stretch as 0.0015 x the
+  high/low span across the token's ENTIRE traded history — for WERDE (launch
+  ~2.5e-12 to ~6.16e-8) about 9.2e-11. That was written when the only flat
+  candle that could exist was a lone single-trade bucket; once the timeline was
+  flat-filled between trades, it became wrong two ways. First, the price scale
+  autoscales to the RENDERED bars, so in a window of nothing but flat bars the
+  only thing defining the visible range was the stretch itself (genuine visible
+  range ~1.2e-10 against a 9.2e-11 body) — self-reinforcing, so every bar filled
+  the plot. Second, `subscribeCrosshairMove` reads the rendered bar, so the
+  tooltip reported the stretched open/close as real and computed a non-zero
+  change for a bucket in which nothing traded — the owner's own screenshot shows
+  `O 0.00000006155792 / C 0.00000006164657 / VOL 0 ETH / +0.14%`, whose midpoint
+  is exactly the header's `0.00000006160225`, confirming the mechanism from the
+  UI alone. Fabricated numbers on a zero-volume bar, which this project does not
+  ship. Fix, one function: `candleToBar` now returns a flat candle's own
+  unmodified open/high/low/close, distinguished only by `FLAT_CANDLE_COLOR`, and
+  `computeFlatCandleMinBodyHeight` is deleted outright rather than retuned —
+  there is no correct constant, because the quantity it approximated (a pixel
+  height) cannot be expressed in price space without the chart's own visible
+  range, which is itself derived from these bars. A run of flat bars at one
+  price now renders as one continuous flat line, which is what every other
+  trading chart shows and what the flat fill was for. The genuinely-degenerate
+  case (every rendered bar at exactly one price) was already handled honestly by
+  the candlestick series' `autoscaleInfoProvider` via
+  `expandDegeneratePriceRange`'s +/-5% padding — that moves the axis rather than
+  the data, and is now the only mechanism doing so. `pointToSeriesDatum` and
+  `candleToBar` lose their `minBodyHeight` parameter. **Tests changed rather
+  than only added (rule 8, stated plainly):** the #472 case asserting
+  `flatBar.high - flatBar.low` equals the minimum body height, and the case
+  asserting `computeFlatCandleMinBodyHeight`'s span/degenerate maths, both
+  pinned the defect and were replaced — a flat bar's rendered high minus low is
+  now asserted to be exactly 0. New coverage: a flat bar reporting a zero
+  percentage change (the tooltip can never invent movement), and a run of flat
+  bars all rendering at exactly the carried-forward price. Validated this
+  session, on the final commit: `npm run test:app` — 287 test files / 3286 tests
+  passing. `npm run lint` — 0 errors (12 pre-existing warnings only).
+  `npm run build` — succeeds. `npm run test:contracts` not run (no contract
+  changes). Still no visual pass from this session — the owner verifies on the
+  deployed page after merge.
+
 - Test suite no longer makes real RPC calls (issue #475). A run intermittently
   reported `1 failed / 3285 passed`. Root cause: the on-chain health checks are
   reachable through their admin HTTP routes (`/api/admin/health`,

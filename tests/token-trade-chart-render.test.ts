@@ -4,7 +4,6 @@ import {
   applyChartResize,
   applyTokenTradeChartUpdate,
   candleToBar,
-  computeFlatCandleMinBodyHeight,
   computeInitialVisibleLogicalRange,
   createInitialTokenTradeChartRenderState,
   FLAT_CANDLE_COLOR,
@@ -562,7 +561,7 @@ describe("no code path calls scrollToRealTime or fitContent (issue #467 item 6)"
   });
 });
 
-describe("isFlatCandle / candleToBar — flat-candle visibility (issue #472 item 1)", () => {
+describe("isFlatCandle / candleToBar — flat candles carry their real prices (issue #472 item 1, corrected by its follow-up)", () => {
   const flatCandle: Candle = { time: 0, open: 0.01, high: 0.01, low: 0.01, close: 0.01, volume: 0 };
   const realCandle: Candle = { time: 0, open: 0.01, high: 0.02, low: 0.009, close: 0.015, volume: 0 };
 
@@ -571,44 +570,48 @@ describe("isFlatCandle / candleToBar — flat-candle visibility (issue #472 item
     expect(isFlatCandle(realCandle)).toBe(false);
   });
 
-  it("a flat candle's rendered datum carries the flat colour and the minimum-height rule; a real candle does not", () => {
-    const minBodyHeight = 0.0002;
-    const flatBar = candleToBar(flatCandle, minBodyHeight);
+  it("a flat candle's rendered datum carries the flat colour but its OWN unmodified prices — never a stretched body", () => {
+    // #472 stretched a flat bar to a minimum body height. Once the timeline
+    // was flat-filled between trades, that stretch was a fraction of the full
+    // history's span while the price scale autoscaled to the rendered bars —
+    // so a window of flat bars had its visible range defined by the stretch
+    // itself and every bar filled the plot (the "wall of grey columns" on
+    // WERDE at 1S). It also fed the crosshair tooltip a fake open/close and a
+    // non-zero % change on a bucket where nothing traded.
+    const flatBar = candleToBar(flatCandle);
     expect(flatBar.color).toBe(FLAT_CANDLE_COLOR);
     expect(flatBar.borderColor).toBe(FLAT_CANDLE_COLOR);
     expect(flatBar.wickColor).toBe(FLAT_CANDLE_COLOR);
-    expect(flatBar.high - flatBar.low).toBeCloseTo(minBodyHeight);
-    // Centred on the flat candle's own price — never shifted up or down.
-    expect((flatBar.high + flatBar.low) / 2).toBeCloseTo(flatCandle.close);
+    expect(flatBar).toMatchObject({ open: 0.01, high: 0.01, low: 0.01, close: 0.01 });
+    expect(flatBar.high - flatBar.low).toBe(0);
+    expect(flatBar.open).toBe(flatBar.close);
 
-    const realBar = candleToBar(realCandle, minBodyHeight);
+    const realBar = candleToBar(realCandle);
     expect(realBar.color).toBeUndefined();
     expect(realBar.borderColor).toBeUndefined();
     expect(realBar.wickColor).toBeUndefined();
     expect(realBar).toMatchObject({ open: realCandle.open, high: realCandle.high, low: realCandle.low, close: realCandle.close });
   });
 
-  it("pointToSeriesDatum applies the same treatment to a candle point, and leaves a whitespace point untouched", () => {
-    const flatDatum = pointToSeriesDatum(flatCandle, 0.0002);
-    expect(flatDatum).toMatchObject({ color: FLAT_CANDLE_COLOR });
+  it("a flat bar reports a zero percentage change, so the tooltip can never invent movement in a bucket with no trades", () => {
+    const bar = candleToBar(flatCandle);
+    const changePercent = bar.open > 0 ? ((bar.close - bar.open) / bar.open) * 100 : null;
+    expect(changePercent).toBe(0);
+  });
 
-    const whitespaceDatum = pointToSeriesDatum({ time: 300 }, 0.0002);
+  it("pointToSeriesDatum applies the same treatment to a candle point, and leaves a whitespace point untouched", () => {
+    const flatDatum = pointToSeriesDatum(flatCandle);
+    expect(flatDatum).toMatchObject({ color: FLAT_CANDLE_COLOR, open: 0.01, high: 0.01, low: 0.01, close: 0.01 });
+
+    const whitespaceDatum = pointToSeriesDatum({ time: 300 });
     expect(whitespaceDatum).toEqual({ time: 300 });
   });
 
-  it("sizes the minimum body height from a fraction of the full rendered high/low span, and falls back to a percentage of the price itself only when every candle shares one price", () => {
-    const candles: Candle[] = [
-      { time: 0, open: 0.01, high: 0.012, low: 0.008, close: 0.01, volume: 0 },
-      { time: 300, open: 0.01, high: 0.01, low: 0.01, close: 0.01, volume: 0 },
-    ];
-    const span = 0.012 - 0.008;
-    expect(computeFlatCandleMinBodyHeight(candles, 0.01)).toBeCloseTo(span * 0.0015);
-
-    const allFlatCandles: Candle[] = [
-      { time: 0, open: 0.01, high: 0.01, low: 0.01, close: 0.01, volume: 0 },
-      { time: 300, open: 0.01, high: 0.01, low: 0.01, close: 0.01, volume: 0 },
-    ];
-    expect(computeFlatCandleMinBodyHeight(allFlatCandles, 0.01)).toBeCloseTo(0.01 * 0.05);
+  it("a run of flat bars all render at exactly the carried-forward price, so they read as one continuous flat line", () => {
+    const run: Candle[] = [0, 300, 600, 900].map((time) => ({ time, open: 0.01, high: 0.01, low: 0.01, close: 0.01, volume: 0 }));
+    const bars = run.map((candle) => candleToBar(candle));
+    expect(bars.every((bar) => bar.open === 0.01 && bar.high === 0.01 && bar.low === 0.01 && bar.close === 0.01)).toBe(true);
+    expect(new Set(bars.map((bar) => bar.close)).size).toBe(1);
   });
 
   it("applyTokenTradeChartUpdate renders a flat candle's colour override through the full setData path (a single-trade bucket with no prior open carries forward is flat by construction)", () => {
