@@ -1398,3 +1398,55 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   it rather than the network. Validated this session, on the final commit:
   `npm run test:app` — 287 test files / 3289 tests passing. `npm run lint` — 0
   errors (12 pre-existing warnings only). `npm run build` — succeeds.
+
+- Token page UI fidelity pass against `design/token-page-v2/` (owner visual
+  pass, 3 Sep). The owner compared the deployed page with the approved design
+  side by side and reported it had drifted. Audited value-by-value against the
+  design file and issue #460's spec first: the master panel recipe (3-stop
+  gradient, inset hairline, black ring, deep shadow) is present on every panel,
+  the CTA is a solid `#c6f53e` in all four rules (the design-tool commentary
+  calling it a gradient was wrong about the code), SELL rows are red per the
+  design's own `dn` colour, and the 340px left column is as specified — none
+  of those were changed. Five genuine discrepancies were found in code and
+  fixed. **(1) Header band** — `token-header-band.tsx` rendered
+  `showDropArt ? <DROP ART pill> : <meta row>`, so the token's creator (the
+  only viewer who ever sees DROP ART) never saw the holders / launched / chain
+  line at all; the design shows both, with DROP ART as the art tile's own
+  content. DROP ART now lives inside the 50x50 tile (design recipe: mono 700
+  6.5px/1.6, letter-spacing 0.1em, `#6f746e`, filling the already-dashed tile,
+  still display-only with no handler) and the meta row is rendered
+  unconditionally; meta-row gap/letter-spacing corrected to the design's
+  7px / 0.08em. **(2) Buy/Sell toggle** — the shared `.tabGroup` track had no
+  `flex: 1`, so it shrank to its content and the active segment read as a
+  small lime blob beside "Sell"; the design's swap track is `flex:1`. A
+  swap-only `.buySellGroup` modifier adds it, leaving the Stats/Audit toggle
+  (which reuses `.tabGroup` and is content-sized in the design) untouched.
+  **(3) CTA label** — the design reads `Buy $HOODS` / `Sell $HOODS`; the page
+  read `Buy` / `Sell`. `token-page-view.tsx` now derives `ticker` with the
+  header band's exact expression (`launch?.ticker || (marketStats.supported &&
+  marketStats.symbol) || null`) and passes it to `TokenLeftColumn`, so the
+  header and the CTA can never disagree; a token with no known ticker falls
+  back to the bare verb. **(4) Recent trades rows** — full-width rows divided
+  by hairline separators became the design's row cards: a `12px 18px 16px`
+  padded `.activityList` with a 4px gap, each `.activityRow` a `9px`-radius
+  card with a `rgba(255,255,255,0.06)` border and the
+  `rgba(255,255,255,0.035) -> 0.008` gradient, `9px 10px` padding, 12px gap,
+  `600 11px` mono; header row `700 8.5px`, letter-spacing 0.13em; per-cell
+  scale scoped to the row (wallet `#c3c9c4`, amount/percentage `#e6ebe4`,
+  time 10.5px, side badge 700 10.5px, ETH value 700 11px) so the generic
+  text classes keep their meaning elsewhere. The `64px 1fr 110px 96px 56px`
+  trade grid is unchanged. **(5) Holders rows** — reordered to the design's
+  rank, wallet, share bar, then right-aligned percentage, with the design's
+  `26px 1fr 130px 52px` columns and `700 10px` rank. New source-pattern tests
+  pin each of the five (DROP ART inside the tile and no `showDropArt ?` gate
+  around the meta row; the tile-text recipe; `.buySellGroup` present on the
+  swap track only; row-card recipe and list wrapper on both lists; holders
+  order/columns; the shared ticker expression and CTA label). No existing
+  assertion was changed. Not done: the design colours the meta row's numbers
+  (`2,417`, `2D AGO`) `#c3c9c4` against the label's `#8d918c`; the current
+  labels are single strings pinned by existing tests, so that split was left
+  for a follow-up. Validated this session, on the final commit: `npm run
+  test:app` — 287 test files / 3295 tests passing. `npm run lint` — 0 errors
+  (12 pre-existing warnings only). `npm run build` — succeeds. No visual pass
+  was possible from this session — the owner compares the deployed page with
+  the design after merge.

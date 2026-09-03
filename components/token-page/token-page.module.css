@@ -178,17 +178,24 @@
   color: var(--text-disabled);
 }
 
+/* DROP ART lives INSIDE the 50x50 art tile (design header band): the tile
+   already carries the dashed lime border and gradient, so this is just the
+   centred two-line label — mono 700 6.5px/1.6, letter-spacing 0.1em,
+   #6f746e — filling the tile as a display-only button. */
 .headerDropArt {
   cursor: pointer;
-  border: 1px dashed rgba(198, 245, 62, 0.4);
-  border-radius: 11px;
-  background: linear-gradient(180deg, rgba(198, 245, 62, 0.06), rgba(0, 0, 0, 0.2));
-  color: var(--accent-lime);
-  font: 700 9px/1.4 var(--mono);
-  letter-spacing: 0.08em;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font: 700 6.5px/1.6 var(--mono);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 6px 10px;
-  text-align: left;
+  text-align: center;
+  padding: 0;
 }
 
 .headerIdentity {
@@ -224,10 +231,10 @@
 .headerMetaRow {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   flex-wrap: wrap;
   font: 600 9px/1 var(--mono);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--text-label);
   text-transform: uppercase;
 }
@@ -639,6 +646,16 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02));
   box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;
+}
+
+/* The swap panel's Buy/Sell track stretches to fill the row (design: the
+   segmented track is `flex:1`, so each segment is a wide half-pill, the
+   wallet pill taking only its own width). Without this the shared `.tabGroup`
+   shrank to its content and the active segment read as a small lime blob.
+   The Stats/Audit track reuses `.tabGroup` WITHOUT this modifier — the
+   design keeps that one content-sized. */
+.buySellGroup {
+  flex: 1;
 }
 
 .pillButton {
@@ -1613,15 +1630,25 @@
   color: var(--accent-lime);
 }
 
+/* Rows in the lower-tabs panel are ROW CARDS (design/token-page-v2, trades
+   and holders lists): a padded list with a 4px gap, each row its own
+   rounded, hairline-bordered, gently-lit card — not full-width rows split
+   by separators. */
+.activityList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 18px 16px;
+}
+
 .activityHeaderRow {
   display: grid;
-  gap: 10px;
-  padding: 10px 16px;
-  font: 600 9.5px/1 var(--mono);
-  letter-spacing: 0.16em;
+  gap: 12px;
+  padding: 6px 10px;
+  font: 700 8.5px/1 var(--mono);
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--text-faint);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 /* Column widths match the design reference exactly (issue #467 item 4):
@@ -1635,17 +1662,47 @@
   text-align: right;
 }
 
+/* Design holders row: rank 26px, wallet fills, 130px share bar, 52px
+   right-aligned percentage. */
 .holdersGridCols {
-  grid-template-columns: 52px 1fr 120px 1fr;
+  grid-template-columns: 26px 1fr 130px 52px;
 }
 
 .activityRow {
   display: grid;
-  gap: 10px;
-  padding: 11px 16px;
+  gap: 12px;
+  padding: 9px 10px;
   align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  font: 600 12.5px/1 var(--mono);
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.008));
+  font: 600 11px/1 var(--mono);
+}
+
+/* Per-cell type scale inside a row card (design): wallet #c3c9c4, amount /
+   percentage #e6ebe4, time 10.5px #6f746e, side badge 700 10.5px, ETH value
+   700 11px. Scoped to the row so the generic text classes keep their
+   meaning elsewhere on the page. */
+.activityRow .dimText {
+  color: var(--text-secondary);
+}
+
+.activityRow .bodyText {
+  color: var(--text-value);
+}
+
+.activityRow .faintText {
+  font-size: 10.5px;
+}
+
+.activityRow .tradeTypeBuy,
+.activityRow .tradeTypeSell {
+  font-size: 10.5px;
+}
+
+.activityRow .tradeTypeBuy.tradesCellRight,
+.activityRow .tradeTypeSell.tradesCellRight {
+  font-size: 11px;
 }
 
 .tradeTypeBuy {
@@ -1705,6 +1762,7 @@
 
 .rankText {
   color: var(--text-faint);
+  font: 700 10px/1 var(--mono);
 }
 
 .shareBarTrack {

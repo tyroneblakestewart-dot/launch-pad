@@ -134,6 +134,18 @@ export function TokenHeaderBand({
         {launch?.artworkThumbnail ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={launch.artworkThumbnail} alt="" className={styles.headerArtworkImage} />
+        ) : showDropArt ? (
+          // The design places the DROP ART affordance INSIDE the art tile
+          // (design/token-page-v2, header band) rather than as a separate
+          // pill under the name — and never at the expense of the meta row
+          // below, which the previous either/or hid for the creator.
+          // Display-only for now (no handler), matching the existing
+          // display-only-tile decision.
+          <button type="button" className={styles.headerDropArt}>
+            Drop
+            <br />
+            art
+          </button>
         ) : (
           <span className={styles.headerArtworkInitial}>{displayName.charAt(0).toUpperCase()}</span>
         )}
@@ -150,19 +162,13 @@ export function TokenHeaderBand({
             </span>
           ) : null}
         </div>
-        {showDropArt ? (
-          <button type="button" className={styles.headerDropArt}>
-            Drop art
-          </button>
-        ) : (
-          <div className={styles.headerMetaRow}>
-            <span>{holderCountLabel}</span>
-            <span className={styles.headerMetaDot} />
-            <span>LAUNCHED {launchAgeLabel}</span>
-            <span className={styles.headerMetaDot} />
-            <span className={styles.chainBadge}>{chainInfo.shortLabel}</span>
-          </div>
-        )}
+        <div className={styles.headerMetaRow}>
+          <span>{holderCountLabel}</span>
+          <span className={styles.headerMetaDot} />
+          <span>LAUNCHED {launchAgeLabel}</span>
+          <span className={styles.headerMetaDot} />
+          <span className={styles.chainBadge}>{chainInfo.shortLabel}</span>
+        </div>
       </div>
 
       <div className={styles.headerGraduation}>

@@ -57,6 +57,9 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
   // Caps the chart's pre-trade whitespace padding (issue #458 item 5) — only
   // known for a token launched through the recorded curve pipeline.
   const launchedAtUnixSeconds = launch ? Math.floor(new Date(launch.launchedAt).getTime() / 1000) : null;
+  // The same ticker the header band shows (launch record first, Blockscout
+  // second) so the swap CTA's "Buy $TICKER" can never disagree with it.
+  const ticker = launch?.ticker || (marketStats.supported && marketStats.symbol) || null;
 
   return (
     <main className={`${styles.page} token-page-full-screen`}>
@@ -88,6 +91,7 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
             factoryMinted={Boolean(launch)}
             curveStatus={curveStatus}
             trades={trades}
+            ticker={ticker}
           />
 
           <TokenCenterColumn
