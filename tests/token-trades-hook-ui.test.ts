@@ -445,7 +445,7 @@ describe("TokenTradeChart (issue #430, rebuilt in issue #445)", () => {
   it("re-derives resolvedInterval from the current trades on every render, including a fresh ALL re-selection, instead of a stale memoised value", async () => {
     const component = await source("components/token-page/token-trade-chart.tsx");
     expect(component).toContain(
-      "const resolvedInterval = useMemo(() => {\n    if (trades === null) return null;\n    return resolveChartInterval(timeframe, trades, decimals ?? DEFAULT_TOKEN_DECIMALS);\n  }, [trades, decimals, timeframe]);",
+      "const resolvedInterval = useMemo(() => {\n    if (trades === null) return null;\n    return resolveChartInterval(timeframe, trades, decimals ?? DEFAULT_TOKEN_DECIMALS, nowTick, launchedAtUnixSeconds);\n  }, [trades, decimals, timeframe, nowTick, launchedAtUnixSeconds]);",
     );
   });
 

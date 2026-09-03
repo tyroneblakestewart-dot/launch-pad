@@ -155,14 +155,15 @@ function formatUtcTime(unixSeconds: number, includeSeconds: boolean): string {
  *
  * Positioning on "now" (issue #467 item 1): the old `scrollToRealTime` call
  * this component used to make, and the timeScale's own `shiftVisibleRangeOnNewBar` (explicitly disabled below),
- * both act on the last bar that carries real series data and ignore
- * trailing whitespace bars — since `buildChartSeriesPoints` extends the
- * timeline with whitespace all the way to the current bucket, those
- * built-ins left the view scrolled to the last real candle while the axis
- * never reached the present on a token with a long trade-free tail, making
- * the chart look permanently frozen. `lib/token-trade-chart-render.ts`'s
- * `applyTokenTradeChartUpdate` positions and follows the timeline itself
- * instead, via `setVisibleLogicalRange` — this component only supplies the
+ * both act on the last bar that carries real series data. So does
+ * `setVisibleLogicalRange` itself, in effect — lightweight-charts derives
+ * its base index from real bars only and clamps the right offset to about
+ * one screen width past it — which is why `buildChartSeriesPoints` fills
+ * every trade-free bucket up to the current one with a flat carried-forward
+ * candle rather than whitespace (issue #472 follow-up): a whitespace tail
+ * left the view pinned to the launch candle with an empty grid after it.
+ * `lib/token-trade-chart-render.ts`'s `applyTokenTradeChartUpdate`
+ * positions and follows the timeline via `setVisibleLogicalRange` — this component only supplies the
  * chart's real container width (`lastAppliedSizeRef`, already tracked by the
  * guarded ResizeObserver below) as `chartWidthPx`, and re-invokes the same
  * resize-follow logic (`applyChartResize`) whenever that width itself
@@ -248,17 +249,22 @@ export function TokenTradeChart({
   // data-flow effect below, where it's set alongside appliedMinMoveRef.
   const [priceDecimals, setPriceDecimals] = useState(INITIAL_CHART_PRICE_DECIMALS);
 
+  // Declared ahead of resolvedInterval because "ALL" sizes its interval from
+  // the flat-filled timeline's real span (launch → now), so it has to read the
+  // clock; the clock's own tick/catch-up effect lives further down.
+  const [nowTick, setNowTick] = useState(() => Math.floor(Date.now() / 1000));
+
   const resolvedInterval = useMemo(() => {
     if (trades === null) return null;
-    return resolveChartInterval(timeframe, trades, decimals ?? DEFAULT_TOKEN_DECIMALS);
-  }, [trades, decimals, timeframe]);
+    return resolveChartInterval(timeframe, trades, decimals ?? DEFAULT_TOKEN_DECIMALS, nowTick, launchedAtUnixSeconds);
+  }, [trades, decimals, timeframe, nowTick, launchedAtUnixSeconds]);
 
-  // Whitespace bars advance the visible timeline "with the clock" (issue
-  // #451 item 2) even when no new trade has arrived to otherwise trigger a
-  // re-render. The tick itself is min(intervalSeconds, 30) — 1s on 1S, 15s on
-  // 15S, and the prior fixed 30s everywhere from 1M up (issue #470 item 3):
-  // a coarse timeframe never needs a live-second clock, but a sub-minute one
-  // does, or its own current-bucket whitespace bar would lag up to 30
+  // Flat carried-forward bars advance the visible timeline "with the clock"
+  // (issue #451 item 2) even when no new trade has arrived to otherwise
+  // trigger a re-render. The tick itself is min(intervalSeconds, 30) — 1s on
+  // 1S, 15s on 15S, and the prior fixed 30s everywhere from 1M up (issue #470
+  // item 3): a coarse timeframe never needs a live-second clock, but a
+  // sub-minute one does, or its own current-bucket bar would lag up to 30
   // buckets behind "now". Falls back to 1H's 30s cadence before the first
   // trades response has resolved an interval at all. Browsers suspend or
   // heavily throttle background-tab timers, so the interval alone left a tab
@@ -268,7 +274,6 @@ export function TokenTradeChart({
   // actually looked at again, while the interval keeps it ticking for an
   // already-foregrounded tab.
   const clockIntervalSeconds = Math.min(CANDLE_INTERVAL_SECONDS[resolvedInterval ?? "1h"], 30);
-  const [nowTick, setNowTick] = useState(() => Math.floor(Date.now() / 1000));
   useEffect(() => {
     const updateNowTick = () => setNowTick(Math.floor(Date.now() / 1000));
     updateNowTick();

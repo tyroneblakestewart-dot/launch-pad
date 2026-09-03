@@ -1,6 +1,7 @@
 import {
   bucketTradesIntoCandles,
   buildChartSeriesPoints,
+  CANDLE_INTERVAL_SECONDS,
   CHART_BAR_SPACING_PX,
   computeMovingAverage,
   diffCandles,
@@ -29,20 +30,25 @@ import type { TokenTrade } from "@/lib/token-trade-types";
 // lives here, unchanged in behaviour from before the extraction.
 //
 // Positioning is now owned entirely by this file (issue #467 items 1-2),
-// replacing the old `scrollToRealTime` call. Both that lightweight-charts
-// built-in and the chart's own `shiftVisibleRangeOnNewBar` option act on the
-// last bar that carries *series data* and ignore trailing whitespace bars — but
-// `buildChartSeriesPoints` deliberately extends the timeline with whitespace
-// all the way to the current bucket, so on a token with a long trade-free
-// tail those built-ins left the view scrolled to the last real candle while
-// every later whitespace bar (and the axis' reach to "now") sat off-screen
-// to the right, making the chart look permanently frozen. `computeInitial
-// VisibleLogicalRange` positions on the LAST timeline point (a real candle or
-// the current-time whitespace bar) instead, and the incremental-update branch
+// replacing the old `scrollToRealTime` call. `computeInitialVisibleLogicalRange`
+// positions on the LAST timeline point, and the incremental-update branch
 // below tracks whether the viewer is "at the right edge" and, if so, shifts
 // the range by exactly the number of newly appended points on every update —
 // following the clock — while leaving the range untouched the moment the
 // viewer has scrolled left.
+//
+// That only works because the timeline's tail is made of *real bars* (issue
+// #472 follow-up). lightweight-charts filters whitespace rows out of every
+// series' row list before computing the time scale's base index, and
+// `_correctOffset` clamps the right offset to roughly one screen width
+// (width / barSpacing − 2 bars) past that base index — so with a whitespace
+// tail, a requested range ending at "now" was silently clamped back to just
+// past the last trade, leaving the view pinned to the launch candle with an
+// empty grid after it no matter what this file asked for (and, on a capped
+// 1S window that started after the only trade, no real bar at all to
+// anchor). `buildChartSeriesPoints` therefore carries the previous close
+// forward as a flat candle for every trade-free bucket, so the current
+// bucket is always a real bar the library is willing to follow.
 
 type ChartBar = {
   time: number;
@@ -179,8 +185,8 @@ export type TokenTradeChartSeriesBundle = {
   timeScale: ChartTimeScaleLike;
 };
 
-/** Which branch the most recent applyTokenTradeChartUpdate call took (issue #472 item 2's debug readout) — "initial" is the very first render, "full-resync" covers both a timeframe/interval change and the out-of-order/crash fallback, "incremental" is the normal update()-only path. */
-export type TokenTradeChartUpdateMode = "initial" | "incremental" | "full-resync";
+/** Which branch the most recent applyTokenTradeChartUpdate call took (issue #472 item 2's debug readout) — "initial" is the very first render, "full-resync" covers both a timeframe/interval change and the out-of-order/crash fallback, "window-slide" is the sub-minute window re-anchoring, "incremental" is the normal update()-only path. */
+export type TokenTradeChartUpdateMode = "initial" | "incremental" | "full-resync" | "window-slide";
 
 export type TokenTradeChartRenderState = {
   points: ChartSeriesPoint[];
@@ -259,7 +265,7 @@ export function applyTokenTradeChartUpdate(
   const candles = bucketTradesIntoCandles(trades, interval, decimals, startingPriceNativePerToken ?? undefined);
   const ma20 = computeMovingAverage(candles, MA20_PERIOD);
   const ma50 = computeMovingAverage(candles, MA50_PERIOD);
-  const points = buildChartSeriesPoints(candles, interval, nowUnixSeconds, launchedAtUnixSeconds, chartWidthPx);
+  const points = buildChartSeriesPoints(candles, interval, nowUnixSeconds, launchedAtUnixSeconds, chartWidthPx, startingPriceNativePerToken);
   const flatCandleMinBodyHeight = computeFlatCandleMinBodyHeight(
     candles,
     candles.length > 0 ? candles[candles.length - 1].close : startingPriceNativePerToken ?? 0,
@@ -268,6 +274,17 @@ export function applyTokenTradeChartUpdate(
 
   const isFirstLoadOrTimeframeChange =
     !previousState.hasRenderedOnce || previousState.timeframe !== timeframe || previousState.resolvedInterval !== interval;
+
+  // How far the timeline's head moved since the last render, in bars. Non-zero
+  // only when the sub-minute window re-anchors, or when a width change resizes
+  // that window (which can move the head EARLIER — hence a signed value and a
+  // `!== 0` test rather than a positive-only one).
+  const previousHeadTime = previousState.points.length > 0 ? previousState.points[0].time : null;
+  const nextHeadTime = points.length > 0 ? points[0].time : null;
+  const windowSlideBars =
+    !isFirstLoadOrTimeframeChange && previousHeadTime !== null && nextHeadTime !== null
+      ? Math.round((nextHeadTime - previousHeadTime) / CANDLE_INTERVAL_SECONDS[interval])
+      : 0;
   let lastUpdateMode: TokenTradeChartUpdateMode = !previousState.hasRenderedOnce ? "initial" : "incremental";
 
   if (isFirstLoadOrTimeframeChange) {
@@ -279,6 +296,36 @@ export function applyTokenTradeChartUpdate(
     const lastPointIndex = points.length - 1;
     if (lastPointIndex >= 0) {
       series.timeScale.setVisibleLogicalRange(computeInitialVisibleLogicalRange(lastPointIndex, chartWidthPx));
+    }
+  } else if (windowSlideBars !== 0) {
+    // The sub-minute window re-anchored (computeAnchoredSubminuteStartTime), so
+    // every logical index now refers to a DIFFERENT bucket than it did last
+    // render. diffChartSeriesPoints compares index-for-index and never compares
+    // `time`, so on a timeline of identical flat bars it would report "nothing
+    // changed" and the chart would silently freeze — the defect this branch
+    // exists to make impossible. A shifted timeline can only be applied whole.
+    lastUpdateMode = "window-slide";
+    const previousLastIndex = previousState.points.length - 1;
+    const rangeBeforeSlide = series.timeScale.getVisibleLogicalRange();
+    const wasAtRightEdge = isAtChartRightEdge(rangeBeforeSlide, previousLastIndex);
+
+    series.candleSeries.setData(points.map(toSeriesDatum));
+    series.ma20Series.setData(ma20.map((point) => ({ time: point.time, value: point.value })));
+    series.ma50Series.setData(ma50.map((point) => ({ time: point.time, value: point.value })));
+    series.volumeSeries.setData(candles.map((candle) => ({ time: candle.time, value: candle.volume, color: volumeBarColor(candle) })));
+
+    const lastPointIndex = points.length - 1;
+    if (lastPointIndex >= 0) {
+      if (wasAtRightEdge) {
+        series.timeScale.setVisibleLogicalRange(computeInitialVisibleLogicalRange(lastPointIndex, chartWidthPx));
+      } else if (rangeBeforeSlide) {
+        // Subtracting the slide keeps the SAME BAR TIMES in view: every bar the
+        // viewer was looking at moved `windowSlideBars` indices to the left.
+        series.timeScale.setVisibleLogicalRange({
+          from: rangeBeforeSlide.from - windowSlideBars,
+          to: rangeBeforeSlide.to - windowSlideBars,
+        });
+      }
     }
   } else {
     const pointsDiff = diffChartSeriesPoints(previousState.points, points);

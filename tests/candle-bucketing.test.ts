@@ -307,6 +307,94 @@ describe("resolveAllTimeframeInterval / resolveChartInterval", () => {
   });
 });
 
+describe("resolveAllTimeframeInterval sized from the flat-filled timeline span (issue #472 follow-up)", () => {
+  it("resolves a two-day-old single-trade token to 15M (≈192 bars), never 1S, once it knows now and launch", () => {
+    const now = 2 * 86_400 - 660;
+    const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 })];
+    expect(resolveAllTimeframeInterval(trades, 18, now, 0)).toBe("15m");
+    expect(resolveChartInterval("all", trades, 18, now, 0)).toBe("15m");
+  });
+
+  it("keeps the trade-bucket-count-only behaviour when no now is supplied", () => {
+    const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 })];
+    expect(resolveAllTimeframeInterval(trades, 18)).toBe("1s");
+    expect(resolveAllTimeframeInterval(trades, 18, null, 0)).toBe("1s");
+  });
+
+  it("spans from the launch bucket when there are zero trades", () => {
+    expect(resolveAllTimeframeInterval([], 18, 3600, 0)).toBe("1m");
+  });
+
+  it("spans from the earlier of launch and first trade", () => {
+    // Trade an hour before the recorded launch (the #425 recovery path);
+    // the span must start at the trade, not the launch.
+    const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 })];
+    expect(resolveAllTimeframeInterval(trades, 18, 3600, 3600)).toBe("1m");
+  });
+
+  it("still passes fixed timeframes through untouched", () => {
+    const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 })];
+    expect(resolveChartInterval("1s", trades, 18, 2 * 86_400, 0)).toBe("1s");
+  });
+});
+
+describe("buildChartSeriesPoints anchored sub-minute window (issue #472 follow-up 2)", () => {
+  const WIDTH = 1116;
+  const CAP = 2 * Math.ceil(WIDTH / 6); // 372
+  const TRADE_AT = 15;
+  const LAUNCH_AT = 10;
+  const NOW = 172_800;
+
+  function pointsAt(interval: "1s" | "15s", now: number) {
+    const candles = bucketTradesIntoCandles([tradeAtPrice(0.01, { blockTimestamp: TRADE_AT })], interval, 18);
+    return buildChartSeriesPoints(candles, interval, now, LAUNCH_AT, WIDTH, 1e-6);
+  }
+
+  it("holds the window's head STILL across consecutive ticks, so an ordinary tick is a pure append the incremental path can render", () => {
+    // A head that moved every tick was invisible to diffChartSeriesPoints
+    // (index-for-index, never comparing `time`), which reported "nothing
+    // changed" for a timeline of identical flat bars — the freeze this anchor
+    // exists to prevent.
+    const a = pointsAt("1s", NOW);
+    const b = pointsAt("1s", NOW + 1);
+    expect(b[0].time).toBe(a[0].time);
+    expect(b.length).toBe(a.length + 1);
+    expect(b[b.length - 1].time).toBe(NOW + 1);
+  });
+
+  it("keeps the head still for a long run of ticks, re-anchoring at most once per cap buckets", () => {
+    const heads = new Set<number>();
+    for (let i = 0; i < CAP; i++) heads.add(pointsAt("1s", NOW + i).time ?? pointsAt("1s", NOW + i)[0].time);
+    expect(heads.size).toBeLessThanOrEqual(2);
+  });
+
+  it("stays bounded between the cap and twice the cap however far the clock advances", () => {
+    for (const offset of [0, 1, 37, 200, 371, 372, 373, 800, 5_000]) {
+      const length = pointsAt("1s", NOW + offset).length;
+      expect(length).toBeGreaterThanOrEqual(CAP);
+      expect(length).toBeLessThanOrEqual(2 * CAP);
+    }
+  });
+
+  it("always ends at the current bucket, and every bar in the window is real (never whitespace) once a price is known", () => {
+    for (const interval of ["1s", "15s"] as const) {
+      const step = interval === "1s" ? 1 : 15;
+      const now = NOW + 7 * step;
+      const points = pointsAt(interval, now);
+      expect(points[points.length - 1].time).toBe(Math.floor(now / step) * step);
+      expect(points.every(isCandlePoint)).toBe(true);
+    }
+  });
+
+  it("leaves 1M and coarser intervals uncapped and unanchored, exactly as before", () => {
+    const candles = bucketTradesIntoCandles([tradeAtPrice(0.01, { blockTimestamp: TRADE_AT })], "1m", 18);
+    const a = buildChartSeriesPoints(candles, "1m", NOW, LAUNCH_AT, WIDTH, 1e-6);
+    const b = buildChartSeriesPoints(candles, "1m", NOW + 60, LAUNCH_AT, WIDTH, 1e-6);
+    expect(a[0].time).toBe(b[0].time);
+    expect(b.length).toBe(a.length + 1);
+  });
+});
+
 describe("diffTimeSeries / diffCandles", () => {
   function candle(overrides: Partial<Candle> = {}): Candle {
     return { time: 0, open: 1, high: 1, low: 1, close: 1, volume: 1, ...overrides };
@@ -375,49 +463,94 @@ describe("computeMovingAverage", () => {
   });
 });
 
-describe("buildChartSeriesPoints (issue #451 item 2: gaps and time axis)", () => {
-  it("fills exactly the whitespace bars between two trades an hour apart at 5m", () => {
-    const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 }), tradeAtPrice(0.01, { blockTimestamp: 3600, logIndex: 1 })];
+describe("buildChartSeriesPoints (issue #451 item 2: gaps and time axis; flat-filled per the issue #472 follow-up)", () => {
+  it("fills every bucket between two trades an hour apart at 5m with a flat candle carrying the previous close, never whitespace", () => {
+    const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 }), tradeAtPrice(0.02, { blockTimestamp: 3600, logIndex: 1 })];
     const candles = bucketTradesIntoCandles(trades, "5m", 18);
     const points = buildChartSeriesPoints(candles, "5m", 3600);
     const between = points.filter((point) => point.time > 0 && point.time < 3600);
     expect(between).toHaveLength(11);
-    expect(between.every((point) => !isCandlePoint(point))).toBe(true);
+    for (const point of between) {
+      expect(isCandlePoint(point)).toBe(true);
+      if (isCandlePoint(point)) {
+        expect(point).toEqual({ time: point.time, open: 0.01, high: 0.01, low: 0.01, close: 0.01, volume: 0 });
+      }
+    }
   });
 
-  it("keeps the current bucket present as whitespace once now has moved past the last trade's bucket", () => {
+  it("keeps the current bucket present as a flat candle at the last close once now has moved past the last trade's bucket", () => {
     const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 })];
     const candles = bucketTradesIntoCandles(trades, "5m", 18);
     const points = buildChartSeriesPoints(candles, "5m", 900);
     const last = points[points.length - 1];
     expect(last.time).toBe(900);
-    expect(isCandlePoint(last)).toBe(false);
+    expect(isCandlePoint(last)).toBe(true);
+    if (isCandlePoint(last)) expect(last.close).toBe(0.01);
   });
 
-  it("pads roughly 100 whitespace bars before the first trade on first load", () => {
+  it("carries a later trade's close into the flat candles that follow it, not the earlier close", () => {
+    const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 }), tradeAtPrice(0.03, { blockTimestamp: 600, logIndex: 1 })];
+    const candles = bucketTradesIntoCandles(trades, "5m", 18);
+    const points = buildChartSeriesPoints(candles, "5m", 1800);
+    const after = points.filter((point) => point.time > 600);
+    expect(after.length).toBeGreaterThan(0);
+    for (const point of after) expect(isCandlePoint(point) && point.close === 0.03).toBe(true);
+  });
+
+  it("pads roughly 100 whitespace bars before the first trade on first load when no launch record or starting price exists", () => {
     const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 })];
     const candles = bucketTradesIntoCandles(trades, "5m", 18);
     const points = buildChartSeriesPoints(candles, "5m", 0);
-    expect(points.filter((point) => point.time < 0)).toHaveLength(100);
+    const padding = points.filter((point) => point.time < 0);
+    expect(padding).toHaveLength(100);
+    expect(padding.every((point) => !isCandlePoint(point))).toBe(true);
   });
 
-  it("still produces a padded whitespace timeline (never candles) when there are zero trades yet", () => {
+  it("still produces a padded whitespace-only timeline when there are zero trades and no starting price to carry", () => {
     const points = buildChartSeriesPoints([], "5m", 3600);
     expect(points.every((point) => !isCandlePoint(point))).toBe(true);
     expect(points[points.length - 1].time).toBe(3600);
     expect(points).toHaveLength(101);
   });
 
-  it("never synthesizes OHLC for a gap bucket — whitespace points carry only a time field", () => {
-    const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 }), tradeAtPrice(0.01, { blockTimestamp: 3600, logIndex: 1 })];
+  it("with zero trades but a launch record and starting price, fills from the launch bucket to now with flat candles at the starting price, keeping only the pre-launch padding as whitespace", () => {
+    const launchedAt = 1000; // bucket 900 at 5m
+    const points = buildChartSeriesPoints([], "5m", 3600, launchedAt, 0, 0.005);
+    const preLaunch = points.filter((point) => point.time < 900);
+    const fromLaunch = points.filter((point) => point.time >= 900);
+    expect(preLaunch.length).toBeGreaterThan(0);
+    expect(preLaunch.every((point) => !isCandlePoint(point))).toBe(true);
+    expect(fromLaunch.length).toBe(10);
+    for (const point of fromLaunch) {
+      expect(isCandlePoint(point) && point.open === 0.005 && point.close === 0.005 && point.volume === 0).toBe(true);
+    }
+    expect(points[points.length - 1].time).toBe(3600);
+  });
+
+  it("ignores a zero/negative starting price rather than seeding a flat candle from it", () => {
+    const points = buildChartSeriesPoints([], "5m", 3600, 0, 0, 0);
+    expect(points.every((point) => !isCandlePoint(point))).toBe(true);
+  });
+
+  it("a flat candle is exactly the carried close — open = high = low = close, volume 0 — never an interpolated or invented price", () => {
+    const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 }), tradeAtPrice(0.05, { blockTimestamp: 3600, logIndex: 1 })];
     const candles = bucketTradesIntoCandles(trades, "5m", 18);
     const points = buildChartSeriesPoints(candles, "5m", 3600);
     for (const point of points) {
-      if (!isCandlePoint(point)) expect(Object.keys(point)).toEqual(["time"]);
+      if (!isCandlePoint(point)) {
+        expect(Object.keys(point)).toEqual(["time"]);
+        continue;
+      }
+      if (point.volume === 0) {
+        expect(point.open).toBe(point.high);
+        expect(point.high).toBe(point.low);
+        expect(point.low).toBe(point.close);
+        expect(point.close).toBe(0.01);
+      }
     }
   });
 
-  it("filtering the candle points back out of the timeline exactly reproduces the real candles — MA/stats never see whitespace", () => {
+  it("the traded candles inside the timeline are the exact bucketTradesIntoCandles objects — MA/stats keep reading those directly, never the flat fill", () => {
     const trades = [
       tradeAtPrice(0.01, { blockTimestamp: 0 }),
       tradeAtPrice(0.01, { blockTimestamp: 900, logIndex: 1 }),
@@ -425,9 +558,40 @@ describe("buildChartSeriesPoints (issue #451 item 2: gaps and time axis)", () =>
     ];
     const candles = bucketTradesIntoCandles(trades, "5m", 18);
     const points = buildChartSeriesPoints(candles, "5m", 3600);
-    const recoveredCandles = points.filter(isCandlePoint);
-    expect(recoveredCandles).toEqual(candles);
-    expect(computeMovingAverage(recoveredCandles, 2)).toEqual(computeMovingAverage(candles, 2));
+    const traded = points.filter((point): point is Candle => isCandlePoint(point) && point.volume > 0);
+    expect(traded).toEqual(candles);
+    expect(traded.every((candle) => candles.includes(candle))).toBe(true);
+  });
+
+  it("the last timeline point is always a real bar at the current bucket once any price is known — the invariant lightweight-charts needs to follow the clock", () => {
+    // lightweight-charts derives the time scale's base index from real bars
+    // only (whitespace rows are filtered out of every series' row list) and
+    // clamps the right offset to ~width/barSpacing − 2 bars past it. A
+    // two-day-old single-trade token at 1M therefore needs the *current*
+    // bucket to be a real bar, or the requested range is clamped back to the
+    // launch — the "one lime candle at the left edge, empty grid after it"
+    // defect seen on WERDE.
+    const twoDays = 2 * 86_400;
+    const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 })];
+    const candles = bucketTradesIntoCandles(trades, "1m", 18);
+    const points = buildChartSeriesPoints(candles, "1m", twoDays, 0, 1116, 0.001);
+    const last = points[points.length - 1];
+    expect(last.time).toBe(twoDays);
+    expect(isCandlePoint(last)).toBe(true);
+    // Everything from the launch bucket onward is a real bar.
+    expect(points.filter((point) => point.time >= 0).every(isCandlePoint)).toBe(true);
+  });
+
+  it("a capped 1S window that starts long after the only trade still carries that trade's close — never whitespace, never re-seeded from the starting price", () => {
+    const twoDays = 2 * 86_400;
+    const trades = [tradeAtPrice(0.02, { blockTimestamp: 0 })];
+    const candles = bucketTradesIntoCandles(trades, "1s", 18);
+    const points = buildChartSeriesPoints(candles, "1s", twoDays, 0, 1116, 0.001);
+    expect(points.length).toBeGreaterThanOrEqual(2 * Math.ceil(1116 / 6));
+    expect(points.length).toBeLessThanOrEqual(2 * 2 * Math.ceil(1116 / 6));
+    expect(points[0].time).toBeGreaterThan(0);
+    expect(points.every((point) => isCandlePoint(point) && point.close === 0.02 && point.volume === 0)).toBe(true);
+    expect(points[points.length - 1].time).toBe(twoDays);
   });
 });
 
@@ -500,14 +664,20 @@ describe("buildChartSeriesPoints sub-minute capped timeline (issue #470 item 2)"
   const FOUR_DAYS = 4 * 86_400;
   const CHART_WIDTH_PX = 1400;
 
-  it("caps a 1S timeline over a 4-day history at ~470 points and still ends at the current second", () => {
+  it("caps a 1S timeline over a 4-day history to a bounded window and still ends at the current second", () => {
     const candles: Candle[] = [
       { time: 0, open: 1, high: 1, low: 1, close: 1, volume: 1 }, // 4 days old — must be dropped
       { time: FOUR_DAYS - 5, open: 1, high: 1, low: 1, close: 1, volume: 1 }, // 5s before "now" — must survive
     ];
     const points = buildChartSeriesPoints(candles, "1s", FOUR_DAYS, null, CHART_WIDTH_PX);
 
-    expect(points.length).toBeLessThanOrEqual(470);
+    // Since issue #472's follow-up the window is anchored rather than sliding
+    // (so an ordinary tick stays a pure append instead of a whole-array
+    // replacement the index-wise diff could not even see), which makes its
+    // length vary between the cap and twice the cap rather than sitting at
+    // exactly the cap. Still bounded, and still a tiny fraction of the ~345,600
+    // points an uncapped 4-day 1S timeline would carry.
+    expect(points.length).toBeLessThanOrEqual(2 * 2 * Math.ceil(CHART_WIDTH_PX / 6));
     expect(points[points.length - 1].time).toBe(FOUR_DAYS);
     expect(points.some((point) => point.time === 0)).toBe(false);
   });

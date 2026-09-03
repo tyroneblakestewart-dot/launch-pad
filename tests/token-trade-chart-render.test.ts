@@ -374,9 +374,13 @@ describe("applyTokenTradeChartUpdate — sub-minute capped timeline threading (i
       chartWidthPx: CHART_WIDTH_PX,
     });
 
-    // At 600px / 6px-per-bar the cap is 2*100 = 200 points, far fewer than
-    // the ~4-day, one-point-per-second uncapped timeline would be.
-    expect(state.points.length).toBeLessThanOrEqual(200);
+    // At 600px / 6px-per-bar the cap is 2*100 = 200 bars. Since issue #472's
+    // follow-up the window is anchored rather than sliding (so ticks stay pure
+    // appends), which makes its length vary between the cap and twice the cap
+    // instead of sitting at exactly the cap — still bounded, and still far
+    // fewer than the ~4-day, one-point-per-second uncapped timeline.
+    expect(state.points.length).toBeGreaterThanOrEqual(200);
+    expect(state.points.length).toBeLessThanOrEqual(400);
     expect(state.points[state.points.length - 1].time).toBe(now);
     // The recent trade (5s before "now", inside the capped window) must
     // still be present as a real candle.
@@ -624,5 +628,201 @@ describe("isFlatCandle / candleToBar — flat-candle visibility (issue #472 item
 
     const bucket0 = chart.candle.getData().find((point) => point.time === 0) as { color?: string } | undefined;
     expect(bucket0?.color).toBe(FLAT_CANDLE_COLOR);
+  });
+});
+
+
+describe("applyTokenTradeChartUpdate — flat-filled timeline reaches the series (issue #472 follow-up)", () => {
+  it("the last datum handed to setData on first load is a real OHLC bar at the current bucket, flat-coloured, not a whitespace point", () => {
+    const chart = createFakeChart();
+    const now = 6 * FIVE_MINUTES;
+    const state = applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), {
+      trades: [tradeAtPrice(0.01, { blockTimestamp: 0 })],
+      decimals: DECIMALS,
+      interval: "5m",
+      timeframe: "5m",
+      nowUnixSeconds: now,
+      startingPriceNativePerToken: 0.001,
+      launchedAtUnixSeconds: 0,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+    const data = chart.candle.getData();
+    const last = data[data.length - 1];
+    expect(last.time).toBe(now);
+    expect("open" in last).toBe(true);
+    if ("open" in last) expect(last.color).toBe(FLAT_CANDLE_COLOR);
+    expect(state.points[state.points.length - 1].time).toBe(now);
+    // The requested range ends at the last real bar plus the fixed right
+    // offset — inside the library's own clamp, so it is honoured as-is.
+    expect(chart.getRange()).toEqual(computeInitialVisibleLogicalRange(state.points.length - 1, CHART_WIDTH_PX));
+  });
+
+  it("advancing now by one bucket appends exactly one flat bar through update() and shifts the range by one — the chart follows the clock", () => {
+    const chart = createFakeChart();
+    const trades = [tradeAtPrice(0.01, { blockTimestamp: 0 })];
+    const base = { trades, decimals: DECIMALS, interval: "5m" as const, timeframe: "5m" as const, startingPriceNativePerToken: 0.001, launchedAtUnixSeconds: 0, chartWidthPx: CHART_WIDTH_PX };
+    const first = applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), { ...base, nowUnixSeconds: 0 });
+    const rangeBefore = chart.getRange();
+    const updateCallsBefore = chart.candle.updateCalls;
+
+    const second = applyTokenTradeChartUpdate(chart.bundle, first, { ...base, nowUnixSeconds: FIVE_MINUTES });
+
+    expect(second.lastUpdateMode).toBe("incremental");
+    expect(chart.candle.updateCalls - updateCallsBefore).toBe(1);
+    expect(second.points.length - first.points.length).toBe(1);
+    const data = chart.candle.getData();
+    const last = data[data.length - 1];
+    expect(last.time).toBe(FIVE_MINUTES);
+    expect("open" in last && last.color === FLAT_CANDLE_COLOR).toBe(true);
+    expect(chart.getRange()).toEqual({ from: rangeBefore!.from + 1, to: rangeBefore!.to + 1 });
+  });
+
+  it("a 1S window that starts long after the only trade renders flat bars at that trade's close, so the capped window is never an all-whitespace series with no bar to anchor", () => {
+    const chart = createFakeChart();
+    const now = 4 * 86_400;
+    applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), {
+      trades: [tradeAtPrice(0.02, { blockTimestamp: 0 })],
+      decimals: DECIMALS,
+      interval: "1s",
+      timeframe: "1s",
+      nowUnixSeconds: now,
+      startingPriceNativePerToken: 0.001,
+      launchedAtUnixSeconds: 0,
+      chartWidthPx: CHART_WIDTH_PX,
+    });
+    const data = chart.candle.getData();
+    expect(data.length).toBeGreaterThanOrEqual(200);
+    expect(data.length).toBeLessThanOrEqual(400);
+    expect(data.every((datum) => "open" in datum)).toBe(true);
+    expect(data[data.length - 1].time).toBe(now);
+  });
+});
+
+describe("applyTokenTradeChartUpdate — sub-minute live updates must actually reach the series (issue #472 follow-up 2)", () => {
+  // The deployed 1S chart showed no candles and an axis frozen N minutes behind
+  // "now", where N was exactly the time since page load. Cause: the sub-minute
+  // window's start slid one bucket per tick, so every logical index held a
+  // different bucket than before — but diffChartSeriesPoints compares
+  // index-for-index and chartSeriesPointsEqual never compares `time`, so a
+  // timeline of identical flat bars diffed to "nothing changed". Zero
+  // series.update() calls were ever made and the rendered series stayed at the
+  // bucket it first loaded with, while the engine's own state marched on.
+  const TRADE_AT = 15;
+  const LAUNCH_AT = 10;
+  const START_PRICE = 1e-6;
+  const NOW = 172_800; // two days old, so no traded candle is inside the window
+
+  function tickThrough(interval: "1s" | "15s", ticks: number) {
+    const chart = createFakeChart();
+    const base = {
+      trades: [tradeAtPrice(0.01, { blockTimestamp: TRADE_AT })],
+      decimals: DECIMALS,
+      interval,
+      timeframe: interval,
+      startingPriceNativePerToken: START_PRICE,
+      launchedAtUnixSeconds: LAUNCH_AT,
+      chartWidthPx: 1116,
+    };
+    const step = interval === "1s" ? 1 : 15;
+    let state = applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), { ...base, nowUnixSeconds: NOW });
+    const setDataAfterLoad = chart.candle.setDataCalls;
+    for (let i = 1; i <= ticks; i++) {
+      state = applyTokenTradeChartUpdate(chart.bundle, state, { ...base, nowUnixSeconds: NOW + i * step });
+    }
+    const data = chart.candle.getData();
+    return { chart, state, data, setDataAfterLoad, finalNow: NOW + ticks * step, step };
+  }
+
+  for (const interval of ["1s", "15s"] as const) {
+    it(`${interval}: the rendered series tail tracks the clock exactly — never lagging behind by the time since load`, () => {
+      const { data, finalNow } = tickThrough(interval, 60);
+      expect(data[data.length - 1].time).toBe(finalNow);
+    });
+
+    it(`${interval}: every tick reaches the series, and the engine's state and the rendered series never diverge`, () => {
+      const { chart, state, data } = tickThrough(interval, 60);
+      expect(chart.candle.updateCalls).toBeGreaterThan(0);
+      expect(data[data.length - 1].time).toBe(state.points[state.points.length - 1].time);
+    });
+  }
+
+  it("1S ticks are pure appends — one update() per tick and no extra setData — so the chart moves smoothly rather than being wholesale-replaced every second", () => {
+    const { chart, setDataAfterLoad } = tickThrough("1s", 60);
+    expect(chart.candle.updateCalls).toBe(60);
+    expect(chart.candle.setDataCalls).toBe(setDataAfterLoad);
+  });
+
+  it("the window's re-anchor takes the window-slide branch, resyncs every series, and still lands the last bar on the current bucket", () => {
+    const chart = createFakeChart();
+    const base = {
+      trades: [tradeAtPrice(0.01, { blockTimestamp: TRADE_AT })],
+      decimals: DECIMALS,
+      interval: "1s" as const,
+      timeframe: "1s" as const,
+      startingPriceNativePerToken: START_PRICE,
+      launchedAtUnixSeconds: LAUNCH_AT,
+      chartWidthPx: 1116,
+    };
+    let state = applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), { ...base, nowUnixSeconds: NOW });
+    // Walk forward until the anchored window re-anchors at least once.
+    let slides = 0;
+    for (let i = 1; i <= 800 && slides === 0; i++) {
+      state = applyTokenTradeChartUpdate(chart.bundle, state, { ...base, nowUnixSeconds: NOW + i });
+      if (state.lastUpdateMode === "window-slide") slides++;
+    }
+    expect(slides).toBe(1);
+    const data = chart.candle.getData();
+    expect(data[data.length - 1].time).toBe(state.points[state.points.length - 1].time);
+    expect(chart.getRange()).toEqual(computeInitialVisibleLogicalRange(state.points.length - 1, 1116));
+  });
+
+  it("a viewer scrolled away from the right edge keeps the same bars in view across a re-anchor, instead of being yanked to the present", () => {
+    const base = {
+      trades: [tradeAtPrice(0.01, { blockTimestamp: TRADE_AT })],
+      decimals: DECIMALS,
+      interval: "1s" as const,
+      timeframe: "1s" as const,
+      startingPriceNativePerToken: START_PRICE,
+      launchedAtUnixSeconds: LAUNCH_AT,
+      chartWidthPx: 1116,
+    };
+
+    // Find the tick at which the anchored window re-anchors, on a throwaway chart.
+    const probeChart = createFakeChart();
+    let probe = applyTokenTradeChartUpdate(probeChart.bundle, createInitialTokenTradeChartRenderState(), { ...base, nowUnixSeconds: NOW });
+    let slideTick = 0;
+    for (let i = 1; i <= 2000; i++) {
+      probe = applyTokenTradeChartUpdate(probeChart.bundle, probe, { ...base, nowUnixSeconds: NOW + i });
+      if (probe.lastUpdateMode === "window-slide") { slideTick = i; break; }
+    }
+    expect(slideTick).toBeGreaterThan(0);
+
+    // Replay up to just before that tick, then scroll the viewer left.
+    const chart = createFakeChart();
+    let state = applyTokenTradeChartUpdate(chart.bundle, createInitialTokenTradeChartRenderState(), { ...base, nowUnixSeconds: NOW });
+    for (let i = 1; i < slideTick; i++) {
+      state = applyTokenTradeChartUpdate(chart.bundle, state, { ...base, nowUnixSeconds: NOW + i });
+    }
+    // Sit 30 bars back from the tail: far enough left that the viewer is not
+    // "at the right edge", but recent enough that these bars are still inside
+    // the window after it re-anchors. (Bars near the head genuinely fall out of
+    // a re-anchored window — an accepted consequence of capping at all.)
+    const scrolledTo = state.points.length - 1 - 30;
+    const scrolled = { from: scrolledTo - 186, to: scrolledTo };
+    chart.timeScale.setVisibleLogicalRange(scrolled);
+    const timeAtLeftEdgeBefore = state.points[scrolled.from].time;
+    const timeAtRightEdgeBefore = state.points[scrolled.to].time;
+
+    state = applyTokenTradeChartUpdate(chart.bundle, state, { ...base, nowUnixSeconds: NOW + slideTick });
+    expect(state.lastUpdateMode).toBe("window-slide");
+
+    // The very same wall-clock bars are still under the viewer's window, at
+    // their new (lower) logical indices — the view neither jumped to the
+    // present nor drifted onto different bars.
+    const range = chart.getRange()!;
+    expect(range.to - range.from).toBe(scrolled.to - scrolled.from);
+    expect(state.points[range.from].time).toBe(timeAtLeftEdgeBefore);
+    expect(state.points[range.to].time).toBe(timeAtRightEdgeBefore);
+    expect(range.from).toBeLessThan(scrolled.from);
   });
 });

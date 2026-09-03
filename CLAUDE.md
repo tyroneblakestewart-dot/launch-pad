@@ -1198,3 +1198,125 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   changes were checked by reading the code and by the new unit/fixture
   tests, not on a live deployed page; flagged for the owner to confirm by
   trading on a live bonding-curve token.
+
+- Token chart flat-fill — the timeline now genuinely ends in a real bar
+  (issue #472 follow-up; the "no candles / not smooth in any timeframe"
+  defect seen on WERDE after #473 deployed). Root cause, proven against
+  `lightweight-charts@4.1.3`'s own source rather than inferred: the
+  flat-filled timeline #471/#472 describe was never built in the data
+  layer. `bucketTradesIntoCandles` only ever emitted a candle for a bucket
+  that contained a trade, and `buildChartSeriesPoints` filled every gap
+  with a whitespace `{ time }` point (its doc comment said so). The library
+  filters whitespace rows out of every series' row list before computing
+  the time scale's base index, then clamps the right offset to roughly one
+  screen width (`width / barSpacing − 2` bars) past that base index — so
+  the width-derived range the engine requested (ending ~2,900 bars past
+  the single WERDE candle at 1M) was silently clamped back to just past
+  the launch candle: one lime bar at the left edge, an empty grid after it,
+  the axis two days behind "now". On 1S the capped 372-bar window started
+  long after the only trade and contained no real bar at all, so there was
+  nothing to anchor. #472's `isFlatCandle`/`candleToBar` paint was correct
+  but unreachable — the only flat candle that could exist was a
+  single-trade bucket with no starting price to open from. Fix, chart-only
+  (`lib/candle-bucketing.ts`): `buildChartSeriesPoints` now carries the
+  previous close forward as a real flat candle (open = high = low = close,
+  volume 0) for every trade-free bucket once any price is known — from the
+  launch bucket at the curve's starting price when `launchedAtUnixSeconds`
+  and a positive `startingPriceNativePerToken` (new optional sixth
+  parameter, threaded from `applyTokenTradeChartUpdate`) are both known,
+  else from the first traded candle; buckets before any known price stay
+  whitespace, and a capped 1S window that starts after the last trade
+  still carries that trade's close, never a re-seeded starting price.
+  Nothing is interpolated or invented — a flat bar is the price that
+  genuinely stood during that bucket. `bucketTradesIntoCandles` itself is
+  unchanged, so MA20/MA50, the volume series, the Stats panel, the homepage
+  sparkline and mini candles keep reading traded candles only. Because
+  "ALL" previously sized itself from the traded-bucket count alone (a
+  two-day-old single-trade token resolved to 1S — six minutes of history),
+  `resolveAllTimeframeInterval`/`resolveChartInterval` accept optional
+  `nowUnixSeconds`/`launchedAtUnixSeconds` and, when given, pick the finest
+  interval whose flat-filled span (earlier of launch and first trade → now)
+  fits the existing 200-bar cap (WERDE → 15M); the trade-count-only rule is
+  kept when no "now" is supplied. `components/token-page/token-trade-chart.tsx`
+  moves its `nowTick` state above the `resolvedInterval` memo so "ALL" can
+  read the clock. **Tests changed rather than only added (rule 8, stated
+  plainly):** the five #451 `buildChartSeriesPoints` cases asserting that
+  gap buckets are whitespace, and one #451 case asserting the timeline's
+  candle points exactly equal `bucketTradesIntoCandles`' output, pinned
+  the defect itself and were rewritten to assert the flat-fill contract;
+  the `tests/token-trades-hook-ui.test.ts` source-string assertion on the
+  `resolvedInterval` memo was updated to the new signature. New coverage:
+  the WERDE shape at 1M and 1S (last point is a real bar at the current
+  bucket; a capped 1S window is all real bars at the old close), the
+  starting-price seed from the launch bucket, the span-sized ALL resolver,
+  and — through the fake-series engine harness — that the last datum
+  reaching `setData` is a flat-coloured OHLC bar and that advancing "now"
+  by one bucket appends exactly one flat bar via `update()` and shifts the
+  range by one. Deliberately not done: 1M-and-coarser timelines remain
+  uncapped (bar count = token age ÷ interval; a 60-day-old token at 1M is
+  ~86k flat bars where it was ~86k whitespace points before) — extending
+  #470's sub-minute cap to every interval is a named follow-up. Validated
+  this session, on the final commit: `npm run test:app` — 287 test files /
+  3273 tests passing. `npm run lint` — 0 errors (12 pre-existing warnings
+  only). `npm run build` — succeeds. `npm run test:contracts` not run (no
+  contract changes). No visual pass was possible from this session — the
+  owner verifies on the deployed WERDE page.
+
+- Token chart 1S/15S real-time freeze (second defect on the same PR branch as
+  the flat-fill above; found after the owner reported "no candles, not smooth
+  in any timeframe" on a screenshot that was still running `main`). The flat
+  fill made the timeline end in a real bar, but on the sub-minute intervals
+  nothing ever reached the chart at all. `computeSubminuteBarsCap` capped
+  1S/15S to a window whose start **slid one bucket per tick**, so every logical
+  index referred to a different bucket each render — and
+  `diffChartSeriesPoints` compares index-for-index while
+  `chartSeriesPointsEqual` never compares `time`. Once no traded candle sat
+  inside the window (a two-day-old token at 1S), every index held an identical
+  flat bar, the diff reported `{updated: [], appended: []}`, and **zero
+  `series.update()` calls were ever made**: the rendered series stayed pinned to
+  whatever bucket was current when the chart first loaded while the engine's own
+  state marched on, so the axis trailed "now" by exactly the time since page
+  load (the owner's screenshot showed 07:23 against a 07:27 clock, four minutes
+  after loading). Reproduced directly through the real engine against a fake
+  series before any fix: 60 ticks at 1S gave `setData=1, update=0`, series tail
+  frozen at load time, lag 60s; 15S identical with lag 900s. Fix, chart-only, in
+  two parts. **(1) `lib/candle-bucketing.ts`** — the sub-minute cap is now
+  applied at a quantised anchor (`computeAnchoredSubminuteStartTime`: start
+  bucket = `floor((endBucket − cap + 1) / cap) * cap`) instead of a sliding
+  start, so the head holds still and an ordinary tick is a **pure append** the
+  incremental path renders with one `series.update()` — genuinely smooth, and
+  identical in kind to how 1M-and-coarser already behaved. The window is still
+  bounded, now between `cap` and `2 * cap` bars (≈372–744 at 1S on a 1116px
+  chart) rather than exactly `cap`. **(2) `lib/token-trade-chart-render.ts`** —
+  `applyTokenTradeChartUpdate` computes a signed `windowSlideBars` from the
+  head's movement *before* diffing and, when non-zero, takes a new
+  `"window-slide"` branch that resyncs all four series via `setData` and then
+  either re-derives the width-based range (viewer at the right edge) or shifts
+  the previous range by `−windowSlideBars` (viewer scrolled left, so the same
+  wall-clock bars stay in view). The value is signed and tested with `!== 0`
+  because a width increase enlarges the cap and moves the head *earlier*. A new
+  `"window-slide"` member joins the `TokenTradeChartUpdateMode` union, so the
+  existing `?chartDebug=1` readout names this path when it runs. After the fix,
+  the same replay gives 60 ticks at 1S → **60 `update()` calls, no extra
+  `setData`, lag 0**; 15S → 59 updates plus exactly one re-anchor `setData`,
+  lag 0. **Tests changed rather than only added (rule 8, stated plainly):** four
+  cases asserted the *sliding* window's exact bar count (`toBe(200)`,
+  `toBe(2 * ceil(1116/6))`, `toBeLessThanOrEqual(470)`, and one 1S window-length
+  equality) — that contract genuinely changed, so each now asserts the bounded
+  `cap … 2 * cap` window instead. New coverage: the head holding still across
+  consecutive ticks, the bounded length across a wide range of clock offsets,
+  every window bar being real and ending at the current bucket, 1M staying
+  unanchored, the series tail tracking the clock with no lag at both 1S and 15S,
+  1S ticks being exactly one `update()` each with no extra `setData`, the
+  re-anchor taking the `window-slide` branch and landing on the current bucket,
+  and a scrolled-left viewer keeping the same wall-clock bars across a
+  re-anchor. Deliberately not done: bars near the window's head do fall out of
+  view at a re-anchor for a viewer scrolled far left — an accepted consequence
+  of capping at all, noted in the test. The 1M-and-coarser uncapped-timeline
+  follow-up from the entry above still stands. Validated this session, on the
+  final commit: `npm run test:app` — 287 test files / 3285 tests passing.
+  `npm run lint` — 0 errors (12 pre-existing warnings only). `npm run build` —
+  succeeds. `npm run test:contracts` not run (no contract changes). No visual
+  pass was possible from this session — the owner verifies on the deployed page,
+  which requires this branch to be merged first, since `main` still carries both
+  defects.
