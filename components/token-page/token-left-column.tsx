@@ -50,6 +50,7 @@ import {
   type QuickTradeSettings,
 } from "@/lib/quick-trade";
 import { formatFeeNote, formatNativeAmountSixSigFigsTrimmed, formatTokenBalanceAmount, shortenAddress } from "@/lib/token-page-format";
+import type { TokenHolderBreakdown } from "@/lib/token-holder-stats-types";
 import type { TokenTrade } from "@/lib/token-trade-types";
 import type { TokenCurveStatus } from "@/lib/use-token-curve-status";
 import { TokenStatsAuditPanel } from "./token-stats-audit-panel";
@@ -153,6 +154,8 @@ type TokenLeftColumnProps = {
   trades: TokenTrade[] | null;
   /** The token's ticker as the header band shows it (launch record first, then Blockscout), for the CTA label — design: "Buy $HOODS". */
   ticker: string | null;
+  /** The page-level shared holder-breakdown poll (token page v2 part 3), forwarded straight through to the Stats/Audit panel. */
+  holderBreakdown: TokenHolderBreakdown | null;
 };
 
 /**
@@ -200,6 +203,7 @@ export function TokenLeftColumn({
   curveStatus,
   trades,
   ticker,
+  holderBreakdown,
 }: TokenLeftColumnProps) {
   const chainInfo = CHAIN_CONFIG[chainId];
   const displaySymbol = marketStats.supported && marketStats.symbol ? marketStats.symbol : null;
@@ -1068,6 +1072,7 @@ export function TokenLeftColumn({
             trades={trades}
             decimals={resolvedDecimals}
             holderCount={marketStats.supported ? marketStats.holderCount : null}
+            holderBreakdown={holderBreakdown}
             factoryMinted={factoryMinted}
           />
 

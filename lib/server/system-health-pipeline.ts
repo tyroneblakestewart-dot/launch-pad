@@ -30,6 +30,7 @@ import { getAdminOperationsStore } from "@/lib/server/admin-operations-store";
 import { getCurveProgressCacheHealth, type CurveProgressCacheHealth } from "@/lib/server/curve-progress-cache";
 import { getPostgresPool } from "@/lib/server/postgres";
 import { getTokenTradesReadHealth, type TokenTradesReadHealth } from "@/lib/server/token-trades-rpc";
+import { getTokenHolderStatsReadHealth, type TokenHolderStatsReadHealth } from "@/lib/server/token-holder-stats";
 import { getSocialXCostStore, readXApiSendCostUsd, readXMonthlyCostCapUsd, type SocialXCostStore } from "@/lib/server/social-x-cost-store";
 import { getTokenLaunchesStore } from "@/lib/server/token-launches-store";
 import {
@@ -1761,6 +1762,8 @@ export type TokenLaunchesPipelineDeps = {
   readCurveProgressCacheHealth?: (now?: number) => CurveProgressCacheHealth;
   /** Overridable for tests; defaults to lib/server/token-trades-rpc.ts's real read health. */
   readTokenTradesReadHealth?: (now?: number) => TokenTradesReadHealth;
+  /** Overridable for tests; defaults to lib/server/token-holder-stats.ts's real read health. */
+  readTokenHolderStatsReadHealth?: (now?: number) => TokenHolderStatsReadHealth;
 };
 
 /**
@@ -1841,6 +1844,43 @@ function tradesReadStage(
 }
 
 /**
+ * Reports on lib/server/token-holder-stats.ts's own health (token page v2
+ * part 3, rule 10), mirroring tradesReadStage's shape exactly. Amber until
+ * the cache has ever been warmed — it only warms lazily, on GET
+ * /api/token-holder-stats's first read for some token.
+ */
+function holderStatsReadStage(
+  readHealth: (now?: number) => TokenHolderStatsReadHealth,
+  now: number,
+): AdminPipelineStage {
+  const health = readHealth(now);
+  if (health.lastReadAt === null) {
+    return stage(
+      "holder-stats-read",
+      "Holder breakdown read call",
+      "amber",
+      "No holder breakdown read has been attempted yet — the cache warms on the token page's first request.",
+    );
+  }
+
+  const ageSeconds = Math.max(0, Math.round((health.ageMs ?? 0) / 1000));
+  if (health.lastReadOk) {
+    return stage(
+      "holder-stats-read",
+      "Holder breakdown read call",
+      "green",
+      `Last successful holder breakdown read was ${ageSeconds}s ago.`,
+    );
+  }
+  return stage(
+    "holder-stats-read",
+    "Holder breakdown read call",
+    "red",
+    `The last holder breakdown read attempt (${ageSeconds}s ago) failed.`,
+  );
+}
+
+/**
  * Confirms HoodlumsCurveLaunchPipeline is configured for Robinhood Chain
  * Testnet and that a graduation target resolves without throwing — the
  * exact two things components/testnet-launcher.tsx needs before it will
@@ -1889,6 +1929,8 @@ export async function buildTokenLaunchesPipeline(
   const progressStage = curveProgressReadStage(readCurveProgressCacheHealth, Date.now());
   const readTokenTradesReadHealth = deps.readTokenTradesReadHealth ?? getTokenTradesReadHealth;
   const tradesStage = tradesReadStage(readTokenTradesReadHealth, Date.now());
+  const readTokenHolderStatsReadHealth = deps.readTokenHolderStatsReadHealth ?? getTokenHolderStatsReadHealth;
+  const holderStatsStage = holderStatsReadStage(readTokenHolderStatsReadHealth, Date.now());
 
   const databaseUrl = env.DATABASE_URL?.trim() ?? "";
   if (!databaseUrl) {
@@ -1903,6 +1945,7 @@ export async function buildTokenLaunchesPipeline(
         stage("launches-24h", "Launches in the last 24h", "amber", message),
         progressStage,
         tradesStage,
+        holderStatsStage,
       ],
     };
   }
@@ -1940,7 +1983,7 @@ export async function buildTokenLaunchesPipeline(
   return {
     id: "token-launches",
     label: "Token launches",
-    stages: [isolationStage, configStage, tableExistsStage, launches24hStage, progressStage, tradesStage],
+    stages: [isolationStage, configStage, tableExistsStage, launches24hStage, progressStage, tradesStage, holderStatsStage],
   };
 }
 

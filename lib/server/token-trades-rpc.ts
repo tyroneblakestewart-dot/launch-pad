@@ -221,7 +221,7 @@ async function resolveBlockFromTimestamp(
  * Derives the block to start scanning curve trade events from. `latest` is
  * resolved once per read by the caller and threaded through here.
  */
-async function resolveStartBlock(
+export async function resolveStartBlock(
   client: TokenTradesReadClient,
   chainId: number,
   curveAddress: Address,
@@ -298,7 +298,7 @@ type RawSwapLog = {
  * extra round trips. Shared by the curve's own trade/graduation log read and
  * the post-graduation pool's swap log read (issue #466).
  */
-async function fetchLogsInRange(
+export async function fetchLogsInRange(
   client: TokenTradesReadClient,
   address: Address,
   events: readonly unknown[],

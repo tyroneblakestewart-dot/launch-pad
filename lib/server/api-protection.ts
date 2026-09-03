@@ -610,3 +610,28 @@ export function resetTokenTradesRateLimitForTests() {
   namedRateStore("token-trades-read").clear();
   namedRateStore("token-trades-grid-read").clear();
 }
+
+// Token holder stats (token page v2 part 3): a public GET computing the
+// Stats panel's Top 10 % / Dev % / Snipers % rows, polled by the token page
+// on a visible-tab-only 60s timer (lib/use-token-holder-stats.ts) that
+// matches the server's own 60s cache: 3600/60 = 60 reads/hour from one open
+// tab, plus a focus/visibilitychange refetch on every refocus and the
+// connected wallet's own-trade-confirmed refetch — the same "generous but
+// still bounded, per-IP per-hour" sizing TOKEN_LAUNCH_READ_LIMIT uses for
+// the same cadence.
+export const TOKEN_HOLDER_STATS_READ_LIMIT = 300;
+const TOKEN_HOLDER_STATS_WINDOW_MS = 60 * 60 * 1000;
+
+export function consumeTokenHolderStatsReadRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(
+    namedRateStore("token-holder-stats-read"),
+    ip,
+    TOKEN_HOLDER_STATS_READ_LIMIT,
+    TOKEN_HOLDER_STATS_WINDOW_MS,
+    now,
+  );
+}
+
+export function resetTokenHolderStatsRateLimitForTests() {
+  namedRateStore("token-holder-stats-read").clear();
+}

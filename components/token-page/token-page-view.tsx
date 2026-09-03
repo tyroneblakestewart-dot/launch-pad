@@ -3,6 +3,7 @@
 import type { Address } from "viem";
 import { DEFAULT_TOKEN_DECIMALS } from "@/lib/bonding-curve-deploy-config";
 import { useTokenCurveStatus } from "@/lib/use-token-curve-status";
+import { useTokenHolderStats } from "@/lib/use-token-holder-stats";
 import { useTokenTrades } from "@/lib/use-token-trades";
 import { TokenCenterColumn } from "./token-center-column";
 import { TokenHeaderBand } from "./token-header-band";
@@ -53,6 +54,9 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
   const { status: curveStatus } = useTokenCurveStatus(address, curveAddress, decimals);
   const { trades, error: tradesError, stale: tradesStale, retry: retryTrades, lastPollAtRef: tradesLastPollAtRef } =
     useTokenTrades(curveAddress);
+  // The Stats panel's Holder breakdown rows (token page v2 part 3) — one
+  // 60s poll per page, passed down as a prop like the two polls above.
+  const { breakdown: holderBreakdown } = useTokenHolderStats(chain, address);
   const startingPriceNativePerToken = curveStatus.kind === "ready" ? curveStatus.startingPriceNativePerToken : null;
   // Caps the chart's pre-trade whitespace padding (issue #458 item 5) — only
   // known for a token launched through the recorded curve pipeline.
@@ -92,6 +96,7 @@ export function TokenPageView({ chain, address, chainInfo, marketStats, tradeLin
             curveStatus={curveStatus}
             trades={trades}
             ticker={ticker}
+            holderBreakdown={holderBreakdown}
           />
 
           <TokenCenterColumn

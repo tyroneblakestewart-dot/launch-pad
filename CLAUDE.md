@@ -1520,3 +1520,56 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Validated this session, on the final commit: `npm run test:app` — 288 test
   files / 3313 tests passing. `npm run lint` — 0 errors (12 pre-existing
   warnings only). `npm run build` — succeeds.
+
+- Token page v2, part 3 of 3 — the holder-stats route (handover §5 item 1).
+  The Stats panel's Holder breakdown rows TOP 10 % / DEV % / SNIPERS %, which
+  rendered "—" since #443 part 1, are now real, per the rulings in
+  `design/token-page-v2/token-page-data-inventory.md` section 8. New
+  `GET /api/token-holder-stats?token=0x…` (`app/api/token-holder-stats/route.ts`,
+  backed by `lib/server/token-holder-stats.ts`, cached ~60s server-side with
+  in-flight dedupe, mirroring `/api/token-trades`'s shape: `isAddress`
+  validation → 400, the shared `token-launches` service-isolation switch, a
+  new per-IP `TOKEN_HOLDER_STATS_READ_LIMIT` of 300/hour sized from the 60s
+  poll, `Cache-Control: no-store`, and a 502 with no `stats` key on a genuine
+  chain-read failure — never a zero-filled breakdown). Every denominator is
+  the token's live on-chain `totalSupply()` (the token is burnable) and every
+  numerator that can be read on-chain is: Dev % is `balanceOf(creator())`;
+  Snipers % is the summed current `balanceOf` of every distinct wallet whose
+  FIRST curve `TokensPurchased` landed at or before `CurveFunded`'s block + 10
+  (`SNIPER_WINDOW_BLOCKS`), with pool swaps and sells ignored and balance
+  reads capped at `MAX_SNIPER_BALANCE_READS` = 100 earliest wallets; Top 10 %
+  is Blockscout's `/tokens/{address}/holders` page minus the curve and the
+  graduated `liquidityPool()` address, over supply. The curve is resolved
+  exactly as the page does (`resolveTokenCurveAddress`) and then confirmed
+  on-chain via `token()` before it is trusted, since that lookup's legacy env
+  fallback can name another token's curve. The `CurveFunded` block comes from
+  one small log query through `lib/server/token-trades-rpc.ts`'s existing
+  `resolveStartBlock`/`fetchLogsInRange` (now exported, bodies unchanged —
+  the pruned-RPC start-block logic is not duplicated) and is cached
+  indefinitely per curve; the buy history comes from the same cached
+  `getTokenTrades` read the page already polls. Degradation is per row, never
+  whole: a Blockscout outage nulls Top 10 % only, a missing/unverified curve
+  nulls Dev/Snipers only, and every `null` renders as "—" via a new
+  `formatSharePercent` (one decimal place, per the design) while a real zero
+  renders "0.0%"; a brand-new token whose only holder is the curve reports
+  Top 10 as `null` ("—"), matching the inventory's "New" column. All
+  percentage maths is bigint (`shareOfSupplyPercent`), never a float over
+  18-decimal raw amounts. Client side follows "fetch once at the page, pass
+  props": a new `lib/use-token-holder-stats.ts` (issue #403 pattern —
+  visible-tab-only 60s timer matching the server cache, focus/
+  visibilitychange refetch, `TOKEN_TRADE_CONFIRMED_EVENT` refetch, silent
+  in-place updates, full cleanup) is called exactly once in
+  `token-page-view.tsx` and threaded through `TokenLeftColumn` to
+  `TokenStatsAuditPanel` as a `holderBreakdown` prop; the response
+  deliberately carries no holder count, so the header's Blockscout count
+  stays the single source for every holder-count occurrence. **Rule 10** —
+  `buildTokenLaunchesPipeline` gained a `holder-stats-read` stage (amber
+  until warmed, green/red with read age) mirroring `trades-read`; the route
+  reuses the `token-launches` isolation switch. No migration, no new env
+  vars, no contract changes. Not verified on a real device or the deployed
+  page from this session — the owner confirms on the live WERDE/FGHJKH pages
+  that the three rows show numbers (FGHJKH, graduated, should exclude its
+  pool from Top 10). Validated this session, on the final commit: `npm run
+  test:app` — 291 test files / 3359 tests passing. `npm run lint` — 0 errors
+  (12 pre-existing warnings only). `npm run build` — succeeds,
+  `/api/token-holder-stats` listed in the route output.

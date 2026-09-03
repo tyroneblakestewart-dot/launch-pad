@@ -34,8 +34,8 @@ export type BlockscoutTokenInfo = {
   exchange_rate?: string | null;
   circulating_market_cap?: string | null;
 };
-type BlockscoutHolderItem = { address?: { hash?: string }; value?: string };
-type BlockscoutHoldersPage = { items?: BlockscoutHolderItem[] };
+export type BlockscoutHolderItem = { address?: { hash?: string }; value?: string };
+export type BlockscoutHoldersPage = { items?: BlockscoutHolderItem[] };
 
 export async function fetchJson<T>(url: string, signal: AbortSignal): Promise<T | null> {
   try {
