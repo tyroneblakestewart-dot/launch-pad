@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import {
   MAX_SNIPER_BALANCE_READS,
-  SNIPER_WINDOW_BLOCKS,
+  SNIPER_WINDOW_SECONDS,
   TokenHolderStatsReadError,
   getTokenHolderBreakdown,
   getTokenHolderStatsReadHealth,
@@ -31,6 +31,10 @@ const WHALE_D = "0xd400000000000000000000000000000000000004";
 
 const LATEST_BLOCK = 1000n;
 const FUNDED_BLOCK = 150n;
+// Fake chain: timestamp(block) = BASE_TIMESTAMP + block, one block per second.
+const BASE_TIMESTAMP = 1_700_000_000;
+const FUNDED_AT = BASE_TIMESTAMP + Number(FUNDED_BLOCK);
+const WINDOW_BLOCKS = BigInt(SNIPER_WINDOW_SECONDS);
 const TOTAL_SUPPLY = 1_000_000n;
 
 function launch(overrides: Partial<TokenLaunch> = {}): TokenLaunch {
@@ -91,7 +95,7 @@ function buy(wallet: string, blockNumber: bigint, overrides: Partial<TokenTrade>
     tokenAmountRaw: "1",
     nativeAmountRaw: "1",
     blockNumber: blockNumber.toString(),
-    blockTimestamp: 1_700_000_000 + Number(blockNumber),
+    blockTimestamp: BASE_TIMESTAMP + Number(blockNumber),
     txHash: `0xTX${wallet.slice(2, 6)}${blockNumber}` as `0x${string}`,
     logIndex: 0,
     venue: "curve",
@@ -101,8 +105,10 @@ function buy(wallet: string, blockNumber: bigint, overrides: Partial<TokenTrade>
 
 const TRADES: TokenTrade[] = [
   buy(SNIPER_A, FUNDED_BLOCK + 5n),
-  // First buy just outside the window — not a sniper.
-  buy(LATE_B, FUNDED_BLOCK + SNIPER_WINDOW_BLOCKS + 1n),
+  // First buy one second outside the 60s window — not a sniper.
+  buy(LATE_B, FUNDED_BLOCK + WINDOW_BLOCKS + 1n),
+  // The creator buying right after funding is a dev buy (DEV %), never a sniper.
+  buy(CREATOR, FUNDED_BLOCK + 1n),
   // First buy inside the window, later buy far outside — still a sniper (first buy decides).
   buy(SNIPER_C, FUNDED_BLOCK + 8n),
   buy(SNIPER_C, 300n),
@@ -152,7 +158,7 @@ function fakeClient(options: FakeClientOptions = {}) {
   const getBlockNumber = vi.fn(async () => LATEST_BLOCK);
   const getBlock = vi.fn(async ({ blockNumber }: { blockNumber: bigint }) => ({
     number: blockNumber,
-    timestamp: 1_700_000_000n + blockNumber,
+    timestamp: BigInt(BASE_TIMESTAMP) + blockNumber,
   }));
   const client = { readContract, getLogs, getBlockNumber, getBlock } as unknown as TokenTradesReadClient;
   return { client, readContract, getLogs, getBlockNumber, getBlock };
@@ -226,25 +232,45 @@ describe("sumTopHolderBalances", () => {
 });
 
 describe("selectSniperWallets", () => {
-  it("keeps wallets whose FIRST curve buy is within the 10-block window, earliest first", () => {
-    expect(selectSniperWallets(TRADES, FUNDED_BLOCK)).toEqual([SNIPER_A, SNIPER_C]);
+  it("keeps wallets whose FIRST curve buy is within 60 seconds of funding, earliest first, creator excluded", () => {
+    expect(selectSniperWallets(TRADES, FUNDED_AT, CREATOR)).toEqual([SNIPER_A, SNIPER_C]);
   });
 
-  it("counts a buy exactly at the window edge, not one block past it", () => {
-    const edge = buy("0xe500000000000000000000000000000000000005", FUNDED_BLOCK + SNIPER_WINDOW_BLOCKS);
-    const past = buy("0xf600000000000000000000000000000000000006", FUNDED_BLOCK + SNIPER_WINDOW_BLOCKS + 1n);
-    expect(selectSniperWallets([past, edge], FUNDED_BLOCK)).toEqual([edge.wallet]);
+  it("counts a buy exactly at the 60s edge, not one second past it", () => {
+    const edge = buy("0xe500000000000000000000000000000000000005", FUNDED_BLOCK + WINDOW_BLOCKS);
+    const past = buy("0xf600000000000000000000000000000000000006", FUNDED_BLOCK + WINDOW_BLOCKS + 1n);
+    expect(SNIPER_WINDOW_SECONDS).toBe(60);
+    expect(selectSniperWallets([past, edge], FUNDED_AT, null)).toEqual([edge.wallet]);
+  });
+
+  it("never counts the creator, even when the creator is the very first buyer", () => {
+    const devBuy = buy(CREATOR, FUNDED_BLOCK + 1n);
+    expect(selectSniperWallets([devBuy], FUNDED_AT, CREATOR)).toEqual([]);
+    // Case-insensitive on the creator address.
+    expect(selectSniperWallets([devBuy], FUNDED_AT, CREATOR.toUpperCase().replace("0X", "0x") as `0x${string}`)).toEqual([]);
+    // With no known creator, the same wallet is treated like any other buyer.
+    expect(selectSniperWallets([devBuy], FUNDED_AT, null)).toEqual([CREATOR]);
   });
 
   it("ignores post-graduation pool swaps and sells entirely", () => {
     const poolBuy = buy(WHALE_D, FUNDED_BLOCK + 1n, { venue: "pool" });
     const sell: TokenTrade = { ...buy(LATE_B, FUNDED_BLOCK + 1n), direction: "sell" };
-    expect(selectSniperWallets([poolBuy, sell], FUNDED_BLOCK)).toEqual([]);
+    expect(selectSniperWallets([poolBuy, sell], FUNDED_AT, null)).toEqual([]);
   });
 
   it("dedupes a wallet by case", () => {
     const upper = buy(SNIPER_A.toUpperCase().replace("0X", "0x"), FUNDED_BLOCK + 2n);
-    expect(selectSniperWallets([buy(SNIPER_A, FUNDED_BLOCK + 3n), upper], FUNDED_BLOCK)).toHaveLength(1);
+    expect(selectSniperWallets([buy(SNIPER_A, FUNDED_BLOCK + 3n), upper], FUNDED_AT, null)).toHaveLength(1);
+  });
+
+  it("is measured in wall-clock seconds, not blocks: a buy 30 blocks later on a sub-second chain still counts", () => {
+    // 30 blocks in 15 seconds — every buy is inside the 60s window.
+    const fast = Array.from({ length: 30 }, (_, index) =>
+      buy(`0x${(index + 1).toString(16).padStart(40, "0")}`, FUNDED_BLOCK + BigInt(index + 1), {
+        blockTimestamp: FUNDED_AT + Math.floor((index + 1) / 2),
+      }),
+    );
+    expect(selectSniperWallets(fast, FUNDED_AT, null)).toHaveLength(30);
   });
 });
 
@@ -422,13 +448,16 @@ describe("getTokenHolderBreakdown", () => {
     expect(fetchHolders).toHaveBeenCalledTimes(2);
   });
 
-  it("caches the CurveFunded block per curve so later refreshes skip the log query", async () => {
+  it("caches the CurveFunded block and its timestamp per curve so later refreshes skip the log query", async () => {
     setTokenLaunchesStoreForTests(fakeLaunchesStore());
-    const { client, getLogs } = fakeClient();
+    const { client, getLogs, getBlock } = fakeClient();
     const deps = { client, readTrades: async () => TRADES, fetchHolders: async () => HOLDER_ITEMS };
     await getTokenHolderBreakdown(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, TOKEN, { ...deps, now: 1_000 });
+    const blockReadsAfterFirst = getBlock.mock.calls.length;
+    expect(getBlock).toHaveBeenCalledWith({ blockNumber: FUNDED_BLOCK });
     await getTokenHolderBreakdown(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, TOKEN, { ...deps, now: 200_000 });
     expect(getLogs).toHaveBeenCalledTimes(1);
+    expect(getBlock.mock.calls.length).toBe(blockReadsAfterFirst);
   });
 
   it("throws TokenHolderStatsReadError on a genuine chain-read failure and records it in the read health", async () => {
