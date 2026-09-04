@@ -182,3 +182,61 @@ describe("sidebar follows the same recipe (shared chrome — every page's sideba
     expect(css).toContain(".active .step { border-color:transparent; background:#c6f53e; color:#071008;");
   });
 });
+
+describe("/social follows the same recipe (second page in the rollout)", () => {
+  const SOCIAL = "components/social-hub.module.css";
+  // The token page palette was hand-copied into this stylesheet as literals; every one now resolves through the shared variables.
+  const HAND_COPIED_HEXES = ["#c6f53e", "#f4f7f1", "#c3c9c4", "#8d918c", "#6f746e", "#a8aaa9", "#e6ebe4", "#071008", "#a7dd4a"];
+
+  it("opts the page root in and drops its own font import in favour of the shared one", async () => {
+    const hub = await source("components/social-hub.tsx");
+    expect(hub).toContain("<main className={`${styles.shell} hoodlums-premium`}>");
+    const css = await source(SOCIAL);
+    expect(css).not.toContain("@import");
+    expect(css).not.toContain('"Archivo Black", Inter, sans-serif');
+    expect(css).not.toContain('"IBM Plex Mono", monospace');
+  });
+
+  it("uses no hand-copied palette hex and no lime gradient CTA anywhere", async () => {
+    const css = await source(SOCIAL);
+    for (const hex of HAND_COPIED_HEXES) expect(css, `still uses ${hex}`).not.toContain(hex);
+    expect(css).not.toContain("linear-gradient(180deg, #c6f53e");
+    expect(css).not.toContain("linear-gradient(150deg, #c6f53e");
+  });
+
+  it("uses the master panel recipe for the studio panel and the chip track + glowing chips for the section tabs", async () => {
+    const css = await source(SOCIAL);
+    const panel = ruleBlock(css, ".studioPanel");
+    expect(panel).toContain("border: var(--panel-border);");
+    expect(panel).toContain("border-radius: var(--panel-radius);");
+    expect(panel).toContain("background: var(--panel-bg);");
+    expect(panel).toContain("box-shadow: var(--panel-shadow);");
+    const track = ruleBlock(css, ".tabs");
+    expect(track).toContain("border-radius: 999px;");
+    expect(track).toContain("box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;");
+    const active = ruleBlock(css, ".tabActive");
+    expect(active).toContain("border-color: var(--chip-active-border-color);");
+    expect(active).toContain("background: var(--chip-active-bg);");
+    expect(active).toContain("box-shadow: var(--chip-active-shadow);");
+    expect(active).toContain("text-shadow: var(--chip-active-text-shadow);");
+    // The folder-tab underline is gone.
+    expect(css).not.toContain("inset 0 3px");
+    // The sticky mobile tab bar contract (issue #390) is untouched.
+    expect(css).toContain("position: sticky");
+    expect(css).toContain("top: 72px");
+    expect(css).toContain("z-index: 80");
+  });
+
+  it("uses the solid-lime CTA for the primary buttons and the inset well for text inputs", async () => {
+    const css = await source(SOCIAL);
+    for (const selector of [".queueActionApprove", ".noProject a"]) {
+      const block = ruleBlock(css, selector);
+      expect(block, selector).toContain("background: var(--cta-bg);");
+      expect(block, selector).toContain("color: var(--cta-color);");
+    }
+    expect(css).toContain(".publishBar button {");
+    expect(css).toMatch(/\.publishBar button \{[^}]*background: var\(--cta-bg\);/);
+    expect(css).toMatch(/\.connectionField input \{[^}]*background: var\(--well-bg\);/);
+    expect(css).toMatch(/\.connectionField input \{[^}]*box-shadow: var\(--well-shadow\);/);
+  });
+});

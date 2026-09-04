@@ -1,14 +1,12 @@
-@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap');
-
 .shell {
   min-height: 100vh;
   padding: 40px 34px 90px;
-  color: #f4f7f1;
+  color: var(--text-primary);
   background:
-    radial-gradient(circle at 78% -6%, rgba(198, 245, 62, 0.13), transparent 30rem),
-    radial-gradient(circle at 6% 34%, rgba(198, 245, 62, 0.05), transparent 26rem),
-    linear-gradient(180deg, #0a0b09, #050706);
-  font-family: Inter, system-ui, sans-serif;
+    radial-gradient(1100px 620px at 30% -8%, rgba(198, 245, 62, 0.07), transparent 62%),
+    radial-gradient(900px 600px at 90% 4%, rgba(198, 245, 62, 0.04), transparent 60%),
+    #0a0b09;
+  font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -46,7 +44,7 @@
 .heroBrand p {
   max-width: 52ch;
   margin: 0;
-  color: #a8aaa9;
+  color: var(--text-sub);
   font-size: 14.5px;
   line-height: 1.55;
   text-wrap: pretty;
@@ -74,7 +72,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--mono);
   font-weight: 700;
   text-transform: uppercase;
   white-space: nowrap;
@@ -83,10 +81,11 @@
 .proBadge {
   min-height: 34px;
   padding: 0 13px;
-  border: 1px solid rgba(198, 245, 62, 0.34);
-  color: #c6f53e;
-  background: linear-gradient(180deg, rgba(198, 245, 62, 0.16), rgba(198, 245, 62, 0.04));
-  box-shadow: inset 0 1px rgba(198, 245, 62, 0.2);
+  border: 1px solid var(--chip-active-border-color);
+  color: var(--chip-active-color);
+  background: var(--chip-active-bg);
+  box-shadow: var(--chip-active-shadow);
+  text-shadow: var(--chip-active-text-shadow);
   font-size: 10px;
   letter-spacing: 0.13em;
 }
@@ -101,11 +100,11 @@
   align-items: center;
   gap: 10px;
   padding: 7px 14px 7px 7px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: var(--raised-border);
   border-radius: 999px;
-  color: #f4f7f1;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02));
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.07), 0 6px 16px -10px rgba(0, 0, 0, 0.85);
+  color: var(--text-primary);
+  background: var(--raised-bg);
+  box-shadow: var(--raised-shadow);
   font-size: 13px;
   font-weight: 800;
 }
@@ -121,8 +120,8 @@
   display: grid;
   place-items: center;
   flex: none;
-  color: #071008;
-  background: #c6f53e;
+  color: var(--cta-color);
+  background: var(--accent-lime);
   font-weight: 900;
 }
 
@@ -134,7 +133,7 @@
 }
 
 .projectPickerChevron {
-  color: #8d918c;
+  color: var(--text-label);
   font-size: 10px;
 }
 
@@ -164,7 +163,7 @@
   padding: 10px;
   border: 1px solid transparent;
   border-radius: 11px;
-  color: #f4f7f1;
+  color: var(--text-primary);
   background: transparent;
   text-align: left;
 }
@@ -203,8 +202,8 @@
 
 .projectMenuItem small,
 .projectMenuActive small {
-  color: #8d918c;
-  font: 600 9px "IBM Plex Mono", monospace;
+  color: var(--text-label);
+  font: 600 9px var(--mono);
   text-transform: uppercase;
 }
 
@@ -220,20 +219,20 @@
 
 .noProject > span,
 .eyebrow {
-  color: #8d918c;
-  font: 700 10px/1 "IBM Plex Mono", monospace;
-  letter-spacing: 0.14em;
+  color: var(--text-sub);
+  font: 600 9.5px/1 var(--mono);
+  letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
 .noProject h1 {
   margin: 0;
-  font: 400 22px "Archivo Black", Inter, sans-serif;
+  font: 400 22px var(--display);
 }
 
 .noProject p {
   margin: 0;
-  color: #a8aaa9;
+  color: var(--text-sub);
   font-size: 13.5px;
   line-height: 1.55;
 }
@@ -241,12 +240,15 @@
 .noProject a {
   width: fit-content;
   margin-top: 5px;
-  padding: 12px 20px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 22px;
   border-radius: 999px;
-  color: #071008;
-  background: #c6f53e;
-  font-size: 12.5px;
-  font-weight: 800;
+  color: var(--cta-color);
+  background: var(--cta-bg);
+  box-shadow: 0 14px 34px -12px rgba(198, 245, 62, 0.5);
+  font: 800 13px/1 var(--sans);
 }
 
 .slotUsageBar {
@@ -261,7 +263,7 @@
 }
 
 .slotUsageText {
-  color: #c6f53e;
+  color: var(--accent-lime);
   font-size: 12.5px;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -273,7 +275,7 @@
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: transparent;
-  color: #f4f7f1;
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 750;
   cursor: pointer;
@@ -319,11 +321,12 @@
   opacity: 0.55;
 }
 
+/* Master panel recipe (token page `.panel`). */
 .studioPanel {
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 26px;
-  background: linear-gradient(180deg, rgba(24, 28, 25, 0.99) 0%, rgba(15, 18, 16, 0.99) 34%, rgba(9, 11, 10, 0.99) 100%);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.07), 0 0 0 1px rgba(0, 0, 0, 0.5), 0 40px 90px -20px rgba(0, 0, 0, 0.75);
+  border: var(--panel-border);
+  border-radius: var(--panel-radius);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
 }
 
 .tabBar {
@@ -332,16 +335,22 @@
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 8px 16px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 26px 26px 0 0;
-  background: linear-gradient(180deg, rgba(198, 245, 62, 0.045), rgba(14, 18, 15, 0.98));
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.05);
+  padding: 12px 16px;
+  border-bottom: var(--panel-header-border);
+  border-radius: var(--panel-radius) var(--panel-radius) 0 0;
+  background: var(--panel-header-wash);
 }
 
+/* Shared chip track + chip recipe (token page `.tabGroup` /
+   `.chartIntervalButton`): the glowing active segment. */
 .tabs {
   display: flex;
-  gap: 2px;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -350,22 +359,25 @@
 
 .tab,
 .tabActive {
-  min-height: 48px;
-  padding: 14px 20px 16px;
-  border: 0;
-  border-radius: 12px 12px 0 0;
-  color: #8d918c;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--chip-idle-color);
   background: transparent;
-  font-size: 12.5px;
-  font-weight: 800;
+  font: 700 11px/1 var(--mono);
+  letter-spacing: 0.05em;
   white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.14s;
 }
 
 .tabActive {
-  color: #c6f53e;
-  background: linear-gradient(180deg, rgba(198, 245, 62, 0.2), rgba(198, 245, 62, 0.05));
-  box-shadow: inset 0 1px rgba(198, 245, 62, 0.28), inset 0 3px #c6f53e;
-  text-shadow: 0 0 12px rgba(198, 245, 62, 0.4);
+  border-color: var(--chip-active-border-color);
+  background: var(--chip-active-bg);
+  box-shadow: var(--chip-active-shadow);
+  text-shadow: var(--chip-active-text-shadow);
+  color: var(--chip-active-color);
 }
 
 .tabMobile { display: none; }
@@ -383,21 +395,22 @@
   gap: 8px;
   min-height: 34px;
   padding: 0 13px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  color: #c3c9c4;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(255, 255, 255, 0.02));
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+  border: var(--well-border);
+  color: var(--text-secondary);
+  background: var(--well-bg);
+  box-shadow: var(--well-shadow);
   font-size: 9.5px;
   letter-spacing: 0.08em;
 }
 
 .metaPill {
-  border-color: rgba(198, 245, 62, 0.3);
-  background: linear-gradient(180deg, rgba(198, 245, 62, 0.14), rgba(198, 245, 62, 0.03));
+  border-color: var(--chip-active-border-color);
+  background: var(--chip-active-bg);
+  box-shadow: var(--chip-active-shadow);
 }
 
-.metaPill b { color: #c6f53e; }
-.metaPillMuted b { color: #f4f7f1; }
+.metaPill b { color: var(--accent-lime); }
+.metaPillMuted b { color: var(--text-primary); }
 
 .panelBody { padding: 26px; }
 .sectionStack { display: flex; flex-direction: column; gap: 26px; }
@@ -426,8 +439,8 @@
 .scheduleCard h3,
 .accordionHeader h2 {
   margin: 0;
-  color: #f4f7f1;
-  font-family: "Archivo Black", Inter, sans-serif;
+  color: var(--text-primary);
+  font-family: var(--display);
   font-weight: 400;
   letter-spacing: -0.01em;
 }
@@ -444,7 +457,7 @@
 .queueEmpty p,
 .previewEmpty p {
   margin: 0;
-  color: #a8aaa9;
+  color: var(--text-sub);
   font-size: 13.5px;
   line-height: 1.55;
 }
@@ -466,9 +479,9 @@
 .scheduleCard,
 .templatePanel,
 .composerPanel {
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.02) 38%, rgba(255, 255, 255, 0.012) 100%);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.05), 0 8px 20px -12px rgba(0, 0, 0, 0.7);
+  border: var(--raised-border);
+  background: var(--raised-bg);
+  box-shadow: var(--raised-shadow);
 }
 
 .connectionCard {
@@ -494,26 +507,27 @@
 }
 
 .connectionCardTop b { font-size: 14px; }
-.connectionCardTop > div span { overflow: hidden; color: #8d918c; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.connectionCardTop > div span { overflow: hidden; color: var(--text-label); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
 
 .connectionField { display: grid; gap: 7px; }
-.connectionField > span { color: #e6ebe4; font-size: 11.5px; font-weight: 700; }
+.connectionField > span { color: var(--text-value); font-size: 11.5px; font-weight: 700; }
 .connectionField input {
   width: 100%;
   min-height: 44px;
   padding: 0 13px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 10px;
+  border: var(--well-border);
+  border-radius: var(--well-radius);
   outline: none;
-  color: #f4f7f1;
-  background: #080d09;
-  font: 600 11px "IBM Plex Mono", monospace;
+  color: var(--text-primary);
+  background: var(--well-bg);
+  box-shadow: var(--well-shadow);
+  font: 600 11px var(--mono);
 }
-.connectionField input:focus { border-color: rgba(198, 245, 62, 0.46); }
+.connectionField input:focus { border-color: var(--chip-active-border-color); }
 
 .connectionHelper {
   margin: 0;
-  color: #7f8780;
+  color: var(--text-faint);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -549,16 +563,18 @@
   min-height: 36px;
   padding: 0 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
-  color: #c3c9c4;
+  color: var(--text-secondary);
   background: rgba(255, 255, 255, 0.025);
   font-size: 9px;
   letter-spacing: 0.06em;
 }
 
 .connectionStateLive {
-  border-color: rgba(198, 245, 62, 0.34);
-  color: #c6f53e;
-  background: rgba(198, 245, 62, 0.08);
+  border-color: var(--chip-active-border-color);
+  color: var(--chip-active-color);
+  background: var(--chip-active-bg);
+  box-shadow: var(--chip-active-shadow);
+  text-shadow: var(--chip-active-text-shadow);
 }
 
 .connectionStateWarning {
@@ -575,9 +591,11 @@
 
 .comingSoon,
 .comingSoonCompact {
-  border: 1px solid rgba(198, 245, 62, 0.28);
-  color: #c6f53e;
-  background: rgba(198, 245, 62, 0.07);
+  border: 1px solid var(--chip-active-border-color);
+  color: var(--chip-active-color);
+  background: var(--chip-active-bg);
+  box-shadow: var(--chip-active-shadow);
+  text-shadow: var(--chip-active-text-shadow);
   letter-spacing: 0.09em;
 }
 
@@ -597,7 +615,7 @@
 
 .botRowInfo { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 3px; }
 .botRowInfo b { font-size: 14px; }
-.botRowInfo span { color: #a8aaa9; font-size: 12.5px; line-height: 1.5; }
+.botRowInfo span { color: var(--text-sub); font-size: 12.5px; line-height: 1.5; }
 
 .botRow button,
 .disabledActions button,
@@ -605,7 +623,7 @@
   min-height: 38px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 999px;
-  color: #8d918c;
+  color: var(--text-label);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
   font-size: 12px;
   font-weight: 800;
@@ -632,10 +650,10 @@
 .characterWarning {
   padding: 8px 10px;
   border-radius: 999px;
-  font: 800 10px "IBM Plex Mono", monospace;
+  font: 800 10px var(--mono);
 }
 
-.characterReady { color: #c6f53e; background: rgba(198, 245, 62, 0.08); }
+.characterReady { color: var(--accent-lime); background: rgba(198, 245, 62, 0.08); }
 .characterWarning { color: #ffbd73; background: rgba(255, 174, 54, 0.1); }
 
 .composeGrid {
@@ -657,21 +675,21 @@
   gap: 4px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 11px;
-  color: #f4f7f1;
+  color: var(--text-primary);
   background: rgba(0, 0, 0, 0.18);
   text-align: left;
 }
 
 .templateActive {
-  border-color: rgba(198, 245, 62, 0.38);
-  background: linear-gradient(180deg, rgba(198, 245, 62, 0.14), rgba(198, 245, 62, 0.035));
+  border: var(--preset-selected-border);
+  background: var(--preset-selected-bg);
 }
 
 .template b,
 .templateActive b { font-size: 12.5px; }
 .template span,
-.templateActive span { color: #8d918c; font-size: 10.5px; line-height: 1.45; }
-.templateActive span { color: #c3c9c4; }
+.templateActive span { color: var(--text-label); font-size: 10.5px; line-height: 1.45; }
+.templateActive span { color: var(--text-secondary); }
 
 .composerPanel { display: flex; flex-direction: column; gap: 12px; }
 
@@ -698,11 +716,11 @@
 }
 
 .summaryImage { width: 100%; height: 100%; object-fit: cover; }
-.artworkFallback { color: #c6f53e; font-size: 20px; font-weight: 900; }
+.artworkFallback { color: var(--accent-lime); font-size: 20px; font-weight: 900; }
 
 .projectSummary > span:last-child { min-width: 0; display: grid; gap: 4px; }
 .projectSummary b { font-size: 14px; }
-.projectSummary small { color: #8d918c; font: 600 9px "IBM Plex Mono", monospace; text-transform: uppercase; }
+.projectSummary small { color: var(--text-label); font: 600 9px var(--mono); text-transform: uppercase; }
 
 .composerPanel textarea,
 .insetPanel textarea {
@@ -711,7 +729,7 @@
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 14px;
   outline: none;
-  color: #f4f7f1;
+  color: var(--text-primary);
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.38), rgba(255, 255, 255, 0.022)), #0a0f0c;
   box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
   font-size: 13.5px;
@@ -727,7 +745,7 @@
   padding: 0 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 999px;
-  color: #c3c9c4;
+  color: var(--text-secondary);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
   font-size: 11.5px;
   font-weight: 700;
@@ -735,7 +753,7 @@
 .composerActions button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .checkbox { display: flex !important; align-items: center; gap: 9px !important; }
-.checkbox input { width: 16px; height: 16px; accent-color: #c6f53e; }
+.checkbox input { width: 16px; height: 16px; accent-color: var(--accent-lime); }
 .checkbox span { font-size: 10.5px !important; }
 
 .accordionHeader {
@@ -763,13 +781,13 @@
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 999px;
-  color: #8d918c;
+  color: var(--text-label);
   font-size: 10px;
   transition: transform 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .accordionChevronOpen {
-  color: #c6f53e;
+  color: var(--accent-lime);
   border-color: rgba(198, 245, 62, 0.34);
   transform: rotate(180deg);
 }
@@ -814,16 +832,16 @@
 
 .publishBar > div { display: grid; gap: 5px; }
 .publishBar b { font-size: 14px; }
-.publishBar span { color: #a8aaa9; font-size: 10.5px; }
+.publishBar span { color: var(--text-sub); font-size: 10.5px; }
 .publishBar button {
   min-height: 44px;
   padding: 0 18px;
   border: 0;
   border-radius: 999px;
-  color: #071008;
-  background: #c6f53e;
-  font-size: 11px;
-  font-weight: 900;
+  color: var(--cta-color);
+  background: var(--cta-bg);
+  box-shadow: 0 14px 34px -12px rgba(198, 245, 62, 0.5);
+  font: 800 12px/1 var(--sans);
 }
 .publishBar button:disabled { cursor: not-allowed; opacity: 0.45; }
 
@@ -835,10 +853,10 @@
   border: 1px solid rgba(198, 245, 62, 0.16);
   border-radius: 12px;
   background: rgba(198, 245, 62, 0.035);
-  color: #c3c9c4;
-  font: 600 10.5px/1.55 "IBM Plex Mono", monospace;
+  color: var(--text-secondary);
+  font: 600 10.5px/1.55 var(--mono);
 }
-.statusBar > span { color: #c6f53e; }
+.statusBar > span { color: var(--accent-lime); }
 .statusBar p { margin: 0; }
 
 .inlineStatus {
@@ -849,10 +867,10 @@
   border: 1px solid rgba(198, 245, 62, 0.16);
   border-radius: 10px;
   background: rgba(198, 245, 62, 0.035);
-  color: #c3c9c4;
-  font: 600 10.5px/1.5 "IBM Plex Mono", monospace;
+  color: var(--text-secondary);
+  font: 600 10.5px/1.5 var(--mono);
 }
-.inlineStatus > span { flex: none; color: #c6f53e; }
+.inlineStatus > span { flex: none; color: var(--accent-lime); }
 .inlineStatus p { margin: 0; }
 
 .inlineStatusProgress {
@@ -881,14 +899,14 @@
 .insetPanel textarea:disabled { color: #727772; opacity: 1; }
 
 .disabledActions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.disabledActions span { color: #8d918c; font: 700 10px "IBM Plex Mono", monospace; }
+.disabledActions span { color: var(--text-label); font: 700 10px var(--mono); }
 
 .progressRow { display: grid; gap: 8px; }
 .progressRow > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.progressRow span { color: #8d918c; font: 700 9.5px "IBM Plex Mono", monospace; letter-spacing: 0.12em; }
-.progressRow b { color: #c6f53e; font: 800 11.5px "IBM Plex Mono", monospace; }
+.progressRow span { color: var(--text-label); font: 700 9.5px var(--mono); letter-spacing: 0.12em; }
+.progressRow b { color: var(--accent-lime); font: 800 11.5px var(--mono); }
 .progressTrack { height: 8px; overflow: hidden; border-radius: 999px; background: linear-gradient(180deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02)); box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5); }
-.progressTrack span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #8fce2a, #c6f53e); }
+.progressTrack span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #8fce2a, var(--accent-lime)); }
 
 .limeNote {
   margin: 0;
@@ -936,7 +954,7 @@
   background: rgba(0, 0, 0, 0.14);
   text-align: center;
 }
-.previewEmpty > span { color: #8d918c; font: 700 9.5px "IBM Plex Mono", monospace; letter-spacing: 0.14em; }
+.previewEmpty > span { color: var(--text-label); font: 700 9.5px var(--mono); letter-spacing: 0.14em; }
 .previewEmpty b,
 .queueEmpty b { font-size: 14px; }
 .previewEmpty p,
@@ -959,18 +977,18 @@
   padding: 0 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 999px;
-  color: #8d918c;
+  color: var(--text-label);
   background: rgba(255, 255, 255, 0.025);
   font-size: 12px;
 }
 .chips .dashedChip { border-style: dashed; background: transparent; }
-.chips .chipSelected { border-color: #c6f53e; color: #071008; background: linear-gradient(180deg, #c6f53e, #a7dd4a); }
+.chips .chipSelected { border-color: var(--accent-lime); color: var(--cta-color); background: var(--cta-bg); }
 .chips .chipInput {
   min-height: 36px;
   padding: 0 14px;
   border: 1px dashed rgba(198, 245, 62, 0.4);
   border-radius: 999px;
-  color: #f4f7f1;
+  color: var(--text-primary);
   background: rgba(198, 245, 62, 0.05);
   font-size: 12px;
   width: 140px;
@@ -1002,7 +1020,7 @@
 }
 .queueThumb { width: 60px; height: 60px; flex: none; border-radius: 10px; object-fit: cover; }
 .queueItemBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
-.queueItemBody > p { margin: 0; color: #c3c9c4; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+.queueItemBody > p { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
 
 .queueItemHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .queueExpandToggle {
@@ -1011,12 +1029,12 @@
   padding: 0 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 999px;
-  color: #a8aaa9;
+  color: var(--text-sub);
   background: rgba(255, 255, 255, 0.03);
-  font: 700 10px "IBM Plex Mono", monospace;
+  font: 700 10px var(--mono);
 }
 .queueExpandToggle:hover,
-.queueExpandToggle:focus-visible { border-color: rgba(198, 245, 62, 0.4); color: #f4f7f1; }
+.queueExpandToggle:focus-visible { border-color: rgba(198, 245, 62, 0.4); color: var(--text-primary); }
 
 /* Collapsed draft preview (issue #358): a clamped X-body line plus its
    character count, with the Telegram variant and both editable fields
@@ -1041,11 +1059,11 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
   margin: 0;
-  color: #e6ebe4;
+  color: var(--text-value);
   font-size: 12.5px;
   line-height: 1.45;
 }
-.queuePreviewMeta { color: #6f746e; font: 600 10px "IBM Plex Mono", monospace; }
+.queuePreviewMeta { color: var(--text-faint); font: 600 10px var(--mono); }
 
 /* Unedited-template marker (issue #380): visible even on a collapsed card,
    not just inside the confirm step, so canned copy is never mistaken for an
@@ -1057,7 +1075,7 @@
   border: 1px solid rgba(230, 178, 60, 0.4);
   color: #e6b23c;
   background: rgba(230, 178, 60, 0.1);
-  font: 700 9px "IBM Plex Mono", monospace;
+  font: 700 9px var(--mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   vertical-align: middle;
@@ -1075,7 +1093,7 @@
   border-radius: 10px;
   background: rgba(198, 245, 62, 0.045);
 }
-.confirmPanel > p { margin: 0; color: #c3c9c4; font-size: 11.5px; line-height: 1.45; }
+.confirmPanel > p { margin: 0; color: var(--text-secondary); font-size: 11.5px; line-height: 1.45; }
 .confirmTemplateCheckbox {
   display: flex;
   align-items: center;
@@ -1089,16 +1107,16 @@
 /* Compact inline schedule control (issue #358), replacing the old
    full-width labeled datetime row. */
 .scheduleCompact { display: inline-flex; align-items: center; gap: 8px; width: fit-content; }
-.scheduleCompact > span { color: #8d918c; font: 700 9.5px "IBM Plex Mono", monospace; letter-spacing: 0.08em; text-transform: uppercase; }
+.scheduleCompact > span { color: var(--text-label); font: 700 9.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
 .scheduleCompactInput {
   min-height: 32px;
   padding: 0 10px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 8px;
   outline: none;
-  color: #f4f7f1;
+  color: var(--text-primary);
   background: #080d09;
-  font: 600 11px "IBM Plex Mono", monospace;
+  font: 600 11px var(--mono);
   width: auto;
 }
 .scheduleCompactInput:focus { border-color: rgba(198, 245, 62, 0.46); }
@@ -1109,8 +1127,8 @@
   padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #8d918c;
-  font: 700 9px "IBM Plex Mono", monospace;
+  color: var(--text-label);
+  font: 700 9px var(--mono);
   letter-spacing: 0.08em;
   vertical-align: middle;
 }
@@ -1124,20 +1142,20 @@
   padding: 12px 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 14px;
-  color: #c3c9c4;
+  color: var(--text-secondary);
   background: rgba(255, 255, 255, 0.025);
   text-align: left;
 }
 .cadenceOption b,
-.cadenceOptionActive b { font-size: 13px; color: #f4f7f1; }
+.cadenceOptionActive b { font-size: 13px; color: var(--text-primary); }
 .cadenceOption span,
-.cadenceOptionActive span { font-size: 11.5px; color: #8d918c; }
+.cadenceOptionActive span { font-size: 11.5px; color: var(--text-label); }
 .cadenceOptionActive {
   border-color: transparent;
-  background: linear-gradient(180deg, #c6f53e, #a7dd4a);
+  background: var(--cta-bg);
 }
 .cadenceOptionActive b,
-.cadenceOptionActive span { color: #071008; }
+.cadenceOptionActive span { color: var(--cta-color); }
 
 /* Queue tab destination toggles and status pills (issue #352). */
 .destinationToggles { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -1150,14 +1168,14 @@
   padding: 0 13px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 999px;
-  color: #c3c9c4;
+  color: var(--text-secondary);
   background: rgba(255, 255, 255, 0.025);
   font-size: 12px;
   font-weight: 700;
 }
 .destinationToggle svg,
 .destinationToggleActive svg { width: 13px; height: 13px; fill: currentColor; }
-.destinationToggleActive { color: #071008; background: linear-gradient(180deg, #c6f53e, #a7dd4a); border-color: transparent; }
+.destinationToggleActive { color: var(--cta-color); background: var(--cta-bg); border-color: transparent; }
 
 /* Queue tab draft-card action row (issue #356): compact inline row with a
    clear primary/secondary/quiet hierarchy instead of four equal-weight
@@ -1188,27 +1206,27 @@
 
 .queueActionApprove {
   border: 0;
-  color: #071008;
-  background: linear-gradient(180deg, #c6f53e, #a7dd4a);
-  box-shadow: 0 10px 26px rgba(198, 245, 62, 0.16);
+  color: var(--cta-color);
+  background: var(--cta-bg);
+  box-shadow: 0 14px 34px -12px rgba(198, 245, 62, 0.5);
 }
 /* Disabled Approve turns flat/muted rather than just fading the lime fill, so "not ready yet" reads clearly instead of looking like a translucent primary button. */
 .queueActionApprove:disabled {
   background: rgba(255, 255, 255, 0.06);
-  color: #6f746e;
+  color: var(--text-faint);
   box-shadow: none;
 }
 
 .queueActionSecondary {
   border: 1px solid rgba(198, 245, 62, 0.28);
-  color: #f3f6ef;
+  color: var(--text-primary);
   background: rgba(255, 255, 255, 0.03);
 }
 .queueActionSecondary:hover,
 .queueActionSecondary:focus-visible { border-color: rgba(198, 245, 62, 0.55); }
 .queueActionSecondary:disabled {
   border-color: rgba(255, 255, 255, 0.07);
-  color: #6f746e;
+  color: var(--text-faint);
   background: rgba(255, 255, 255, 0.015);
 }
 
@@ -1234,16 +1252,16 @@
   padding: 0 12px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 999px;
-  color: #c3c9c4;
+  color: var(--text-secondary);
   background: rgba(255, 255, 255, 0.02);
   font-size: 11.5px;
   font-weight: 700;
 }
 .statusPill svg { width: 12px; height: 12px; fill: currentColor; }
-.statusPill button { margin-left: 4px; padding: 0; border: 0; background: transparent; color: #c6f53e; font-size: 11px; font-weight: 700; text-decoration: underline; }
+.statusPill button { margin-left: 4px; padding: 0; border: 0; background: transparent; color: var(--accent-lime); font-size: 11px; font-weight: 700; text-decoration: underline; }
 .statusPillPending { color: #e8c765; }
 .statusPillNeedsComposer { color: #e8c765; border-color: rgba(232, 199, 101, 0.35); background: rgba(232, 199, 101, 0.08); }
-.statusPillSent { color: #c6f53e; border-color: rgba(198, 245, 62, 0.3); background: rgba(198, 245, 62, 0.08); }
+.statusPillSent { color: var(--accent-lime); border-color: rgba(198, 245, 62, 0.3); background: rgba(198, 245, 62, 0.08); }
 .statusPillFailed { color: #ef8686; border-color: rgba(239, 134, 134, 0.32); background: rgba(239, 134, 134, 0.08); }
 
 .mascotDrop {
@@ -1259,9 +1277,9 @@
   background: linear-gradient(180deg, rgba(198, 245, 62, 0.05), rgba(0, 0, 0, 0.14));
   text-align: center;
 }
-.mascotInitial { width: 104px; height: 104px; display: grid; place-items: center; border-radius: 20px; color: #071008; background: linear-gradient(150deg, #c6f53e, #6f9a1d); box-shadow: 0 18px 40px -18px rgba(198, 245, 62, 0.6); font-size: 34px; font-weight: 900; object-fit: cover; }
+.mascotInitial { width: 104px; height: 104px; display: grid; place-items: center; border-radius: 20px; color: var(--cta-color); background: var(--cta-bg); box-shadow: 0 18px 40px -18px rgba(198, 245, 62, 0.6); font-size: 34px; font-weight: 900; object-fit: cover; }
 .mascotDrop b { font-size: 13px; }
-.mascotDrop p { margin: 0; color: #8d918c; font-size: 11px; }
+.mascotDrop p { margin: 0; color: var(--text-label); font-size: 11px; }
 .mascotDrop button { padding: 0 16px; }
 
 .calendarHeading { align-items: center; }
@@ -1272,34 +1290,34 @@
   min-height: 32px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 999px;
-  color: #c3c9c4;
+  color: var(--text-secondary);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
   font-weight: 800;
 }
 .calendarNavButton { width: 32px; display: grid; place-items: center; font-size: 16px; }
-.calendarTodayButton { padding: 0 12px; color: #c6f53e; border-color: rgba(198, 245, 62, 0.3); background: rgba(198, 245, 62, 0.08); font-size: 10.5px; letter-spacing: 0.04em; }
+.calendarTodayButton { padding: 0 12px; color: var(--accent-lime); border-color: rgba(198, 245, 62, 0.3); background: rgba(198, 245, 62, 0.08); font-size: 10.5px; letter-spacing: 0.04em; }
 .timezoneControl { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
-.timezoneControl > span:first-child { color: #8d918c; font: 700 10px "IBM Plex Mono", monospace; letter-spacing: 0.1em; }
+.timezoneControl > span:first-child { color: var(--text-label); font: 700 10px var(--mono); letter-spacing: 0.1em; }
 .timezoneControl select,
 .quietHours select {
   min-height: 38px;
   padding: 0 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 10px;
-  color: #f4f7f1;
+  color: var(--text-primary);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02));
   font-size: 12px;
   font-weight: 700;
 }
 .timezoneControl select:disabled,
-.quietHours select:disabled { color: #8d918c; opacity: 1; }
+.quietHours select:disabled { color: var(--text-label); opacity: 1; }
 
 .desktopCalendar {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 6px;
 }
-.desktopCalendar > span { padding-bottom: 2px; color: #6f746e; font: 700 9.5px "IBM Plex Mono", monospace; letter-spacing: 0.1em; text-align: center; }
+.desktopCalendar > span { padding-bottom: 2px; color: var(--text-faint); font: 700 9.5px var(--mono); letter-spacing: 0.1em; text-align: center; }
 .calendarDay,
 .calendarToday,
 .calendarBlank {
@@ -1309,21 +1327,21 @@
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 12px;
-  color: #a8aaa9;
+  color: var(--text-sub);
   background: rgba(255, 255, 255, 0.018);
-  font: 700 12px "IBM Plex Mono", monospace;
+  font: 700 12px var(--mono);
 }
 .calendarDay { cursor: pointer; }
-.calendarToday { border-color: rgba(198, 245, 62, 0.42); color: #c6f53e; background: rgba(198, 245, 62, 0.09); box-shadow: inset 0 1px rgba(198, 245, 62, 0.18); }
-.calendarSelected { border-color: #c6f53e; color: #071008; background: linear-gradient(180deg, #c6f53e, #a7dd4a); box-shadow: 0 10px 24px -14px rgba(198, 245, 62, 0.6); }
+.calendarToday { border-color: rgba(198, 245, 62, 0.42); color: var(--accent-lime); background: rgba(198, 245, 62, 0.09); box-shadow: inset 0 1px rgba(198, 245, 62, 0.18); }
+.calendarSelected { border-color: var(--accent-lime); color: var(--cta-color); background: var(--cta-bg); box-shadow: 0 10px 24px -14px rgba(198, 245, 62, 0.6); }
 .calendarBlank { visibility: hidden; }
 .mobileWeek { display: none; }
 
 .calendarLegend { display: flex; gap: 16px; flex-wrap: wrap; padding-top: 12px; }
-.calendarLegend span { display: inline-flex; align-items: center; gap: 7px; color: #8d918c; font: 600 11px "IBM Plex Mono", monospace; }
+.calendarLegend span { display: inline-flex; align-items: center; gap: 7px; color: var(--text-label); font: 600 11px var(--mono); }
 .limeDot,
 .greyDot { width: 7px; height: 7px; border-radius: 50%; }
-.limeDot { background: #c6f53e; }
+.limeDot { background: var(--accent-lime); }
 .greyDot { background: rgba(255, 255, 255, 0.32); }
 
 .scheduleCard { padding: 20px; display: flex; flex-direction: column; gap: 16px; border-radius: 20px; }
@@ -1340,40 +1358,40 @@
 }
 .aiMakeButton { border: 1px solid rgba(198, 245, 62, 0.4); background: linear-gradient(180deg, rgba(198, 245, 62, 0.16), rgba(198, 245, 62, 0.02)); box-shadow: inset 0 1px rgba(198, 245, 62, 0.24); }
 .ownPostButton { border: 1px solid rgba(255, 255, 255, 0.09); background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)); }
-.aiMakeButton b { color: #c6f53e; font-size: 14px; }
-.ownPostButton b { color: #f4f7f1; font-size: 14px; }
+.aiMakeButton b { color: var(--accent-lime); font-size: 14px; }
+.ownPostButton b { color: var(--text-primary); font-size: 14px; }
 .aiMakeButton span,
-.ownPostButton span { color: #a8aaa9; font-size: 12.5px; line-height: 1.5; }
+.ownPostButton span { color: var(--text-sub); font-size: 12.5px; line-height: 1.5; }
 .destinationChips { display: flex; gap: 8px; flex-wrap: wrap; }
-.destinationChips span { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; padding: 0 13px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; color: #c3c9c4; background: rgba(255, 255, 255, 0.025); font-size: 12px; font-weight: 700; }
+.destinationChips span { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; padding: 0 13px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; color: var(--text-secondary); background: rgba(255, 255, 255, 0.025); font-size: 12px; font-weight: 700; }
 .destinationChips svg { width: 13px; height: 13px; fill: currentColor; }
-.quietHours { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: #c3c9c4; font-size: 12px; }
+.quietHours { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--text-secondary); font-size: 12px; }
 
 .segmentedDisabled { display: flex; gap: 3px; padding: 4px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; background: rgba(0, 0, 0, 0.24); }
-.segmentedDisabled span { padding: 9px 14px; border-radius: 999px; color: #6f746e; font-size: 11px; font-weight: 700; }
-.segmentedDisabled .segmentActive { color: #c6f53e; background: rgba(198, 245, 62, 0.1); }
+.segmentedDisabled span { padding: 9px 14px; border-radius: 999px; color: var(--text-faint); font-size: 11px; font-weight: 700; }
+.segmentedDisabled .segmentActive { color: var(--accent-lime); background: rgba(198, 245, 62, 0.1); }
 .queueEmpty { min-height: 230px; }
 .performanceCard { padding: 22px; display: flex; flex-direction: column; gap: 18px; border-radius: 22px; }
-.privateBadge { min-height: 34px; padding: 0 14px; border: 1px solid rgba(255, 255, 255, 0.09); color: #c3c9c4; background: rgba(0, 0, 0, 0.22); font-size: 9px; letter-spacing: 0.1em; }
+.privateBadge { min-height: 34px; padding: 0 14px; border: 1px solid rgba(255, 255, 255, 0.09); color: var(--text-secondary); background: rgba(0, 0, 0, 0.22); font-size: 9px; letter-spacing: 0.1em; }
 .metricGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .metricGrid > div { padding: 16px; display: grid; gap: 7px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; background: rgba(0, 0, 0, 0.16); }
-.metricGrid span { color: #8d918c; font-size: 11px; }
-.metricGrid b { color: #f4f7f1; font: 400 25px "Archivo Black", Inter, sans-serif; }
-.metricGrid small { color: #c6f53e; font: 700 9px "IBM Plex Mono", monospace; text-transform: uppercase; }
-.historyPlaceholder { min-height: 110px; color: #8d918c; font: 700 10px "IBM Plex Mono", monospace; letter-spacing: 0.08em; }
+.metricGrid span { color: var(--text-label); font-size: 11px; }
+.metricGrid b { color: var(--text-primary); font: 400 25px var(--display); }
+.metricGrid small { color: var(--accent-lime); font: 700 9px var(--mono); text-transform: uppercase; }
+.historyPlaceholder { min-height: 110px; color: var(--text-label); font: 700 10px var(--mono); letter-spacing: 0.08em; }
 
 .bannedPanel { padding: 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.bannedPanel span { min-height: 34px; display: inline-flex; align-items: center; gap: 8px; padding: 0 8px 0 13px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; color: #e6ebe4; background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)); font-size: 12.5px; }
-.bannedPanel i { color: #6f746e; font-style: normal; font-size: 14px; }
-.bannedPanel button { min-height: 34px; padding: 0 13px; border: 1px dashed rgba(255, 255, 255, 0.14); border-radius: 999px; color: #6f746e; background: transparent; font-size: 12px; }
-.exampleLabel { margin: 0; color: #6f746e; font: 600 9.5px/1.5 "IBM Plex Mono", monospace; }
+.bannedPanel span { min-height: 34px; display: inline-flex; align-items: center; gap: 8px; padding: 0 8px 0 13px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; color: var(--text-value); background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)); font-size: 12.5px; }
+.bannedPanel i { color: var(--text-faint); font-style: normal; font-size: 14px; }
+.bannedPanel button { min-height: 34px; padding: 0 13px; border: 1px dashed rgba(255, 255, 255, 0.14); border-radius: 999px; color: var(--text-faint); background: transparent; font-size: 12px; }
+.exampleLabel { margin: 0; color: var(--text-faint); font: 600 9.5px/1.5 var(--mono); }
 
 .dialList { display: flex; flex-direction: column; gap: 10px; }
 .dialList > div { padding: 12px 15px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 14px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012)); }
-.dialList > div > span { color: #c3c9c4; font-size: 13px; }
+.dialList > div > span { color: var(--text-secondary); font-size: 13px; }
 .dialList > div > div { display: flex; gap: 3px; padding: 3px; border-radius: 999px; background: rgba(0, 0, 0, 0.25); }
-.dialList button { min-height: 30px; padding: 0 10px; border: 0; border-radius: 999px; color: #6f746e; background: transparent; font-size: 10px; font-weight: 700; }
-.dialList .dialSelected { color: #c6f53e; background: rgba(198, 245, 62, 0.09); }
+.dialList button { min-height: 30px; padding: 0 10px; border: 0; border-radius: 999px; color: var(--text-faint); background: transparent; font-size: 10px; font-weight: 700; }
+.dialList .dialSelected { color: var(--accent-lime); background: rgba(198, 245, 62, 0.09); }
 
 .advancedButton {
   width: 100%;
@@ -1384,13 +1402,13 @@
   gap: 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 16px;
-  color: #f4f7f1;
+  color: var(--text-primary);
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.38), rgba(255, 255, 255, 0.022)), #0a0f0c;
   text-align: left;
 }
 .advancedButton > span:first-child { display: grid; gap: 4px; }
 .advancedButton b { font-size: 13px; }
-.advancedButton small { color: #8d918c; font-size: 11px; line-height: 1.45; }
+.advancedButton small { color: var(--text-label); font-size: 11px; line-height: 1.45; }
 
 @media (max-width: 1099px) {
   .shell { min-height: calc(100vh - 72px); }
@@ -1412,10 +1430,9 @@
   .heroActions { width: 100%; justify-content: space-between; }
   .studioPanel { border-radius: 20px; }
   .tabBar { padding: 7px 10px; gap: 8px; }
-  .tabs { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(255, 255, 255, 0.02)); box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5); }
+  .tabs { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .tab,
-  .tabActive { min-width: 0; min-height: 34px; padding: 0 6px; border-radius: 999px; font-size: 11.5px; }
-  .tabActive { box-shadow: inset 0 1px rgba(198, 245, 62, 0.22); }
+  .tabActive { min-width: 0; padding: 0 6px; font-size: 10.5px; letter-spacing: 0.03em; }
   .tabDesktop { display: none; }
   .tabMobile { display: inline; }
   .panelMeta { display: none; }
@@ -1438,21 +1455,21 @@
   .mobileWeek { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x mandatory; }
   .weekDay,
   .weekToday,
-  .weekSelected { min-width: 132px; min-height: 96px; display: grid; gap: 5px; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; color: #a8aaa9; background: rgba(255, 255, 255, 0.018); text-align: left; scroll-snap-align: start; }
+  .weekSelected { min-width: 132px; min-height: 96px; display: grid; gap: 5px; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; color: var(--text-sub); background: rgba(255, 255, 255, 0.018); text-align: left; scroll-snap-align: start; }
   .weekToday { border-color: rgba(198, 245, 62, 0.4); background: rgba(198, 245, 62, 0.08); }
-  .weekSelected { border-color: #c6f53e; background: linear-gradient(180deg, #c6f53e, #a7dd4a); }
+  .weekSelected { border-color: var(--accent-lime); background: var(--cta-bg); }
   .weekDay > span,
   .weekToday > span,
-  .weekSelected > span { color: #6f746e; font: 700 9px "IBM Plex Mono", monospace; letter-spacing: 0.1em; }
+  .weekSelected > span { color: var(--text-faint); font: 700 9px var(--mono); letter-spacing: 0.1em; }
   .weekDay b,
   .weekToday b,
-  .weekSelected b { color: #f4f7f1; font: 400 22px "Archivo Black", Inter, sans-serif; }
-  .weekToday b { color: #c6f53e; }
+  .weekSelected b { color: var(--text-primary); font: 400 22px var(--display); }
+  .weekToday b { color: var(--accent-lime); }
   .weekSelected b,
   .weekSelected > span,
-  .weekSelected small { color: #071008; }
+  .weekSelected small { color: var(--cta-color); }
   .weekDay small,
-  .weekToday small { color: #8d918c; font-size: 9.5px; }
+  .weekToday small { color: var(--text-label); font-size: 9.5px; }
 }
 
 @media (max-width: 480px) {
