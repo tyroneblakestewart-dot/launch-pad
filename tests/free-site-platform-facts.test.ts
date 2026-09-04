@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildContractExplorerUrl,
   buildDexscreenerSearchUrl,
+  buildHoodlumsTradeUrl,
   formatLiquidityLabel,
   isFreeSiteTemplateHtml,
   substituteFreeSitePlatformFacts,
@@ -34,6 +36,26 @@ describe("buildDexscreenerSearchUrl", () => {
       "https://dexscreener.com/search?q=0xabc",
     );
     expect(buildDexscreenerSearchUrl("   ")).toBe("");
+  });
+});
+
+describe("buildHoodlumsTradeUrl", () => {
+  it("builds the token's Hoodlums trade page for either supported chain and empty string for blank input", () => {
+    expect(buildHoodlumsTradeUrl("robinhood", " 0xabc ")).toBe("https://hoodlums.dev/token/robinhood/0xabc");
+    expect(buildHoodlumsTradeUrl("solana", "So11111111111111111111111111111111111111112")).toBe(
+      "https://hoodlums.dev/token/solana/So11111111111111111111111111111111111111112",
+    );
+    expect(buildHoodlumsTradeUrl("robinhood", "   ")).toBe("");
+  });
+});
+
+describe("buildContractExplorerUrl", () => {
+  it("uses the shared chain config's explorer base and empty string for blank input", () => {
+    expect(buildContractExplorerUrl("robinhood", "0xabc")).toBe(
+      "https://explorer.testnet.chain.robinhood.com/address/0xabc",
+    );
+    expect(buildContractExplorerUrl("solana", "So1")).toBe("https://explorer.solana.com/address/So1");
+    expect(buildContractExplorerUrl("robinhood", "")).toBe("");
   });
 });
 
@@ -101,11 +123,70 @@ describe("substituteFreeSitePlatformFacts", () => {
     expect(html).toContain("CA: 0x1111111111111111111111111111111111111111");
     expect(html).not.toContain("contract-pending");
     expect(html).not.toContain("btn-pending");
-    // A contract with no pair yet still gets a Dexscreener search link-out.
+    // A stored page from before the Hoodlums-chart change carries the old
+    // Dexscreener search link-out; its label is honest, so it still points there.
     expect(html).toContain(
       'href="https://dexscreener.com/search?q=0x1111111111111111111111111111111111111111"',
     );
-    expect(html).toContain('<a href="https://dexscreener.com/search?q=0x1111111111111111111111111111111111111111">Buy</a>');
+    // Buy goes to the token's own Hoodlums trade page — the only place a
+    // bonding-curve token can be bought — never to a Dexscreener search.
+    expect(html).toContain(
+      '<a href="https://hoodlums.dev/token/robinhood/0x1111111111111111111111111111111111111111">Buy</a>',
+    );
+  });
+
+  it("builds the Buy link for the site's own chain, defaulting to robinhood when no chain is given", () => {
+    const solana = substituteFreeSitePlatformFacts(markerPage(), {
+      contractAddress: "So11111111111111111111111111111111111111112",
+      chain: "solana",
+      chart: NOT_FOUND,
+      lpLockedAt: null,
+    });
+    expect(solana).toContain('<a href="https://hoodlums.dev/token/solana/So11111111111111111111111111111111111111112">Buy</a>');
+  });
+
+  function currentTemplatePage(): string {
+    return page(
+      [
+        '<!--CONTRACT_KNOWN_START--><span id="ca-value">{{CONTRACT_ADDRESS}}</span><a class="explorer-link" href="{{EXPLORER_URL}}">Explorer</a><!--CONTRACT_KNOWN_END-->',
+        '<!--CONTRACT_PENDING_START--><span>Coming soon</span><!--CONTRACT_PENDING_END-->',
+        '<!--CHART_UNKNOWN_START--><div>',
+        '<!--CHART_TRADE_LINK_START--><strong>Live chart on Hoodlums</strong><a href="{{TRADE_URL}}">Open live chart</a><!--CHART_TRADE_LINK_END-->',
+        "<!--CHART_PRELAUNCH_START--><strong>Chart goes live at launch</strong><!--CHART_PRELAUNCH_END-->",
+        "</div><!--CHART_UNKNOWN_END-->",
+      ].join(""),
+    );
+  }
+
+  it("with a contract: links the chart panel and the contract row to the Hoodlums trade page and the block explorer", () => {
+    const html = substituteFreeSitePlatformFacts(currentTemplatePage(), {
+      contractAddress: "0x1111111111111111111111111111111111111111",
+      chain: "robinhood",
+      chart: NOT_FOUND,
+      lpLockedAt: null,
+    });
+    expect(html).toContain('<a href="https://hoodlums.dev/token/robinhood/0x1111111111111111111111111111111111111111">Open live chart</a>');
+    expect(html).toContain(
+      '<a class="explorer-link" href="https://explorer.testnet.chain.robinhood.com/address/0x1111111111111111111111111111111111111111">Explorer</a>',
+    );
+    expect(html).toContain("Live chart on Hoodlums");
+    expect(html).not.toContain("Chart goes live at launch");
+    expect(html).not.toContain("{{TRADE_URL}}");
+    expect(html).not.toContain("{{EXPLORER_URL}}");
+  });
+
+  it("without a contract: shows the goes-live-at-launch note, no trade link, no explorer link and no unresolved placeholders", () => {
+    const html = substituteFreeSitePlatformFacts(currentTemplatePage(), {
+      contractAddress: "",
+      chart: NOT_FOUND,
+      lpLockedAt: null,
+    });
+    expect(html).toContain("Chart goes live at launch");
+    expect(html).not.toContain("Live chart on Hoodlums");
+    expect(html).not.toContain("Open live chart");
+    expect(html).not.toContain("explorer-link");
+    expect(html).not.toContain("{{TRADE_URL}}");
+    expect(html).not.toContain("{{EXPLORER_URL}}");
   });
 
   it("shows the live pair and links Buy to it once a Dexscreener pair is found", () => {
@@ -122,7 +203,11 @@ describe("substituteFreeSitePlatformFacts", () => {
     );
     expect(html).not.toContain(CHART_EMBED_PLACEHOLDER);
     expect(html).toContain('<a href="https://dexscreener.com/robinhood/pair-1">Open</a>');
-    expect(html).toContain('<a href="https://dexscreener.com/robinhood/pair-1">Buy</a>');
+    // Buy stays on the Hoodlums trade page even once a pair exists: after
+    // graduation that page links on to the locked pool itself.
+    expect(html).toContain(
+      '<a href="https://hoodlums.dev/token/robinhood/0x1111111111111111111111111111111111111111">Buy</a>',
+    );
     expect(html).not.toContain("Search</a>");
   });
 

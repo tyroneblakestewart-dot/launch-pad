@@ -171,6 +171,8 @@ body[data-bg="particles"] .fx-particles { display: block; }
 .contract-value { font-family: var(--font-mono); font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .copy-btn { flex-shrink: 0; padding: 10px 14px; min-height: 36px; border-radius: 999px; background: var(--primary); color: var(--background); font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; transition: background .2s; }
 .copy-btn.copied { background: var(--secondary); }
+.explorer-link { flex-shrink: 0; display: inline-flex; align-items: center; padding: 10px 14px; min-height: 36px; border-radius: 999px; border: 1px solid var(--border); color: var(--text); font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; transition: border-color .2s, color .2s; }
+.explorer-link:hover { border-color: var(--primary); color: var(--primary); }
 .contract-value.contract-pending { color: var(--muted); font-style: italic; }
 .btn-pending { opacity: .5; cursor: default; pointer-events: none; border: 1px solid var(--border); }
 .foot-ca.foot-ca-pending { color: var(--muted); font-style: italic; }
@@ -495,7 +497,8 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
       <div class="contract" role="group" aria-label="Contract address">
         <span class="contract-label">CA</span>
         <!--CONTRACT_KNOWN_START--><span class="contract-value" id="ca-value">{{CONTRACT_ADDRESS}}</span>
-        <button class="copy-btn" id="copy-btn" type="button" aria-label="Copy contract address">Copy</button><!--CONTRACT_KNOWN_END-->
+        <button class="copy-btn" id="copy-btn" type="button" aria-label="Copy contract address">Copy</button>
+        <a class="explorer-link" href="{{EXPLORER_URL}}" target="_blank" rel="noopener noreferrer" aria-label="View the contract on the block explorer">Explorer ↗</a><!--CONTRACT_KNOWN_END-->
         <!--CONTRACT_PENDING_START--><span class="contract-value contract-pending">Coming soon</span><!--CONTRACT_PENDING_END-->
       </div>
     </div>
@@ -606,9 +609,11 @@ body[data-about="quotes"] .card p { font-size: clamp(18px, 2vw, 24px); line-heig
       <a class="btn btn-primary" href="{{CHART_URL}}" target="_blank" rel="noopener noreferrer">Open Chart ↗</a>
     </div><!--CHART_FOUND_END-->
     <!--CHART_UNKNOWN_START--><div class="chart-panel chart-panel-pending reveal">
-      <strong>Chart activates once trading is indexed</strong>
-      <p>Dexscreener doesn't index Robinhood Chain yet, so no pair will show here. The chart activates automatically once this token trades on a network Dexscreener indexes.</p>
-      <!--CHART_SEARCH_LINK_START--><a class="btn btn-ghost" href="{{CHART_SEARCH_URL}}" target="_blank" rel="noopener noreferrer">Check Dexscreener ↗</a><!--CHART_SEARCH_LINK_END-->
+      <!--CHART_TRADE_LINK_START--><strong>Live chart on Hoodlums</strong>
+      <p>This token trades live on Hoodlums. Its price, trades and holders update in real time on its Hoodlums page. Once it graduates and a DEX pair is indexed, the Dexscreener chart appears here automatically.</p>
+      <a class="btn btn-primary" href="{{TRADE_URL}}" target="_blank" rel="noopener noreferrer">Open live chart ↗</a><!--CHART_TRADE_LINK_END-->
+      <!--CHART_PRELAUNCH_START--><strong>Chart goes live at launch</strong>
+      <p>Once the token launches, its live price, trades and holders appear on its Hoodlums page, and the Dexscreener chart appears here automatically when a DEX pair is indexed.</p><!--CHART_PRELAUNCH_END-->
     </div><!--CHART_UNKNOWN_END-->
   </div>
 </section>

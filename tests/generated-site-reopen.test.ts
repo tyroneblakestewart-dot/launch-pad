@@ -52,9 +52,11 @@ describe("reopening a previously generated site (issue #198)", () => {
     // Same source-of-truth guarantee: both a fresh generation and a
     // reopened one run their raw HTML through previewHtmlFor before handing
     // it, and the exact same site/publish payload, to renderGeneratedWebsite.
-    expect(onGenerateBody).toContain("const previewHtml = previewHtmlFor(page.html, detail.contractAddress?.trim() || \"\");");
+    expect(onGenerateBody).toContain(
+      "const previewHtml = previewHtmlFor(page.html, detail.contractAddress?.trim() || \"\", detail.chain || \"robinhood\");",
+    );
     expect(onGenerateBody).toContain("renderGeneratedWebsite(previewHtml, detail.imageDataUrl || \"\", publishSite,");
-    expect(onReopenBody).toContain("const previewHtml = previewHtmlFor(site.generatedSiteHtml, site.contractAddress);");
+    expect(onReopenBody).toContain("const previewHtml = previewHtmlFor(site.generatedSiteHtml, site.contractAddress, site.chain);");
     expect(onReopenBody).toContain('renderGeneratedWebsite(previewHtml, detail?.imageDataUrl || "", site,');
 
     // publishSite passed to the fresh-generation render carries the exact
