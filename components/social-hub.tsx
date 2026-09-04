@@ -14,6 +14,7 @@ import {
   advanceRollingRecentDrafts,
   buildXIntentUrl,
   cadenceQueueTarget,
+  countPostsScheduledToday,
   cadenceSpreadHoursMs,
   computeDefaultScheduledAt,
   connectedPlatforms,
@@ -169,14 +170,20 @@ const TABS: Array<{ id: StudioTab; desktop: string; mobile: string }> = [
 const BOTS = [
   {
     name: "Buy Bot",
+    mark: "B",
+    kind: "ALERTS",
     description: "Announces every purchase in your channel, with the size and the buyer.",
   },
   {
     name: "Hype Bot",
+    mark: "H",
+    kind: "COMMUNITY",
     description: "Keeps the chat moving between announcements — memes, questions and GMs.",
   },
   {
     name: "Watchtower",
+    mark: "W",
+    kind: "MILESTONES",
     description: "Posts when you hit a milestone: holders, market cap and graduation.",
   },
 ] as const;
@@ -190,6 +197,7 @@ const TONE_DIALS = [
   ["Hashtags", "Never", "One or two", "Lots"],
   ["Post length", "Short", "Medium", "Long"],
 ] as const;
+const BUY_ALERT_THRESHOLDS = ["0.01 ETH", "0.05 ETH", "0.1 ETH"] as const;
 const CALENDAR_DAY_NAMES = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -719,6 +727,19 @@ export function SocialHub() {
     () => scheduledPosts.filter((post) => isAwaitingSend(post.status)),
     [scheduledPosts],
   );
+  // The design's "TODAY 3/5 posts" pill, from posts already loaded — anything
+  // approved for today that has not been canceled, against this cadence's own
+  // daily ceiling.
+  const postsScheduledToday = useMemo(
+    () =>
+      countPostsScheduledToday(
+        scheduledPosts.filter((post) => post.status !== "canceled").map((post) => post.scheduledAt),
+        new Date(),
+      ),
+    [scheduledPosts],
+  );
+  const cadencePostsPerDay = cadenceQueueTarget(postingCadence);
+
   const historyPosts = useMemo(
     () => scheduledPosts.filter((post) => isHistoryStatus(post.status)),
     [scheduledPosts],
@@ -1936,8 +1957,13 @@ export function SocialHub() {
                 ))}
               </div>
               <div className={styles.panelMeta}>
-                <span className={styles.metaPill}><b>X + TELEGRAM</b> live tools</span>
-                <span className={styles.metaPill}><b>AI TOOLS</b> live</span>
+                <span className={styles.metaLabel}>TODAY</span>
+                <span className={styles.metaPill}>
+                  <b>
+                    {postsScheduledToday}/{cadencePostsPerDay}
+                  </b>{" "}
+                  posts
+                </span>
               </div>
             </div>
 
@@ -1957,12 +1983,15 @@ export function SocialHub() {
                           <span className={styles.xIcon}><XMark /></span>
                           <div>
                             <b>X</b>
-                            <span>{xHandle || "Uses the account already signed into X"}</span>
+                            <span>{xHandle || "Not connected yet"}</span>
                           </div>
-                          <span className={styles.connectionState}>Browser handoff</span>
+                          <button type="button" className={styles.connectionActionPrimary} disabled>
+                            Connect X
+                          </button>
                         </div>
                         <p className={styles.connectionHelper}>
-                          Uses the X account already signed into your browser — no password or access token is stored.
+                          Connecting X isn&apos;t switched on yet. Until it is, use &ldquo;Post to X&rdquo; below — it opens
+                          X&apos;s own composer with your text filled in, so you tap send yourself.
                         </p>
                       </article>
                       <article className={styles.connectionCard}>
@@ -1980,27 +2009,34 @@ export function SocialHub() {
                                     : "Not connected yet"}
                             </span>
                           </div>
-                          <span
-                            className={
-                              telegramConfigured === false
-                                ? styles.connectionStateError
-                                : telegramConnection?.status === "connected"
-                                  ? styles.connectionStateLive
+                          {telegramConnection?.status === "connected" ? (
+                            <button
+                              type="button"
+                              className={styles.connectionAction}
+                              onClick={disconnectTelegramChannel}
+                              disabled={telegramConnectBusy}
+                            >
+                              {telegramConnectBusy ? "Disconnecting…" : "Disconnect"}
+                            </button>
+                          ) : (
+                            <span
+                              className={
+                                telegramConfigured === false
+                                  ? styles.connectionStateError
                                   : telegramConnection?.status === "reconnect_needed"
                                     ? styles.connectionStateWarning
                                     : styles.connectionState
-                            }
-                          >
-                            {telegramConfigured === null
-                              ? "Checking…"
-                              : telegramConfigured === false
-                                ? "Not configured"
-                                : telegramConnection?.status === "connected"
-                                  ? "Connected"
+                              }
+                            >
+                              {telegramConfigured === null
+                                ? "Checking…"
+                                : telegramConfigured === false
+                                  ? "Not configured"
                                   : telegramConnection?.status === "reconnect_needed"
                                     ? "Reconnect needed"
                                     : "Not connected"}
-                          </span>
+                            </span>
+                          )}
                         </div>
 
                         {telegramConfigured === false ? (
@@ -2009,16 +2045,9 @@ export function SocialHub() {
                             <code>TELEGRAM_BOT_TOKEN</code> (and optionally <code>TELEGRAM_BOT_USERNAME</code>) in Vercel.
                           </p>
                         ) : telegramConnection?.status === "connected" ? (
-                          <>
-                            <p className={styles.connectionHelper}>
-                              The Hoodlums bot can post in {telegramConnection.displayName}.
-                            </p>
-                            <div className={styles.composerActions}>
-                              <button type="button" onClick={disconnectTelegramChannel} disabled={telegramConnectBusy}>
-                                {telegramConnectBusy ? "Disconnecting…" : "Disconnect"}
-                              </button>
-                            </div>
-                          </>
+                          <p className={styles.connectionHelper}>
+                            The Hoodlums bot can post in {telegramConnection.displayName}.
+                          </p>
                         ) : (
                           <>
                             <label className={styles.connectionField}>
@@ -2306,10 +2335,14 @@ export function SocialHub() {
                     <div className={styles.botList}>
                       {BOTS.map((bot) => (
                         <div className={styles.botRow} key={bot.name}>
-                          <div className={styles.botRowInfo}>
-                            <b>{bot.name}</b>
-                            <span>{bot.description}</span>
+                          <div className={styles.botRowHead}>
+                            <span className={styles.botMark} aria-hidden="true">{bot.mark}</span>
+                            <div className={styles.botRowInfo}>
+                              <b>{bot.name}</b>
+                              <em>{bot.kind}</em>
+                            </div>
                           </div>
+                          <p>{bot.description}</p>
                           <button type="button" disabled>Add to your channel</button>
                         </div>
                       ))}
@@ -2935,14 +2968,14 @@ export function SocialHub() {
                       </div>
                       <div className={styles.dialList}>
                         {TONE_DIALS.map(([label, ...options]) => (
-                          <div key={label}>
+                          <label key={label}>
                             <span>{label}</span>
-                            <div>
-                              {options.map((option, index) => (
-                                <button type="button" disabled key={option} className={index === 1 ? styles.dialSelected : undefined}>{option}</button>
+                            <select disabled defaultValue={options[1]}>
+                              {options.map((option) => (
+                                <option key={option}>{option}</option>
                               ))}
-                            </div>
-                          </div>
+                            </select>
+                          </label>
                         ))}
                       </div>
                     </div>
@@ -2997,6 +3030,22 @@ export function SocialHub() {
                   </section>
 
                   <section className={styles.block}>
+                    <div className={styles.buyAlertRow}>
+                      <div>
+                        <b>Tell Telegram about every buy</b>
+                        <span>We&apos;ll drop a message in your channel each time someone buys.</span>
+                      </div>
+                      <label className={styles.buyAlertThreshold}>
+                        <span>Only above</span>
+                        <select disabled defaultValue="0.01 ETH">
+                          {BUY_ALERT_THRESHOLDS.map((threshold) => (
+                            <option key={threshold}>{threshold}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <ComingSoon compact />
+                    </div>
+
                     <button type="button" disabled className={styles.advancedButton}>
                       <span>
                         <b>Advanced rules</b>
