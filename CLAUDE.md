@@ -1803,7 +1803,15 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   `_predictGraduationDesiredAmounts` helper's `nativeLiquidity = target` pinned
   the no-fee behaviour and now use `target - fee`; the dust test's expected
   accrual chain gained the graduation fee between the final trading fee and
-  the sweep. Five new Solidity tests cover the exact 5%, treasury-only
+  the sweep; and — caught by CI, since the repo does have
+  `HoodlumsTestBondingCurve.fuzz.t.sol` and `.invariant.t.sol` suites
+  despite PR A's roadmap note saying otherwise — the fuzz suite's
+  exact-target graduation case (`totalFeesAccrued == fee`) now expects
+  `fee + graduationFee` with the treasury/creator split asserted, and the
+  invariant suite's CONSERVATION pool-payout term is
+  `GRADUATION_TARGET - graduationFee` (the fee stays inside the curve as
+  treasury balance, already a term of that equality). Five new Solidity
+  tests cover the exact 5%, treasury-only
   accrual and event, treasury-only withdrawal, 0.2 ETH / 3.8 ETH at the 4 ETH
   target, unchanged target/clamp/progress, and the post-fee funding floor.
   Frontend: `lib/bonding-curve-fee-math.ts` mirrors the constant

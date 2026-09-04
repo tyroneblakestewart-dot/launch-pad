@@ -81,6 +81,15 @@ describe("HoodlumsTestBondingCurve graduation fee (contract source)", () => {
     expect(tests).toContain("wethAmount == target - _expectedGraduationFee(target)");
     expect(tests).toContain("uint256 nativeLiquidity = target - _expectedGraduationFee(target);");
     expect(tests).not.toContain('require(wethAmount == target, "fees leaked into pool liquidity");');
+
+    // The fuzz and invariant suites pinned the no-fee accounting too (CI caught both).
+    const fuzz = await source("contracts/HoodlumsTestBondingCurve.fuzz.t.sol");
+    expect(fuzz).toContain("uint256 private constant GRADUATION_FEE_BPS = 500;");
+    expect(fuzz).toContain('require(freshCurve.totalFeesAccrued() == fee + graduationFee, "fees not accrued exactly on graduating buy");');
+    expect(fuzz).toContain("freshCurve.treasuryFeeBalance() == treasuryTradingShare + graduationFee");
+    const invariant = await source("contracts/HoodlumsTestBondingCurve.invariant.t.sol");
+    expect(invariant).toContain("uint256 private constant GRADUATION_FEE_BPS = 500;");
+    expect(invariant).toContain("uint256 graduationPayout = curve.graduated() ? GRADUATION_TARGET - graduationFee : 0;");
   });
 });
 

@@ -261,6 +261,8 @@ contract HoodlumsTestBondingCurveInvariantTest is StdInvariant {
     ///      fuzzed sequence of realistic depth reliably crosses graduation
     ///      mid-run, per the issue's explicit requirement.
     uint256 private constant GRADUATION_TARGET = 20 ether;
+    uint256 private constant BPS = 10_000;
+    uint256 private constant GRADUATION_FEE_BPS = 500;
 
     FixedSupplyMemeToken private token;
     HoodlumsTestBondingCurve private curve;
@@ -327,9 +329,15 @@ contract HoodlumsTestBondingCurveInvariantTest is StdInvariant {
     /// @dev Invariant 2 (CONSERVATION): every wei that ever went in is
     ///      accounted for by what's still held in reserve/fees, what's gone
     ///      out to sellers, what's been withdrawn, and — at most once — what
-    ///      was locked into the graduation liquidity position.
+    ///      was locked into the graduation liquidity position. The one-off
+    ///      graduation fee (GRADUATION_FEE_BPS of the target, floor-rounded)
+    ///      never leaves the curve at graduation: it moves from the reserve
+    ///      into the treasury's claimable balance (already a term below), so
+    ///      only the remainder is the pool payout. If the fee vanished, was
+    ///      double-counted, or went anywhere else, this equality breaks.
     function invariant_Conservation() public view {
-        uint256 graduationPayout = curve.graduated() ? GRADUATION_TARGET : 0;
+        uint256 graduationFee = (GRADUATION_TARGET * GRADUATION_FEE_BPS) / BPS;
+        uint256 graduationPayout = curve.graduated() ? GRADUATION_TARGET - graduationFee : 0;
         require(
             handler.ghostTotalNativeIn() ==
                 curve.nativeReserve() + curve.treasuryFeeBalance() + curve.creatorFeeBalance()
