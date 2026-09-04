@@ -5,6 +5,7 @@ import { GenerateSiteStyleAuthBridge } from "@/components/generate-site-style-au
 import { WalletProviderSelector } from "@/components/wallet-provider-selector";
 import "../globals.css";
 import "../hoodlums-brand-theme.css";
+import "../hoodlums-premium-theme.css";
 import "../ambient-glow.css";
 import "../hoodlums-dashboard-consistency.css";
 import "../hoodlums-studio-consistency.css";

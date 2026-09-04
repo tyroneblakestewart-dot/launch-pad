@@ -242,6 +242,6 @@ describe("Grid card metadata hierarchy (issue #440)", () => {
 
   it("keeps the ticker visually secondary to the name", async () => {
     const css = await source("components/hoodlums-token-grid.module.css");
-    expect(css).toMatch(/\.cardTicker\s*\{[^}]*color:\s*#566054;/);
+    expect(css).toMatch(/\.cardTicker\s*\{[^}]*color:\s*var\(--text-label\);/);
   });
 });

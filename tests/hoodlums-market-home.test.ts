@@ -146,7 +146,8 @@ describe("Hoodlums bonding-market studio home (issue #185)", () => {
     // Hides itself entirely (not just visually) below the eligibility bar or on error.
     expect(component).toContain("if (!eligible) return null;");
     expect(styles).toContain(".gradBar");
-    expect(styles).toContain("#bce759");
+    // Lime now comes from the shared premium theme (owner direction, 4 Sep 2026), not a hard-coded hex.
+    expect(styles).toContain("background: var(--accent-lime);");
   });
 
   it("caps the graduating row at 6 tokens, 4 per page (max 2 pages), and reuses the social-showcase swipe/index helpers (issue #295)", async () => {
@@ -174,7 +175,7 @@ describe("Hoodlums bonding-market studio home (issue #185)", () => {
     expect(component).toContain("showImage ? (");
     expect(component).toContain("{initial(token.name)}");
     expect(styles).toContain(".art {");
-    expect(styles).toContain("color: #bce759;");
+    expect(styles).toContain("color: var(--accent-lime);");
   });
 
   it("shows the mainnet caption and adapts the card grid down to 1 column at a 390px mobile width (issue #295)", async () => {

@@ -3,7 +3,8 @@
   flex-direction: column;
   gap: 20px;
   padding: 20px 20px 40px;
-  color: #f4f7ef;
+  color: var(--text-primary);
+  font-family: var(--sans);
 }
 
 .topbar {
@@ -18,17 +19,18 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #566054;
-  font: 700 10px var(--mono);
-  letter-spacing: 0.1em;
+  color: var(--text-label);
+  font: 600 9.5px/1 var(--mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
 .pulseDot {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: #4dff2e;
-  box-shadow: 0 0 10px #4dff2e;
+  background: var(--accent-lime);
+  box-shadow: 0 0 10px rgba(198, 245, 62, 0.6);
   animation: pulseGlow 1.8s ease-in-out infinite;
 }
 
@@ -55,13 +57,16 @@
   margin-left: auto;
 }
 
+/* CTA recipe — solid lime, never a gradient (token page `.tradeButton`). */
 .savedLaunchesButton {
-  padding: 9px 16px;
+  min-height: 36px;
+  padding: 0 16px;
   border: none;
   border-radius: 999px;
-  color: #071008;
-  background: #bce759;
-  font: 800 11px var(--mono);
+  color: var(--cta-color);
+  background: var(--cta-bg);
+  box-shadow: 0 14px 34px -12px rgba(198, 245, 62, 0.5);
+  font: 800 12px/1 var(--sans);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -88,26 +93,28 @@
 
 .eyebrow {
   margin: 0;
-  color: #bce759;
-  font: 800 11px var(--mono);
-  letter-spacing: 0.14em;
+  color: var(--accent-lime);
+  font: 600 9.5px/1 var(--mono);
+  letter-spacing: 0.18em;
   text-transform: uppercase;
+  text-shadow: var(--chip-active-text-shadow);
 }
 
 .headline {
   margin: 0;
-  color: #f4f7ef;
-  font-weight: 800;
+  color: var(--text-primary);
+  font-family: var(--display);
+  font-weight: 400;
   font-size: clamp(30px, 5vw, 58px);
   line-height: 0.98;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.02em;
 }
 
 .sub {
   max-width: 620px;
   margin: 0;
-  color: #566054;
-  font: 400 12px/1.6 var(--body, "Inter", sans-serif);
+  color: var(--text-secondary);
+  font: 400 13px/1.6 var(--sans);
 }
 
 .ctas {
@@ -117,12 +124,16 @@
 }
 
 .primaryCta {
-  padding: 12px 20px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 22px;
   border-radius: 999px;
-  font: 800 12px var(--mono);
+  font: 800 13px/1 var(--sans);
   text-decoration: none;
-  background: #bce759;
-  color: #071008;
+  background: var(--cta-bg);
+  color: var(--cta-color);
+  box-shadow: 0 14px 34px -12px rgba(198, 245, 62, 0.5);
 }
 
 .facts {
@@ -132,9 +143,9 @@
   margin: 4px 0 0;
   padding: 0;
   list-style: none;
-  color: #566054;
-  font: 700 9px var(--mono);
-  letter-spacing: 0.03em;
+  color: var(--text-label);
+  font: 600 9.5px var(--mono);
+  letter-spacing: 0.06em;
 }
 
 @media (max-width: 1099px) {

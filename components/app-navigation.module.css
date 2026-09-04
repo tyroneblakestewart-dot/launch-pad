@@ -1,34 +1,36 @@
-.sidebar { position:fixed; inset:0 auto 0 0; z-index:90; width:238px; padding:22px 16px; border-right:1px solid rgba(131,183,139,.2); background:rgba(4,8,5,.98); color:#f3f6ef; display:flex; flex-direction:column; }
+.sidebar { position:fixed; inset:0 auto 0 0; z-index:90; width:238px; padding:22px 16px; border-right:1px solid rgba(255,255,255,.09); background:rgba(4,8,5,.98); color:#f4f7f1; display:flex; flex-direction:column; }
 .brand { display:block; align-self:flex-start; width:190px; max-width:100%; padding:0 4px 22px; color:inherit; text-decoration:none; }
 .brand img { display:block; width:100%; height:auto; max-height:70px; object-fit:contain; object-position:left center; }
-.sideNav small, .sidebarUtility small, .sidebarNote span { color:#869188; font-size:10px; line-height:1.35; }
-.eyebrow { margin:0 8px 9px; color:#b9ef4d; font:700 9px "IBM Plex Mono", monospace; letter-spacing:.16em; }
+.sideNav small, .sidebarUtility small, .sidebarNote span { color:#8d918c; font-size:10px; line-height:1.35; }
+.eyebrow { margin:0 8px 9px; color:#c6f53e; font:600 9.5px/1 "IBM Plex Mono", monospace; letter-spacing:.18em; text-transform:uppercase; text-shadow:0 0 12px rgba(198,245,62,.45); }
 .sideNav, .sidebarUtility { display:grid; gap:7px; }
-.sideNav a, .sidebarUtility a, .mobileMenu a { display:grid; grid-template-columns:30px 1fr; gap:10px; align-items:center; padding:11px; border:1px solid transparent; border-radius:10px; color:#d9e0da; text-decoration:none; cursor:pointer; touch-action:manipulation; }
-.sideNav a:hover, .sideNav a.active, .sidebarUtility a:hover, .sidebarUtility a.active, .mobileMenu a.active { border-color:rgba(185,239,77,.35); background:rgba(185,239,77,.09); color:#fff; }
+.sideNav a, .sidebarUtility a, .mobileMenu a { display:grid; grid-template-columns:30px 1fr; gap:10px; align-items:center; padding:11px; border:1px solid transparent; border-radius:10px; color:#d9dfd6; text-decoration:none; cursor:pointer; touch-action:manipulation; transition:all .14s; }
+.sideNav a:hover, .sidebarUtility a:hover { border-color:rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#f4f7f1; }
+/* Active item = the token page's glowing chip recipe (lime border at 50%, lime gradient fill, lime inset highlight + soft drop glow). */
+.sideNav a.active, .sidebarUtility a.active, .mobileMenu a.active { border-color:rgba(198,245,62,.5); background:linear-gradient(180deg, rgba(198,245,62,.2), rgba(198,245,62,.05)); box-shadow:0 1px 0 0 rgba(198,245,62,.22) inset, 0 6px 16px -8px rgba(198,245,62,.5); color:#f4f7f1; }
 .sideNav a > span:last-child, .sidebarUtility a > span:last-child, .mobileMenu a > span:last-child { display:grid; gap:3px; }
 .sideNav b, .sidebarUtility b, .mobileMenu b { font-size:12px; }
-.step { position:relative; display:grid; place-items:center; width:28px; height:28px; border-radius:8px; background:#111713; color:#b9ef4d; font:800 10px "IBM Plex Mono", monospace; }
+.step { position:relative; display:grid; place-items:center; width:28px; height:28px; border-radius:8px; border:1px solid rgba(255,255,255,.09); background:linear-gradient(180deg, rgba(0,0,0,.38), rgba(255,255,255,.022)), #0a0f0c; color:#c6f53e; font:800 10px "IBM Plex Mono", monospace; }
 .step svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
-.active .step { background:#b9ef4d; color:#071008; }
+.active .step { border-color:transparent; background:#c6f53e; color:#071008; box-shadow:0 6px 16px -8px rgba(198,245,62,.6); }
 /* Support unread red dot (issue #403) — absolutely positioned so it never
    shifts the icon/touch-target layout at either render point. */
 .unreadDot { position:absolute; top:-2px; right:-2px; width:8px; height:8px; border-radius:50%; background:#ff4d4f; border:2px solid #030805; pointer-events:none; }
 /* Support is a utility link, not a workflow step (issue #396) — its own
    bottom-pinned group, visually separated above the testnet note. */
-.sidebarUtility { margin-top:auto; padding-top:12px; border-top:1px solid rgba(131,183,139,.16); }
-.sidebarNote { display:grid; gap:4px; padding:12px; border:1px solid rgba(131,183,139,.16); border-radius:10px; background:#080c09; }
-.sidebarNote b { color:#b9ef4d; font-size:11px; }
+.sidebarUtility { margin-top:auto; padding-top:12px; border-top:1px solid rgba(255,255,255,.07); }
+.sidebarNote { display:grid; gap:4px; padding:12px; border:1px solid rgba(255,255,255,.09); border-radius:14px; background:linear-gradient(180deg, rgba(0,0,0,.38), rgba(255,255,255,.022)), #0a0f0c; box-shadow:0 2px 6px 0 rgba(0,0,0,.5) inset; }
+.sidebarNote b { color:#c6f53e; font-size:11px; }
 .mobileHeader, .bottomNav, .mobileMenu { display:none; }
 @media (min-width:1100px) { :global(body) { padding-left:238px; } }
 @media (max-width:1099px) {
   :global(html) { scroll-behavior:smooth; background:#030805; }
   :global(body) { overflow-x:hidden; overscroll-behavior-y:none; padding-bottom:calc(96px + env(safe-area-inset-bottom)); background:#030805; -webkit-overflow-scrolling:touch; }
   .sidebar { display:none; }
-  .mobileHeader { position:sticky; top:0; z-index:95; display:flex; align-items:center; justify-content:flex-start; min-height:72px; padding:8px 16px; border-bottom:1px solid rgba(131,183,139,.2); background:rgba(4,8,5,.96); backdrop-filter:blur(14px); }
-  .mobileBrand { display:flex; align-items:center; width:156px; min-width:0; color:#b9ef4d; text-decoration:none; }
+  .mobileHeader { position:sticky; top:0; z-index:95; display:flex; align-items:center; justify-content:flex-start; min-height:72px; padding:8px 16px; border-bottom:1px solid rgba(255,255,255,.09); background:rgba(4,8,5,.96); backdrop-filter:blur(14px); }
+  .mobileBrand { display:flex; align-items:center; width:156px; min-width:0; color:#c6f53e; text-decoration:none; }
   .mobileBrand img { display:block; width:100%; height:auto; max-height:54px; object-fit:contain; object-position:left center; }
-  .mobileMenu { position:fixed; inset:72px 0 auto 0; z-index:994; display:grid; gap:7px; padding:12px; border-bottom:1px solid rgba(131,183,139,.2); background:rgba(4,8,5,.99); box-shadow:0 20px 45px rgba(0,0,0,.45); }
+  .mobileMenu { position:fixed; inset:72px 0 auto 0; z-index:994; display:grid; gap:7px; padding:12px; border-bottom:1px solid rgba(255,255,255,.09); background:rgba(4,8,5,.99); box-shadow:0 20px 45px rgba(0,0,0,.45); }
   :global(section[aria-labelledby="hoodlums-dashboard-title"] > header a[aria-label="HOODLUMS home"]) { display:none !important; }
   :global(section[aria-labelledby="hoodlums-dashboard-title"] > header) { justify-content:flex-end !important; }
   .bottomNav { position:fixed; bottom:calc(16px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); z-index:1000; display:grid; grid-template-columns:repeat(var(--nav-count,5),minmax(0,1fr)); align-items:center; width:min(430px, calc(100% - 32px)); height:62px; margin:0; padding:7px 10px; border:1px solid rgba(255,255,255,.13); border-radius:999px; background:rgba(4,8,5,.58); box-shadow:0 12px 34px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.05); -webkit-backdrop-filter:blur(20px) saturate(145%); backdrop-filter:blur(20px) saturate(145%); }

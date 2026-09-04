@@ -1641,3 +1641,60 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   on the final commit: `npm run test:app` — 291 test files / 3363 tests
   passing. `npm run lint` — 0 errors (12 pre-existing warnings only).
   `npm run build` — succeeds.
+
+- Homepage adopts the token page's design system (owner direction, 4 Sep:
+  "the other pages should follow suit — tabs, colours, fonts, panelling, the
+  premium look; the fixed sidebar stays"). Root cause of the "close but
+  settling" the owner described: the token page defines its whole look as
+  CSS custom properties scoped to its own `.page` root
+  (`components/token-page/token-page.module.css`), while every other page
+  runs on the older global palette (`app/globals.css` — `#55ff78`/`#bce759`
+  greens, gold, flat panels, "Black Ops One" display) under three global
+  override stylesheets carrying 129 `!important` rules, so each page could
+  only ever be tuned toward the token page by eye. Fix: a new shared
+  `app/hoodlums-premium-theme.css` defines the token page's exact 44-variable
+  set under a `.hoodlums-premium` scope class (generated from the token
+  page's own block; `tests/hoodlums-premium-theme.test.ts` parses both and
+  asserts they are identical, value for value, so they can never drift).
+  Scoped to a class rather than `:root` deliberately — `--display` already
+  exists globally with the older Black Ops One value and this rollout is one
+  page per PR. The homepage root (`components/hoodlums-market-home.tsx`)
+  opts in; Archivo Black is added to `globals.css`'s Google Fonts import so
+  `--display` resolves there. `hoodlums-market-home`, `hoodlums-token-grid`,
+  `robinhood-trending-panel` and `hoodlums-graduating-row` module CSS are
+  re-pointed at the shared recipes with layout untouched: the master panel
+  recipe (border/22px radius/3-stop gradient/inset hairline + black ring +
+  deep shadow) on cards, the trending panel and the empty state; the inset
+  well recipe on art tiles; the chip track + glowing chip recipe (lime
+  border at 50%, lime gradient fill, lime inset highlight + drop glow, lime
+  text-shadow) on the New/Bonding/Graduated tabs and the Solana/Robinhood
+  Chain tabs; the solid-lime CTA recipe (never a gradient, sans 800, lime
+  drop glow) on every homepage button; section labels in the token page's
+  `.sectionLabel` recipe (mono 600 9.5px, 0.18em, uppercase); the hero
+  headline in `--display` (Archivo Black); the four-tier text greys
+  throughout; and the settled up/down ruling (lime up, the design's grey
+  `--accent-down` for down — the trending panel's red percentages become
+  grey; `--accent-red` stays for genuine errors). The sidebar
+  (`components/app-navigation.module.css`) is shared chrome, so its recolour
+  applies to every page's sidebar at once, stated plainly: lime `#b9ef4d` →
+  `#c6f53e`, the greenish `rgba(131,183,139)` hairlines → white 9%/7%
+  hairlines, the active item and active step take the glowing chip recipe,
+  the step tile and testnet note take the inset well recipe; the fixed
+  238px layout, the mobile header/menu/bottom nav and every `:global`
+  overlay rule are untouched. The pinned sparkline colours (`#91f0b6` /
+  `#ff5f56`, issue #440) are chart semantics and are left exactly as they
+  were. **Tests changed rather than only added (rule 8, stated plainly):**
+  two `hoodlums-market-home` assertions pinning the graduating row's
+  hard-coded `#bce759` and one `token-grid-card-chart-ui` assertion pinning
+  `.cardTicker`'s `#566054` now pin `var(--accent-lime)` /
+  `var(--text-label)`. New coverage in `tests/hoodlums-premium-theme.test.ts`:
+  theme = token page variable set, class scope (never `:root`), layout
+  import, font import, homepage opt-in, no legacy palette hex left in the
+  four homepage stylesheets, and the chip/panel/well/CTA/display/down
+  recipes present on the named rules. No admin, route, data or layout
+  changes; rule 10 needs nothing (no feature, page or integration added).
+  Not verified in a browser or on a device from this session (rule 7) — the
+  owner compares the deployed homepage against the token page and reports;
+  a fix round is expected. Validated this session, on the final commit:
+  `npm run test:app` — 292 test files / 3373 tests passing. `npm run lint` —
+  0 errors (12 pre-existing warnings only). `npm run build` — succeeds.

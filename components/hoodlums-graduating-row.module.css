@@ -14,9 +14,10 @@
 
 .eyebrow {
   margin: 0;
-  color: #566054;
-  font: 800 11px var(--mono);
-  letter-spacing: 0.12em;
+  color: var(--text-sub);
+  font: 600 9.5px/1 var(--mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
 .track {
@@ -32,9 +33,10 @@
   display: grid;
   gap: 4px;
   padding: 12px;
-  border: 1px solid rgba(188, 231, 89, 0.1);
-  border-radius: 12px;
-  background: #0d120e;
+  border: var(--panel-border);
+  border-radius: var(--panel-radius);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
   color: inherit;
   text-decoration: none;
 }
@@ -45,9 +47,11 @@
   place-items: center;
   height: 96px;
   margin-bottom: 8px;
-  border-radius: 8px;
-  background: #060a07;
-  color: #bce759;
+  border: var(--well-border);
+  border-radius: var(--well-radius);
+  background: var(--well-bg);
+  box-shadow: var(--well-shadow);
+  color: var(--accent-lime);
   font: 800 22px var(--mono);
   overflow: hidden;
 }
@@ -74,15 +78,15 @@
 
 .cardName {
   overflow: hidden;
-  color: #f4f7ef;
-  font-size: 13px;
+  color: var(--text-value);
+  font: 800 13px var(--sans);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cardTicker {
   margin-bottom: 6px;
-  color: #566054;
+  color: var(--text-label);
   font: 600 11px var(--mono);
 }
 
@@ -90,26 +94,26 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: #566054;
+  color: var(--text-label);
   font: 700 9px var(--mono);
 }
 
 .gradRow b {
-  color: #bce759;
+  color: var(--accent-lime);
 }
 
 .gradBar {
   height: 3px;
   border-radius: 999px;
-  background: #2e3a2c;
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 
 .gradBar span {
   display: block;
   height: 100%;
-  background: #bce759;
-  box-shadow: 0 0 6px rgba(188, 231, 89, 0.6);
+  background: var(--accent-lime);
+  box-shadow: 0 0 8px rgba(198, 245, 62, 0.5);
   transition: width 0.6s ease;
 }
 
@@ -126,22 +130,23 @@
   padding: 0;
   border: none;
   border-radius: 999px;
-  background: rgba(188, 231, 89, 0.2);
+  background: rgba(255, 255, 255, 0.14);
   cursor: pointer;
 }
 
 .dotActive {
-  background: #bce759;
+  background: var(--accent-lime);
+  box-shadow: 0 0 8px rgba(198, 245, 62, 0.5);
 }
 
 .caption {
   margin: 0;
-  color: #3a4238;
+  color: var(--text-faint);
   font: 500 9px/1.6 var(--mono);
 }
 
 .updatedHint {
-  color: #566054;
+  color: var(--text-label);
 }
 
 @media (max-width: 1099px) {
