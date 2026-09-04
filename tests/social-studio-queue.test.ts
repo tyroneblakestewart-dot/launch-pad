@@ -11,6 +11,7 @@ import {
   computeDefaultScheduledAt,
   connectedPlatforms,
   countPostsScheduledToday,
+  describePlanBadge,
   describeWalletMismatch,
   isAwaitingSend,
   isHistoryStatus,
@@ -252,5 +253,22 @@ describe("countPostsScheduledToday", () => {
     const sameDay = new Date(2026, 8, 4, 9, 0, 0).toISOString();
     expect(countPostsScheduledToday([sameDay, sameDay, sameDay], now)).toBe(3);
     expect(countPostsScheduledToday([sameDay], now)).toBeLessThanOrEqual(cadenceQueueTarget("active"));
+  });
+});
+
+describe("describePlanBadge", () => {
+  it("names the tier and its token count from the project-slots read, as the design draws it", () => {
+    expect(describePlanBadge({ plan: "pro-bundle", limit: 3, unlimited: false })).toBe("PRO BUNDLE · 3 TOKENS");
+    expect(describePlanBadge({ plan: "pro", limit: 1, unlimited: false })).toBe("PRO · 1 TOKEN");
+  });
+
+  it("falls back to the product name until a plan is actually known, never guessing a tier", () => {
+    expect(describePlanBadge(null)).toBe("PRO · AI SOCIAL STUDIO");
+    expect(describePlanBadge({ plan: null, limit: null, unlimited: false })).toBe("PRO · AI SOCIAL STUDIO");
+  });
+
+  it("drops the token count for an unlimited or unbounded plan rather than printing null", () => {
+    expect(describePlanBadge({ plan: "pro", limit: null, unlimited: true })).toBe("PRO");
+    expect(describePlanBadge({ plan: "pro-bundle", limit: null, unlimited: false })).toBe("PRO BUNDLE");
   });
 });

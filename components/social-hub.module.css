@@ -975,17 +975,44 @@
 .insetPanel textarea:disabled { color: #727772; opacity: 1; }
 
 .disabledActions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.disabledActions span { color: var(--text-label); font: 700 10px var(--mono); }
+.disabledActions span { flex: 1; color: var(--text-label); font: 700 10px var(--mono); text-align: right; }
 
 .progressRow { display: grid; gap: 8px; }
 .progressRow > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .progressRow span { color: var(--text-label); font: 700 9.5px var(--mono); letter-spacing: 0.12em; }
 .progressRow b { color: var(--accent-lime); font: 800 11.5px var(--mono); }
 .progressTrack { height: 8px; overflow: hidden; border-radius: 999px; background: linear-gradient(180deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02)); box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5); }
-.progressTrack span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #8fce2a, var(--accent-lime)); }
+.progressTrack span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(198, 245, 62, 0.7), var(--accent-lime));
+  box-shadow: 0 0 16px rgba(198, 245, 62, 0.5);
+  transition: width 0.2s ease;
+}
+.voiceHint { margin: 0; color: var(--text-label); font: 600 11px var(--mono); }
+
+/* The trainer's primary action, the design's solid lime pill inside the paste box. */
+.voiceLearnButton {
+  min-height: 38px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--cta-color);
+  background: var(--cta-bg);
+  box-shadow: 0 10px 24px -12px rgba(198, 245, 62, 0.5);
+  font: 800 12.5px/1 var(--sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.voiceLearnButton:disabled { cursor: not-allowed; opacity: 0.45; box-shadow: none; }
 
 .limeNote {
   margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
   padding: 14px;
   border: 1px solid rgba(198, 245, 62, 0.34);
   border-radius: 14px;
@@ -995,6 +1022,19 @@
   font-size: 12px;
   line-height: 1.55;
 }
+.limeNote i {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: var(--cta-color);
+  background: var(--accent-lime);
+  font: 800 11px/1 var(--mono);
+  font-style: normal;
+}
+.limeNote b { color: var(--accent-lime); }
 
 .sampleLineRow { display: flex; align-items: flex-start; gap: 8px; }
 .sampleLineRow .limeNote { flex: 1; }

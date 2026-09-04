@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MIN_VOICE_EXAMPLE_LENGTH, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
+import { VOICE_EXAMPLE_TARGET, voiceTrainingHint } from "@/lib/social-voice-examples";
 
 describe("filterUsableVoiceExamples", () => {
   it("keeps real posts that read like voice examples", () => {
@@ -60,5 +61,21 @@ describe("filterUsableVoiceExamples", () => {
   it("returns an empty result for empty input", () => {
     const result = filterUsableVoiceExamples("");
     expect(result).toEqual({ pastedLines: [], usable: [], pastedLineCount: 0, rejectedCount: 0 });
+  });
+});
+
+describe("voiceTrainingHint", () => {
+  it("counts down to the design's 20-example target, then reports the voice as trained", () => {
+    expect(VOICE_EXAMPLE_TARGET).toBe(20);
+    expect(voiceTrainingHint(0)).toBe("Nothing added yet — paste your first example above.");
+    expect(voiceTrainingHint(17)).toBe("Add 3 more and the voice locks in properly.");
+    expect(voiceTrainingHint(19)).toBe("Add 1 more and the voice locks in properly.");
+    expect(voiceTrainingHint(20)).toBe("Perfect — the voice is fully trained.");
+    expect(voiceTrainingHint(45)).toBe("Perfect — the voice is fully trained.");
+  });
+
+  it("never reports a negative or fractional remainder", () => {
+    expect(voiceTrainingHint(-3)).toBe("Nothing added yet — paste your first example above.");
+    expect(voiceTrainingHint(2.7)).toBe("Add 18 more and the voice locks in properly.");
   });
 });
