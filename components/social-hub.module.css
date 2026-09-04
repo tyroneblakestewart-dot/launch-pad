@@ -603,12 +603,13 @@
 .telegramIcon {
   width: 44px;
   height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
-  background: #229ed9;
+  background: #000;
 }
 
 .xIcon svg { width: 19px; height: 19px; fill: currentColor; }
-.telegramIcon svg { width: 22px; height: 22px; fill: currentColor; }
+.telegramIcon svg { width: 26px; height: 26px; }
 
 .connectionState,
 .connectionStateLive {
@@ -889,9 +890,10 @@
 
 .xButton svg,
 .telegramButton svg { width: 14px; height: 14px; fill: currentColor; flex: none; }
+.telegramButton svg { width: 16px; height: 16px; }
 
 .xButton { border: 1px solid rgba(255, 255, 255, 0.16); color: #fff; background: #000; }
-.telegramButton { border: 0; color: #fff; background: #229ed9; }
+.telegramButton { border: 1px solid rgba(255, 255, 255, 0.16); color: #fff; background: #000; }
 .xButton:disabled,
 .telegramButton:disabled { cursor: not-allowed; opacity: 0.45; }
 
@@ -1293,6 +1295,7 @@
 }
 .destinationToggle svg,
 .destinationToggleActive svg { width: 13px; height: 13px; fill: currentColor; }
+.destinationToggleActive svg { color: var(--text-primary); }
 .destinationToggleActive { color: var(--cta-color); background: var(--cta-bg); border-color: transparent; }
 
 /* Queue tab draft-card action row (issue #356): compact inline row with a

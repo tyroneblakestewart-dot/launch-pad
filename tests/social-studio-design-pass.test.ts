@@ -146,4 +146,26 @@ describe("Social Studio design pass", () => {
     expect(hub).toContain("<span className={styles.proBadge}>{describePlanBadge(slotUsage)}</span>");
     expect(hub).not.toContain("<span className={styles.proBadge}>PRO · AI SOCIAL STUDIO</span>");
   });
+
+  it("renders the connector brand marks in their official colours everywhere they appear", async () => {
+    const icons = await source("components", "brand-icons.tsx");
+    // Telegram's own brand disc (#2AABEE → #229ED9) with a white plane, carried
+    // by the mark itself so no lime toggle or grey row can recolour it.
+    expect(icons).toContain('<stop offset="0" stopColor="#2AABEE" />');
+    expect(icons).toContain('<stop offset="1" stopColor="#229ED9" />');
+    expect(icons).toContain('<circle cx="12" cy="12" r="12" fill="#fff" />');
+    expect(icons).toContain('fill="url(#hoodlums-telegram-brand)"');
+    // The official path itself is unchanged.
+    expect(icons).toContain("M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0z");
+    // X stays black/white, never tinted.
+    expect(icons).toContain('<svg viewBox="0 0 251 256" aria-hidden="true" fill="currentColor" {...props}>');
+
+    const css = await source("components", "social-hub.module.css");
+    // Both connector tiles are the same black tile, so the marks carry the brand.
+    expect(css).toMatch(/\.telegramIcon \{[^}]*background: #000;/s);
+    expect(css).toMatch(/\.xIcon \{[^}]*background: #000;/s);
+    expect(css).not.toContain("background: #229ed9;");
+    // A lime-active destination toggle keeps the X mark white.
+    expect(css).toContain(".destinationToggleActive svg { color: var(--text-primary); }");
+  });
 });
