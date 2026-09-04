@@ -1573,3 +1573,37 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   test:app` — 291 test files / 3359 tests passing. `npm run lint` — 0 errors
   (12 pre-existing warnings only). `npm run build` — succeeds,
   `/api/token-holder-stats` listed in the route output.
+
+- Token page crash on the first pump.fun-shaped curve (owner-reported, 3 Sep
+  evening, found while verifying the new testnet reserve settings — virtual
+  token reserve 1,073,000,000 / virtual ETH reserve 0.0035 / target 0.01,
+  which put the starting price at ~3.26e-12 ETH). The whole token page fell
+  into the client error boundary ("Something went wrong loading this page")
+  the moment curve state arrived. Root cause, proven against
+  `lightweight-charts@4.1.3`'s own source and reproduced in Node:
+  `computeChartMinMove` (`lib/token-chart-tools.ts`, issue #451) floors at
+  `MIN_MOVE_FLOOR`, which was `1e-18`, and a price around 3e-12 lands exactly
+  on that floor (`10^(-12-6)`). The library derives an internal integer base
+  as `Math.round(1 / minMove)` and requires it to be an exact power of ten
+  (or at least a product of 2s and 5s); `1 / 1e-18` in IEEE-754 is
+  `999999999999999900`, which is neither, so its tick-span calculator throws
+  "unexpected base" during price-axis layout. Every previous token sat near
+  2.5e-9 (minMove 1e-15, base exactly 1e15), which is why this never fired
+  before. Fix, one constant: `MIN_MOVE_FLOOR` is now `1e-15`, the smallest
+  power of ten whose reciprocal is still a safe integer, and is exported so
+  the tests can pin it. Below ~1e-9 the axis now carries fewer than six
+  significant figures of tick resolution — a cosmetic cost, never a crash;
+  the header band's six-significant-figure price is unaffected. **Tests
+  changed rather than only added (rule 8, stated plainly):** the two #451
+  cases asserting the `1e-18` floor pinned the defect and now assert
+  `MIN_MOVE_FLOOR` (1e-15). New coverage: a verbatim replica of the
+  library's `isBaseDecimal`/factoring check documents that a 1e-18 minMove
+  yields a rejected base and 1e-15 does not, and a sweep of price magnitudes
+  from 1e-30 to 1e6 (including the exact new starting price) asserts every
+  derived base is a safe integer the library accepts. No other code changed.
+  Separately confirmed live this session: the three Vercel curve variables
+  now reach the launch flow (a fresh token's header showed
+  0.00000000000326188 ETH), and PR #481's holder breakdown rows render real
+  figures on the deployed page. Validated this session, on the final commit:
+  `npm run test:app` — 291 test files / 3361 tests passing. `npm run lint` —
+  0 errors (12 pre-existing warnings only). `npm run build` — succeeds.

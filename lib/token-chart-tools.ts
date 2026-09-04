@@ -35,8 +35,20 @@ export function expandDegeneratePriceRange(minValue: number, maxValue: number): 
   return { minValue: minValue - padding, maxValue: maxValue + padding };
 }
 
-/** Floor for computeChartMinMove — never zero/subnormal regardless of how small maxPrice is. */
-const MIN_MOVE_FLOOR = 1e-18;
+/**
+ * Floor for computeChartMinMove. Never zero/subnormal regardless of how small
+ * maxPrice is — AND never below 1e-15, because lightweight-charts@4.1.3
+ * derives an internal integer base as `Math.round(1 / minMove)` and then
+ * requires it to be an exact power of ten (or at least a product of 2s and
+ * 5s). `1 / 1e-15` is exactly 1e15, a safe integer; `1 / 1e-18` in IEEE-754
+ * is 999999999999999900, which is neither, and the library's tick-span
+ * calculator throws "unexpected base" the moment it lays out the price axis
+ * — crashing the whole token page. Hit for real on the first curve launched
+ * with pump.fun-shaped reserves (starting price ~3.26e-12 → 10^(-12-6) =
+ * 1e-18). Verified against the library source; see
+ * tests/token-chart-tools.test.ts's base-safety sweep.
+ */
+export const MIN_MOVE_FLOOR = 1e-15;
 
 /**
  * Derives the candlestick series' `priceFormat.minMove` from the data itself
@@ -47,7 +59,10 @@ const MIN_MOVE_FLOOR = 1e-18;
  * range and the axis draws no labels at all — only the last-price tag. Six
  * significant figures below the largest visible price keeps ticks legible
  * at any magnitude: `10^(floor(log10(maxPrice)) - 6)`, floored at
- * `MIN_MOVE_FLOOR` so it's never zero/subnormal.
+ * `MIN_MOVE_FLOOR` so it's never zero/subnormal and always yields a base the
+ * chart library can consume (see MIN_MOVE_FLOOR's own comment). Below ~1e-9
+ * that floor costs axis precision (fewer than six significant figures of
+ * tick resolution) but never the chart itself.
  */
 export function computeChartMinMove(maxPrice: number): number {
   if (!Number.isFinite(maxPrice) || maxPrice <= 0) return MIN_MOVE_FLOOR;
