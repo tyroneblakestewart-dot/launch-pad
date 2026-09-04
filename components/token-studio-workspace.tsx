@@ -193,10 +193,6 @@ export function TokenStudioWorkspace() {
   return (
     <div className={styles.openWorkspace}>
       <div className={styles.workspaceBar}>
-        <div>
-          <span className={styles.liveDot} />
-          <span>PRIVATE WORKSPACE OPEN</span>
-        </div>
         <div className={styles.workspaceActions}>
           <button onClick={openSavedLaunches}>Saved launches</button>
           <button className={styles.closeButton} onClick={saveAndClose}>
