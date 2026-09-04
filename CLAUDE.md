@@ -1607,3 +1607,37 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   figures on the deployed page. Validated this session, on the final commit:
   `npm run test:app` — 291 test files / 3361 tests passing. `npm run lint` —
   0 errors (12 pre-existing warnings only). `npm run build` — succeeds.
+
+- Snipers % is now measured in seconds, creator excluded (owner ruling,
+  4 Sep, replacing the data inventory's original "first 10 blocks" rule).
+  This chain produces blocks well under a second apart, so "10 blocks" was a
+  few seconds wide and would drift with block time; 60 seconds is roughly the
+  homepage grid's own poll cadence, so nothing bought inside it came from a
+  person browsing the site. `lib/server/token-holder-stats.ts`:
+  `SNIPER_WINDOW_BLOCKS` (10n) is replaced by `SNIPER_WINDOW_SECONDS` (60);
+  `readCurveFundedAt` reads the `CurveFunded` block's own header timestamp
+  (one extra `getBlock`, cached indefinitely per curve alongside the block
+  number) and `selectSniperWallets` keeps every distinct wallet whose FIRST
+  curve buy's `blockTimestamp` is at or before funding + 60s, now skipping
+  the curve's `creator()` wallet outright — a dev buy right after funding is
+  already DEV %, and counting it twice would make every launch with a dev
+  buy look sniped. The tooltip on the SNIPERS % row
+  (`components/token-page/token-stats-audit-panel.tsx`) reads "Wallets that
+  bought within 60 seconds of launch · N wallets" using the
+  `sniperWalletCount` the response already carried (display only, no API
+  change). The two ruling lines in
+  `design/token-page-v2/token-page-data-inventory.md` are updated to match,
+  with the owner ruling noted inline. The window is a measurement, never a
+  gate — nobody is prevented from buying at any moment. **Tests changed
+  rather than only added (rule 8, stated plainly):** the `token-page-view-ui`
+  and `token-holder-stats-ui` assertions pinning the old "first 10 blocks"
+  tooltip string now pin the new base string and the dynamic `title`
+  binding; the module tests' block-offset fixtures were rewritten as
+  second-offset fixtures around the funded block's timestamp. New coverage:
+  the creator is never a sniper (case-insensitively, and treated as an
+  ordinary buyer only when no creator is known), 30 buys in 15 seconds all
+  count (proving the window is wall-clock, not blocks), and the funded
+  block's header read is cached with its log query. Validated this session,
+  on the final commit: `npm run test:app` — 291 test files / 3363 tests
+  passing. `npm run lint` — 0 errors (12 pre-existing warnings only).
+  `npm run build` — succeeds.

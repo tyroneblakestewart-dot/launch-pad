@@ -19,13 +19,13 @@ export type TokenHolderBreakdown = {
   /** Share of supply held by the curve's `creator()` wallet. `null` when no curve trades this token. */
   devPercent: number | null;
   /**
-   * Share of supply currently held by wallets whose first curve buy landed
-   * within SNIPER_WINDOW_BLOCKS blocks of the curve's `CurveFunded` event.
-   * `null` when no curve trades this token or the funding block could not
-   * be found.
+   * Share of supply currently held by wallets (creator excluded) whose first
+   * curve buy landed within SNIPER_WINDOW_SECONDS of the curve's
+   * `CurveFunded` block timestamp. `null` when no curve trades this token or
+   * the funding block could not be found.
    */
   snipersPercent: number | null;
-  /** Distinct wallets that qualify as snipers (for the tooltip/debugging; 0 when none). */
+  /** Distinct wallets that qualify as snipers — shown in the SNIPERS % tooltip (0 when none). */
   sniperWalletCount: number;
   /** The curve address the Dev/Snipers rows were computed against, or null. */
   curveAddress: string | null;

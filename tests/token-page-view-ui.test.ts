@@ -564,7 +564,7 @@ describe("token page Stats/Audit panel (issue #443 part 1)", () => {
     expect(component).toContain("TOP 10 %");
     expect(component).toContain("DEV %");
     expect(component).toContain("SNIPERS % ⓘ");
-    expect(component).toContain("Wallets that bought within the first 10 blocks after launch");
+    expect(component).toContain('const SNIPER_TOOLTIP_BASE = "Wallets that bought within 60 seconds of launch";');
     expect(component).toContain("TOTAL FEES");
   });
 

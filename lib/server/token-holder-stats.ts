@@ -24,8 +24,14 @@ import type { TokenTrade } from "@/lib/token-trade-types";
  * - Top 10 %: Blockscout's holder list minus the curve and LP addresses, over
  *   total supply.
  * - Dev %: `balanceOf(creator)` over total supply.
- * - Snipers %: distinct buyers whose first `TokensPurchased` is within 10
- *   blocks of `CurveFunded`, current `balanceOf` summed, over total supply.
+ * - Snipers %: distinct buyers (the creator excluded — that is Dev %) whose
+ *   first `TokensPurchased` landed within SNIPER_WINDOW_SECONDS of the
+ *   `CurveFunded` block's timestamp, current `balanceOf` summed, over total
+ *   supply. Owner ruling (4 Sep): measured in seconds, not blocks — this
+ *   chain produces blocks well under a second apart, so "10 blocks" was a
+ *   few seconds and would drift with block time; 60s is roughly the homepage
+ *   grid's own poll cadence, so nothing bought inside it came from a person
+ *   browsing the site.
  *
  * Every denominator is the token's live on-chain `totalSupply()` (the token is
  * burnable, so a stored supply could drift), and every numerator that can be
@@ -49,9 +55,9 @@ import type { TokenTrade } from "@/lib/token-trade-types";
  * a 502, never a zero-filled breakdown.
  */
 
-export const SNIPER_WINDOW_BLOCKS = 10n;
+export const SNIPER_WINDOW_SECONDS = 60;
 
-/** How many sniper wallets' balances are read at most — the 10-block window realistically holds a handful. */
+/** How many sniper wallets' balances are read at most — the 60s window realistically holds a handful. */
 export const MAX_SNIPER_BALANCE_READS = 100;
 
 const HOLDER_STATS_CACHE_TTL_MS = 60_000;
@@ -120,8 +126,9 @@ type CacheEntry = { stats: TokenHolderBreakdown; cachedAt: number };
 
 const statsCache = new Map<string, CacheEntry>();
 const statsInflight = new Map<string, Promise<TokenHolderBreakdown>>();
-// A curve is funded exactly once, so its CurveFunded block never changes.
-const fundedBlockCache = new Map<string, bigint>();
+// A curve is funded exactly once, so its CurveFunded block/timestamp never change.
+type CurveFundedAt = { block: bigint; timestamp: number };
+const fundedAtCache = new Map<string, CurveFundedAt>();
 let lastReadAt: number | null = null;
 let lastReadOk: boolean | null = null;
 
@@ -162,35 +169,45 @@ export function sumTopHolderBalances(items: BlockscoutHolderItem[], excluded: Se
 
 /**
  * The distinct wallets whose FIRST curve buy landed at or before
- * `fundedBlock + SNIPER_WINDOW_BLOCKS`. Pool swaps (`venue: "pool"`) are
- * post-graduation and can never be sniping a launch, so they are ignored.
- * Pure; exported for the unit tests. Order: earliest first buy first, so a
- * cap on balance reads keeps the earliest snipers.
+ * `fundedAtUnixSeconds + SNIPER_WINDOW_SECONDS`. The creator wallet is never
+ * a sniper (its holding is Dev %, and counting it twice would make every
+ * launch with a dev buy look sniped). Pool swaps (`venue: "pool"`) are
+ * post-graduation and can never be sniping a launch, so they are ignored;
+ * sells never affect membership. Pure; exported for the unit tests. Order:
+ * earliest first buy first, so a cap on balance reads keeps the earliest
+ * snipers.
  */
-export function selectSniperWallets(trades: TokenTrade[], fundedBlock: bigint): Address[] {
-  const firstBuyBlockByWallet = new Map<string, { wallet: Address; block: bigint }>();
+export function selectSniperWallets(trades: TokenTrade[], fundedAtUnixSeconds: number, creator: Address | null): Address[] {
+  const creatorKey = creator?.toLowerCase() ?? null;
+  const firstBuyByWallet = new Map<string, { wallet: Address; at: number; logIndex: number }>();
   for (const trade of trades) {
     if (trade.direction !== "buy" || (trade.venue ?? "curve") !== "curve") continue;
-    if (!/^\d+$/.test(trade.blockNumber)) continue;
-    const block = BigInt(trade.blockNumber);
+    if (!Number.isFinite(trade.blockTimestamp)) continue;
     const key = trade.wallet.toLowerCase();
-    const existing = firstBuyBlockByWallet.get(key);
-    if (!existing || block < existing.block) firstBuyBlockByWallet.set(key, { wallet: trade.wallet, block });
+    if (key === creatorKey) continue;
+    const existing = firstBuyByWallet.get(key);
+    if (
+      !existing ||
+      trade.blockTimestamp < existing.at ||
+      (trade.blockTimestamp === existing.at && trade.logIndex < existing.logIndex)
+    ) {
+      firstBuyByWallet.set(key, { wallet: trade.wallet, at: trade.blockTimestamp, logIndex: trade.logIndex });
+    }
   }
-  const cutoff = fundedBlock + SNIPER_WINDOW_BLOCKS;
-  return [...firstBuyBlockByWallet.values()]
-    .filter((entry) => entry.block <= cutoff)
-    .sort((a, b) => (a.block === b.block ? 0 : a.block < b.block ? -1 : 1))
+  const cutoff = fundedAtUnixSeconds + SNIPER_WINDOW_SECONDS;
+  return [...firstBuyByWallet.values()]
+    .filter((entry) => entry.at <= cutoff)
+    .sort((a, b) => a.at - b.at || a.logIndex - b.logIndex)
     .map((entry) => entry.wallet);
 }
 
-async function readCurveFundedBlock(
+async function readCurveFundedAt(
   client: TokenTradesReadClient,
   chainId: number,
   curveAddress: Address,
-): Promise<bigint | null> {
+): Promise<CurveFundedAt | null> {
   const key = curveAddress.toLowerCase();
-  const cached = fundedBlockCache.get(key);
+  const cached = fundedAtCache.get(key);
   if (cached !== undefined) return cached;
 
   const latest = await client.getBlockNumber();
@@ -198,8 +215,10 @@ async function readCurveFundedBlock(
   const logs = (await fetchLogsInRange(client, curveAddress, CURVE_FUNDED_EVENTS, fromBlock, latest)) as RawCurveFundedLog[];
   const funded = logs.find((log) => log.blockNumber !== null);
   if (!funded || funded.blockNumber === null) return null;
-  fundedBlockCache.set(key, funded.blockNumber);
-  return funded.blockNumber;
+  const block = await client.getBlock({ blockNumber: funded.blockNumber });
+  const fundedAt: CurveFundedAt = { block: funded.blockNumber, timestamp: Number(block.timestamp) };
+  fundedAtCache.set(key, fundedAt);
+  return fundedAt;
 }
 
 type CurveIdentity = { curve: Address; creator: Address; liquidityPool: Address | null };
@@ -268,14 +287,14 @@ async function computeBreakdown(
     };
   }
 
-  const [creatorBalance, fundedBlock, trades] = await Promise.all([
+  const [creatorBalance, fundedAt, trades] = await Promise.all([
     client.readContract({
       address: tokenAddress,
       abi: ERC20_SUPPLY_ABI,
       functionName: "balanceOf",
       args: [identity.creator],
     }) as Promise<bigint>,
-    readCurveFundedBlock(client, chainId, identity.curve),
+    readCurveFundedAt(client, chainId, identity.curve),
     readTrades(chainId, identity.curve),
   ]);
 
@@ -283,8 +302,8 @@ async function computeBreakdown(
 
   let snipersPercent: number | null = null;
   let sniperWalletCount = 0;
-  if (fundedBlock !== null) {
-    const snipers = selectSniperWallets(trades, fundedBlock).slice(0, MAX_SNIPER_BALANCE_READS);
+  if (fundedAt !== null) {
+    const snipers = selectSniperWallets(trades, fundedAt.timestamp, identity.creator).slice(0, MAX_SNIPER_BALANCE_READS);
     sniperWalletCount = snipers.length;
     const balances = await Promise.all(
       snipers.map(
@@ -380,7 +399,7 @@ export function getTokenHolderStatsReadHealth(now = Date.now()): TokenHolderStat
 export function resetTokenHolderStatsForTests(): void {
   statsCache.clear();
   statsInflight.clear();
-  fundedBlockCache.clear();
+  fundedAtCache.clear();
   lastReadAt = null;
   lastReadOk = null;
 }

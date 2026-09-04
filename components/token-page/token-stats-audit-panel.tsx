@@ -25,6 +25,8 @@ const WINDOW_LABELS: Record<TradeStatsWindowKey, string> = { "5m": "5M", "1h": "
 
 const AUDIT_ROWS = ["0% tax", "No mint function", "No owner", "LP locked at graduation"];
 
+const SNIPER_TOOLTIP_BASE = "Wallets that bought within 60 seconds of launch";
+
 function sharePercent(a: number, b: number): { left: number; right: number } {
   const total = a + b;
   if (total <= 0) return { left: 0, right: 0 };
@@ -110,6 +112,13 @@ export function TokenStatsAuditPanel({ trades, decimals, holderCount, holderBrea
   ];
 
   const holdersLabel = formatHolderCount(holderCount);
+  // Owner ruling (4 Sep): snipers are measured in seconds from funding, not
+  // blocks, and the tooltip names how many wallets qualified.
+  const sniperCount = holderBreakdown?.sniperWalletCount ?? null;
+  const sniperTooltip =
+    sniperCount === null
+      ? SNIPER_TOOLTIP_BASE
+      : `${SNIPER_TOOLTIP_BASE} · ${sniperCount} wallet${sniperCount === 1 ? "" : "s"}`;
 
   return (
     <div className={`${styles.panel} ${styles.statsPanel}`}>
@@ -194,7 +203,7 @@ export function TokenStatsAuditPanel({ trades, decimals, holderCount, holderBrea
                   <span className={styles.statsPairLabel}>DEV %</span>
                   <span className={styles.statsPairValueNeutral}>{formatSharePercent(holderBreakdown?.devPercent ?? null)}</span>
                 </div>
-                <div className={styles.holderBreakdownRow} title="Wallets that bought within the first 10 blocks after launch">
+                <div className={styles.holderBreakdownRow} title={sniperTooltip}>
                   <span className={styles.statsPairLabel}>SNIPERS % ⓘ</span>
                   <span className={styles.statsPairValueNeutral}>{formatSharePercent(holderBreakdown?.snipersPercent ?? null)}</span>
                 </div>

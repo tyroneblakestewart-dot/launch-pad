@@ -146,7 +146,7 @@ Paired rows (all change with the TF selector, none with Price/MCap, all live):
 - HOLDERS — total holding wallets. Count. 2,417. New: 0. Error: "—".
 - TOP 10 % — share of supply held by the ten largest wallets, curve and LP addresses excluded. % 1dp. 18.4%. New: "—". Error: "—".
 - DEV % — share held by the creator wallet. % 1dp. 4.2%. New: 0.0% (creators receive no allocation). Error: "—".
-- SNIPERS % — share currently held by wallets whose first buy landed within the first 10 blocks after launch. Hover ⓘ tooltip: "Wallets that bought within the first 10 blocks after launch". % 1dp. 1.1%. New: 0.0%. Error: "—".
+- SNIPERS % — share currently held by wallets (creator excluded) whose first buy landed within 60 seconds of the curve being funded. Hover ⓘ tooltip: "Wallets that bought within 60 seconds of launch · N wallets". % 1dp. 1.1%. New: 0.0%. Error: "—". (Owner ruling 4 Sep 2026: seconds, not blocks — this chain's blocks are sub-second, so a block count would be a few seconds and drift with block time; the creator is never a sniper, that holding is DEV %.)
 - TOTAL FEES — lifetime protocol fees this token generated. ETH 2dp. 2.86 ETH. New: 0.00 ETH. Error: "—".
 - These update live but slower refresh is fine (per block / per minute). Not affected by TF or Price/MCap.
 
@@ -289,7 +289,7 @@ Per message: wallet (truncated), badge (DEV / HOLDER), age ("4m"), body text (28
 **Needs one new server route** — `/api/token-holder-stats` (cached ~60s)
 - Top 10 %: Blockscout holder list minus curve and LP addresses, over total supply.
 - Dev %: `balanceOf(creator)` over total supply.
-- Snipers %: distinct buyers whose first TokensPurchased is within 10 blocks of `CurveFunded`, current `balanceOf` summed, over total supply.
+- Snipers %: distinct buyers (creator excluded) whose first TokensPurchased is within 60 seconds of the `CurveFunded` block's timestamp, current `balanceOf` summed, over total supply.
 
 **Not obtainable on testnet — design already reflects this**
 - USD anywhere. Price and market cap are ETH-denominated. Add a USD feed on mainnet later.

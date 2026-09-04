@@ -89,7 +89,10 @@ describe("holder breakdown wiring (fetch once at the page, pass props)", () => {
     expect(panel).toContain("TOP 10 %");
     expect(panel).toContain("DEV %");
     expect(panel).toContain("SNIPERS % ⓘ");
-    expect(panel).toContain("Wallets that bought within the first 10 blocks after launch");
+    expect(panel).toContain('const SNIPER_TOOLTIP_BASE = "Wallets that bought within 60 seconds of launch";');
+    expect(panel).toContain("title={sniperTooltip}");
+    expect(panel).toContain("holderBreakdown?.sniperWalletCount ?? null");
+    expect(panel).not.toContain("10 blocks");
   });
 
   it("keeps the header's holder count as the single holder-count source — the breakdown response carries no holder count", async () => {
