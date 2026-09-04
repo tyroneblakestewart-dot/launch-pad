@@ -1,3 +1,4 @@
+import { AccountOverlayShell } from "@/components/account-overlay-shell";
 import { ManagerGateway } from "@/components/manager-gateway";
 import { CMS_PREVIEW_QUERY_PARAM, resolvePageContent } from "@/lib/server/page-content";
 
@@ -12,10 +13,13 @@ export default async function ManagerPage({ searchParams }: ManagerPageProps) {
   );
 
   return (
-    <ManagerGateway
-      headerEyebrow={content.header_eyebrow}
-      headerTitle={content.header_title}
-      headerIntro={content.header_intro}
-    />
+    <>
+      <AccountOverlayShell />
+      <ManagerGateway
+        headerEyebrow={content.header_eyebrow}
+        headerTitle={content.header_title}
+        headerIntro={content.header_intro}
+      />
+    </>
   );
 }

@@ -24,13 +24,53 @@ describe("Account overlay restructure", () => {
     expect(css).not.toContain(".accountButton");
   });
 
-  it("mounts one persistent account overlay across the app shell and standalone token pages", async () => {
-    const appLayout = await source("app", "(app)", "layout.tsx");
-    const tokenLayout = await source("app", "token", "[chain]", "[address]", "layout.tsx");
+  // Round 3 (owner direction, 4 Sep 2026): the homepage needs the trending
+  // banner ABOVE the wallet dock, the opposite of every other page's order,
+  // so the dock can no longer be one unconditional mount in the shared
+  // (app) layout — each page composes its own single mount instead (the
+  // token page's standalone layout already did this; see
+  // components/account-overlay-shell.tsx's full caller list).
+  const APP_GROUP_PAGES_WITH_OWN_MOUNT = [
+    "account",
+    "allocations",
+    "bonding-curve",
+    "hoodchat",
+    "liquidity-lab",
+    "manager",
+    "monad",
+    "providers",
+    "social",
+    "support",
+    "testnet",
+  ];
 
-    expect(appLayout).toContain('import { AccountOverlayShell } from "@/components/account-overlay-shell"');
-    expect(appLayout).toContain("<AccountOverlayShell />");
+  it("no longer mounts the account overlay unconditionally in the shared (app) layout", async () => {
+    const appLayout = await source("app", "(app)", "layout.tsx");
+
+    expect(appLayout).not.toContain("AccountOverlayShell");
+  });
+
+  it("mounts exactly one account overlay on every (app) route page, the homepage (via a prop into HoodlumsMarketHome), and the standalone token page", async () => {
+    const tokenLayout = await source("app", "token", "[chain]", "[address]", "layout.tsx");
     expect(tokenLayout).toContain("<AccountOverlayShell />");
+
+    for (const page of APP_GROUP_PAGES_WITH_OWN_MOUNT) {
+      const pageSource = await source("app", "(app)", page, "page.tsx");
+      expect(pageSource, `${page}/page.tsx should import AccountOverlayShell`).toContain(
+        'import { AccountOverlayShell } from "@/components/account-overlay-shell"',
+      );
+      expect(pageSource, `${page}/page.tsx should mount AccountOverlayShell exactly once`).toContain(
+        "<AccountOverlayShell />",
+      );
+    }
+
+    const homePage = await source("app", "(app)", "page.tsx");
+    expect(homePage).toContain('import { AccountOverlayShell } from "@/components/account-overlay-shell"');
+    expect(homePage).toContain("accountOverlay={<AccountOverlayShell />}");
+
+    const marketHome = await source("components", "hoodlums-market-home.tsx");
+    expect(marketHome).toContain("accountOverlay,");
+    expect(marketHome).toContain("{accountOverlay}");
   });
 
   it("reserves a dedicated desktop dock instead of covering page actions", async () => {

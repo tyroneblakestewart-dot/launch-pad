@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AccountOverlayShell } from "@/components/account-overlay-shell";
 import { SupportHub } from "@/components/support-hub";
 import { CMS_PREVIEW_QUERY_PARAM, resolvePageContent } from "@/lib/server/page-content";
 
@@ -15,6 +16,9 @@ export default async function SupportPage({ searchParams }: SupportPageProps) {
   const { content } = await resolvePageContent("support", (await searchParams)?.[CMS_PREVIEW_QUERY_PARAM]);
 
   return (
-    <SupportHub heroEyebrow={content.hero_eyebrow} heroTitle={content.hero_title} heroIntro={content.hero_intro} />
+    <>
+      <AccountOverlayShell />
+      <SupportHub heroEyebrow={content.hero_eyebrow} heroTitle={content.hero_title} heroIntro={content.hero_intro} />
+    </>
   );
 }

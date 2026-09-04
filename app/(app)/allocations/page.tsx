@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AccountOverlayShell } from "@/components/account-overlay-shell";
 import { TokenAllocationDesk } from "@/components/token-allocation-desk";
 import { isContentVisible } from "@/lib/page-content-registry";
 import { CMS_PREVIEW_QUERY_PARAM, resolvePageContent } from "@/lib/server/page-content";
@@ -15,6 +16,7 @@ export default async function AllocationsPage({ searchParams }: AllocationsPageP
 
   return (
     <>
+      <AccountOverlayShell />
       <TokenAllocationDesk
         headerEyebrow={content.header_eyebrow}
         headerTitle={content.header_title}

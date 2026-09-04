@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
+import { AccountOverlayShell } from "@/components/account-overlay-shell";
 import { CMS_PREVIEW_QUERY_PARAM, resolvePageContent } from "@/lib/server/page-content";
 import styles from "./account.module.css";
 
@@ -82,7 +83,9 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
   ];
 
   return (
-    <main className={styles.page}>
+    <>
+      <AccountOverlayShell />
+      <main className={styles.page}>
       <section className={styles.panel} aria-labelledby="account-title">
         <header className={styles.header}>
           <p>{content.header_eyebrow}</p>
@@ -131,5 +134,6 @@ export default async function AccountPage({ searchParams }: AccountPageProps) {
         <footer className={styles.footer}>{content.footer_copy}</footer>
       </section>
     </main>
+    </>
   );
 }

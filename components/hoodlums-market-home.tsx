@@ -1,6 +1,6 @@
 "use client";
 
-import type { MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import type { PublicGeneratedSite } from "@/lib/public-site";
 import { HoodlumsGraduatingRow } from "@/components/hoodlums-graduating-row";
 import { HoodlumsPlansSection } from "@/components/hoodlums-plans-section";
@@ -11,6 +11,17 @@ import { requestWorkspaceOpen } from "@/lib/workspace-open-request";
 import styles from "./hoodlums-market-home.module.css";
 
 type HoodlumsMarketHomeProps = {
+  /**
+   * The wallet-connect dock (`<AccountOverlayShell />`), server-rendered by
+   * the homepage's page.tsx and passed down as an already-rendered element
+   * — this component is "use client" and AccountOverlayShell is an async
+   * server component, which can only be composed this way (owner direction,
+   * 4 Sep 2026 round 3: the trending banner sits above the wallet dock here,
+   * the opposite of the shared (app) layout's order on every other page, so
+   * the dock moved out of that shared layout and into each page including
+   * this one — see components/account-overlay-shell.tsx's callers).
+   */
+  accountOverlay: ReactNode;
   liveSites: PublicGeneratedSite[];
   heroEyebrow?: string;
   heroTitleLine1?: string;
@@ -25,6 +36,7 @@ type HoodlumsMarketHomeProps = {
  * overridden by the "Pages" CMS (see lib/page-content-registry.ts, page id
  * "home"). Nothing else on this page reads from the registry. */
 export function HoodlumsMarketHome({
+  accountOverlay,
   liveSites,
   heroEyebrow = "BUILD. TEST. LAUNCH.",
   heroTitleLine1 = "Launch a meme token",
@@ -42,8 +54,10 @@ export function HoodlumsMarketHome({
   return (
     <div className={`${styles.page} hoodlums-premium`}>
       {/* Owner direction (4 Sep 2026, round 2): the Dexscreener trending feed
-          runs as a moving banner across the very top of the page. */}
+          runs as a moving banner across the very top of the page. Round 3:
+          the connected-wallet dock sits directly beneath it, not above it. */}
       <RobinhoodTrendingPanel />
+      {accountOverlay}
 
       <header className={styles.topbar}>
         <span className={styles.pulse}>
