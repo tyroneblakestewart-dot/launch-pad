@@ -1836,3 +1836,63 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   immutable and never gain it. `npm run test:contracts` could not run in this
   session — the proxy denies `binaries.soliditylang.org` (403, organisation
   egress policy), so the Solidity suite is validated by CI's `npm test`.
+
+- Generated free sites link to the right places (owner request, 4 Sep: "make
+  sure tabs on the site point to the right places, and whatever can't point
+  yet works once everything is live"). Root cause: the free-site template's
+  Buy button went to the Dexscreener pair when one existed and to a
+  Dexscreener *search* otherwise, and its no-pair chart state said "Chart
+  activates once trading is indexed" with a "Check Dexscreener" link — both
+  dead ends for every bonding-curve token, which has no Dexscreener pair
+  until it graduates but does have a live trade page and chart on Hoodlums.
+  `lib/free-site-platform-facts.ts`: `FreeSitePlatformFacts` gains an
+  optional `chain` (default `robinhood`); new pure `buildHoodlumsTradeUrl`
+  (`https://hoodlums.dev/token/<chain>/<address>`, from
+  `HOODLUMS_ROOT_DOMAIN`) and `buildContractExplorerUrl` (from
+  `CHAIN_CONFIG[chain].explorerBaseUrl`); `{{BUY_HREF}}` now always resolves
+  to the trade page whenever a contract is known — while bonding it is the
+  only place the token can be bought, and after graduation that page already
+  links on to the locked pool, so a site never has to know the phase (on
+  mainnet, pointing graduated tokens at a Uniswap deep link is a one-place
+  change here). Two new placeholders, `{{TRADE_URL}}` and `{{EXPLORER_URL}}`
+  (registered in `lib/free-site-template.ts`'s
+  `PLATFORM_FACT_PLACEHOLDER_NAMES`, replacing `CHART_SEARCH_URL`), and two
+  new blocks: `CHART_TRADE_LINK` ("Live chart on Hoodlums" + "Open live
+  chart ↗", kept when a contract exists) and `CHART_PRELAUNCH` ("Chart goes
+  live at launch", kept before one does) replace the template's
+  Dexscreener-search pending state; the contract row gains an "Explorer ↗"
+  link beside Copy inside `CONTRACT_KNOWN`. The `CHART_FOUND` Dexscreener
+  embed is unchanged and still takes over automatically when a pair is
+  indexed. Because substitution runs at serve time on *stored* HTML, every
+  already-published free site's Buy button is fixed with no republish; the
+  legacy `CHART_SEARCH_LINK`/`{{CHART_SEARCH_URL}}` markers in older stored
+  pages are still handled and still point at a Dexscreener search (that
+  label is honest for what it does), so an old site gets the new chart block
+  only when it is republished. `app/[slug]/page.tsx` passes `site.chain`;
+  `components/full-website-generator.tsx`'s `previewHtmlFor` takes the chain
+  (`detail.chain || "robinhood"` / `site.chain`) so a studio preview shows
+  the same links the served page will. The template copy deliberately says
+  "trades live on Hoodlums", never "bonding curve", because
+  `tests/free-site-template.test.ts` forbids fee/curve wording on the free
+  site. **Tests changed rather than only added (rule 8, stated plainly):**
+  two `free-site-platform-facts` assertions pinned Buy → Dexscreener
+  (search, and pair), one `free-site-template` assertion pinned
+  `{{CHART_SEARCH_URL}}` and one pinned the "Chart activates once trading is
+  indexed"/"Check Dexscreener ↗" copy, and two `generated-site-reopen`
+  source pins on `previewHtmlFor`'s two-argument calls — each pinned the
+  defect or the old signature and was rewritten. New coverage: both URL
+  builders, per-chain Buy links, the current template's trade/explorer
+  links with and without a contract, the legacy search link still
+  resolving, and the template's new blocks/explorer link. **Deliberately
+  out of scope:** bespoke (paid AI) sites — their pipeline receives only
+  name/ticker/description/artwork and invents its own links, so fixing them
+  needs prompt-level placeholders plus serve-time substitution of their own;
+  named follow-up. `page-content-site-wiring`'s "Chart activates once
+  trading is indexed" pin is the separate `PublicDexscreenerSection` shown
+  under bespoke pages and is untouched. Rule 10 needs nothing (no new page,
+  route or integration). Not verified in a browser from this session (rule
+  7): the owner opens hoodlums.dev/33234 and confirms Buy opens the token's
+  Hoodlums trade page. Also recorded here: the live testnet curve launch
+  pipeline is now `0xa7884bf84ae76c2e115aaf1f3f9a45157fdff42a` (deployed
+  4 Sep with the graduation fee); `0x3c6a…72ed` is the previous, fee-less
+  pipeline and is no longer configured.

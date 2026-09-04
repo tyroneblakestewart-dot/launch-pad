@@ -128,6 +128,7 @@ export default async function PublicGeneratedSitePage({ params, searchParams }: 
     const chart = await resolveChartFact(site.contractAddress);
     html = substituteFreeSitePlatformFacts(site.generatedSiteHtml as string, {
       contractAddress: site.contractAddress,
+      chain: site.chain,
       chart,
       lpLockedAt: site.lpLockedAt ?? null,
     });

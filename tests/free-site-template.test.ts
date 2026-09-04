@@ -371,7 +371,9 @@ describe("renderFreeSiteTemplate", () => {
       expect(html).toContain('id="chart"');
       expect(html).toContain("{{CHART_URL}}");
       expect(html).toContain(CHART_EMBED_PLACEHOLDER);
-      expect(html).toContain("{{CHART_SEARCH_URL}}");
+      expect(html).toContain("{{TRADE_URL}}");
+      expect(html).toContain("{{EXPLORER_URL}}");
+      expect(html).not.toContain("{{CHART_SEARCH_URL}}");
       expect(html).toContain("{{LP_LOCKED_DATE}}");
       expect(html).toContain('href="#chart"');
     });
@@ -381,14 +383,26 @@ describe("renderFreeSiteTemplate", () => {
       expect(isCompleteGeneratedPageHtml(html)).toBe(true);
     });
 
-    // Dexscreener never indexes Robinhood Chain Testnet, so the no-pair-yet
-    // state must read as "activates once trading is indexed", not "broken"
-    // or a vague "coming soon" (issue #286).
-    it("frames the no-pair chart state as activating once trading is indexed, not as broken", () => {
+    // A bonding-curve token has no Dexscreener pair until it graduates, but
+    // it does have a live chart: its own Hoodlums trade page. The no-pair
+    // state therefore points there once the token exists, and reads as
+    // "goes live at launch" before it does — never a Dexscreener search that
+    // can only ever come back empty (the previous "Check Dexscreener" link).
+    it("frames the no-pair chart state as the live Hoodlums chart, or as going live at launch", () => {
       const html = render();
-      expect(html).toContain("Chart activates once trading is indexed");
-      expect(html).toContain("doesn't index Robinhood Chain");
-      expect(html).toContain("Check Dexscreener ↗");
+      expect(html).toContain("<!--CHART_TRADE_LINK_START--><strong>Live chart on Hoodlums</strong>");
+      expect(html).toContain('href="{{TRADE_URL}}" target="_blank" rel="noopener noreferrer">Open live chart ↗</a><!--CHART_TRADE_LINK_END-->');
+      expect(html).toContain("<!--CHART_PRELAUNCH_START--><strong>Chart goes live at launch</strong>");
+      expect(html).not.toContain("Check Dexscreener");
+      expect(html).not.toContain("Chart activates once trading is indexed");
+    });
+
+    it("links the contract row to the chain's block explorer alongside Copy, inside the known-contract block only", () => {
+      const html = render();
+      expect(html).toContain(
+        '<a class="explorer-link" href="{{EXPLORER_URL}}" target="_blank" rel="noopener noreferrer" aria-label="View the contract on the block explorer">Explorer ↗</a><!--CONTRACT_KNOWN_END-->',
+      );
+      expect(html).toContain(".explorer-link {");
     });
   });
 

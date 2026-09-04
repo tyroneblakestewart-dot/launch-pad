@@ -442,10 +442,11 @@ function isMobilePreviewViewport(): boolean {
 // unchanged. The chart lookup itself is skipped here (kept "coming soon")
 // to avoid an extra network dependency; /[slug] always does the
 // authoritative live lookup.
-function previewHtmlFor(rawHtml: string, contractAddress: string): string {
+function previewHtmlFor(rawHtml: string, contractAddress: string, chain: "robinhood" | "solana"): string {
   return isFreeSiteTemplateHtml(rawHtml)
     ? substituteFreeSitePlatformFacts(rawHtml, {
         contractAddress,
+        chain,
         chart: { found: false },
         lpLockedAt: null,
       })
@@ -867,7 +868,7 @@ export function FullWebsiteGenerator() {
               }));
         if (currentGeneration !== generationNumber) return;
         const publishSite = publishableSiteFromGeneration(detail, page.html);
-        const previewHtml = previewHtmlFor(page.html, detail.contractAddress?.trim() || "");
+        const previewHtml = previewHtmlFor(page.html, detail.contractAddress?.trim() || "", detail.chain || "robinhood");
         activePreview = renderGeneratedWebsite(previewHtml, detail.imageDataUrl || "", publishSite, () => {
           generationNumber += 1;
           activeController?.abort();
@@ -913,7 +914,7 @@ export function FullWebsiteGenerator() {
       activeController?.abort();
       activeController = null;
       restoreStudioControls();
-      const previewHtml = previewHtmlFor(site.generatedSiteHtml, site.contractAddress);
+      const previewHtml = previewHtmlFor(site.generatedSiteHtml, site.contractAddress, site.chain);
       activePreview = renderGeneratedWebsite(previewHtml, detail?.imageDataUrl || "", site, () => {
         generationNumber += 1;
         activeController?.abort();
