@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #050706; -webkit-font-smoothing: antialiased; }
+  a { color: #c6f53e; text-decoration: none; }
+  a:hover { color: #d8ff6a; }
+  input, textarea, select, button { font-family: Inter, system-ui, sans-serif; }
+  select { appearance: none; }
+  textarea { resize: vertical; }
+  ::placeholder { color: #5f645e; }
+  .hs-pad { padding: 40px 34px 90px; }
+  .hs-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .hs-cols3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .hs-cal { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start; }
+  .hs-title { height: 74px; }
+  @media (max-width: 860px) {
+    .hs-pad { padding: 22px 16px 90px; }
+    .hs-cols, .hs-cols3, .hs-cal { grid-template-columns: 1fr; }
+    .hs-title { height: 44px; }
+  }
+</style>
+<template id="__bundler_thumbnail" data-bg-color="#050706"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#050706"></rect><rect x="30" y="32" width="40" height="30" rx="8" fill="#c6f53e"></rect><path d="M44 62 L44 74 L56 62 Z" fill="#c6f53e"></path></svg></template>
+</helmet>
+
+<div class="hs-pad" style="min-height:100vh;background:#0a0b09;background-image:radial-gradient(circle at 78% -6%, rgba(198,245,62,0.13), transparent 30rem), radial-gradient(circle at 6% 34%, rgba(198,245,62,0.05), transparent 26rem), linear-gradient(180deg,#0a0b09,#050706);color:#f4f7f1;font-family:Inter,system-ui,sans-serif">
+<div style="max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:22px">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
+    <img class="hs-title" src="assets/hoodlums-social-wordmark.png" alt="Hoodlums Social" style="width:auto;display:block">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;border:1px solid rgba(198,245,62,0.34);background:linear-gradient(180deg, rgba(198,245,62,0.16), rgba(198,245,62,0.04));box-shadow:0 1px 0 0 rgba(198,245,62,0.2) inset;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;color:#c6f53e">PRO BUNDLE · 3 TOKENS</span>
+      <button onClick="{{ cycleToken }}" style="display:inline-flex;align-items:center;gap:10px;padding:7px 14px 7px 7px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02));box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 6px 16px -10px rgba(0,0,0,0.85);color:#f4f7f1;cursor:pointer">
+        <span style="width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:{{ tokenBg }};font:900 12px Inter,sans-serif;color:#071008">{{ tokenInitial }}</span>
+        <span style="font:800 13px Inter,sans-serif">{{ tokenTicker }}</span>
+        <span style="color:#8d918c;font-size:10px">▼</span>
+      </button>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <p style="margin:0;max-width:52ch;color:#a8aaa9;font-size:14.5px;line-height:1.55;text-wrap:pretty">Prepare once. Review every destination. Publish without sharing passwords.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px">
+      <span style="font:700 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.15em;text-transform:uppercase;color:#6f746e">Preview state</span>
+      <div style="display:flex;gap:4px;padding:4px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset">
+        <sc-for list="{{ modes }}" as="m" hint-placeholder-count="3">
+          <button onClick="{{ m.apply }}" style="{{ m.style }}">{{ m.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="border:1px solid rgba(255,255,255,0.09);border-radius:26px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -20px rgba(0,0,0,0.75);overflow:hidden">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:8px 16px 0;background:linear-gradient(180deg, rgba(198,245,62,0.045), transparent);border-bottom:1px solid rgba(255,255,255,0.07);box-shadow:0 1px 0 0 rgba(255,255,255,0.05)">
+      <div style="display:flex;gap:2px;overflow-x:auto">
+        <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+          <button onClick="{{ t.apply }}" style="{{ t.style }}">{{ t.label }}</button>
+        </sc-for>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:0 2px 10px;flex-wrap:wrap">
+        <span style="display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:999px;border:1px solid rgba(198,245,62,0.3);background:linear-gradient(180deg, rgba(198,245,62,0.14), rgba(198,245,62,0.03));box-shadow:0 1px 0 0 rgba(198,245,62,0.18) inset;font:700 11px/1 'IBM Plex Mono',monospace;color:#c3c9c4">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="#c6f53e"><path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-8 1a3.5 3.5 0 1 0-3.5-3.5A3.5 3.5 0 0 0 8 12Zm0 2c-2.7 0-6 1.34-6 4v2h8.5v-1.5c0-1.2.62-2.3 1.62-3.1A11.3 11.3 0 0 0 8 14Zm8 0c-3 0-6 1.5-6 3.9V20h12v-2.1c0-2.4-3-3.9-6-3.9Z"></path></svg>
+          <span style="color:#f4f7f1">{{ holderCount }}</span> holders
+          <span style="width:1px;height:11px;background:rgba(255,255,255,0.14)"></span>
+          <span style="color:#c6f53e">▲{{ holderDelta }}</span> this week
+        </span>
+        <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.1em;color:#8d918c">TODAY</span>
+        <span style="display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;font:700 11px/1 'IBM Plex Mono',monospace;color:#c3c9c4">
+          <span style="color:#c6f53e">{{ quotaPosts }}</span> posts
+          <span style="width:1px;height:11px;background:rgba(255,255,255,0.14)"></span>
+          <span style="color:#c6f53e">{{ quotaImages }}</span> AI images
+        </span>
+      </div>
+    </div>
+
+    <div style="padding:26px">
+
+      <sc-if value="{{ isSetup }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:26px">
+
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <h2 style="margin:0;font:400 19px 'Archivo Black',Inter,sans-serif;letter-spacing:-0.01em">Connect your accounts</h2>
+              <p style="margin:0;color:#a8aaa9;font-size:13.5px">We post on your behalf. You never hand over a password.</p>
+            </div>
+            <div class="hs-cols">
+              <div style="border:1px solid rgba(255,255,255,0.09);border-radius:16px;background:linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);padding:18px;display:flex;align-items:center;gap:14px">
+                <span style="width:44px;height:44px;flex:none;border-radius:12px;display:grid;place-items:center;background:#000;border:1px solid rgba(255,255,255,0.12)">
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="#fff" aria-label="X"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
+                </span>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                  <span style="font:800 14px Inter,sans-serif">X</span>
+                  <span style="font-size:12.5px;color:{{ xSubColor }}">{{ xSub }}</span>
+                </div>
+                <button onClick="{{ toggleX }}" style="{{ xBtnStyle }}">{{ xBtnLabel }}</button>
+              </div>
+              <div style="border:1px solid rgba(255,255,255,0.09);border-radius:16px;background:linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);padding:18px;display:flex;align-items:center;gap:14px">
+                <span style="width:44px;height:44px;flex:none;border-radius:12px;display:grid;place-items:center;background:#229ED9">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" aria-label="Telegram"><path d="M21.94 4.3 18.9 19.1c-.23 1.02-.84 1.27-1.7.79l-4.7-3.46-2.27 2.18c-.25.25-.46.46-.94.46l.33-4.78 8.7-7.86c.38-.34-.08-.53-.59-.19l-10.75 6.77-4.63-1.45c-1.01-.31-1.03-1 .21-1.49l18.1-6.98c.84-.3 1.57.2 1.28 1.21z"></path></svg>
+                </span>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                  <span style="font:800 14px Inter,sans-serif">Telegram</span>
+                  <span style="font-size:12.5px;color:{{ tgSubColor }}">{{ tgSub }}</span>
+                </div>
+                <button onClick="{{ toggleTg }}" style="{{ tgBtnStyle }}">{{ tgBtnLabel }}</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">Pick a Hoodlums bot</span>
+              <p style="margin:0;color:#a8aaa9;font-size:13.5px">Choose one of our bots and add it to your channel. Nothing to paste, nothing to set up.</p>
+            </div>
+            <div class="hs-cols3">
+              <sc-for list="{{ bots }}" as="b" hint-placeholder-count="3">
+                <div style="{{ b.style }}">
+                  <div style="display:flex;align-items:center;gap:11px">
+                    <span style="width:38px;height:38px;flex:none;border-radius:11px;display:grid;place-items:center;background:{{ b.bg }};font:900 13px Inter,sans-serif;color:#071008">{{ b.mark }}</span>
+                    <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                      <span style="font:800 13.5px Inter,sans-serif">{{ b.name }}</span>
+                      <span style="font:600 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.09em;color:#8d918c">{{ b.kind }}</span>
+                    </div>
+                  </div>
+                  <p style="margin:0;color:#c3c9c4;font-size:12.5px;line-height:1.55;flex:1">{{ b.desc }}</p>
+                  <button onClick="{{ b.apply }}" style="{{ b.btn }}">{{ b.btnLabel }}</button>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="height:1px;background:rgba(255,255,255,0.07)"></div>
+
+          <div class="hs-cols" style="align-items:start">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <h2 style="margin:0;font:400 19px 'Archivo Black',Inter,sans-serif;letter-spacing:-0.01em">Teach the AI your voice</h2>
+                <p style="margin:0;color:#a8aaa9;font-size:13.5px">Drop in posts you like the sound of. The more you add, the better it sounds — 20 is ideal.</p>
+              </div>
+              <div style="border:1px solid rgba(255,255,255,0.09);border-radius:14px;background:linear-gradient(180deg, rgba(0,0,0,0.38), rgba(255,255,255,0.022)),#0a0f0c;box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;padding:14px;display:flex;flex-direction:column;gap:12px">
+                <textarea placeholder="Paste a post here, one per line — or drag a screenshot in" style="width:100%;min-height:104px;border:0;background:transparent;color:#f4f7f1;font-size:13.5px;line-height:1.6;outline:none"></textarea>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                  <span style="font:600 11.5px 'IBM Plex Mono',monospace;color:#8d918c">Drag &amp; drop works too</span>
+                  <button onClick="{{ addSample }}" style="background:#c6f53e;color:#071008;border:0;border-radius:999px;font:800 12.5px Inter,sans-serif;padding:11px 20px;cursor:pointer">Add example</button>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                  <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">Examples added</span>
+                  <span style="font:800 12px 'IBM Plex Mono',monospace;color:#c6f53e">{{ sampleCount }} / 20</span>
+                </div>
+                <div style="height:8px;border-radius:999px;background:linear-gradient(180deg, rgba(0,0,0,0.4), rgba(255,255,255,0.02));box-shadow:0 2px 5px 0 rgba(0,0,0,0.5) inset;overflow:hidden">
+                  <div style="{{ sampleBarStyle }}"></div>
+                </div>
+                <span style="font-size:12px;color:#8d918c">{{ sampleHint }}</span>
+              </div>
+              <div style="border:1px solid rgba(198,245,62,0.34);border-radius:16px;background:linear-gradient(180deg, rgba(198,245,62,0.13) 0%, rgba(198,245,62,0.04) 40%, rgba(198,245,62,0.015) 100%);box-shadow:0 1px 0 0 rgba(198,245,62,0.2) inset;padding:16px 18px;display:flex;gap:13px">
+                <span style="width:24px;height:24px;flex:none;border-radius:50%;display:grid;place-items:center;background:#c6f53e;color:#071008;font:900 13px Inter,sans-serif">i</span>
+                <p style="margin:0;color:#e6f0dc;font-size:13px;line-height:1.6;text-wrap:pretty">Your examples teach <strong style="color:#c6f53e">style only</strong>. The AI will never copy their content, names, tags or tickers — it only ever talks about YOUR project.</p>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <h2 style="margin:0;font:400 19px 'Archivo Black',Inter,sans-serif;letter-spacing:-0.01em">Voice preview</h2>
+                <p style="margin:0;color:#a8aaa9;font-size:13.5px">Here's how it would sound writing about your project.</p>
+              </div>
+              <sc-if value="{{ hasVoice }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:11px">
+                  <sc-for list="{{ voiceSamples }}" as="v" hint-placeholder-count="3">
+                    <div style="border:1px solid rgba(255,255,255,0.09);border-radius:16px;background:linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);padding:16px;display:flex;flex-direction:column;gap:12px">
+                      <p style="margin:0;color:#f4f7f1;font-size:13.5px;line-height:1.6;text-wrap:pretty">{{ v.text }}</p>
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <button onClick="{{ v.apply }}" style="{{ v.okStyle }}">Sounds right</button>
+                        <button style="border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset;color:#c3c9c4;border-radius:999px;font:700 12px Inter,sans-serif;padding:9px 16px;cursor:pointer">Adjust</button>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ noVoice }}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px dashed rgba(255,255,255,0.14);border-radius:16px;background:linear-gradient(180deg, rgba(0,0,0,0.3), rgba(255,255,255,0.015));padding:30px 22px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+                  <span style="width:34px;height:34px;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(255,255,255,0.12);color:#5f645e;font-size:15px">✎</span>
+                  <span style="font:800 13.5px Inter,sans-serif;color:#c3c9c4">Add a few examples first</span>
+                  <span style="font-size:12.5px;color:#8d918c;max-width:34ch">Once you've added around five, we'll show you sample posts written for your project.</span>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+
+          <div style="height:1px;background:rgba(255,255,255,0.07)"></div>
+
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <h2 style="margin:0;font:400 19px 'Archivo Black',Inter,sans-serif;letter-spacing:-0.01em">Your mascot</h2>
+              <p style="margin:0;color:#a8aaa9;font-size:13.5px">Upload your character once. Every image we make features them — and only them.</p>
+            </div>
+            <div class="hs-cal">
+              <div style="display:flex;flex-direction:column;gap:16px">
+                <div style="display:flex;flex-direction:column;gap:9px">
+                  <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">What should your mascot be doing?</span>
+                  <div style="display:flex;flex-wrap:wrap;gap:8px">
+                    <sc-for list="{{ doingChips }}" as="c" hint-placeholder-count="7">
+                      <button onClick="{{ c.apply }}" style="{{ c.style }}">{{ c.label }}</button>
+                    </sc-for>
+                    <input placeholder="add your own…" style="min-height:36px;padding:0 14px;border-radius:999px;border:1px dashed rgba(255,255,255,0.14);background:transparent;color:#f4f7f1;font-size:12.5px;outline:none;width:150px">
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:9px">
+                  <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">Where should your mascot show up?</span>
+                  <div style="display:flex;flex-wrap:wrap;gap:8px">
+                    <sc-for list="{{ whereChips }}" as="c" hint-placeholder-count="6">
+                      <button onClick="{{ c.apply }}" style="{{ c.style }}">{{ c.label }}</button>
+                    </sc-for>
+                    <input placeholder="add your own…" style="min-height:36px;padding:0 14px;border-radius:999px;border:1px dashed rgba(255,255,255,0.14);background:transparent;color:#f4f7f1;font-size:12.5px;outline:none;width:150px">
+                  </div>
+                </div>
+                <p style="margin:0;font-size:12.5px;color:#8d918c">Your mascot is always the only character in generated images.</p>
+              </div>
+              <div style="{{ mascotStyle }}">
+                <sc-if value="{{ hasMascot }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
+                    <img src="assets/hoodlums-mascot.png" alt="Hoodlums mascot" style="width:112px;height:112px;border-radius:20px;object-fit:cover;object-position:52% 28%;border:1px solid rgba(198,245,62,0.35);box-shadow:0 18px 40px -18px rgba(198,245,62,0.5)">
+                    <span style="font:800 13px Inter,sans-serif;color:#f4f7f1">hoodlums-mascot.png</span>
+                    <button style="border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset;color:#c3c9c4;border-radius:999px;font:700 12px Inter,sans-serif;padding:9px 16px;cursor:pointer">Replace</button>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ noMascot }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center">
+                    <span style="width:38px;height:38px;border-radius:12px;display:grid;place-items:center;border:1px solid rgba(255,255,255,0.12);color:#5f645e;font-size:17px">↑</span>
+                    <span style="font:800 13.5px Inter,sans-serif;color:#c3c9c4">Drop your artwork here</span>
+                    <span style="font-size:12.5px;color:#8d918c">PNG or JPG, square works best</span>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isCalendar }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <h2 style="margin:0;font:400 19px 'Archivo Black',Inter,sans-serif;letter-spacing:-0.01em">August 2026</h2>
+              <p style="margin:0;color:#a8aaa9;font-size:13.5px">Tap a day to add something. Lime days already have a launch or announcement.</p>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+              <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.1em;color:#8d918c">ALL TIMES SHOWN IN</span>
+              <select style="min-height:38px;padding:0 32px 0 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02));box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset;color:#f4f7f1;font:700 12.5px Inter,sans-serif;outline:none">
+                <option>London (GMT+1)</option>
+                <option>New York (GMT-4)</option>
+                <option>Singapore (GMT+8)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="hs-cal">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
+                <sc-for list="{{ dayNames }}" as="d" hint-placeholder-count="7">
+                  <span style="text-align:center;font:700 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.1em;color:#6f746e;padding-bottom:2px">{{ d }}</span>
+                </sc-for>
+                <sc-for list="{{ calendar }}" as="c" hint-placeholder-count="42">
+                  <button onClick="{{ c.apply }}" style="{{ c.style }}">
+                    <span style="{{ c.numStyle }}">{{ c.num }}</span>
+                    <span style="{{ c.dotStyle }}"></span>
+                  </button>
+                </sc-for>
+              </div>
+              <div style="display:flex;gap:16px;flex-wrap:wrap;padding-top:2px">
+                <span style="display:inline-flex;align-items:center;gap:7px;font:600 11.5px 'IBM Plex Mono',monospace;color:#8d918c"><span style="width:7px;height:7px;border-radius:50%;background:#c6f53e"></span>Announcement or launch</span>
+                <span style="display:inline-flex;align-items:center;gap:7px;font:600 11.5px 'IBM Plex Mono',monospace;color:#8d918c"><span style="width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.32)"></span>Scheduled post</span>
+              </div>
+            </div>
+
+            <div style="border:1px solid rgba(255,255,255,0.09);border-radius:20px;background:linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);padding:20px;display:flex;flex-direction:column;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">Add to</span>
+                <span style="font:400 17px 'Archivo Black',Inter,sans-serif">{{ selectedDayLabel }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <button style="text-align:left;padding:16px 18px;border-radius:16px;border:1px solid rgba(198,245,62,0.4);background:linear-gradient(180deg, rgba(198,245,62,0.16) 0%, rgba(198,245,62,0.05) 42%, rgba(198,245,62,0.02) 100%);box-shadow:0 1px 0 0 rgba(198,245,62,0.24) inset, 0 14px 32px -18px rgba(198,245,62,0.4);cursor:pointer;display:flex;flex-direction:column;gap:5px">
+                  <span style="font:800 14px Inter,sans-serif;color:#c6f53e">AI makes it</span>
+                  <span style="font-size:12.5px;color:#c3c9c4;line-height:1.5">Describe your idea and we'll create the post and the artwork.</span>
+                </button>
+                <button style="text-align:left;padding:16px 18px;border-radius:16px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset;cursor:pointer;display:flex;flex-direction:column;gap:5px">
+                  <span style="font:800 14px Inter,sans-serif;color:#f4f7f1">I'll post my own</span>
+                  <span style="font-size:12.5px;color:#a8aaa9;line-height:1.5">Upload or write it yourself — we'll publish it on time.</span>
+                </button>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,0.07)"></div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">Where it posts</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button onClick="{{ toggleDestX }}" style="{{ destXStyle }}">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
+                    X
+                  </button>
+                  <button onClick="{{ toggleDestTg }}" style="{{ destTgStyle }}">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M21.94 4.3 18.9 19.1c-.23 1.02-.84 1.27-1.7.79l-4.7-3.46-2.27 2.18c-.25.25-.46.46-.94.46l.33-4.78 8.7-7.86c.38-.34-.08-.53-.59-.19l-10.75 6.77-4.63-1.45c-1.01-.31-1.03-1 .21-1.49l18.1-6.98c.84-.3 1.57.2 1.28 1.21z"></path></svg>
+                    Telegram
+                  </button>
+                </div>
+                <span style="font-size:12px;color:#8d918c;line-height:1.5">Posting to your Telegram keeps the community talking between announcements.</span>
+              </div>
+              <div style="height:1px;background:rgba(255,255,255,0.07)"></div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">Quiet hours</span>
+                <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:13px;color:#c3c9c4">
+                  Never post between
+                  <select style="min-height:36px;padding:0 26px 0 12px;border-radius:9px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;color:#f4f7f1;font:700 12.5px 'IBM Plex Mono',monospace;outline:none"><option>23:00</option><option>00:00</option></select>
+                  and
+                  <select style="min-height:36px;padding:0 26px 0 12px;border-radius:9px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;color:#f4f7f1;font:700 12.5px 'IBM Plex Mono',monospace;outline:none"><option>07:00</option><option>08:00</option></select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isQueue }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:22px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <h2 style="margin:0;font:400 19px 'Archivo Black',Inter,sans-serif;letter-spacing:-0.01em">What's going out</h2>
+              <p style="margin:0;color:#a8aaa9;font-size:13.5px">{{ queueBlurb }}</p>
+            </div>
+            <div style="display:flex;gap:4px;padding:4px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset">
+              <sc-for list="{{ approvalModes }}" as="a" hint-placeholder-count="2">
+                <button onClick="{{ a.apply }}" style="{{ a.style }}">{{ a.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+
+          <sc-if value="{{ hasPending }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">Waiting for you</span>
+                <span style="display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#c6f53e;color:#071008;font:900 11px Inter,sans-serif;box-shadow:0 0 18px rgba(198,245,62,0.5)">{{ pendingCount }}</span>
+              </div>
+              <sc-for list="{{ pending }}" as="p" hint-placeholder-count="2">
+                <div style="border:1px solid rgba(198,245,62,0.34);border-radius:18px;background:linear-gradient(180deg, rgba(198,245,62,0.11) 0%, rgba(198,245,62,0.035) 40%, rgba(255,255,255,0.012) 100%);box-shadow:0 1px 0 0 rgba(198,245,62,0.2) inset, 0 14px 32px -20px rgba(0,0,0,0.75);padding:18px;display:flex;gap:16px;flex-wrap:wrap">
+                  <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:11px">
+                    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                      <span style="font:700 10.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.09em;color:#c6f53e">{{ p.when }}</span>
+                      <span style="width:1px;height:11px;background:rgba(255,255,255,0.16)"></span>
+                      <span style="{{ p.destStyle }}">{{ p.dest }}</span>
+                    </div>
+                    <p style="margin:0;font-size:13.5px;line-height:1.6;color:#f4f7f1;text-wrap:pretty">{{ p.text }}</p>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                      <button style="background:#c6f53e;color:#071008;border:0;border-radius:999px;font:800 12.5px Inter,sans-serif;padding:11px 20px;cursor:pointer">Approve</button>
+                      <button style="border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset;color:#f4f7f1;border-radius:999px;font:700 12.5px Inter,sans-serif;padding:11px 18px;cursor:pointer">Edit</button>
+                      <button style="border:1px solid rgba(255,120,120,0.28);background:rgba(255,90,90,0.08);color:#ff9d9d;border-radius:999px;font:700 12.5px Inter,sans-serif;padding:11px 18px;cursor:pointer">Reject</button>
+                    </div>
+                  </div>
+                  <span style="width:112px;height:112px;flex:none;border-radius:16px;display:grid;place-items:center;background:linear-gradient(150deg, rgba(198,245,62,0.28), rgba(10,15,12,0.9));border:1px solid rgba(198,245,62,0.24);color:#c6f53e;font:700 9.5px 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-align:center;padding:8px">AI IMAGE<br>WITH YOUR<br>MASCOT</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">Coming up</span>
+            <sc-if value="{{ hasQueue }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <sc-for list="{{ upcoming }}" as="u" hint-placeholder-count="4">
+                  <div style="border:1px solid rgba(255,255,255,0.09);border-radius:14px;background:linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);padding:14px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+                    <span style="width:118px;flex:none;font:700 11.5px/1 'IBM Plex Mono',monospace;color:#c6f53e">{{ u.when }}</span>
+                    <span style="{{ u.destStyle }}">{{ u.dest }}</span>
+                    <span style="flex:1;min-width:200px;font-size:13px;color:#c3c9c4;line-height:1.5">{{ u.text }}</span>
+                    <span style="font:600 10.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.09em;color:#8d918c">{{ u.kind }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ emptyQueue }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px dashed rgba(255,255,255,0.14);border-radius:16px;background:linear-gradient(180deg, rgba(0,0,0,0.3), rgba(255,255,255,0.015));padding:34px 22px;display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center">
+                <span style="font:800 13.5px Inter,sans-serif;color:#c3c9c4">Nothing scheduled yet</span>
+                <span style="font-size:12.5px;color:#8d918c">Finish setup and your first week fills itself in.</span>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">Already published</span>
+            <div style="border:1px solid rgba(255,255,255,0.09);border-radius:16px;overflow:hidden;background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.012));box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset">
+              <sc-for list="{{ history }}" as="h" hint-placeholder-count="4">
+                <div style="{{ h.rowStyle }}">
+                  <span style="width:110px;flex:none;font:600 11.5px/1 'IBM Plex Mono',monospace;color:#8d918c">{{ h.when }}</span>
+                  <span style="{{ h.destStyle }}">{{ h.dest }}</span>
+                  <span style="flex:1;min-width:180px;font-size:13px;color:#c3c9c4">{{ h.text }}</span>
+                  <span style="font:600 11px/1 'IBM Plex Mono',monospace;color:#c6f53e">{{ h.stat }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="border:1px solid rgba(255,255,255,0.09);border-radius:22px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 26px 60px -30px rgba(0,0,0,0.8);padding:22px;display:flex;flex-direction:column;gap:18px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap">
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <h2 style="margin:0;font:400 19px 'Archivo Black',Inter,sans-serif;letter-spacing:-0.01em">How it's going</h2>
+                <p style="margin:0;color:#a8aaa9;font-size:13.5px">Your numbers, updated as they move.</p>
+              </div>
+              <span style="display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.11em;color:#c3c9c4">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="#c6f53e"><path d="M17 9V7a5 5 0 0 0-10 0v2H5v12h14V9Zm-8-2a3 3 0 0 1 6 0v2H9Z"></path></svg>
+                ONLY YOU CAN SEE THIS
+              </span>
+            </div>
+
+            <div class="hs-cols3">
+              <sc-for list="{{ perfHeadline }}" as="p" hint-placeholder-count="3">
+                <div style="border:1px solid rgba(255,255,255,0.09);border-radius:16px;background:linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);padding:16px 18px;display:flex;flex-direction:column;gap:7px">
+                  <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8d918c">{{ p.label }}</span>
+                  <span style="font:400 26px 'Archivo Black',Inter,sans-serif;color:#f4f7f1">{{ p.value }}</span>
+                  <span style="display:inline-flex;align-items:center;gap:6px;font:700 11.5px 'IBM Plex Mono',monospace;color:#c6f53e">▲ {{ p.trend }}<span style="color:#8d918c;font-weight:600">last 7 days</span></span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">Average per post</span>
+              <div class="hs-cols3">
+                <sc-for list="{{ perfPost }}" as="p" hint-placeholder-count="3">
+                  <div style="border:1px solid rgba(255,255,255,0.09);border-radius:14px;background:linear-gradient(180deg, rgba(0,0,0,0.38), rgba(255,255,255,0.022)),#0a0f0c;box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;padding:14px 16px;display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                    <span style="font-size:13px;color:#c3c9c4">{{ p.label }}</span>
+                    <span style="font:800 15px 'IBM Plex Mono',monospace;color:#f4f7f1">{{ p.value }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="height:1px;background:rgba(255,255,255,0.07)"></div>
+
+            <div style="display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">Show on my token page</span>
+                <p style="margin:0;font-size:12.5px;color:#8d918c;line-height:1.55;max-width:60ch">Keep your numbers private while you grow. Flip these on when you're ready to show them off.</p>
+              </div>
+              <sc-for list="{{ perfShare }}" as="s" hint-placeholder-count="5">
+                <div style="border:1px solid rgba(255,255,255,0.09);border-radius:14px;background:linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);padding:14px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+                  <div style="flex:1;min-width:190px;display:flex;flex-direction:column;gap:3px">
+                    <span style="font:700 13px Inter,sans-serif;color:#e6ebe4">{{ s.label }}</span>
+                    <span style="font:600 11.5px 'IBM Plex Mono',monospace;color:#8d918c">{{ s.value }}</span>
+                  </div>
+                  <span style="{{ s.stateStyle }}">{{ s.stateLabel }}</span>
+                  <button onClick="{{ s.apply }}" style="{{ s.trackStyle }}"><span style="{{ s.knobStyle }}"></span></button>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:22px">
+          <div class="hs-cols" style="align-items:start">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <h2 style="margin:0;font:400 19px 'Archivo Black',Inter,sans-serif;letter-spacing:-0.01em">Words to avoid</h2>
+                <p style="margin:0;color:#a8aaa9;font-size:13.5px">The AI will never use these.</p>
+              </div>
+              <div style="border:1px solid rgba(255,255,255,0.09);border-radius:16px;background:linear-gradient(180deg, rgba(0,0,0,0.38), rgba(255,255,255,0.022)),#0a0f0c;box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;padding:14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                <sc-for list="{{ banned }}" as="b" hint-placeholder-count="5">
+                  <span style="display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:0 8px 0 13px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));font:600 12.5px Inter,sans-serif;color:#e6ebe4">{{ b }}<span style="color:#6f746e;cursor:pointer;font-size:14px">×</span></span>
+                </sc-for>
+                <input placeholder="add a word…" style="min-height:34px;padding:0 12px;border:0;background:transparent;color:#f4f7f1;font-size:12.5px;outline:none;flex:1;min-width:120px">
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <h2 style="margin:0;font:400 19px 'Archivo Black',Inter,sans-serif;letter-spacing:-0.01em">How it should sound</h2>
+                <p style="margin:0;color:#a8aaa9;font-size:13.5px">Nudge the tone whenever you like.</p>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ dials }}" as="d" hint-placeholder-count="4">
+                  <label style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 15px;border:1px solid rgba(255,255,255,0.09);border-radius:14px;background:linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset">
+                    <span style="font:700 13px Inter,sans-serif;color:#e6ebe4">{{ d.label }}</span>
+                    <select style="min-height:36px;padding:0 28px 0 13px;border-radius:9px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;color:#c6f53e;font:700 12.5px Inter,sans-serif;outline:none">
+                      <sc-for list="{{ d.options }}" as="o" hint-placeholder-count="3">
+                        <option>{{ o }}</option>
+                      </sc-for>
+                    </select>
+                  </label>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div style="border:1px solid rgba(255,255,255,0.09);border-radius:18px;background:linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);padding:18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <div style="flex:1;min-width:230px;display:flex;flex-direction:column;gap:4px">
+              <span style="font:800 14px Inter,sans-serif">Tell Telegram about every buy</span>
+              <span style="font-size:12.5px;color:#a8aaa9">We'll drop a message in your channel each time someone buys.</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;font-size:12.5px;color:#c3c9c4">
+              Only above
+              <select style="min-height:36px;padding:0 26px 0 12px;border-radius:9px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;color:#f4f7f1;font:700 12.5px 'IBM Plex Mono',monospace;outline:none"><option>0.01 ETH</option><option>0.05 ETH</option><option>0.1 ETH</option></select>
+            </div>
+            <button onClick="{{ toggleBuyAlerts }}" style="{{ buyTrackStyle }}"><span style="{{ buyKnobStyle }}"></span></button>
+          </div>
+
+          <button onClick="{{ toggleAdvanced }}" style="{{ advStyle }}">
+            <span style="font:700 13px Inter,sans-serif;color:#e6ebe4">Advanced options</span>
+            <span style="color:#8d918c;font-size:11px">{{ advCaret }}</span>
+          </button>
+          <sc-if value="{{ advancedOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid rgba(255,255,255,0.09);border-radius:16px;background:linear-gradient(180deg, rgba(0,0,0,0.38), rgba(255,255,255,0.022)),#0a0f0c;box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;padding:18px;display:flex;flex-direction:column;gap:12px">
+              <sc-for list="{{ advanced }}" as="a" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
+                  <span style="font-size:13px;color:#c3c9c4">{{ a }}</span>
+                  <span style="font:700 11px 'IBM Plex Mono',monospace;color:#8d918c">DEFAULT</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <div style="border:1px solid rgba(198,245,62,0.34);border-radius:20px;background:radial-gradient(80% 140% at 50% 0%, rgba(198,245,62,0.13), transparent 66%), linear-gradient(180deg, rgba(24,28,25,0.99), rgba(9,11,10,0.99));box-shadow:0 1px 0 0 rgba(198,245,62,0.18) inset, 0 26px 60px -30px rgba(0,0,0,0.8);padding:20px 22px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+            <div style="flex:1;min-width:230px;display:flex;flex-direction:column;gap:5px">
+              <span style="font:400 17px 'Archivo Black',Inter,sans-serif;color:#c6f53e">Hoodlums Pro Bundle</span>
+              <span style="font-size:13px;color:#a8aaa9">Active until 14 September 2026 · 3 tokens</span>
+            </div>
+            <button style="background:#c6f53e;color:#071008;border:0;border-radius:999px;font:800 13px Inter,sans-serif;padding:13px 24px;cursor:pointer">Renew now</button>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:16px;padding-top:16px">
+    <div style="display:flex;flex-direction:column;gap:5px">
+      <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">Mobile · 390px</span>
+      <p style="margin:0;color:#a8aaa9;font-size:13.5px">Tabs become a segmented control; the calendar becomes a scrollable week list.</p>
+    </div>
+    <div style="display:flex;gap:22px;flex-wrap:wrap">
+      <div style="width:390px;flex:none;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.09);border-radius:26px;background:#030805;box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -20px rgba(0,0,0,0.75);display:flex;flex-direction:column">
+        <div style="position:sticky;top:0;z-index:95;flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:72px;padding:8px 16px;background:rgba(4,8,5,0.96);backdrop-filter:blur(14px);border-bottom:1px solid rgba(131,183,139,0.2);color:#b9ef4d">
+          <span style="width:156px;flex:none;display:flex;align-items:center"><img src="assets/hoodlums-wordmark.png" alt="Hoodlums" style="max-height:54px;max-width:100%;object-fit:contain;object-position:left center;display:block"></span>
+          <span style="display:inline-flex;align-items:center;min-height:40px;padding:0 20px;border-radius:999px;background:#c6f53e;color:#071008;font:800 13.5px Inter,sans-serif;white-space:nowrap">Account</span>
+        </div>
+        <div style="flex:1;padding:16px 16px calc(96px + 16px);display:flex;flex-direction:column;gap:14px">
+        <img src="assets/hoodlums-social-wordmark.png" alt="Hoodlums Social" style="height:30px;width:auto;display:block">
+        <div style="display:flex;gap:3px;padding:3px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset">
+          <span style="flex:1;display:flex;align-items:center;justify-content:center;height:34px;border-radius:999px;background:linear-gradient(180deg, rgba(198,245,62,0.2), rgba(198,245,62,0.05));box-shadow:0 1px 0 0 rgba(198,245,62,0.22) inset;color:#c6f53e;font:800 11.5px/1 Inter,sans-serif">Setup</span>
+          <span style="flex:1;display:flex;align-items:center;justify-content:center;height:34px;color:#8d918c;font:700 11.5px/1 Inter,sans-serif">Calendar</span>
+          <span style="flex:1;display:flex;align-items:center;justify-content:center;height:34px;color:#8d918c;font:700 11.5px/1 Inter,sans-serif">Queue</span>
+          <span style="flex:1;display:flex;align-items:center;justify-content:center;height:34px;color:#8d918c;font:700 11.5px/1 Inter,sans-serif">Rules</span>
+        </div>
+        <div style="border:1px solid rgba(255,255,255,0.09);border-radius:16px;background:linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.015));box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset;padding:15px;display:flex;align-items:center;gap:12px">
+          <span style="width:38px;height:38px;flex:none;border-radius:11px;display:grid;place-items:center;background:#000;border:1px solid rgba(255,255,255,0.12)"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg></span>
+          <div style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font:800 13px Inter,sans-serif">X</span><span style="font-size:11.5px;color:#91f0b6">@hoodrat_eth</span></div>
+          <span style="width:8px;height:8px;border-radius:50%;background:#c6f53e;box-shadow:0 0 12px #c6f53e"></span>
+        </div>
+        <div style="border:1px solid rgba(255,255,255,0.09);border-radius:16px;background:linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.015));box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset;padding:15px;display:flex;align-items:center;gap:12px">
+          <span style="width:38px;height:38px;flex:none;border-radius:11px;display:grid;place-items:center;background:#229ED9"><svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M21.94 4.3 18.9 19.1c-.23 1.02-.84 1.27-1.7.79l-4.7-3.46-2.27 2.18c-.25.25-.46.46-.94.46l.33-4.78 8.7-7.86c.38-.34-.08-.53-.59-.19l-10.75 6.77-4.63-1.45c-1.01-.31-1.03-1 .21-1.49l18.1-6.98c.84-.3 1.57.2 1.28 1.21z"></path></svg></span>
+          <div style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font:800 13px Inter,sans-serif">Telegram</span><span style="font-size:11.5px;color:#91f0b6">Hoodlums Buy Bot</span></div>
+          <span style="width:8px;height:8px;border-radius:50%;background:#c6f53e;box-shadow:0 0 12px #c6f53e"></span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font:700 9.5px 'IBM Plex Mono',monospace;letter-spacing:0.12em;color:#8d918c">EXAMPLES ADDED</span><span style="font:800 11.5px 'IBM Plex Mono',monospace;color:#c6f53e">17 / 20</span></div>
+          <div style="height:8px;border-radius:999px;background:linear-gradient(180deg, rgba(0,0,0,0.4), rgba(255,255,255,0.02));box-shadow:0 2px 5px 0 rgba(0,0,0,0.5) inset;overflow:hidden"><div style="width:85%;height:100%;border-radius:999px;background:linear-gradient(90deg,#8fce2a,#c6f53e);box-shadow:0 0 16px rgba(198,245,62,0.5)"></div></div>
+        </div>
+        <div style="border:1px solid rgba(198,245,62,0.34);border-radius:14px;background:linear-gradient(180deg, rgba(198,245,62,0.13), rgba(198,245,62,0.02));box-shadow:0 1px 0 0 rgba(198,245,62,0.2) inset;padding:14px;font-size:12px;line-height:1.55;color:#e6f0dc">Your examples teach style only — the AI only ever talks about your project.</div>
+                </div>
+        <div style="position:absolute;left:50%;transform:translateX(-50%);bottom:16px;z-index:1000;width:calc(100% - 32px);max-width:430px;height:62px;padding:7px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.13);background:rgba(4,8,5,0.58);backdrop-filter:blur(20px) saturate(145%);box-shadow:0 12px 34px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.05);display:grid;grid-template-columns:repeat(5,1fr);align-items:center;justify-items:center">
+          <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;border:1px solid rgba(198,245,62,0.34);background:rgba(198,245,62,0.14);box-shadow:0 0 18px rgba(198,245,62,0.08), inset 0 1px 0 rgba(255,255,255,0.05);color:#c6f53e"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"></path></svg></span>
+          <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;border:1px solid transparent;background:transparent;box-shadow:none;color:rgba(239,244,236,0.72)"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M9.5 19V5M15 19v-7M20.5 19v-4"></path></svg></span>
+          <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;border:1px solid transparent;background:transparent;box-shadow:none;color:rgba(239,244,236,0.72)"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg></span>
+          <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;border:1px solid transparent;background:transparent;box-shadow:none;color:rgba(239,244,236,0.72)"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-5 4z"></path></svg></span>
+          <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;border:1px solid transparent;background:transparent;box-shadow:none;color:rgba(239,244,236,0.72)"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11.2a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2ZM5 20c0-3.3 3.1-5.6 7-5.6s7 2.3 7 5.6"></path></svg></span>
+        </div>
+      </div>
+
+      <div style="width:390px;flex:none;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.09);border-radius:26px;background:#030805;box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -20px rgba(0,0,0,0.75);display:flex;flex-direction:column">
+        <div style="position:sticky;top:0;z-index:95;flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:72px;padding:8px 16px;background:rgba(4,8,5,0.96);backdrop-filter:blur(14px);border-bottom:1px solid rgba(131,183,139,0.2);color:#b9ef4d">
+          <span style="width:156px;flex:none;display:flex;align-items:center"><img src="assets/hoodlums-wordmark.png" alt="Hoodlums" style="max-height:54px;max-width:100%;object-fit:contain;object-position:left center;display:block"></span>
+          <span style="display:inline-flex;align-items:center;min-height:40px;padding:0 20px;border-radius:999px;background:#c6f53e;color:#071008;font:800 13.5px Inter,sans-serif;white-space:nowrap">Account</span>
+        </div>
+        <div style="flex:1;padding:16px 16px calc(96px + 16px);display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <span style="font:400 16px 'Archivo Black',Inter,sans-serif">This week</span>
+          <span style="display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;font:700 10px 'IBM Plex Mono',monospace;color:#c3c9c4"><span style="color:#c6f53e">3/5</span> posts</span>
+        </div>
+        <sc-for list="{{ weekList }}" as="w" hint-placeholder-count="4">
+          <div style="{{ w.style }}">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <span style="font:800 12.5px Inter,sans-serif;color:#f4f7f1">{{ w.day }}</span>
+              <span style="font:700 10.5px 'IBM Plex Mono',monospace;color:#8d918c">{{ w.time }}</span>
+            </div>
+            <span style="font-size:12.5px;line-height:1.55;color:#c3c9c4">{{ w.text }}</span>
+            <span style="{{ w.destStyle }}">{{ w.dest }}</span>
+          </div>
+        </sc-for>
+        <button style="background:#c6f53e;color:#071008;border:0;border-radius:999px;font:800 13px Inter,sans-serif;padding:14px;cursor:pointer;width:100%">Add to this week</button>
+                </div>
+        <div style="position:absolute;left:50%;transform:translateX(-50%);bottom:16px;z-index:1000;width:calc(100% - 32px);max-width:430px;height:62px;padding:7px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.13);background:rgba(4,8,5,0.58);backdrop-filter:blur(20px) saturate(145%);box-shadow:0 12px 34px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.05);display:grid;grid-template-columns:repeat(5,1fr);align-items:center;justify-items:center">
+          <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;border:1px solid transparent;background:transparent;box-shadow:none;color:rgba(239,244,236,0.72)"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"></path></svg></span>
+          <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;border:1px solid rgba(198,245,62,0.34);background:rgba(198,245,62,0.14);box-shadow:0 0 18px rgba(198,245,62,0.08), inset 0 1px 0 rgba(255,255,255,0.05);color:#c6f53e"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M9.5 19V5M15 19v-7M20.5 19v-4"></path></svg></span>
+          <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;border:1px solid transparent;background:transparent;box-shadow:none;color:rgba(239,244,236,0.72)"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg></span>
+          <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;border:1px solid transparent;background:transparent;box-shadow:none;color:rgba(239,244,236,0.72)"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-5 4z"></path></svg></span>
+          <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;border:1px solid transparent;background:transparent;box-shadow:none;color:rgba(239,244,236,0.72)"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11.2a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2ZM5 20c0-3.3 3.1-5.6 7-5.6s7 2.3 7 5.6"></path></svg></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240},&quot;defaultTab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;setup&quot;,&quot;calendar&quot;,&quot;queue&quot;,&quot;settings&quot;],&quot;default&quot;:&quot;setup&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Behaviour&quot;},&quot;showMobileFrames&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behaviour&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#c6f53e&quot;,&quot;options&quot;:[&quot;#c6f53e&quot;,&quot;#91f0b6&quot;,&quot;#a7dd4a&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Brand&quot;}}">
+const LINE = 'rgba(255,255,255,0.09)';
+const MONO = "'IBM Plex Mono',monospace";
+const CARD = 'linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%)';
+const CARD_SH = '0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7)';
+const LIME_CARD = 'linear-gradient(180deg, rgba(198,245,62,0.15) 0%, rgba(198,245,62,0.05) 42%, rgba(198,245,62,0.02) 100%)';
+const GHOST = 'border:1px solid ' + LINE + ';background:linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset;color:#f4f7f1;cursor:pointer';
+const LIME_BTN = 'background:#c6f53e;color:#071008;border:0;cursor:pointer';
+
+const TOKENS = [
+  { ticker: '$HOODLUMS', initial: 'H', bg: '#c6f53e', handle: '@hoodlums' },
+  { ticker: '$GRIME', initial: 'G', bg: '#8fce2a', handle: '@grime_onchain' },
+  { ticker: '$NIGHTS', initial: 'N', bg: '#a7dd4a', handle: '@nights_token' }
+];
+
+class Component extends DCLogic {
+  state = {
+    mode: 'live', tab: 'setup', token: 0,
+    xOn: true, tgOn: true, bot: 0,
+    samples: 17, mascot: true,
+    doing: ['trading', 'celebrating', 'chilling'], where: ['city streets', 'space'],
+    day: 14, destX: true, destTg: true,
+    approval: 'auto', advancedOpen: false, buyAlerts: true,
+    share: {}
+  };
+
+  componentDidMount() { this.applyMode(this.state.mode); }
+
+  applyMode(mode) {
+    if (mode === 'fresh') this.setState({ mode, xOn: false, tgOn: false, bot: -1, samples: 0, mascot: false, doing: [], where: [], approval: 'auto', tab: 'setup' });
+    else if (mode === 'approve') this.setState({ mode, xOn: true, tgOn: true, bot: 0, samples: 17, mascot: true, approval: 'review', tab: 'queue' });
+    else this.setState({ mode, xOn: true, tgOn: true, bot: 0, samples: 17, mascot: true, approval: 'auto' });
+  }
+
+  pill(on) {
+    return 'min-height:32px;padding:0 14px;border-radius:999px;cursor:pointer;font:800 10px/1 ' + MONO + ';letter-spacing:0.09em;text-transform:uppercase;border:1px solid ' +
+      (on ? 'rgba(198,245,62,0.5);background:linear-gradient(180deg, rgba(198,245,62,0.2), rgba(198,245,62,0.05));box-shadow:0 1px 0 0 rgba(198,245,62,0.22) inset, 0 6px 18px -8px rgba(198,245,62,0.5);text-shadow:0 0 12px rgba(198,245,62,0.4);color:#c6f53e'
+         : 'transparent;background:transparent;color:#8d918c');
+  }
+
+  chip(on) {
+    return 'min-height:36px;padding:0 15px;border-radius:999px;cursor:pointer;font:600 12.5px Inter,sans-serif;border:1px solid ' +
+      (on ? 'rgba(198,245,62,0.5);background:' + LIME_CARD + ';box-shadow:0 1px 0 0 rgba(198,245,62,0.22) inset;color:#c6f53e'
+          : LINE + ';background:' + CARD + ';box-shadow:' + CARD_SH + ';color:#c3c9c4');
+  }
+
+  destTag(dest) {
+    const lime = dest === 'X' || dest === 'Both';
+    return 'display:inline-flex;align-items:center;min-height:26px;padding:0 11px;border-radius:999px;border:1px solid ' +
+      (dest === 'Both' ? 'rgba(198,245,62,0.4)' : LINE) + ';background:' + (dest === 'Both' ? 'rgba(198,245,62,0.1)' : 'rgba(255,255,255,0.04)') +
+      ';font:700 10px/1 ' + MONO + ';letter-spacing:0.08em;color:' + (dest === 'Both' ? '#c6f53e' : '#c3c9c4');
+  }
+
+  toggleIn(key, v) {
+    const list = this.state[key];
+    this.setState({ [key]: list.indexOf(v) >= 0 ? list.filter(i => i !== v) : list.concat([v]) });
+  }
+
+  renderVals() {
+    const st = this.state;
+    const tk = TOKENS[st.token];
+    const fresh = st.mode === 'fresh';
+    const connected = st.xOn && st.tgOn;
+
+    const tabs = [['setup', 'Setup'], ['calendar', 'Calendar'], ['queue', 'Queue'], ['settings', 'Rules']].map(([id, label]) => ({
+      label, apply: () => this.setState({ tab: id }),
+      style: 'position:relative;border:0;background:' + (st.tab === id ? 'linear-gradient(180deg, rgba(198,245,62,0.2), rgba(198,245,62,0.05))' : 'transparent') +
+        ';box-shadow:' + (st.tab === id ? '0 1px 0 0 rgba(198,245,62,0.28) inset, 0 3px 0 0 #c6f53e inset' : 'none') +
+        ';border-radius:12px 12px 0 0;padding:14px 20px 16px;cursor:pointer;white-space:nowrap;color:' + (st.tab === id ? '#c6f53e' : '#8d918c') +
+        ';text-shadow:' + (st.tab === id ? '0 0 12px rgba(198,245,62,0.4)' : 'none') + ';font:800 12.5px Inter,sans-serif'
+    }));
+
+    const modes = [['fresh', 'Fresh'], ['live', 'Set up'], ['approve', 'Approve first']].map(([id, label]) => ({
+      label, apply: () => this.applyMode(id), style: this.pill(st.mode === id)
+    }));
+
+    const bots = [
+      { name: 'Buy Bot', kind: 'ALERTS', mark: 'B', bg: '#c6f53e', desc: 'Announces every purchase in your channel, with the size and the buyer.' },
+      { name: 'Hype Bot', kind: 'COMMUNITY', mark: 'H', bg: '#8fce2a', desc: 'Keeps the chat moving between announcements — memes, questions, GMs.' },
+      { name: 'Watchtower', kind: 'MILESTONES', mark: 'W', bg: '#a7dd4a', desc: 'Posts when you hit a milestone: holders, market cap, graduation.' }
+    ].map((b, i) => {
+      const on = st.bot === i && st.tgOn;
+      return Object.assign({}, b, {
+        apply: () => this.setState({ bot: i, tgOn: true }),
+        style: 'border:1px solid ' + (on ? 'rgba(198,245,62,0.45)' : LINE) + ';border-radius:16px;background:' + (on ? LIME_CARD : CARD) +
+          ';box-shadow:' + (on ? '0 1px 0 0 rgba(198,245,62,0.22) inset, 0 14px 32px -18px rgba(198,245,62,0.34)' : CARD_SH) +
+          ';padding:16px;display:flex;flex-direction:column;gap:11px',
+        btnLabel: on ? 'Added to your channel' : 'Add to your channel',
+        btn: 'min-height:38px;border-radius:999px;font:800 12px Inter,sans-serif;' + (on ? LIME_BTN : GHOST)
+      });
+    });
+
+    const doingChips = ['trading', 'celebrating', 'chilling', 'building', 'gym', 'gaming', 'cooking'].map(l => ({
+      label: l, apply: () => this.toggleIn('doing', l), style: this.chip(st.doing.indexOf(l) >= 0)
+    }));
+    const whereChips = ['city streets', 'beach', 'space', 'office', 'casino', 'nature'].map(l => ({
+      label: l, apply: () => this.toggleIn('where', l), style: this.chip(st.where.indexOf(l) >= 0)
+    }));
+
+    const marked = { 6: 'post', 11: 'post', 14: 'special', 18: 'post', 21: 'special', 25: 'post', 28: 'post' };
+    const calendar = [];
+    for (let i = 0; i < 42; i++) {
+      const num = i - 4;
+      const inMonth = num >= 1 && num <= 31;
+      const mark = marked[num];
+      const sel = inMonth && num === st.day;
+      calendar.push({
+        num: inMonth ? String(num) : '',
+        apply: inMonth ? (() => this.setState({ day: num })) : (() => {}),
+        style: 'aspect-ratio:1;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:' + (inMonth ? 'pointer' : 'default') +
+          ';border:1px solid ' + (sel ? '#c6f53e' : inMonth ? LINE : 'transparent') +
+          ';background:' + (sel ? LIME_CARD : inMonth ? CARD : 'transparent') +
+          ';box-shadow:' + (sel ? '0 1px 0 0 rgba(198,245,62,0.24) inset, 0 14px 30px -18px rgba(198,245,62,0.5)' : inMonth ? CARD_SH : 'none'),
+        numStyle: 'font:700 12.5px ' + MONO + ';color:' + (sel ? '#c6f53e' : inMonth ? '#c3c9c4' : 'transparent'),
+        dotStyle: 'width:6px;height:6px;border-radius:50%;background:' + (mark === 'special' ? '#c6f53e' : mark === 'post' ? 'rgba(255,255,255,0.32)' : 'transparent') +
+          ';box-shadow:' + (mark === 'special' ? '0 0 10px rgba(198,245,62,0.8)' : 'none')
+      });
+    }
+
+    const approvalModes = [['auto', 'Autopilot'], ['review', 'Approve first']].map(([id, label]) => ({
+      label, apply: () => this.setState({ approval: id }), style: this.pill(st.approval === id)
+    }));
+
+    const pending = [
+      { when: 'TODAY · 18:00', dest: 'Both', text: 'Holders just crossed 1,000. Same energy as day one, ten times the crowd. ' + tk.ticker },
+      { when: 'TOMORROW · 09:30', dest: 'X', text: 'GM to everyone still here at 3am refreshing the chart. You know who you are.' }
+    ].map(p => Object.assign({}, p, { destStyle: this.destTag(p.dest) }));
+
+    const upcoming = [
+      { when: 'Today · 18:00', dest: 'Both', text: 'Holder milestone — 1,000 wallets', kind: 'AI POST + IMAGE' },
+      { when: 'Tomorrow · 09:30', dest: 'X', text: 'Morning community post', kind: 'AI POST' },
+      { when: 'Thu · 12:00', dest: 'Telegram', text: 'Weekly recap for the channel', kind: 'AI POST' },
+      { when: 'Fri · 16:00', dest: 'Both', text: 'Listing announcement (you wrote this one)', kind: 'YOUR POST' }
+    ].map(u => Object.assign({}, u, { destStyle: this.destTag(u.dest) }));
+
+    const history = [
+      { when: 'Yesterday 20:00', dest: 'Both', text: 'Meme drop — the hood at the casino', stat: '412 views' },
+      { when: 'Yesterday 11:00', dest: 'X', text: 'GM post', stat: '208 views' },
+      { when: 'Mon 17:30', dest: 'Telegram', text: 'Buy alert — 0.4 ETH', stat: '96 seen' },
+      { when: 'Sun 14:00', dest: 'Both', text: 'Market cap milestone', stat: '1.1k views' }
+    ].map((h, i) => Object.assign({}, h, {
+      destStyle: this.destTag(h.dest),
+      rowStyle: 'display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:13px 16px;cursor:pointer' + (i ? ';border-top:1px solid rgba(255,255,255,0.06)' : '')
+    }));
+
+    const weekList = [
+      { day: 'Wed 12', time: '18:00', dest: 'Both', text: 'Holder milestone — 1,000 wallets', sel: true },
+      { day: 'Thu 13', time: '09:30', dest: 'X', text: 'Morning community post', sel: false },
+      { day: 'Fri 14', time: '16:00', dest: 'Both', text: 'Listing announcement', sel: false }
+    ].map(w => Object.assign({}, w, {
+      destStyle: this.destTag(w.dest),
+      style: 'border:1px solid ' + (w.sel ? 'rgba(198,245,62,0.45)' : LINE) + ';border-radius:16px;background:' + (w.sel ? LIME_CARD : CARD) +
+        ';box-shadow:' + (w.sel ? '0 1px 0 0 rgba(198,245,62,0.22) inset' : CARD_SH) + ';padding:14px;display:flex;flex-direction:column;gap:8px;align-items:flex-start'
+    }));
+
+    const destBtn = on => 'display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:0 16px;border-radius:999px;cursor:pointer;font:700 12.5px Inter,sans-serif;border:1px solid ' +
+      (on ? 'rgba(198,245,62,0.5);background:' + LIME_CARD + ';box-shadow:0 1px 0 0 rgba(198,245,62,0.22) inset;color:#c6f53e'
+          : LINE + ';background:' + CARD + ';box-shadow:' + CARD_SH + ';color:#8d918c');
+
+    const samplePct = Math.min(100, Math.round(st.samples / 20 * 100));
+
+    const perfHeadline = fresh ? [
+      { label: 'Holders', value: '—', trend: '0' },
+      { label: 'X followers', value: '—', trend: '0' },
+      { label: 'Telegram members', value: '—', trend: '0' }
+    ] : [
+      { label: 'Holders', value: '247', trend: '12' },
+      { label: 'X followers', value: '1,842', trend: '96' },
+      { label: 'Telegram members', value: '613', trend: '41' }
+    ];
+    const perfPost = fresh
+      ? [{ label: 'Views', value: '—' }, { label: 'Reactions', value: '—' }, { label: 'Replies', value: '—' }]
+      : [{ label: 'Views', value: '486' }, { label: 'Reactions', value: '37' }, { label: 'Replies', value: '9' }];
+
+    const perfShare = [
+      ['holders', 'Holder count', fresh ? '—' : '247 wallets'],
+      ['growth', 'Holder growth', fresh ? '—' : '+12 this week'],
+      ['x', 'X followers', fresh ? '—' : '1,842'],
+      ['tg', 'Telegram members', fresh ? '—' : '613'],
+      ['engagement', 'Post engagement', fresh ? '—' : '486 views avg']
+    ].map(([key, label, value]) => {
+      const on = !!st.share[key];
+      return {
+        label, value,
+        apply: () => this.setState({ share: Object.assign({}, st.share, { [key]: !on }) }),
+        stateLabel: on ? 'Public' : 'Private',
+        stateStyle: 'display:inline-flex;align-items:center;min-height:26px;padding:0 11px;border-radius:999px;border:1px solid ' +
+          (on ? 'rgba(198,245,62,0.4)' : LINE) + ';background:' + (on ? 'rgba(198,245,62,0.1)' : 'rgba(255,255,255,0.04)') +
+          ';font:700 10px/1 ' + MONO + ';letter-spacing:0.09em;text-transform:uppercase;color:' + (on ? '#c6f53e' : '#8d918c'),
+        trackStyle: 'flex:none;position:relative;width:46px;height:26px;border-radius:999px;cursor:pointer;padding:0;border:1px solid ' +
+          (on ? 'rgba(198,245,62,0.55)' : LINE) + ';background:' + (on ? 'linear-gradient(180deg, rgba(198,245,62,0.28), rgba(198,245,62,0.08))' : 'linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02))') +
+          ';box-shadow:' + (on ? '0 0 18px -4px rgba(198,245,62,0.6)' : '0 2px 6px 0 rgba(0,0,0,0.5) inset'),
+        knobStyle: 'position:absolute;top:2px;left:' + (on ? '22px' : '2px') + ';width:20px;height:20px;border-radius:50%;transition:left .16s ease;background:' + (on ? '#c6f53e' : '#5f645e')
+      };
+    });
+
+    return {
+      perfHeadline, perfPost, perfShare,
+      holderCount: fresh ? '0' : '247', holderDelta: fresh ? '0' : '12',
+      tabs, modes, bots, doingChips, whereChips, calendar, approvalModes, pending, upcoming, history, weekList,
+      tokenTicker: tk.ticker, tokenInitial: tk.initial, tokenBg: tk.bg,
+      cycleToken: () => this.setState({ token: (st.token + 1) % TOKENS.length }),
+
+      isSetup: st.tab === 'setup', isCalendar: st.tab === 'calendar', isQueue: st.tab === 'queue', isSettings: st.tab === 'settings',
+      quotaPosts: fresh ? '0/5' : '3/5', quotaImages: fresh ? '0/2' : '1/2',
+
+      xSub: st.xOn ? tk.handle + ' · connected' : 'Not connected yet',
+      xSubColor: st.xOn ? '#c6f53e' : '#8d918c',
+      xBtnLabel: st.xOn ? 'Disconnect' : 'Connect X',
+      xBtnStyle: 'min-height:38px;padding:0 18px;border-radius:999px;font:800 12.5px Inter,sans-serif;' + (st.xOn ? GHOST : LIME_BTN),
+      toggleX: () => this.setState({ xOn: !st.xOn }),
+
+      tgSub: st.tgOn ? 'Hoodlums ' + (bots[st.bot] ? bots[st.bot].name : 'Buy Bot') + ' · in your channel' : 'Not connected yet',
+      tgSubColor: st.tgOn ? '#c6f53e' : '#8d918c',
+      tgBtnLabel: st.tgOn ? 'Disconnect' : 'Connect Telegram',
+      tgBtnStyle: 'min-height:38px;padding:0 18px;border-radius:999px;font:800 12.5px Inter,sans-serif;' + (st.tgOn ? GHOST : LIME_BTN),
+      toggleTg: () => this.setState({ tgOn: !st.tgOn, bot: st.tgOn ? -1 : 0 }),
+
+      sampleCount: String(st.samples),
+      sampleBarStyle: 'width:' + samplePct + '%;height:100%;border-radius:999px;background:linear-gradient(90deg,#8fce2a,#c6f53e);box-shadow:0 0 16px rgba(198,245,62,0.5);transition:width .2s ease',
+      sampleHint: st.samples === 0 ? 'Nothing added yet — paste your first example above.'
+        : st.samples < 20 ? 'Add ' + (20 - st.samples) + ' more and the voice locks in properly.'
+        : 'Perfect — the voice is fully trained.',
+      addSample: () => this.setState({ samples: Math.min(20, st.samples + 1) }),
+      hasVoice: st.samples >= 5, noVoice: st.samples < 5,
+      voiceSamples: [
+'Chart looks like a heart monitor and we are very much alive. ' + tk.ticker,
+        'No roadmap slide, no VC round, no promises. Just the crowd that showed up. ' + tk.ticker,
+        'Liquidity locked, contract renounced. Green hoods only. ' + tk.ticker
+      ].map(text => ({ text, apply: () => {}, okStyle: 'border:0;background:#c6f53e;color:#071008;border-radius:999px;font:800 12px Inter,sans-serif;padding:9px 16px;cursor:pointer' })),
+
+      hasMascot: st.mascot, noMascot: !st.mascot,
+      mascotStyle: 'min-height:230px;border-radius:20px;display:grid;place-items:center;padding:22px;border:1px ' + (st.mascot ? 'solid ' + LINE : 'dashed rgba(255,255,255,0.14)') +
+        ';background:' + (st.mascot ? CARD : 'linear-gradient(180deg, rgba(0,0,0,0.3), rgba(255,255,255,0.015))') + ';box-shadow:' + (st.mascot ? CARD_SH : 'none'),
+
+      dayNames: ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'],
+      selectedDayLabel: st.day + ' August',
+      destXStyle: destBtn(st.destX), destTgStyle: destBtn(st.destTg),
+      toggleDestX: () => this.setState({ destX: !st.destX }),
+      toggleDestTg: () => this.setState({ destTg: !st.destTg }),
+
+      queueBlurb: st.approval === 'review' ? 'Nothing goes out until you say so.' : 'Everything runs on its own — check in whenever you like.',
+      hasPending: st.approval === 'review', pendingCount: '2',
+      hasQueue: !fresh, emptyQueue: fresh,
+
+      banned: ['guaranteed', 'financial advice', 'rug', '100x', 'presale'],
+      dials: [
+        { label: 'Humour', options: ['Dry', 'Playful', 'Full degen'] },
+        { label: 'Emoji', options: ['None', 'A little', 'Plenty'] },
+        { label: 'Hashtags', options: ['Never', 'One or two', 'Lots'] },
+        { label: 'Post length', options: ['Short', 'Medium', 'Long'] }
+      ],
+      advanced: ['Repeat a post if it performs well', 'Reply to people who mention you', 'Post in another language too'],
+      advancedOpen: st.advancedOpen,
+      advCaret: st.advancedOpen ? '▲' : '▼',
+      toggleAdvanced: () => this.setState({ advancedOpen: !st.advancedOpen }),
+      advStyle: 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;border-radius:16px;width:100%;text-align:left;' + GHOST,
+
+      toggleBuyAlerts: () => this.setState({ buyAlerts: !st.buyAlerts }),
+      buyTrackStyle: 'flex:none;position:relative;width:46px;height:26px;border-radius:999px;cursor:pointer;padding:0;border:1px solid ' +
+        (st.buyAlerts ? 'rgba(198,245,62,0.55)' : LINE) + ';background:' + (st.buyAlerts ? 'linear-gradient(180deg, rgba(198,245,62,0.28), rgba(198,245,62,0.08))' : 'linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02))') +
+        ';box-shadow:' + (st.buyAlerts ? '0 0 18px -4px rgba(198,245,62,0.6)' : '0 2px 6px 0 rgba(0,0,0,0.5) inset'),
+      buyKnobStyle: 'position:absolute;top:2px;left:' + (st.buyAlerts ? '22px' : '2px') + ';width:20px;height:20px;border-radius:50%;transition:left .16s ease;background:' +
+        (st.buyAlerts ? '#c6f53e' : '#5f645e')
+    };
+  }
+}
+</script>
+</body>
+</html>

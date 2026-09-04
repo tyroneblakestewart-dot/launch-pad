@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:ital,wght@0,400;0,600;0,700;1,700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin:0; padding:0; background:transparent; }
+  * { box-sizing: border-box; }
+  a { color:#c6f53e; text-decoration:none; }
+  a:hover { color:#d7f58c; }
+  ::selection { background:#bce759; color:#0a0b09; }
+  @keyframes hd-rise { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
+  @keyframes hd-tick { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:none } }
+  @keyframes hd-marquee { from { transform:translateX(0) } to { transform:translateX(-50%) } }
+</style>
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#0a0b09"/><text x="50" y="62" font-family="Archivo Black, sans-serif" font-size="42" fill="#bce759" text-anchor="middle">H</text></svg></template>
+</helmet>
+<div style="min-height:100vh;height:100vh;overflow:auto;background:rgba(0,0,0,0.76);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#f4f7f1;font-family:Archivo, system-ui, sans-serif;display:grid;place-items:start center;padding:18px">
+
+  <div style="width:min(1240px,100%);display:flex;flex-direction:column;gap:16px;padding:22px;border:1px solid rgba(255,255,255,0.09);border-radius:26px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -20px rgba(0,0,0,0.75), 0 8px 24px -8px rgba(0,0,0,0.6);position:relative">
+
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;position:relative;z-index:2;width:100%">
+    <img src="assets/hoodlums-wordmark.png" alt="Hoodlums" style="height:56px;width:auto;display:block;filter:drop-shadow(0 0 14px rgba(198,245,62,0.18))">
+    <button onClick="{{ dismiss }}" style="width:42px;height:42px;flex:none;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:rgba(255,255,255,0.03);color:#a8aaa9;font-size:18px;line-height:1;cursor:pointer;transition:all .16s" style-hover="border-color:rgba(188,231,89,0.58);color:#c6f53e;background:rgba(188,231,89,0.06)">✕</button>
+  </div>
+
+  <div style="width:100%;position:relative;z-index:2;display:flex;flex-direction:column;flex:1">
+
+    <div style="margin:10px 0 26px;display:flex;flex-direction:column;gap:12px">
+      <span style="color:#c6f53e;font:900 12px/1.4 'JetBrains Mono',monospace;letter-spacing:0.11em;text-transform:uppercase;display:flex;align-items:center;gap:10px">
+        <span style="width:22px;height:1px;background:#c6f53e;display:inline-block"></span>Step 02 — Pick your loadout
+      </span>
+      <h1 style="margin:0;font-family:'Archivo Black',sans-serif;font-size:clamp(30px,4.6vw,46px);line-height:1;letter-spacing:-0.045em;text-transform:uppercase;max-width:18ch">How hard are you <span style="color:#c6f53e">launching?</span></h1>
+      <p style="margin:0;max-width:56ch;color:#a8aaa9;font-size:16px;line-height:1.55;letter-spacing:-0.015em">Every token bonds for free. Pay only when you want the site, the domain, and the tools that make people actually buy it.</p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));gap:14px;padding-bottom:18px">
+      <sc-for list="{{ plans }}" as="plan" hint-placeholder-count="4">
+        <div onClick="{{ plan.select }}" role="button" tabindex="0" style="{{ plan.cardStyle }}" style-hover="border-color:rgba(188,231,89,0.58)">
+          <div style="position:absolute;top:0;right:0;width:120px;height:120px;background:radial-gradient(60% 60% at 100% 0%, rgba(188,231,89,0.10), transparent 70%);pointer-events:none"></div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:22px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.2em;color:#929693">{{ plan.index }}</span>
+            <sc-if value="{{ plan.recommended }}" hint-placeholder-val="{{ true }}">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;background:#c6f53e;color:#061006;padding:5px 10px;border-radius:999px">Recommended</span>
+            </sc-if>
+            <sc-if value="{{ plan.selected }}" hint-placeholder-val="{{ false }}">
+              <span style="width:22px;height:22px;border-radius:50%;background:#c6f53e;color:#061006;display:grid;place-items:center;font-size:12px;font-weight:700">✓</span>
+            </sc-if>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:20px">
+            <h2 style="margin:0;font-family:'Archivo Black',sans-serif;font-size:21px;letter-spacing:-0.02em;text-transform:uppercase;line-height:1">{{ plan.name }}</h2>
+            <p style="margin:0;font-size:13px;line-height:1.45;color:#a8aaa9;min-height:38px">{{ plan.tagline }}</p>
+          </div>
+
+          <div style="display:flex;align-items:baseline;gap:6px;margin:18px 0 4px">
+            <span style="font-family:'Archivo Black',sans-serif;font-size:34px;letter-spacing:-0.04em;line-height:1;color:{{ plan.priceColor }}">{{ plan.price }}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#929693">{{ plan.priceNote }}</span>
+          </div>
+
+          <div style="height:1px;background:repeating-linear-gradient(90deg,rgba(188,231,89,0.2) 0 6px,transparent 6px 12px);margin:16px 0 14px"></div>
+
+          <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;flex:1">
+            <sc-for list="{{ plan.features }}" as="feat" hint-placeholder-count="4">
+              <li style="display:flex;gap:9px;align-items:flex-start;font-size:13px;line-height:1.4;color:#d4d8d3">
+                <span style="color:#c6f53e;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;flex:none">▸</span>
+                <span>{{ feat }}</span>
+              </li>
+            </sc-for>
+          </ul>
+
+          <div style="{{ plan.footStyle }}">{{ plan.footLabel }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="{{ barStyle }}">
+    <div style="padding:16px 0 4px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:3px;min-width:170px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:#929693">Selected</span>
+        <span style="font-family:'Archivo Black',sans-serif;font-size:17px;text-transform:uppercase;letter-spacing:-0.02em">{{ selectedName }}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex:1;justify-content:flex-end;flex-wrap:wrap">
+        <span style="font-size:12.5px;color:#929693;font-family:'JetBrains Mono',monospace">{{ selectedSummary }}</span>
+        <button onClick="{{ advance }}" style="min-height:62px;border:0;cursor:pointer;background:#c6f53e;color:#061006;font-size:19px;font-weight:900;letter-spacing:-0.01em;padding:0 42px;border-radius:999px;display:flex;align-items:center;gap:10px;box-shadow:0 16px 40px rgba(198,245,62,0.16);transition:transform .14s" style-active="transform:translateY(1px)">Continue</button>
+      </div>
+    </div>
+    <p style="margin:0;padding-bottom:6px;max-width:480px;color:#929693;font-size:12px;line-height:1.5">By clicking this button, you agree to the <span style="color:#c8ccca;text-decoration:underline;text-underline-offset:3px">Terms and Conditions</span>, <span style="color:#c8ccca;text-decoration:underline;text-underline-offset:3px">Privacy Policy</span>, and certify that you are over 18 years old.</p>
+  </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:860}}">
+const PLANS = [
+  { id:'bond', name:'Bond', price:'FREE', priceNote:'gas only', tagline:'Get the token live on the curve. Nothing else, nothing extra.',
+    features:['Bonding curve deploy','Ticker + supply config','Hoodlums explorer listing','Basic holder chart'], foot:'The bare knuckle option' },
+  { id:'bond-site', name:'Bond + Site', price:'FREE', priceNote:'gas only', recommended:true, tagline:'Same launch, plus a one-page site people can actually land on.',
+    features:['Everything in Bond','Auto-generated token site','hoodlums.xyz/yourtoken','Chart, buy widget, socials','Shareable OG card'], foot:'What 8 of 10 launches pick' },
+  { id:'bond-pro', name:'Bond + Pro Site', price:'~$10', priceNote:'in ETH, once', tagline:'Custom domain and a site that doesn\'t look like every other launch.',
+    features:['Everything in Bond + Site','Your own domain','6 custom site themes','Custom art + banner upload','Remove Hoodlums badge'], foot:'One-time, yours forever' },
+  { id:'pro', name:'Pro', price:'$30', priceNote:'/ month', tagline:'For serial launchers running more than one bag at a time.',
+    features:['Everything in Pro Site','Unlimited launches','Sniper + bundle protection','Holder analytics + alerts','Airdrop and vesting tools','Priority support in Telegram'], foot:'Cancel any time' }
+];
+
+class Component extends DCLogic {
+  state = { selected: null };
+
+  pick(id) { this.setState({ selected: id }); }
+
+  renderVals() {
+    const sel = this.state.selected;
+    const selPlan = PLANS.find(p => p.id === sel);
+    return {
+      plans: PLANS.map((p, i) => {
+        const on = p.id === sel;
+        const rec = !!p.recommended && !sel;
+        return {
+          ...p,
+          index: '0' + (i + 1),
+          selected: on,
+          recommended: !!p.recommended,
+          priceColor: on || p.recommended ? '#c6f53e' : '#f4f7f1',
+          select: () => this.pick(p.id),
+          cardStyle: [
+            'position:relative;display:flex;flex-direction:column;cursor:pointer;padding:20px;border-radius:20px;overflow:hidden',
+            'transition:border-color .16s, transform .16s, box-shadow .16s, background .16s',
+            'background:' + (on ? 'linear-gradient(180deg, rgba(188,231,89,0.11) 0%, rgba(20,26,17,0.85) 40%, rgba(3,8,5,0.92) 100%)' : 'linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 34%, rgba(3,8,5,0.68) 100%)'),
+            'border:' + (on ? '1px solid rgba(188,231,89,0.74)' : rec ? '1px solid rgba(198,245,62,0.34)' : '1px solid rgba(255,255,255,0.09)'),
+            'box-shadow:' + (on
+              ? '0 1px 0 0 rgba(198,245,62,0.24) inset, 0 0 26px rgba(188,231,89,0.26), 0 26px 56px -26px rgba(0,0,0,0.85), inset 0 0 28px rgba(198,245,62,0.05)'
+              : rec
+                ? '0 1px 0 0 rgba(198,245,62,0.14) inset, 0 22px 50px -26px rgba(0,0,0,0.8), inset 0 0 28px rgba(198,245,62,0.04)'
+                : '0 1px 0 0 rgba(255,255,255,0.06) inset, 0 22px 50px -26px rgba(0,0,0,0.8)'),
+            'transform:' + (on ? 'translateY(-3px)' : 'none'),
+            'animation:hd-rise .45s ease both;animation-delay:' + (0.05 * i) + 's'
+          ].join(';'),
+          footStyle: 'margin-top:18px;padding-top:14px;border-top:1px solid rgba(188,231,89,0.2);font:900 10px/1.4 JetBrains Mono,monospace;letter-spacing:0.11em;text-transform:uppercase;color:' + (on ? '#c6f53e' : '#929693'),
+          footLabel: p.foot
+        };
+      }),
+      selectedName: selPlan ? selPlan.name : '—',
+      selectedSummary: selPlan ? selPlan.price + ' ' + selPlan.priceNote : '',
+      barStyle: 'position:sticky;bottom:0;z-index:3;margin:0 -22px -22px;padding:0 22px 14px;background:linear-gradient(180deg,rgba(6,8,7,0) 0%,rgba(6,8,7,0.9) 36%,rgba(6,8,7,0.99) 100%);backdrop-filter:blur(10px);border-top:1px solid ' + (sel ? 'rgba(188,231,89,0.25)' : 'transparent') + ';transition:opacity .28s ease, transform .28s ease;opacity:' + (sel ? '1' : '0') + ';transform:translateY(' + (sel ? '0' : '18px') + ');pointer-events:' + (sel ? 'auto' : 'none'),
+      advance: () => { if (this.state.selected) console.log('continue with', this.state.selected); },
+      dismiss: () => this.setState({ selected: null })
+    };
+  }
+}
+
+</script>
+</body>
+</html>

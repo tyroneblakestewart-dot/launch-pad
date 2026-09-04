@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin:0; padding:0; background:#050706; }
+  * { box-sizing:border-box; }
+  a { color:#c6f53e; text-decoration:none; }
+  a:hover { color:#d9fa7d; }
+  ::selection { background:#c6f53e; color:#051006; }
+  input, textarea { font:inherit; color:#f4f7ef; }
+  input::placeholder, textarea::placeholder { color:#5f6a61; }
+  input:focus, textarea:focus { border-color:rgba(198,245,62,0.6) !important; box-shadow:0 0 0 3px rgba(198,245,62,0.05) !important; }
+  button { transition:transform .16s ease, border-color .16s ease, background .16s ease, color .16s ease; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:rgba(131,183,139,0.2); border-radius:99px; }
+  .hd-stack { display:grid; grid-template-columns:minmax(0,1fr); gap:38px; }
+  .hd-killbar { display:none; }
+  .hd-float { display:none; }
+  @media (max-width:780px) {
+    .hd-killbar { display:grid; }
+    .hd-float { display:flex; }
+    .hd-pad { padding-bottom:120px !important; }
+  }
+</style>
+<script src="./image-slot.js"></script>
+<template id="__bundler_thumbnail" data-bg-color="#050706"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#050706"></rect><rect x="22" y="30" width="56" height="34" rx="6" fill="#0d120e" stroke="#c6f53e" stroke-width="2"></rect><rect x="30" y="40" width="26" height="4" rx="2" fill="#c6f53e"></rect><rect x="30" y="50" width="40" height="4" rx="2" fill="#2e3a2c"></rect><circle cx="70" cy="72" r="6" fill="#c6f53e"></circle></svg></template>
+</helmet>
+<div class="hd-pad" style="min-height:100vh;background:#050706;background-image:radial-gradient(circle at 80% 10%, rgba(198,245,62,0.10), transparent 24rem), linear-gradient(180deg,#070a08,#050706);color:#f4f7ef;font-family:Inter, system-ui, sans-serif;padding:20px 20px 52px">
+  <div class="hd-stack" style="max-width:1080px;margin:0 auto">
+
+    <sc-for list="{{ variants }}" as="v" hint-placeholder-count="2">
+      <div style="display:flex;flex-direction:column;gap:12px">
+
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="{{ v.tagStyle }}">{{ v.tag }}</span>
+          <span style="font:500 11px/1 'IBM Plex Mono',monospace;color:#68736a">{{ v.tagNote }}</span>
+        </div>
+
+        <div style="border:1px solid rgba(131,183,139,0.2);border-radius:12px;background:linear-gradient(180deg, #151a16 0%, #0f130f 34%, #090c0a 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -20px rgba(0,0,0,0.75), 0 8px 24px -8px rgba(0,0,0,0.6);overflow:hidden">
+
+          <div style="min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:8px 20px;border-bottom:1px solid rgba(198,245,62,0.12);background:rgba(140,200,80,0.06)">
+            <span style="display:flex;align-items:center;gap:10px;color:#b2bdb4;font:500 11px/1.5 'IBM Plex Mono',monospace;letter-spacing:0.04em;text-transform:uppercase"><span style="{{ v.liveDotStyle }}"></span>{{ v.liveLabel }}</span>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid rgba(198,245,62,0.35);border-radius:999px;color:#c6f53e;font:700 10px 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-transform:uppercase">Pro</span>
+              <button style="min-height:38px;padding:0 14px;border-radius:7px;border:1px solid rgba(131,183,139,0.2);background:#111713;color:#f4f7ef;font:700 12px/1 Inter,sans-serif" style-hover="border-color:rgba(198,245,62,0.55)">Activity log</button>
+            </div>
+          </div>
+
+          <div style="min-height:78px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid rgba(131,183,139,0.2);background:rgba(6,9,7,0.94)">
+            <div style="display:flex;align-items:center;gap:14px;min-width:0">
+              <img src="assets/hoodlums-wordmark.png" alt="Hoodlums" style="height:42px;width:auto;display:block;filter:drop-shadow(0 0 20px rgba(198,245,62,0.12))">
+              <span style="width:1px;height:30px;background:rgba(131,183,139,0.2)"></span>
+              <span style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                <span style="font:800 18px/1 Inter,sans-serif;letter-spacing:-0.035em">AI Social Studio</span>
+                <span style="color:#68736a;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase">Sheriff Money · $SHRF</span>
+              </span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+              <span style="{{ v.masterPillStyle }}">{{ v.masterPill }}</span>
+              <button style="min-height:38px;padding:0 15px;border-radius:7px;border:0;background:#c6f53e;color:#051006;font:700 12px/1 Inter,sans-serif;box-shadow:0 7px 24px rgba(198,245,62,0.12)">Save settings</button>
+            </div>
+          </div>
+
+          <div style="padding:18px;display:flex;flex-direction:column;gap:14px">
+
+            <div style="border:1px solid rgba(131,183,139,0.2);border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018)),#0d120e;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);overflow:hidden">
+              <button onClick="{{ v.toggle1 }}" style="{{ v.head1Style }}">
+                <span style="{{ v.num1Style }}">01</span>
+                <span style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:0;text-align:left">
+                  <span style="font:800 15px/1 Inter,sans-serif;letter-spacing:-0.03em">Voice &amp; style learning</span>
+                  <span style="color:#68736a;font:500 11px/1.4 'IBM Plex Mono',monospace">Teach the AI how your crew actually writes</span>
+                </span>
+                <span style="{{ v.pill1Style }}">{{ v.pill1 }}</span>
+                <span style="{{ v.chev1Style }}">▾</span>
+              </button>
+              <sc-if value="{{ v.open1 }}" hint-placeholder-val="{{ true }}">
+                <div style="padding:0 18px 18px;display:flex;flex-direction:column;gap:12px">
+                  <label style="display:flex;flex-direction:column;gap:7px">
+                    <span style="{{ v.labelStyle }}">Paste posts that match the vibe you want</span>
+                    <textarea value="{{ v.samples }}" onChange="{{ v.onSamples }}" rows="5" placeholder="Drop 5–10 posts from any project or account. The more you paste, the sharper the voice." style="{{ v.textareaStyle }}"></textarea>
+                  </label>
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                    <button onClick="{{ v.analyse }}" style="{{ v.analyseStyle }}">{{ v.analyseLabel }}</button>
+                    <span style="color:#5f6a61;font:10px/1.6 'IBM Plex Mono',monospace">{{ v.sampleCount }}</span>
+                  </div>
+
+                  <sc-if value="{{ v.learned }}" hint-placeholder-val="{{ true }}">
+                    <div style="display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid rgba(198,245,62,0.45);border-radius:10px;background:rgba(31,114,48,0.08)">
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                        <span style="color:#c6f53e;font:700 10px 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase">Style learned</span>
+                        <span style="color:#68736a;font:500 10px 'IBM Plex Mono',monospace">from 9 posts · updated 2m ago</span>
+                      </div>
+                      <div style="display:flex;gap:7px;flex-wrap:wrap">
+                        <sc-for list="{{ v.toneTags }}" as="t" hint-placeholder-count="4">
+                          <span style="padding:7px 11px;border:1px solid rgba(198,245,62,0.3);border-radius:999px;background:rgba(198,245,62,0.07);color:#c6f53e;font:600 10px 'IBM Plex Mono',monospace;letter-spacing:0.06em">{{ t }}</span>
+                        </sc-for>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:7px;padding:14px;border:1px solid rgba(131,183,139,0.2);border-radius:8px;background:#060a07">
+                        <span style="color:#5f6a61;font:600 9px 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase">It will write like this</span>
+                        <span style="color:#e4eadf;font:500 14px/1.55 Inter,sans-serif">gm hoodlums — 400 new wallets overnight and the sheriff hasn't blinked. LP locked, curve climbing. #hoodlums</span>
+                      </div>
+                      <a href="#" style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.06em;text-decoration:underline;text-underline-offset:3px">Add more examples</a>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="border:1px solid rgba(131,183,139,0.2);border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018)),#0d120e;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);overflow:hidden">
+              <button onClick="{{ v.toggle2 }}" style="{{ v.head2Style }}">
+                <span style="{{ v.num2Style }}">02</span>
+                <span style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:0;text-align:left">
+                  <span style="font:800 15px/1 Inter,sans-serif;letter-spacing:-0.03em">Mascot &amp; meme</span>
+                  <span style="color:#68736a;font:500 11px/1.4 'IBM Plex Mono',monospace">Your artwork becomes the meme engine</span>
+                </span>
+                <span style="{{ v.pill2Style }}">{{ v.pill2 }}</span>
+                <span style="{{ v.chev2Style }}">▾</span>
+              </button>
+              <sc-if value="{{ v.open2 }}" hint-placeholder-val="{{ true }}">
+                <div style="padding:0 18px 18px;display:flex;flex-direction:column;gap:14px">
+                  <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+                    <div style="{{ v.mascotFrameStyle }}">
+                      <image-slot id="{{ v.mascotId }}" shape="rect" placeholder="Mascot artwork"></image-slot>
+                    </div>
+                    <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:10px">
+                      <div style="display:flex;flex-direction:column;gap:4px">
+                        <span style="font:700 13px Inter,sans-serif">{{ v.mascotTitle }}</span>
+                        <span style="color:#68736a;font:500 11px/1.5 'IBM Plex Mono',monospace">{{ v.mascotNote }}</span>
+                      </div>
+                      <button onClick="{{ v.toggleMascot }}" style="{{ v.mascotToggleStyle }}">
+                        <span style="{{ v.mascotTrackStyle }}"><span style="{{ v.mascotKnobStyle }}"></span></span>
+                        Use mascot for meme posts
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style="display:flex;flex-direction:column;gap:9px">
+                    <span style="{{ v.labelStyle }}">Meme style</span>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px">
+                      <sc-for list="{{ v.memeStyles }}" as="m" hint-placeholder-count="3">
+                        <button onClick="{{ m.apply }}" style="{{ m.style }}">
+                          <span style="{{ m.dotStyle }}"></span>
+                          <span style="display:flex;flex-direction:column;gap:4px;text-align:left;min-width:0">
+                            <span style="font:700 12.5px Inter,sans-serif">{{ m.name }}</span>
+                            <span style="color:#68736a;font:500 10px/1.4 'IBM Plex Mono',monospace">{{ m.note }}</span>
+                          </span>
+                        </button>
+                      </sc-for>
+                    </div>
+                  </div>
+
+                  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
+                    <button onClick="{{ v.genMeme }}" style="min-height:43px;padding:0 16px;border-radius:7px;border:1px solid rgba(198,245,62,0.45);background:rgba(198,245,62,0.07);color:#c6f53e;font:700 12px Inter,sans-serif;cursor:pointer" style-hover="background:rgba(198,245,62,0.12)">Generate test meme</button>
+                    <sc-if value="{{ v.showMeme }}" hint-placeholder-val="{{ true }}">
+                      <div style="width:190px;border:1px solid rgba(131,183,139,0.2);border-radius:10px;background:#060a07;overflow:hidden">
+                        <div style="position:relative;height:130px">
+                          <image-slot id="{{ v.memeId }}" shape="rect" placeholder="Meme preview"></image-slot>
+                        </div>
+                        <div style="padding:10px 11px;border-top:1px solid rgba(131,183,139,0.14)">
+                          <span style="color:#e4eadf;font:600 11px/1.45 Inter,sans-serif">when the chart dips but the sheriff already locked the LP</span>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+
+                  <span style="color:#5f6a61;font:10px/1.6 'IBM Plex Mono',monospace">Memes are AI-generated from your mascot artwork.</span>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="border:1px solid rgba(131,183,139,0.2);border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018)),#0d120e;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);overflow:hidden">
+              <button onClick="{{ v.toggle3 }}" style="{{ v.head3Style }}">
+                <span style="{{ v.num3Style }}">03</span>
+                <span style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:0;text-align:left">
+                  <span style="font:800 15px/1 Inter,sans-serif;letter-spacing:-0.03em">X controls</span>
+                  <span style="color:#68736a;font:500 11px/1.4 'IBM Plex Mono',monospace">{{ v.xHeadNote }}</span>
+                </span>
+                <span style="{{ v.pill3Style }}">{{ v.pill3 }}</span>
+                <span style="{{ v.chev3Style }}">▾</span>
+              </button>
+              <sc-if value="{{ v.open3 }}" hint-placeholder-val="{{ true }}">
+                <div style="padding:0 18px 18px;display:flex;flex-direction:column;gap:14px">
+                  <div style="display:flex;flex-direction:column;gap:13px;padding:15px;border:1px solid rgba(131,183,139,0.2);border-radius:10px;background:#0a0f0c">
+                    <div style="display:flex;align-items:center;gap:12px">
+                      <span style="width:42px;height:42px;flex:none;display:grid;place-items:center;border-radius:10px;background:#000000;border:1px solid rgba(255,255,255,0.2);color:#ffffff;font:900 18px Inter,sans-serif">X</span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                        <span style="font:700 16px Inter,sans-serif;letter-spacing:-0.02em">X account</span>
+                        <span style="color:#879b8b;font:500 10px 'IBM Plex Mono',monospace">Approval through the official X composer</span>
+                      </span>
+                    </div>
+                    <ul style="margin:0;padding-left:18px;color:#94a899;font:500 11px/1.65 Inter,sans-serif">
+                      <li>Uses the account already signed into X</li>
+                      <li>No X password or access token is stored</li>
+                      <li>Artwork must be attached manually</li>
+                    </ul>
+                    <button style="min-height:46px;padding:13px;border-radius:9px;background:#000000;border:1px solid rgba(255,255,255,0.18);color:#ffffff;font:900 10px 'IBM Plex Mono',monospace;letter-spacing:0.08em;cursor:pointer">APPROVE &amp; OPEN X COMPOSER ↗</button>
+                  </div>
+
+                  <div style="display:flex;flex-direction:column;gap:8px">
+                    <span style="{{ v.labelStyle }}">What the AI drafts</span>
+                    <sc-for list="{{ v.xCats }}" as="c" hint-placeholder-count="5">
+                      <div style="{{ c.rowStyle }}">
+                        <span style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:0">
+                          <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                            <span style="font:700 13px Inter,sans-serif">{{ c.label }}</span>
+                            <span style="{{ c.modeStyle }}">{{ c.mode }}</span>
+                          </span>
+                          <span style="color:#68736a;font:500 10.5px/1.45 'IBM Plex Mono',monospace">{{ c.desc }}</span>
+                        </span>
+                        <button onClick="{{ c.toggle }}" style="{{ c.trackStyle }}"><span style="{{ c.knobStyle }}"></span></button>
+                      </div>
+                    </sc-for>
+                  </div>
+
+                  <div style="display:flex;flex-direction:column;gap:9px">
+                    <span style="{{ v.labelStyle }}">Posting cadence</span>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px">
+                      <sc-for list="{{ v.cadences }}" as="c" hint-placeholder-count="3">
+                        <button onClick="{{ c.apply }}" style="{{ c.style }}">
+                          <span style="{{ c.dotStyle }}"></span>
+                          <span style="display:flex;flex-direction:column;gap:3px;text-align:left;min-width:0">
+                            <span style="font:700 12.5px Inter,sans-serif">{{ c.name }}</span>
+                            <span style="color:#68736a;font:500 10px 'IBM Plex Mono',monospace">{{ c.note }}</span>
+                          </span>
+                        </button>
+                      </sc-for>
+                    </div>
+                  </div>
+
+                  <label style="display:flex;flex-direction:column;gap:7px">
+                    <span style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                      <span style="{{ v.labelStyle }}">Direction brief</span>
+                      <span style="color:#c6f53e;font:600 9px 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-transform:uppercase">Optional</span>
+                    </span>
+                    <input value="{{ v.brief }}" onChange="{{ v.onBrief }}" placeholder="e.g. Push the community angle, big announcement coming Friday" style="{{ v.inputStyle }}">
+                    <span style="color:#5f6a61;font:10px/1.6 'IBM Plex Mono',monospace">Tell the AI your focus this week. Applies to both X and Telegram.</span>
+                  </label>
+
+                  <button onClick="{{ v.pauseX }}" style="{{ v.pauseXStyle }}">{{ v.pauseXLabel }}</button>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="border:1px solid rgba(131,183,139,0.2);border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018)),#0d120e;box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7);overflow:hidden">
+              <button onClick="{{ v.toggle4 }}" style="{{ v.head4Style }}">
+                <span style="{{ v.num4Style }}">04</span>
+                <span style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:0;text-align:left">
+                  <span style="font:800 15px/1 Inter,sans-serif;letter-spacing:-0.03em">Telegram controls</span>
+                  <span style="color:#68736a;font:500 11px/1.4 'IBM Plex Mono',monospace">{{ v.tgHeadNote }}</span>
+                </span>
+                <span style="{{ v.pill4Style }}">{{ v.pill4 }}</span>
+                <span style="{{ v.chev4Style }}">▾</span>
+              </button>
+              <sc-if value="{{ v.open4 }}" hint-placeholder-val="{{ true }}">
+                <div style="padding:0 18px 18px;display:flex;flex-direction:column;gap:14px">
+                  <div style="display:flex;flex-direction:column;gap:13px;padding:15px;border:1px solid rgba(131,183,139,0.2);border-radius:10px;background:#0a0f0c">
+                    <div style="display:flex;align-items:center;gap:12px">
+                      <span style="width:42px;height:42px;flex:none;display:grid;place-items:center;border-radius:10px;background:#209bd7;color:#ffffff;font:900 18px Inter,sans-serif">T</span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                        <span style="font:700 16px Inter,sans-serif;letter-spacing:-0.02em">Telegram channel</span>
+                        <span style="color:#879b8b;font:500 10px 'IBM Plex Mono',monospace">Direct publishing through your Telegram bot</span>
+                      </span>
+                    </div>
+                    <label style="display:grid;gap:6px">
+                      <span style="color:#ddf4e2;font:700 11px Inter,sans-serif">Bot token</span>
+                      <input type="password" value="{{ v.tgToken }}" onChange="{{ v.onTgToken }}" autocomplete="off" placeholder="Paste the BotFather token for this post" style="{{ v.tgInputStyle }}">
+                      <small style="color:#758579;font:9px/1.4 'IBM Plex Mono',monospace">Never saved. Cleared after a successful post.</small>
+                    </label>
+                    <label style="display:grid;gap:6px">
+                      <span style="color:#ddf4e2;font:700 11px Inter,sans-serif">Channel username or chat ID</span>
+                      <input value="{{ v.tgChat }}" onChange="{{ v.onTgChat }}" placeholder="@yourchannel or -1001234567890" style="{{ v.tgInputStyle }}">
+                      <small style="color:#758579;font:9px/1.4 'IBM Plex Mono',monospace">The bot must be an administrator allowed to post.</small>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:9px;cursor:pointer">
+                      <input type="checkbox" checked="{{ v.artworkOn }}" onChange="{{ v.toggleArtwork }}" style="width:16px;height:16px;accent-color:#c6f53e">
+                      <span style="color:#ddf4e2;font:700 10px Inter,sans-serif">Include project artwork when available</span>
+                    </label>
+                    <button style="{{ v.tgPostStyle }}">{{ v.tgPostLabel }}</button>
+                  </div>
+
+                  <div style="display:flex;flex-direction:column;gap:8px">
+                    <span style="{{ v.labelStyle }}">What the bot sends</span>
+                    <sc-for list="{{ v.tgCats }}" as="c" hint-placeholder-count="4">
+                      <div style="{{ c.rowStyle }}">
+                        <span style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:0">
+                          <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                            <span style="font:700 13px Inter,sans-serif">{{ c.label }}</span>
+                            <span style="{{ c.modeStyle }}">{{ c.mode }}</span>
+                          </span>
+                          <span style="color:#68736a;font:500 10.5px/1.45 'IBM Plex Mono',monospace">{{ c.desc }}</span>
+                        </span>
+                        <button onClick="{{ c.toggle }}" style="{{ c.trackStyle }}"><span style="{{ c.knobStyle }}"></span></button>
+                      </div>
+                    </sc-for>
+                  </div>
+
+                  <div style="display:flex;flex-direction:column;gap:8px">
+                    <span style="{{ v.labelStyle }}">Buy alert preview</span>
+                    <div style="padding:14px;border:1px solid rgba(131,183,139,0.2);border-radius:10px;background:#060a07;display:flex;flex-direction:column;gap:8px">
+                      <span style="display:flex;align-items:center;gap:8px">
+                        <span style="width:22px;height:22px;flex:none;border-radius:6px;display:grid;place-items:center;background:#209bd7;color:#ffffff;font:900 11px Inter,sans-serif">T</span>
+                        <span style="color:#b6c0b7;font:600 11px 'IBM Plex Mono',monospace">Sheriff Money Bot</span>
+                        <span style="color:#5f6a61;font:500 10px 'IBM Plex Mono',monospace">now</span>
+                      </span>
+                      <span style="color:#e4eadf;font:500 13px/1.6 Inter,sans-serif">🟢 New buy! 0x1234...5678 picked up 50,000 $SHRF for 0.05 ETH</span>
+                      <span style="display:flex;gap:14px;flex-wrap:wrap;color:#5f6a61;font:500 10px 'IBM Plex Mono',monospace">
+                        <span>MC $248.6K</span>
+                        <span>Holders 1,284</span>
+                        <span>Graduation 62%</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <button onClick="{{ v.pauseTg }}" style="{{ v.pauseTgStyle }}">{{ v.pauseTgLabel }}</button>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="padding:16px 18px;border:1px solid rgba(255,255,255,0.09);border-radius:12px;background:#0d120e;display:flex;flex-direction:column;gap:8px">
+              <span style="color:#e8c435;font:700 10px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase">Current security boundary</span>
+              <span style="color:#87998b;font:500 11px/1.6 Inter,sans-serif">This version does not create social accounts, solve captchas, store passwords or schedule background posts. Full one-click X API publishing requires an X Developer application, OAuth authorization and encrypted server-side token storage.</span>
+            </div>
+
+            <sc-if value="{{ v.showQueue }}" hint-placeholder-val="{{ true }}">
+              <div style="{{ v.queueWrapStyle }}">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 16px">
+                  <span style="display:flex;align-items:center;gap:11px;min-width:0">
+                    <span style="{{ v.queueBadgeStyle }}">{{ v.queueCount }}</span>
+                    <span style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                      <span style="font:800 14px/1 Inter,sans-serif;letter-spacing:-0.02em">{{ v.queueTitle }}</span>
+                      <span style="color:#68736a;font:500 10.5px 'IBM Plex Mono',monospace">{{ v.queueNote }}</span>
+                    </span>
+                  </span>
+                  <sc-if value="{{ v.hasQueue }}" hint-placeholder-val="{{ true }}">
+                    <span style="display:flex;gap:9px;flex-wrap:wrap">
+                      <button onClick="{{ v.reviewX }}" style="{{ v.reviewXStyle }}">{{ v.reviewXLabel }}</button>
+                      <button onClick="{{ v.reviewTg }}" style="{{ v.reviewTgStyle }}">{{ v.reviewTgLabel }}</button>
+                    </span>
+                  </sc-if>
+                </div>
+
+                <sc-if value="{{ v.queueOpen }}" hint-placeholder-val="{{ true }}">
+                  <div style="border-top:1px solid rgba(131,183,139,0.14);display:flex;flex-direction:column">
+                    <sc-for list="{{ v.queue }}" as="q" hint-placeholder-count="3">
+                      <div style="{{ q.rowStyle }}">
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                          <span style="{{ q.chanStyle }}">{{ q.channel }}</span>
+                          <span style="color:#5f6a61;font:500 10px 'IBM Plex Mono',monospace">{{ q.kind }} · queued {{ q.time }}</span>
+                        </div>
+                        <span style="color:#e4eadf;font:500 13.5px/1.55 Inter,sans-serif">{{ q.text }}</span>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                          <button style="min-height:36px;padding:0 15px;border-radius:7px;border:0;background:#c6f53e;color:#051006;font:700 11.5px Inter,sans-serif;cursor:pointer">Approve</button>
+                          <button style="min-height:36px;padding:0 15px;border-radius:7px;border:1px solid rgba(131,183,139,0.2);background:#111713;color:#f4f7ef;font:700 11.5px Inter,sans-serif;cursor:pointer" style-hover="border-color:rgba(198,245,62,0.55)">Edit</button>
+                          <button style="min-height:36px;padding:0 15px;border-radius:7px;border:1px solid rgba(255,95,86,0.35);background:transparent;color:#ff8078;font:700 11.5px Inter,sans-serif;cursor:pointer" style-hover="background:rgba(255,95,86,0.08)">Reject</button>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div class="hd-float" style="position:fixed;right:16px;bottom:96px;z-index:30;align-items:center;gap:8px;padding:11px 15px;border-radius:999px;border:1px solid rgba(198,245,62,0.45);background:rgba(9,13,10,0.96);color:#c6f53e;font:700 11px 'IBM Plex Mono',monospace;letter-spacing:0.06em;box-shadow:0 14px 40px rgba(0,0,0,0.6);backdrop-filter:blur(10px)">
+    <span style="display:grid;place-items:center;min-width:20px;height:20px;border-radius:999px;background:#c6f53e;color:#051006;font:800 10px 'IBM Plex Mono',monospace">3</span>
+    Pending approvals
+  </div>
+
+  <div class="hd-killbar" style="position:fixed;left:0;right:0;bottom:0;z-index:30;grid-template-columns:1fr 1fr;gap:9px;padding:12px 14px 16px;background:linear-gradient(180deg,rgba(5,7,6,0) 0%,rgba(5,7,6,0.94) 32%,rgba(5,7,6,0.99) 100%);border-top:1px solid rgba(255,95,86,0.25);backdrop-filter:blur(12px)">
+    <button style="min-height:48px;border-radius:7px;border:1px solid rgba(255,95,86,0.45);background:rgba(255,95,86,0.1);color:#ff8078;font:700 12.5px Inter,sans-serif;cursor:pointer">Pause all X</button>
+    <button style="min-height:48px;border-radius:7px;border:1px solid rgba(255,95,86,0.45);background:rgba(255,95,86,0.1);color:#ff8078;font:700 12.5px Inter,sans-serif;cursor:pointer">Pause all Telegram</button>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;defaultCadence&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Conservative&quot;,&quot;Active&quot;,&quot;Aggressive&quot;],&quot;default&quot;:&quot;Active&quot;,&quot;tsType&quot;:&quot;'Conservative' | 'Active' | 'Aggressive'&quot;,&quot;section&quot;:&quot;Posting&quot;},&quot;autoApproveMemes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Posting&quot;},&quot;showApprovalQueue&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Panels&quot;}}">
+const LINE = 'rgba(131,183,139,0.2)';
+const MONO = "'IBM Plex Mono',monospace";
+const X_CATS = [
+  { key: 'milestone', label: 'Milestone announcements', desc: 'Graduation, market-cap targets, holder milestones', mode: 'draft' },
+  { key: 'market', label: 'Market moments', desc: 'Big buys, volume spikes, chart breakouts', mode: 'draft' },
+  { key: 'gm', label: 'GM / community posts', desc: 'Daily greetings and crew shout-outs', mode: 'approval' },
+  { key: 'memes', label: 'Meme drops', desc: 'Mascot memes built from your artwork', mode: 'meme' },
+  { key: 'replies', label: 'Replies to mentions', desc: 'Answers anyone who tags the account', mode: 'approval' }
+];
+const TG_CATS = [
+  { key: 'buys', label: 'Buy alerts', desc: 'Fires on every purchase above the dust filter', mode: 'auto' },
+  { key: 'tgMilestone', label: 'Milestone alerts', desc: 'Graduation progress and market-cap targets', mode: 'auto' },
+  { key: 'price', label: 'Price / volume updates', desc: 'Hourly digest whenever volume moves', mode: 'auto' },
+  { key: 'tgCommunity', label: 'Community posts', desc: 'Written in your learned voice', mode: 'approval' }
+];
+const MEME_STYLES = [
+  { id: 'degen', name: 'Degen humour', note: 'Sharp, self-aware, chart-native' },
+  { id: 'wholesome', name: 'Wholesome community', note: 'Warm, inclusive, crew-first' },
+  { id: 'hype', name: 'Hype & alpha', note: 'Loud, urgent, momentum-led' }
+];
+const CADENCES = [
+  { id: 'conservative', name: 'Conservative', note: '1–2 posts per day' },
+  { id: 'active', name: 'Active', note: '3–5 posts per day' },
+  { id: 'aggressive', name: 'Aggressive', note: 'Up to 10 posts per day' }
+];
+const TONE_TAGS = ['Community-warm', 'Hype-light', 'GM poster', 'Hashtag-heavy'];
+const QUEUE = [
+  { channel: 'X', kind: 'GM post', time: '4m ago', text: "gm hoodlums. 1,284 wallets deep, LP locked, sheriff still on duty. today we push past 62%." },
+  { channel: 'X', kind: 'Meme drop', time: '21m ago', text: 'when the chart dips but the sheriff already locked the liquidity — mascot meme attached' },
+  { channel: 'Telegram', kind: 'Community post', time: '38m ago', text: 'Graduation is 62% done. 1.52 ETH left on the curve before the pool opens for good.' }
+];
+const SAMPLE_TEXT = "gm degens, another 300 wallets joined overnight\n\nlp locked. contract renounced. no team bags. just the crew.\n\nwe don't do roadmaps here, we do receipts #hoodlums\n\nchart looking clean this morning. holders up 4% on the day";
+
+class Component extends DCLogic {
+  state = {
+    setup: {
+      open: { s1: true, s2: true, s3: true, s4: true }, samples: '', learned: false, mascotOn: false,
+      memeStyle: '', showMeme: false, xOn: true, tgToken: '', tgChat: '', artworkOn: true, cadence: null, brief: '',
+      cats: { milestone: false, market: false, gm: false, memes: false, replies: false, buys: false, tgMilestone: false, price: false, tgCommunity: false },
+      xPaused: false, tgPaused: false, queueOpen: false
+    },
+    active: {
+      open: { s1: true, s2: true, s3: true, s4: true }, samples: SAMPLE_TEXT, learned: true, mascotOn: true,
+      memeStyle: 'degen', showMeme: true, xOn: true, tgToken: '', tgChat: '@sheriffmoney', artworkOn: true, cadence: null, brief: 'Push the community angle, big announcement coming Friday',
+      cats: { milestone: true, market: true, gm: true, memes: true, replies: false, buys: true, tgMilestone: true, price: true, tgCommunity: true },
+      xPaused: false, tgPaused: false, queueOpen: true
+    }
+  };
+
+  set(which, key, value) { this.setState(s => ({ [which]: { ...s[which], [key]: value } })); }
+
+  build(which, meta) {
+    const d = this.state[which];
+    const live = which === 'active';
+    const memeAuto = this.props.autoApproveMemes ?? false;
+    const cadence = d.cadence || (this.props.defaultCadence ?? 'Active').toLowerCase();
+    const queueEnabled = this.props.showApprovalQueue ?? true;
+
+    const tgReady = !!d.tgChat.trim();
+    const modeLabel = m => m === 'meme' ? (memeAuto ? 'auto-draft' : 'approval') : m;
+    const modeStyle = m => {
+      const l = modeLabel(m);
+      return 'padding:4px 8px;border-radius:999px;font:700 8.5px ' + MONO + ';letter-spacing:0.12em;text-transform:uppercase;border:1px solid ' +
+        (l !== 'approval' ? 'rgba(145,240,182,0.3);background:rgba(145,240,182,0.08);color:#91f0b6' : 'rgba(198,245,62,0.3);background:rgba(198,245,62,0.07);color:#c6f53e');
+    };
+    const track = on => 'flex:none;position:relative;width:42px;height:24px;border-radius:999px;cursor:pointer;padding:0;border:1px solid ' +
+      (on ? 'rgba(198,245,62,0.6)' : LINE) + ';background:' + (on ? 'rgba(198,245,62,0.18)' : '#0a0f0c');
+    const knob = on => 'position:absolute;top:2px;left:' + (on ? '20px' : '2px') + ';width:18px;height:18px;border-radius:50%;transition:left .16s ease, background .16s ease;background:' +
+      (on ? '#c6f53e' : '#39413b') + (on ? ';box-shadow:0 0 10px rgba(198,245,62,0.5)' : '');
+    const catRow = (list, enabled) => list.map(c => {
+      const on = !!d.cats[c.key] && enabled;
+      return {
+        label: c.label, desc: c.desc, mode: modeLabel(c.mode), modeStyle: modeStyle(c.mode),
+        rowStyle: 'display:flex;align-items:center;gap:14px;padding:13px 14px;border-radius:8px;border:1px solid ' +
+          (on ? 'rgba(198,245,62,0.28)' : LINE) + ';background:' + (on ? 'linear-gradient(180deg, rgba(198,245,62,0.13) 0%, rgba(31,114,48,0.1) 45%, rgba(10,15,12,0.9) 100%)' : 'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.015) 40%, rgba(255,255,255,0.008) 100%),#0a0f0c') +
+          ';box-shadow:' + (on ? '0 1px 0 0 rgba(198,245,62,0.18) inset, 0 8px 20px -12px rgba(0,0,0,0.75)' : '0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.8)') +
+          (enabled ? '' : ';opacity:.45'),
+        toggle: () => enabled && this.set(which, 'cats', { ...d.cats, [c.key]: !on }),
+        trackStyle: track(on), knobStyle: knob(on)
+      };
+    });
+    const headStyle = open => 'display:flex;align-items:center;gap:13px;width:100%;padding:16px 18px;cursor:pointer;text-align:left;background:transparent;border:0;border-bottom:1px solid ' +
+      (open ? 'rgba(131,183,139,0.14)' : 'transparent');
+    const numStyle = done => 'display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:8px;font:700 11px ' + MONO + ';border:1px solid ' +
+      (done ? 'rgba(198,245,62,0.5);background:rgba(198,245,62,0.09);color:#c6f53e' : LINE + ';background:#0a0f0c;color:#5f6a61');
+    const statusPill = (ok, label) => 'padding:6px 10px;border-radius:999px;font:700 9.5px ' + MONO + ';letter-spacing:0.1em;text-transform:uppercase;border:1px solid ' +
+      (ok ? 'rgba(145,240,182,0.32);background:rgba(145,240,182,0.08);color:#91f0b6' : LINE + ';background:#0a0f0c;color:#68736a');
+    const chev = open => 'flex:none;color:#5f6a61;font-size:12px;transition:transform .18s ease;transform:rotate(' + (open ? '0' : '-90') + 'deg)';
+    const killStyle = paused => 'width:100%;min-height:46px;border-radius:7px;cursor:pointer;font:700 12.5px Inter,sans-serif;border:1px solid ' +
+      (paused ? 'rgba(255,95,86,0.7);background:rgba(255,95,86,0.18);color:#ff8078' : 'rgba(255,95,86,0.45);background:rgba(255,95,86,0.08);color:#ff8078');
+
+    const pendingX = live ? 2 : 0;
+    const pendingTg = live ? 1 : 0;
+    const total = pendingX + pendingTg;
+
+    return {
+      tag: meta.tag, tagNote: meta.tagNote,
+      tagStyle: 'font:600 10px/1 ' + MONO + ';letter-spacing:0.16em;text-transform:uppercase;padding:8px 11px;border-radius:999px;border:1px solid ' +
+        (live ? 'rgba(198,245,62,0.45);background:rgba(198,245,62,0.07);color:#c6f53e' : LINE + ';background:#111713;color:#b8c2ba'),
+
+      liveLabel: live ? 'AI drafting live' : 'Setup required',
+      liveDotStyle: 'width:7px;height:7px;border-radius:50%;background:' + (live ? '#c6f53e' : '#39413b') + (live ? ';box-shadow:0 0 10px #c6f53e' : ''),
+      masterPill: live ? 'Both destinations armed' : 'Nothing configured',
+      masterPillStyle: statusPill(live, ''),
+
+      labelStyle: 'display:block;color:#a9b3ab;font:600 10px ' + MONO + ';letter-spacing:0.08em;text-transform:uppercase',
+      inputStyle: 'width:100%;height:43px;padding:0 12px;color:#f4f7ef;background:#0a0f0c;border:1px solid ' + LINE + ';border-radius:6px;outline:none;font:500 14px Inter,sans-serif;transition:border-color .15s ease, box-shadow .15s ease',
+      textareaStyle: 'width:100%;min-height:120px;padding:12px;color:#f4f7ef;background:#0a0f0c;border:1px solid ' + LINE + ';border-radius:6px;outline:none;resize:vertical;font:500 13.5px/1.65 Inter,sans-serif;transition:border-color .15s ease, box-shadow .15s ease',
+
+      open1: d.open.s1, open2: d.open.s2, open3: d.open.s3, open4: d.open.s4,
+      toggle1: () => this.set(which, 'open', { ...d.open, s1: !d.open.s1 }),
+      toggle2: () => this.set(which, 'open', { ...d.open, s2: !d.open.s2 }),
+      toggle3: () => this.set(which, 'open', { ...d.open, s3: !d.open.s3 }),
+      toggle4: () => this.set(which, 'open', { ...d.open, s4: !d.open.s4 }),
+      head1Style: headStyle(d.open.s1), head2Style: headStyle(d.open.s2),
+      head3Style: headStyle(d.open.s3), head4Style: headStyle(d.open.s4),
+      num1Style: numStyle(d.learned), num2Style: numStyle(d.mascotOn),
+      num3Style: numStyle(live), num4Style: numStyle(tgReady),
+      chev1Style: chev(d.open.s1), chev2Style: chev(d.open.s2),
+      chev3Style: chev(d.open.s3), chev4Style: chev(d.open.s4),
+      pill1: d.learned ? 'Learned' : 'Not set', pill1Style: statusPill(d.learned),
+      pill2: d.mascotOn ? 'Active' : 'Off', pill2Style: statusPill(d.mascotOn),
+      pill3: live ? 'Drafting' : 'Idle', pill3Style: statusPill(live),
+      pill4: tgReady ? 'Channel saved' : 'Not set', pill4Style: statusPill(tgReady),
+
+      samples: d.samples,
+      onSamples: e => this.set(which, 'samples', e.target.value),
+      sampleCount: d.samples.trim() ? d.samples.trim().split(/\n\s*\n/).length + ' examples pasted' : 'No examples yet',
+      analyse: () => this.set(which, 'learned', !!d.samples.trim() && !d.learned),
+      analyseLabel: d.learned ? 'Re-analyse style' : 'Analyse style',
+      analyseStyle: 'min-height:43px;padding:0 20px;border-radius:999px;font:700 12.5px Inter,sans-serif;' +
+        (d.samples.trim()
+          ? 'cursor:pointer;border:0;background:#c6f53e;color:#051006;box-shadow:0 7px 24px rgba(198,245,62,0.12)'
+          : 'cursor:not-allowed;border:1px dashed ' + LINE + ';background:transparent;color:#4d564f'),
+      learned: d.learned,
+      toneTags: TONE_TAGS,
+
+      mascotId: which + '-mascot',
+      memeId: which + '-meme',
+      mascotFrameStyle: 'position:relative;width:118px;height:118px;flex:none;border-radius:10px;overflow:hidden;background:#060a07;border:1px ' +
+        (d.mascotOn ? 'solid rgba(198,245,62,0.45)' : 'dashed ' + LINE),
+      mascotTitle: d.mascotOn ? 'Sheriff Money mascot' : 'No mascot artwork yet',
+      mascotNote: d.mascotOn ? 'Pulled from your token project · 1024×1024' : 'Upload artwork in the token project to unlock memes',
+      toggleMascot: () => this.set(which, 'mascotOn', !d.mascotOn),
+      mascotToggleStyle: 'display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:8px;cursor:pointer;text-align:left;font:700 12.5px Inter,sans-serif;color:#f4f7ef;border:1px solid ' +
+        (d.mascotOn ? 'rgba(198,245,62,0.35)' : LINE) + ';background:' + (d.mascotOn ? 'rgba(31,114,48,0.07)' : '#0a0f0c'),
+      mascotTrackStyle: track(d.mascotOn), mascotKnobStyle: knob(d.mascotOn),
+      memeStyles: MEME_STYLES.map(m => {
+        const on = d.memeStyle === m.id;
+        return {
+          name: m.name, note: m.note, apply: () => this.set(which, 'memeStyle', m.id),
+          style: 'min-height:58px;display:flex;align-items:center;gap:10px;padding:0 13px;border-radius:8px;cursor:pointer;background:' +
+            (on ? 'linear-gradient(180deg, rgba(198,245,62,0.13) 0%, rgba(31,114,48,0.1) 45%, rgba(10,15,12,0.9) 100%)' : 'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.015) 40%, rgba(255,255,255,0.008) 100%),#0a0f0c') + ';border:1px solid ' + (on ? 'rgba(198,245,62,0.62)' : LINE) +
+            ';box-shadow:' + (on ? '0 1px 0 0 rgba(198,245,62,0.22) inset, 0 14px 32px -16px rgba(198,245,62,0.3)' : '0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.8)'),
+          dotStyle: 'width:9px;height:9px;flex:none;border-radius:50%;background:' + (on ? '#c6f53e' : 'transparent') +
+            ';border:1px solid ' + (on ? '#c6f53e' : 'rgba(131,183,139,0.35)') + (on ? ';box-shadow:0 0 10px rgba(198,245,62,0.6)' : '')
+        };
+      }),
+      genMeme: () => this.set(which, 'showMeme', !d.showMeme),
+      showMeme: d.showMeme,
+
+      xHeadNote: 'Drafts open in the official X composer for your final click',
+      tgHeadNote: tgReady ? 'Publishing to ' + d.tgChat + ' through your bot' : 'Add a bot token and channel to start broadcasting',
+      tgToken: d.tgToken, tgChat: d.tgChat, artworkOn: d.artworkOn,
+      onTgToken: e => this.set(which, 'tgToken', e.target.value),
+      onTgChat: e => this.set(which, 'tgChat', e.target.value),
+      toggleArtwork: e => this.set(which, 'artworkOn', e.target.checked),
+      tgInputStyle: 'width:100%;padding:12px;border:1px solid rgba(131,183,139,0.2);border-radius:9px;outline:none;color:#effff2;background:#030805;font:500 11px ' + MONO,
+      tgPostLabel: 'APPROVE & POST TO TELEGRAM',
+      tgPostStyle: 'min-height:46px;padding:13px;border:0;border-radius:9px;font:900 10px ' + MONO + ';letter-spacing:0.08em;background:#209bd7;color:#ffffff;' +
+        (d.tgToken.trim() && tgReady ? 'cursor:pointer' : 'cursor:not-allowed;opacity:0.42'),
+      xCats: catRow(X_CATS, true),
+      tgCats: catRow(TG_CATS, tgReady),
+
+      cadences: CADENCES.map(c => {
+        const on = cadence === c.id;
+        return {
+          name: c.name, note: c.note, apply: () => this.set(which, 'cadence', c.id),
+          style: 'min-height:56px;display:flex;align-items:center;gap:10px;padding:0 13px;border-radius:8px;cursor:pointer;background:' +
+            (on ? 'linear-gradient(180deg, rgba(198,245,62,0.13) 0%, rgba(31,114,48,0.1) 45%, rgba(10,15,12,0.9) 100%)' : 'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.015) 40%, rgba(255,255,255,0.008) 100%),#0a0f0c') + ';border:1px solid ' + (on ? 'rgba(198,245,62,0.62)' : LINE) +
+            ';box-shadow:' + (on ? '0 1px 0 0 rgba(198,245,62,0.22) inset, 0 14px 32px -16px rgba(198,245,62,0.3)' : '0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.8)'),
+          dotStyle: 'width:9px;height:9px;flex:none;border-radius:50%;background:' + (on ? '#c6f53e' : 'transparent') +
+            ';border:1px solid ' + (on ? '#c6f53e' : 'rgba(131,183,139,0.35)') + (on ? ';box-shadow:0 0 10px rgba(198,245,62,0.6)' : '')
+        };
+      }),
+      brief: d.brief,
+      onBrief: e => this.set(which, 'brief', e.target.value),
+
+      pauseX: () => this.set(which, 'xPaused', !d.xPaused),
+      pauseTg: () => this.set(which, 'tgPaused', !d.tgPaused),
+      pauseXLabel: d.xPaused ? 'X posting paused — resume' : 'Pause all X posting',
+      pauseTgLabel: d.tgPaused ? 'Telegram posting paused — resume' : 'Pause all Telegram posting',
+      pauseXStyle: killStyle(d.xPaused),
+      pauseTgStyle: killStyle(d.tgPaused),
+
+      showQueue: queueEnabled,
+      hasQueue: total > 0,
+      queueCount: total || '0',
+      queueBadgeStyle: 'display:grid;place-items:center;flex:none;min-width:34px;height:34px;border-radius:9px;font:800 14px ' + MONO + ';' +
+        (total ? 'background:#c6f53e;color:#051006;box-shadow:0 0 22px rgba(198,245,62,0.25)' : 'background:#0a0f0c;color:#39413b;border:1px solid ' + LINE),
+      queueTitle: total ? 'Pending approvals' : 'Nothing waiting on you',
+      queueNote: total ? pendingX + ' on X · ' + pendingTg + ' on Telegram' : 'Approval-required posts land here before they go out',
+      queueWrapStyle: 'border-radius:12px;overflow:hidden;border:1px solid ' + (total ? 'rgba(198,245,62,0.4)' : LINE) +
+        ';background:' + (total ? 'rgba(31,114,48,0.08)' : '#0d120e'),
+      queueOpen: d.queueOpen && total > 0,
+      reviewX: () => this.set(which, 'queueOpen', !d.queueOpen),
+      reviewTg: () => this.set(which, 'queueOpen', !d.queueOpen),
+      reviewXLabel: 'Review ' + pendingX + ' X posts',
+      reviewTgLabel: 'Review ' + pendingTg + ' Telegram post',
+      reviewXStyle: 'min-height:40px;padding:0 15px;border-radius:7px;border:0;background:#c6f53e;color:#051006;font:700 12px Inter,sans-serif;cursor:pointer',
+      reviewTgStyle: 'min-height:40px;padding:0 15px;border-radius:7px;border:1px solid ' + LINE + ';background:#111713;color:#f4f7ef;font:700 12px Inter,sans-serif;cursor:pointer',
+      queue: QUEUE.map((q, i) => ({
+        ...q,
+        rowStyle: 'display:flex;flex-direction:column;gap:10px;padding:15px 16px' + (i ? ';border-top:1px solid rgba(131,183,139,0.14)' : ''),
+        chanStyle: 'padding:5px 9px;border-radius:6px;font:700 9.5px ' + MONO + ';letter-spacing:0.12em;text-transform:uppercase;border:1px solid ' +
+          (q.channel === 'X' ? 'rgba(198,245,62,0.32);background:rgba(198,245,62,0.07);color:#c6f53e' : 'rgba(145,240,182,0.3);background:rgba(145,240,182,0.07);color:#91f0b6')
+      }))
+    };
+  }
+
+  renderVals() {
+    return {
+      variants: [
+        this.build('active', { tag: 'State B — active', tagNote: 'style learned, channel saved, 3 drafts pending' }),
+        this.build('setup', { tag: 'State A — setup', tagNote: 'first open, nothing connected yet' })
+      ]
+    };
+  }
+}
+
+</script>
+</body>
+</html>
