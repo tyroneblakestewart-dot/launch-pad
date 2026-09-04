@@ -1896,3 +1896,49 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   pipeline is now `0xa7884bf84ae76c2e115aaf1f3f9a45157fdff42a` (deployed
   4 Sep with the graduation fee); `0x3c6a…72ed` is the previous, fee-less
   pipeline and is no longer configured.
+
+- Homepage twelve-panel redesign (owner direction, 4 Sep: "no token image,
+  chart performance on the image, same lime and grey, like pump.fun; 12
+  panels — 8 domestic, 4 third-party on the bottom row; rearrange the space,
+  panels smaller but not too small"). Layout: `components/hoodlums-market-
+  home.tsx` drops the 256px trending sidebar for one full-width column —
+  hero, then the HOODLUMS TOKENS grid, then the trending row — so all twelve
+  panels share the same four column tracks. `components/hoodlums-token-
+  grid.tsx` shows `GRID_PAGE_SIZE` (8) cards per tab, two rows of four, and
+  folds the rest behind a "Show N more" button (one row of four at a time,
+  reset on tab switch). **Card** (`components/token-grid-card-chart.tsx`,
+  now the whole card body): the recorded artwork fills the square art region
+  edge to edge and the token's real performance line — `buildSparkline` over
+  the same `GET /api/token-trades?source=grid` read as before, one line, a
+  soft area fill, a 0.9s draw-in keyed on the path so it only redraws when
+  the line actually changes — sits over its lower half; lime up, the
+  design's grey down (`lib/token-sparkline.ts`'s `SPARKLINE_*_COLOR`
+  constants are now the theme's `#c6f53e` / `#8d918c` / `#6f746e` and the
+  CSS uses `var(--accent-lime)` / `var(--accent-down)` — the earlier note
+  that the #440 mint/red were "chart semantics to leave alone" is
+  superseded by this direction). Below the art, pump.fun's hierarchy: name
+  with a change pill (since launch, `buildGridChangePill`), ticker with the
+  launch age, then a REAL market cap in ETH — newest spot price × the
+  recorded `wholeTokenSupply` (`lib/token-grid-card-model.ts`,
+  `computeGridMarketCapNative`; em dash before the first trade, never a
+  fabricated zero) — which remounts on change so its `capFlash` highlight
+  marks a live move, then the compact graduation row. The #440 mini
+  candles and the floating hover preview are removed outright
+  (`lib/token-candle-geometry.ts`, `lib/token-grid-preview-position.ts` and
+  their tests deleted; `buildSparkline` gained a `lastPrice` field). The
+  **trending row** (`components/robinhood-trending-panel.tsx`) is the same
+  Solana-via-Dexscreener feed and 60s poll, rendered as the top
+  `TRENDING_PANEL_COUNT` (4) tokens in the same card shape (rank badge over
+  the art, USD market cap, whole-percent 24h pill, "Dexscreener ↗"); it
+  carries no trade series so it never draws a line. The Robinhood Chain tab
+  stays an honest coming-soon placeholder. **Tests changed rather than only
+  added (rule 8, stated plainly):** `tests/token-grid-card-chart-ui.test.ts`
+  was rewritten (it pinned the candle overlay, the floating preview and the
+  mint/red colours), and `tests/hoodlums-premium-theme.test.ts`'s legacy-
+  palette case dropped its "sparkline excepted" pin of `#91f0b6`/`#ff5f56`
+  for the theme variables. `tests/hoodlums-market-home.test.ts` was
+  untouched. New `tests/token-grid-card-model.test.ts` covers the market-
+  cap maths, pills, USD compaction and ages. Rule 10 needs nothing (no new
+  page, route or integration). Not verified in a browser or on a device
+  from this session (rule 7) — the owner compares the deployed homepage and
+  a fix round is expected.

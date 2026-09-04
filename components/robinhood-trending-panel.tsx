@@ -2,27 +2,27 @@
 
 import { useEffect, useState } from "react";
 import type { TrendingFeedResult, TrendingToken } from "@/lib/server/robinhood-trending";
+import { buildGridChangePill, formatGridMarketCapUsd, TRENDING_PANEL_COUNT } from "@/lib/token-grid-card-model";
 import styles from "./robinhood-trending-panel.module.css";
 
 const POLL_INTERVAL_MS = 60_000;
 
 type TrendingTab = "solana" | "robinhood";
 
-function formatMarketCap(value: number): string {
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return value > 0 ? `$${value.toFixed(0)}` : "—";
-}
-
-function formatChange(value: number): string {
-  const rounded = Math.round(value);
-  return `${rounded >= 0 ? "+" : ""}${rounded}%`;
-}
-
 function initials(name: string): string {
   return name.trim().slice(0, 2).toUpperCase() || "?";
 }
 
+/**
+ * Third-party trending row (owner direction, 4 Sep 2026): the four bottom
+ * panels of the twelve-panel homepage, one card per top-trending token in
+ * the same card shape as the Hoodlums tokens above — artwork, name, ticker,
+ * market cap and 24h change (lime up, grey down) — so the page reads as one
+ * grid rather than a grid plus a sidebar list. The data is unchanged: the
+ * Solana feed via Dexscreener, polled every 60s, with the Robinhood Chain
+ * tab still an honest coming-soon placeholder. These tokens carry no trade
+ * series of their own, so they get a change pill, never a fabricated line.
+ */
 export function RobinhoodTrendingPanel() {
   const [activeTab, setActiveTab] = useState<TrendingTab>("solana");
   const [tokens, setTokens] = useState<TrendingToken[]>([]);
@@ -59,89 +59,101 @@ export function RobinhoodTrendingPanel() {
   }, [activeTab]);
 
   const headerLabel = activeTab === "solana" ? "TRENDING · SOLANA" : "TRENDING · ROBINHOOD CHAIN";
-  const headerName = activeTab === "solana" ? "Solana" : "Robinhood Chain";
   const ariaLabel = activeTab === "solana" ? "Solana trending tokens" : "Robinhood Chain trending tokens";
+  const shown = tokens.slice(0, TRENDING_PANEL_COUNT);
 
   return (
-    <aside className={styles.panel} aria-label={ariaLabel}>
-      <div className={styles.tabs} role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "solana"}
-          className={`${styles.tab} ${activeTab === "solana" ? styles.tabActive : ""}`}
-          onClick={() => setActiveTab("solana")}
-        >
-          Solana
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "robinhood"}
-          className={`${styles.tab} ${styles.tabMuted} ${activeTab === "robinhood" ? styles.tabActive : ""}`}
-          onClick={() => setActiveTab("robinhood")}
-        >
-          Robinhood Chain
-          <span className={styles.badge}>Coming soon</span>
-        </button>
-      </div>
-
-      <div className={styles.header}>
-        <div>
-          <b>{headerLabel}</b>
-          <span className={styles.pulseRow}>
-            <span className={styles.dot} /> {headerName}
-          </span>
-        </div>
-        <span className={styles.window}>via Dexscreener</span>
-      </div>
-
-      <div className={styles.feed}>
-        {activeTab === "robinhood" ? (
-          <div className={styles.comingSoon}>
+    <section className={styles.section} aria-label={ariaLabel}>
+      <div className={styles.sectionHeader}>
+        <p className={styles.eyebrow}>
+          <span className={styles.dot} aria-hidden="true" />
+          {headerLabel}
+          <span className={styles.window}>via Dexscreener · refreshes every 60s</span>
+        </p>
+        <div className={styles.tabs} role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "solana"}
+            className={`${styles.tab} ${activeTab === "solana" ? styles.tabActive : ""}`}
+            onClick={() => setActiveTab("solana")}
+          >
+            Solana
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "robinhood"}
+            className={`${styles.tab} ${styles.tabMuted} ${activeTab === "robinhood" ? styles.tabActive : ""}`}
+            onClick={() => setActiveTab("robinhood")}
+          >
+            Robinhood Chain
             <span className={styles.badge}>Coming soon</span>
-            <p className={styles.empty}>Robinhood Chain trending is coming soon.</p>
-          </div>
-        ) : unavailable ? (
-          <p className={styles.empty}>Feed unavailable</p>
-        ) : loading ? (
-          <p className={styles.empty}>Loading trending tokens…</p>
-        ) : tokens.length === 0 ? (
-          <p className={styles.empty}>No trending tokens right now.</p>
-        ) : (
-          tokens.map((token) => (
-            <a
-              key={token.address || token.rank}
-              href={token.url}
-              target="_blank"
-              rel="noreferrer"
-              className={styles.row}
-            >
-              <span className={styles.rank}>{token.rank}</span>
-              {token.artworkUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={token.artworkUrl} alt="" className={styles.art} />
-              ) : (
-                <span className={styles.artFallback}>{initials(token.name)}</span>
-              )}
-              <span className={styles.name}>
-                <b>{token.name}</b>
-                <small>${token.ticker}</small>
-              </span>
-              <span className={styles.stats}>
-                <b>{formatMarketCap(token.marketCapUsd)}</b>
-                <small className={token.priceChangePercent >= 0 ? styles.up : styles.dn}>
-                  {formatChange(token.priceChangePercent)}
-                </small>
-              </span>
-            </a>
-          ))
-        )}
+          </button>
+        </div>
       </div>
+
+      {activeTab === "robinhood" ? (
+        <div className={styles.notice}>
+          <span className={styles.badge}>Coming soon</span>
+          <p className={styles.empty}>Robinhood Chain trending is coming soon.</p>
+        </div>
+      ) : unavailable ? (
+        <div className={styles.notice}>
+          <p className={styles.empty}>Feed unavailable</p>
+        </div>
+      ) : loading ? (
+        <div className={styles.notice}>
+          <p className={styles.empty}>Loading trending tokens…</p>
+        </div>
+      ) : shown.length === 0 ? (
+        <div className={styles.notice}>
+          <p className={styles.empty}>No trending tokens right now.</p>
+        </div>
+      ) : (
+        <div className={styles.row}>
+          {shown.map((token) => {
+            const pill = buildGridChangePill(token.priceChangePercent, 0);
+            return (
+              <a
+                key={token.address || token.rank}
+                href={token.url}
+                target="_blank"
+                rel="noreferrer"
+                className={styles.panel}
+              >
+                <div className={styles.art}>
+                  {token.artworkUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={token.artworkUrl} alt="" className={styles.artImage} />
+                  ) : (
+                    <span className={styles.artFallback}>{initials(token.name)}</span>
+                  )}
+                  <span className={styles.rank}>#{token.rank}</span>
+                </div>
+                <div className={styles.nameRow}>
+                  <b className={styles.name}>{token.name}</b>
+                  {pill && (
+                    <span className={`${styles.pill} ${pill.direction === "down" ? styles.dn : styles.up}`}>{pill.label}</span>
+                  )}
+                </div>
+                <div className={styles.tickerRow}>
+                  <span className={styles.ticker}>${token.ticker}</span>
+                  <span className={styles.source}>Dexscreener ↗</span>
+                </div>
+                <div className={styles.capRow}>
+                  <b className={styles.cap}>{formatGridMarketCapUsd(token.marketCapUsd)}</b>
+                  <span className={styles.capLabel}>MCAP</span>
+                </div>
+              </a>
+            );
+          })}
+        </div>
+      )}
 
       <p className={styles.footer}>
         External market data via Dexscreener. Not Hoodlums launches. Not financial advice. Refreshes every 60s.
       </p>
-    </aside>
+    </section>
   );
 }

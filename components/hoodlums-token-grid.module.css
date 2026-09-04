@@ -13,11 +13,22 @@
 }
 
 .eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
   color: var(--text-sub);
   font: 600 9.5px/1 var(--mono);
   letter-spacing: 0.18em;
   text-transform: uppercase;
+}
+
+.liveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent-lime);
+  box-shadow: 0 0 8px rgba(198, 245, 62, 0.6);
 }
 
 .headerActions {
@@ -74,6 +85,9 @@
   color: var(--chip-active-color);
 }
 
+/* Twelve-panel page (owner direction, 4 Sep 2026): four columns everywhere
+   above the tablet breakpoint, so eight domestic cards make exactly two
+   rows and the third-party row beneath lines up column for column. */
 .grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -83,14 +97,22 @@
 .card {
   position: relative;
   display: grid;
-  gap: 3px;
-  padding: 12px;
+  gap: 2px;
+  padding: 10px 10px 12px;
   border: var(--panel-border);
   border-radius: var(--panel-radius);
   background: var(--panel-bg);
   box-shadow: var(--panel-shadow);
   color: inherit;
   text-decoration: none;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--panel-shadow), 0 18px 40px -18px rgba(198, 245, 62, 0.25);
+  }
 }
 
 /* Square art region (issue #440): aspect-ratio + height: auto instead of a
@@ -98,28 +120,25 @@
    every breakpoint (no media query overrides this) and shows the whole
    512x512 recorded thumbnail (#438) rather than cropping its top/bottom off.
    Every card in a grid row shares the same column width, so uniform square
-   height keeps rows aligned — a taller card can never break the grid's
-   column tracks, which are still driven purely by `.grid`'s
-   `minmax(0, 1fr)` columns. */
+   height keeps rows aligned. */
 .art {
   position: relative;
   display: grid;
   place-items: center;
   aspect-ratio: 1 / 1;
   height: auto;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   border: var(--well-border);
   border-radius: var(--well-radius);
   background: var(--well-bg);
   box-shadow: var(--well-shadow);
   color: var(--accent-lime);
-  font: 800 22px var(--mono);
+  font: 800 26px var(--mono);
   overflow: hidden;
 }
 
-/* Recorded launch artwork (issue #438): sits behind both the letter-initial
-   fallback (never rendered at the same time) and the candle overlay above
-   it, filling the square art region edge to edge. */
+/* Recorded launch artwork (issue #438): fills the art region edge to edge,
+   behind the performance line. */
 .artImage {
   position: absolute;
   inset: 0;
@@ -135,118 +154,81 @@
   opacity: 0.55;
 }
 
-/* Mini candles over artwork (issue #440, replacing #436's line sparkline).
-   Occupies roughly the lower 40% of the square art region over a soft
-   dark bottom-up gradient so the bars stay legible against any image; only
-   rendered at all when there's real trade data (see token-grid-card-chart.tsx
-   — a token with no trades renders neither this container nor its SVG, never
-   an empty box or a flat line). */
-.candleOverlay {
+/* Performance line over the artwork (owner direction, 4 Sep 2026, the
+   pump.fun card): the token's real trade history as one line across the
+   lower half of the image, lime when up and the design's grey when down,
+   over a soft bottom-up wash so it stays legible on any picture. Only
+   rendered with real data — no trades means no line and no box. */
+.sparkOverlay {
   position: absolute;
   inset: auto 0 0 0;
-  height: 40%;
+  height: 52%;
   z-index: 2;
-  background: linear-gradient(to top, rgba(3, 6, 4, 0.82) 15%, rgba(3, 6, 4, 0) 100%);
+  background: linear-gradient(to top, rgba(3, 6, 4, 0.7) 0%, rgba(3, 6, 4, 0.25) 60%, rgba(3, 6, 4, 0) 100%);
 }
 
-.candleSvg {
+.sparkSvg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  overflow: visible;
 }
 
-/* Floating hover/focus preview (issue #440, replacing #436's inset:0
-   card-covering overlay). Anchored via `position: fixed` at coordinates
-   token-grid-card-chart.tsx computes from the real anchor rect
-   (lib/token-grid-preview-position.ts) so it stays inside the viewport for
-   cards on the grid's left/right edges and last row, and opens above or
-   below the *whole card* — never over it — so the card's own name, ticker
-   and market cap are never covered. Raised well above sibling cards on
-   z-index and never a layout participant (`position: fixed`, not `static`
-   or `relative`), so it can overlap neighbours without reflowing the grid.
-   `pointer-events: none` means it can never intercept the card anchor's own
-   click-through navigation, in any state. */
-.preview {
-  position: fixed;
-  left: var(--preview-left, 50%);
-  top: var(--preview-top, 50%);
-  z-index: 30;
-  width: 300px;
-  max-width: calc(100vw - 24px);
-  min-height: 200px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 14px;
-  border: var(--raised-border);
-  border-radius: var(--well-radius);
-  background: var(--panel-bg);
-  box-shadow: var(--panel-shadow), 0 24px 48px rgba(0, 0, 0, 0.55);
-  opacity: 0;
-  transform: scale(0.97);
-  transition: opacity 160ms ease, transform 160ms ease;
-  pointer-events: none;
+.sparkArea {
+  fill: currentColor;
+  opacity: 0.09;
 }
 
-.previewChart {
-  width: 100%;
-  height: 150px;
+.sparkLine {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 5px currentColor);
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: sparkDraw 0.9s ease-out forwards;
 }
 
-.previewMeta {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
-  color: var(--text-label);
-  font: 700 10px var(--mono);
+@keyframes sparkDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
-.previewPrice {
-  color: var(--text-value);
-  font: 800 14px var(--mono);
-}
-
+/* Up/down follow the token page's settled ruling: lime up, the design's
+   grey down — never red on a performance line. */
 .sparklineUp {
-  color: #91f0b6;
+  color: var(--accent-lime);
 }
 
 .sparklineDown {
-  color: #ff5f56;
+  color: var(--accent-down);
 }
 
-.card:focus .preview,
-.card:focus-within .preview {
-  opacity: 1;
-  transform: none;
+/* Metadata hierarchy (issue #440, retuned 4 Sep 2026 to the pump.fun
+   shape): name with the change pill on its right, ticker with the age on
+   its right, then the market cap as the boldest number on the card, then
+   the compact graduation row. */
+.nameRow,
+.tickerRow,
+.capRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 
-/* Touch devices get no hover state — mini chart only, per issue #436/#440. */
-@media (hover: hover) and (pointer: fine) {
-  .card:hover .preview {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .preview {
-    transition: none;
-  }
-}
-
-/* Metadata hierarchy (issue #440): name prominent, ticker secondary right
-   beneath it, market cap the boldest number on the card, then a compact
-   meta line (the graduation row) — reached with a tighter type scale, not
-   more spacing. */
 .cardName {
+  overflow: hidden;
   color: var(--text-value);
   font: 800 13px var(--sans);
   letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cardTicker {
@@ -254,15 +236,73 @@
   font: 600 10px var(--mono);
 }
 
-.cardCap {
-  margin-top: 5px;
+.age {
+  flex: none;
+  color: var(--text-faint);
+  font: 600 9px var(--mono);
+  letter-spacing: 0.06em;
+}
+
+.changePill {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font: 700 9.5px/1.4 var(--mono);
+  letter-spacing: 0.02em;
+}
+
+.changeUp {
+  border-color: rgba(198, 245, 62, 0.35);
+  background: rgba(198, 245, 62, 0.1);
   color: var(--accent-lime);
-  font: 800 17px var(--mono);
+}
+
+.changeDown {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--accent-down);
+}
+
+.changeFlat {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-label);
+}
+
+.capRow {
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
+.cardCap {
+  overflow: hidden;
+  padding: 0 2px;
+  margin: 0 -2px;
+  border-radius: 4px;
+  color: var(--accent-lime);
+  font: 800 15px var(--mono);
   letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Applied (and remounted, via a change-count key) only when the market cap
+   changes after first paint — token-grid-card-chart.tsx's useMarketCapFlash —
+   so this highlight marks each live move, the pump.fun card's reaction to a
+   new trade, and a page load stays calm. */
+.cardCapFlash {
+  animation: capFlash 1.1s ease-out;
+}
+@keyframes capFlash {
+  0% {
+    background: rgba(198, 245, 62, 0.35);
+  }
+  100% {
+    background: transparent;
+  }
 }
 
 .cardCapLabel {
-  margin-bottom: 4px;
+  flex: none;
   color: var(--text-faint);
   font: 600 9px var(--mono);
   letter-spacing: 0.1em;
@@ -283,6 +323,7 @@
 
 .gradBar {
   height: 3px;
+  margin-top: 3px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
@@ -293,6 +334,20 @@
   height: 100%;
   background: var(--accent-lime);
   box-shadow: 0 0 8px rgba(198, 245, 62, 0.5);
+}
+
+.showMore {
+  align-self: center;
+  min-height: 34px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: var(--raised-border);
+  background: var(--raised-bg);
+  box-shadow: var(--raised-shadow);
+  color: var(--text-secondary);
+  font: 700 10.5px/1 var(--mono);
+  letter-spacing: 0.07em;
+  cursor: pointer;
 }
 
 .emptyState {
@@ -325,6 +380,21 @@
   box-shadow: 0 14px 34px -12px rgba(198, 245, 62, 0.5);
   font: 800 12px/1 var(--sans);
   text-decoration: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sparkLine {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+
+  .cardCapFlash {
+    animation: none;
+  }
+
+  .card {
+    transition: none;
+  }
 }
 
 @media (max-width: 1099px) {

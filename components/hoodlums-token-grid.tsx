@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatGraduationProgressPercent } from "@/lib/bonding-curve-status";
 import type { PublicGeneratedSite } from "@/lib/public-site";
+import { GRID_PAGE_SIZE } from "@/lib/token-grid-card-model";
 import type { TokenLaunchGridFilter, TokenLaunchListItem } from "@/lib/token-launch-view";
 import { useTokenLaunches } from "@/lib/use-token-launches";
 import { requestWorkspaceOpen } from "@/lib/workspace-open-request";
@@ -58,10 +59,24 @@ function cardHref(launch: TokenLaunchListItem): string {
  * no activity at all, and gets its own copy pointing at the studio instead
  * of the generic "be the first" pitch — never to fabricate cards from it;
  * every rendered card's data now comes from a real recorded launch.
+ *
+ * Owner direction (4 Sep 2026): the homepage is twelve panels — eight of
+ * these domestic cards in two rows of four, then the four third-party
+ * trending panels beneath. The grid therefore shows GRID_PAGE_SIZE cards
+ * per tab and folds the rest behind a "Show more" control (another row of
+ * four at a time) instead of growing without limit; switching tabs resets
+ * to the first page.
  */
 export function HoodlumsTokenGrid({ liveSites }: { liveSites: PublicGeneratedSite[] }) {
   const [tab, setTab] = useState<Tab>("new");
+  const [visibleCount, setVisibleCount] = useState(GRID_PAGE_SIZE);
   const { launches, error } = useTokenLaunches(TAB_TO_FILTER[tab]);
+
+  useEffect(() => {
+    // A tab switch is a new list: start again from the first two rows.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVisibleCount(GRID_PAGE_SIZE);
+  }, [tab]);
 
   function handleCreateTokenClick() {
     requestWorkspaceOpen("new");
@@ -69,11 +84,14 @@ export function HoodlumsTokenGrid({ liveSites }: { liveSites: PublicGeneratedSit
 
   const isLoading = launches === null && !error;
   const hasUnlaunchedSites = liveSites.length > 0;
+  const visibleLaunches = launches ? launches.slice(0, visibleCount) : [];
+  const hiddenCount = launches ? Math.max(0, launches.length - visibleCount) : 0;
 
   return (
     <section className={styles.section} aria-labelledby="hoodlums-tokens-title">
       <div className={styles.sectionHeader}>
         <p id="hoodlums-tokens-title" className={styles.eyebrow}>
+          <span className={styles.liveDot} aria-hidden="true" />
           HOODLUMS TOKENS
         </p>
         <div className={styles.headerActions}>
@@ -119,28 +137,34 @@ export function HoodlumsTokenGrid({ liveSites }: { liveSites: PublicGeneratedSit
           </a>
         </div>
       ) : (
-        <div className={styles.grid}>
-          {launches.map((launch) => (
-            <a key={launch.id} href={cardHref(launch)} className={styles.card}>
-              <TokenGridCardChart
-                tokenName={launch.tokenName}
-                curveAddress={launch.curveAddress}
-                artworkThumbnail={launch.artworkThumbnail}
-              />
-              <b className={styles.cardName}>{launch.tokenName}</b>
-              <span className={styles.cardTicker}>${launch.ticker}</span>
-              <b className={styles.cardCap}>—</b>
-              <span className={styles.cardCapLabel}>Market cap</span>
-              <div className={styles.gradRow}>
-                <span>{launch.graduated ? "Graduated" : "Graduation"}</span>
-                <b>{progressPercentLabel(launch)}</b>
-              </div>
-              <div className={styles.gradBar}>
-                <span style={{ width: `${progressWidthPercent(launch)}%` }} />
-              </div>
-            </a>
-          ))}
-        </div>
+        <>
+          <div className={styles.grid}>
+            {visibleLaunches.map((launch) => (
+              <a key={launch.id} href={cardHref(launch)} className={styles.card}>
+                <TokenGridCardChart
+                  tokenName={launch.tokenName}
+                  ticker={launch.ticker}
+                  curveAddress={launch.curveAddress}
+                  artworkThumbnail={launch.artworkThumbnail}
+                  wholeTokenSupply={launch.wholeTokenSupply}
+                  launchedAt={launch.launchedAt}
+                  graduated={launch.graduated}
+                  progressLabel={progressPercentLabel(launch)}
+                  progressWidthPercent={progressWidthPercent(launch)}
+                />
+              </a>
+            ))}
+          </div>
+          {hiddenCount > 0 && (
+            <button
+              type="button"
+              className={styles.showMore}
+              onClick={() => setVisibleCount((count) => count + GRID_PAGE_SIZE / 2)}
+            >
+              Show {Math.min(hiddenCount, GRID_PAGE_SIZE / 2)} more
+            </button>
+          )}
+        </>
       )}
     </section>
   );
