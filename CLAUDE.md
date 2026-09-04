@@ -1740,3 +1740,40 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   this session, on the final commit: `npm run test:app` — 292 test files /
   3377 tests passing. `npm run lint` — 0 errors (12 pre-existing warnings
   only). `npm run build` — succeeds.
+
+- Studio header band and workspace label removed (owner direction, 4 Sep).
+  `components/token-studio.tsx` no longer renders the sticky `.topbar`
+  header — the "H" brand mark, the "PRIVATE BUILD / Meme Token Studio"
+  eyebrow and title, the "Safe mode" badge, and the visible "Projects N" /
+  "+ New token" buttons — and `components/token-studio-workspace.tsx`'s bar
+  loses its "PRIVATE WORKSPACE OPEN" label and live dot, keeping only
+  "Saved launches" and "Save & close" (pushed right via
+  `.workspaceBar > .workspaceActions { margin-left: auto }`). The two
+  header actions survive as `hidden` buttons with the same labels, because
+  the workspace shell drives the studio by button text
+  (`findStudioButton("new token" | "projects")`) from the homepage's Create
+  new token CTA and the Saved launches button — `hidden` keeps them out of
+  layout, the tab order and the accessibility tree while `button.click()`
+  still fires. The stale "Safe mode" wording is gone too: the notice bar now
+  starts empty and only renders when there is a message (previously it
+  opened on "Safe mode is on — no launch transaction can be sent from this
+  build.", which has been false since the studio launched to testnet for
+  real), and the wallet-connected notices drop their "Safe mode still
+  prevents deployment/mint creation" tails. The launch summary's "Mainnet
+  transaction · BLOCKED IN SAFE MODE" row is a true statement (testnet-first)
+  and is deliberately kept. The now-unreferenced `.topbar`/`.brand-lockup`/
+  `.safe-badge` rules in `app/globals.css` are left in place (other pages'
+  CSS is not this PR's concern). **Tests changed rather than only added
+  (rule 8, stated plainly):** `tests/create-token-flow.test.ts` pinned the
+  visible `<button className="primary-button compact" onClick={startNewProject}>`
+  and now pins the hidden driver button. New
+  `tests/studio-header-trim.test.ts` asserts the header, badge and label are
+  gone, the two hidden driver buttons and the workspace's label-driven
+  contract remain, the notice bar is conditional, and the safe-mode tails
+  are gone while the mainnet row stays. Rule 10 needs nothing (wording
+  removal, no feature). Not verified in a browser from this session (rule 7)
+  — the owner opens the studio and confirms the band is gone and Create new
+  token / Saved launches still work. Validated this session, on the final
+  commit: `npm run test:app` — 293 test files / 3382 tests passing.
+  `npm run lint` — 0 errors (12 pre-existing warnings only). `npm run build`
+  — succeeds.

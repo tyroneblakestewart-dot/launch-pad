@@ -1,20 +1,8 @@
-.statusRow,
-.workspaceBar > div:first-child {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: #a8aaa9;
-  font: 700 10px/1.2 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.liveDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #c6f53e;
-  box-shadow: 0 0 10px #c6f53e;
+/* The "PRIVATE WORKSPACE OPEN" label and its live dot were removed at the
+   owner's direction (4 Sep 2026); the bar now holds only the two actions,
+   pushed to the right. */
+.workspaceBar > .workspaceActions {
+  margin-left: auto;
 }
 
 .tokenRecord {

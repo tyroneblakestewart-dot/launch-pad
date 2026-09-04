@@ -157,9 +157,8 @@ export function TokenStudio() {
   const [project, setProject] = useState<TokenProject>(DEFAULT_PROJECT);
   const [projects, setProjects] = useState<SavedProjectIndexEntry[]>([]);
   const [wallet, setWallet] = useState<WalletState | null>(null);
-  const [notice, setNotice] = useState(
-    "Safe mode is on — no launch transaction can be sent from this build.",
-  );
+  // Empty until something happens; the notice bar only renders with a message.
+  const [notice, setNotice] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
   const [showLaunchSummary, setShowLaunchSummary] = useState(false);
@@ -419,7 +418,7 @@ export function TokenStudio() {
         }
 
         setWallet({ chain: "robinhood", address: accounts[0] });
-        setNotice("Robinhood Chain wallet connected. Safe mode still prevents deployment.");
+        setNotice("Robinhood Chain wallet connected.");
       } else {
         const provider = window.phantom?.solana || window.solana;
         if (!provider) {
@@ -427,7 +426,7 @@ export function TokenStudio() {
         }
         const response = await provider.connect();
         setWallet({ chain: "solana", address: response.publicKey.toString() });
-        setNotice("Solana wallet connected. Safe mode still prevents mint creation.");
+        setNotice("Solana wallet connected.");
       }
     } catch (error) {
       setNotice(getErrorMessage(error));
@@ -479,29 +478,28 @@ export function TokenStudio() {
 
   return (
     <main className="app-shell">
-      <header className="topbar" inert={showPathChooser || undefined}>
-        <div className="brand-lockup">
-          <div className="brand-mark">H</div>
-          <div>
-            <p className="eyebrow">PRIVATE BUILD</p>
-            <h1>Meme Token Studio</h1>
-          </div>
-        </div>
-        <div className="topbar-actions">
-          <span className="safe-badge"><i /> Safe mode</span>
-          <button className="ghost-button" onClick={() => setShowProjects(true)}>
-            Projects <b>{projects.length}</b>
-          </button>
-          <button className="primary-button compact" onClick={startNewProject}>
-            + New token
-          </button>
-        </div>
-      </header>
+      {/* The studio header band (H mark, "PRIVATE BUILD / Meme Token Studio",
+          the Safe mode badge and the visible Projects / + New token buttons)
+          was removed at the owner's direction (4 Sep 2026). The two actions
+          stay in the DOM as hidden buttons because
+          components/token-studio-workspace.tsx drives them by button label
+          (`findStudioButton("new token" | "projects")`) from the homepage's
+          Create new token CTA and the workspace bar's Saved launches button;
+          `hidden` keeps them out of layout, the tab order and the
+          accessibility tree while `button.click()` still works. */}
+      <button type="button" hidden onClick={() => setShowProjects(true)}>
+        Projects
+      </button>
+      <button type="button" hidden onClick={startNewProject}>
+        + New token
+      </button>
 
-      <section className="notice-bar">
-        <span>●</span>
-        <p>{notice}</p>
-      </section>
+      {notice && (
+        <section className="notice-bar">
+          <span>●</span>
+          <p>{notice}</p>
+        </section>
+      )}
 
       <section
         className="workspace"

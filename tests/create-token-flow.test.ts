@@ -30,7 +30,8 @@ describe("create token flow", () => {
     expect(workspace).toContain("window.requestAnimationFrame(focusNewProjectEditor)");
     expect(studio).toContain("function startNewProject()");
     expect(studio).toContain("setProject(makeProject())");
-    expect(studio).toContain('<button className="primary-button compact" onClick={startNewProject}>');
+    // The header's visible + New token button became a hidden driver button (owner direction, 4 Sep 2026); the label the workspace clicks is unchanged.
+    expect(studio).toContain('<button type="button" hidden onClick={startNewProject}>');
     expect(studio).toContain('<button className="primary-button full-width" onClick={startNewProject}>');
   });
 
