@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { formatGraduationProgressPercent } from "@/lib/bonding-curve-status";
 import type { PublicGeneratedSite } from "@/lib/public-site";
-import { GRID_PAGE_SIZE } from "@/lib/token-grid-card-model";
+import { GRID_COLUMNS, GRID_PAGE_SIZE } from "@/lib/token-grid-card-model";
 import type { TokenLaunchGridFilter, TokenLaunchListItem } from "@/lib/token-launch-view";
 import { useTokenLaunches } from "@/lib/use-token-launches";
 import { requestWorkspaceOpen } from "@/lib/workspace-open-request";
@@ -60,12 +60,12 @@ function cardHref(launch: TokenLaunchListItem): string {
  * of the generic "be the first" pitch — never to fabricate cards from it;
  * every rendered card's data now comes from a real recorded launch.
  *
- * Owner direction (4 Sep 2026): the homepage is twelve panels — eight of
- * these domestic cards in two rows of four, then the four third-party
- * trending panels beneath. The grid therefore shows GRID_PAGE_SIZE cards
- * per tab and folds the rest behind a "Show more" control (another row of
- * four at a time) instead of growing without limit; switching tabs resets
- * to the first page.
+ * Owner direction (4 Sep 2026, round 2): cards a third smaller, six across
+ * like pump.fun — two rows of these domestic cards, then one row of six
+ * third-party graduating tokens beneath. The grid therefore shows
+ * GRID_PAGE_SIZE cards per tab and folds the rest behind a "Show more"
+ * control (another row at a time) instead of growing without limit;
+ * switching tabs resets to the first two rows.
  */
 export function HoodlumsTokenGrid({ liveSites }: { liveSites: PublicGeneratedSite[] }) {
   const [tab, setTab] = useState<Tab>("new");
@@ -159,9 +159,9 @@ export function HoodlumsTokenGrid({ liveSites }: { liveSites: PublicGeneratedSit
             <button
               type="button"
               className={styles.showMore}
-              onClick={() => setVisibleCount((count) => count + GRID_PAGE_SIZE / 2)}
+              onClick={() => setVisibleCount((count) => count + GRID_COLUMNS)}
             >
-              Show {Math.min(hiddenCount, GRID_PAGE_SIZE / 2)} more
+              Show {Math.min(hiddenCount, GRID_COLUMNS)} more
             </button>
           )}
         </>

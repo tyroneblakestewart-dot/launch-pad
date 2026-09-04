@@ -13,6 +13,9 @@
 }
 
 .eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
   color: var(--text-sub);
   font: 600 9.5px/1 var(--mono);
@@ -20,35 +23,52 @@
   text-transform: uppercase;
 }
 
-.track {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  touch-action: pan-y;
-  cursor: grab;
-  user-select: none;
+.liveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent-lime);
+  box-shadow: 0 0 8px rgba(198, 245, 62, 0.6);
 }
 
-.card {
+/* One row of six, in the same tracks as hoodlums-token-grid.module.css's `.grid`. */
+.track {
   display: grid;
-  gap: 4px;
-  padding: 12px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* Master panel recipe — the same card as the Hoodlums grid. */
+.card {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 8px 8px 10px;
   border: var(--panel-border);
   border-radius: var(--panel-radius);
   background: var(--panel-bg);
   box-shadow: var(--panel-shadow);
   color: inherit;
   text-decoration: none;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--panel-shadow), 0 18px 40px -18px rgba(198, 245, 62, 0.25);
+  }
 }
 
 .art {
   position: relative;
   display: grid;
   place-items: center;
-  height: 96px;
+  aspect-ratio: 1 / 1;
+  height: auto;
   margin-bottom: 8px;
   border: var(--well-border);
-  border-radius: var(--well-radius);
+  border-radius: 12px;
   background: var(--well-bg);
   box-shadow: var(--well-shadow);
   color: var(--accent-lime);
@@ -76,18 +96,59 @@
   transition: opacity 0.2s ease;
 }
 
+.rank,
+.progressBadge {
+  position: absolute;
+  top: 6px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(3, 6, 4, 0.72);
+  font: 700 8.5px/1 var(--mono);
+  letter-spacing: 0.06em;
+}
+
+.rank {
+  left: 6px;
+  color: var(--text-secondary);
+}
+
+.progressBadge {
+  right: 6px;
+  border-color: rgba(198, 245, 62, 0.35);
+  color: var(--accent-lime);
+}
+
+.nameRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
 .cardName {
   overflow: hidden;
   color: var(--text-value);
-  font: 800 13px var(--sans);
+  font: 800 12px var(--sans);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.source {
+  flex: none;
+  color: var(--text-faint);
+  font: 600 8.5px var(--mono);
+  letter-spacing: 0.06em;
+}
+
 .cardTicker {
+  overflow: hidden;
   margin-bottom: 6px;
   color: var(--text-label);
-  font: 600 11px var(--mono);
+  font: 600 9.5px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .gradRow {
@@ -95,7 +156,7 @@
   align-items: center;
   justify-content: space-between;
   color: var(--text-label);
-  font: 700 9px var(--mono);
+  font: 700 8.5px var(--mono);
 }
 
 .gradRow b {
@@ -104,6 +165,7 @@
 
 .gradBar {
   height: 3px;
+  margin-top: 3px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
@@ -117,26 +179,18 @@
   transition: width 0.6s ease;
 }
 
-.dots {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
+.notice {
+  padding: 22px 26px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: var(--panel-radius);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
 }
 
-.dot,
-.dotActive {
-  width: 7px;
-  height: 7px;
-  padding: 0;
-  border: none;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
-  cursor: pointer;
-}
-
-.dotActive {
-  background: var(--accent-lime);
-  box-shadow: 0 0 8px rgba(198, 245, 62, 0.5);
+.notice p {
+  margin: 0;
+  color: var(--text-label);
+  font: 500 11px/1.6 var(--mono);
 }
 
 .caption {
@@ -149,14 +203,21 @@
   color: var(--text-label);
 }
 
-@media (max-width: 1099px) {
-  .track {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
   }
 }
 
-@media (max-width: 390px) {
+@media (max-width: 1099px) {
   .track {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .track {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 }

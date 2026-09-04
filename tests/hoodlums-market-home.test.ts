@@ -132,7 +132,7 @@ describe("Hoodlums bonding-market studio home (issue #185)", () => {
     expect(component).toContain('type TrendingTab = "solana" | "robinhood";');
   });
 
-  it("renders the graduating-now feed as a full-width row of pump.fun cards below the token grid, hiding until eligible (issue #295)", async () => {
+  it("renders the graduating-now feed as the full-width bottom row of pump.fun cards below the token grid (issue #295, owner round 2: always rendered, with an honest notice when the feed is dry)", async () => {
     const component = await source("components", "hoodlums-graduating-row.tsx");
     const styles = await source("components", "hoodlums-graduating-row.module.css");
 
@@ -143,27 +143,23 @@ describe("Hoodlums bonding-market studio home (issue #185)", () => {
     expect(component).toContain("window.clearInterval");
     expect(component).toContain("GRADUATING NOW · LIVE FROM PUMP.FUN");
     expect(component).toContain("live from pump.fun — Hoodlums graduations join this race at mainnet");
-    // Hides itself entirely (not just visually) below the eligibility bar or on error.
-    expect(component).toContain("if (!eligible) return null;");
+    // The section keeps the page's shape: below the eligibility bar or on error it shows a notice, never nothing.
+    expect(component).not.toContain("return null;");
+    expect(component).toContain("Graduating feed unavailable right now");
     expect(styles).toContain(".gradBar");
     // Lime now comes from the shared premium theme (owner direction, 4 Sep 2026), not a hard-coded hex.
     expect(styles).toContain("background: var(--accent-lime);");
   });
 
-  it("caps the graduating row at 6 tokens, 4 per page (max 2 pages), and reuses the social-showcase swipe/index helpers (issue #295)", async () => {
+  it("shows one row of six graduating tokens with no paging or swipe — the row is exactly one screen wide (owner round 2)", async () => {
     const component = await source("components", "hoodlums-graduating-row.tsx");
 
-    expect(component).toContain("TOKENS_PER_PAGE = 4");
-    expect(component).toContain('import { clampShowcaseIndex, swipeDeltaToStep } from "@/lib/social-showcase";');
-    expect(component).toContain("swipeDeltaToStep(");
-    expect(component).toContain("clampShowcaseIndex(");
-    // Mouse-drag and touch-swipe both drive the same page-stepping logic.
-    expect(component).toContain("onTouchStart={handleTouchStart}");
-    expect(component).toContain("onTouchEnd={handleTouchEnd}");
-    expect(component).toContain("onMouseDown={handleMouseDown}");
-    expect(component).toContain("onMouseUp={handleMouseUp}");
-    expect(component).toContain('role="tablist"');
-    expect(component).toContain("aria-label=\"Graduating now pages\"");
+    expect(component).toContain("tokens.slice(0, GRADUATING_PANEL_COUNT)");
+    expect(component).not.toContain("TOKENS_PER_PAGE");
+    expect(component).not.toContain("swipeDeltaToStep");
+    expect(component).not.toContain("clampShowcaseIndex");
+    expect(component).not.toContain("onTouchStart=");
+    expect(component).not.toContain('role="tablist"');
   });
 
   it("shows the graduating card artwork with a lime first-letter fallback tile when artwork is missing or errors (issue #295)", async () => {
@@ -178,11 +174,12 @@ describe("Hoodlums bonding-market studio home (issue #185)", () => {
     expect(styles).toContain("color: var(--accent-lime);");
   });
 
-  it("shows the mainnet caption and adapts the card grid down to 1 column at a 390px mobile width (issue #295)", async () => {
+  it("adapts the graduating row from six across to three on tablets and two on phones, matching the Hoodlums grid (owner round 2)", async () => {
     const styles = await source("components", "hoodlums-graduating-row.module.css");
 
     expect(styles).toContain("@media (max-width: 1099px)");
-    expect(styles).toContain("@media (max-width: 390px)");
+    expect(styles).toContain("@media (max-width: 700px)");
+    expect(styles).not.toContain("@media (max-width: 390px)");
   });
 
   it("relabels sidebar step 1 as Create & Bond", async () => {
