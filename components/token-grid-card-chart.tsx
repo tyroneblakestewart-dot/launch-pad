@@ -1,166 +1,141 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { formatNativeAmount, formatPriceChange, formatTimeAgoSeconds } from "@/lib/token-page-format";
-import { buildCandleGeometry, CANDLE_CHART_HEIGHT, CANDLE_CHART_WIDTH } from "@/lib/token-candle-geometry";
-import { buildSparkline } from "@/lib/token-sparkline";
-import { computePreviewPosition, PREVIEW_HEIGHT, PREVIEW_WIDTH } from "@/lib/token-grid-preview-position";
+import { useEffect, useRef, useState } from "react";
+import { buildSparkline, SPARKLINE_HEIGHT, SPARKLINE_WIDTH } from "@/lib/token-sparkline";
+import {
+  buildGridChangePill,
+  computeGridMarketCapNative,
+  formatGridAge,
+  formatGridMarketCap,
+} from "@/lib/token-grid-card-model";
 import { useGridTokenTrades } from "@/lib/use-grid-token-trades";
 import { useInView } from "@/lib/use-in-view";
 import styles from "./hoodlums-token-grid.module.css";
 
 /**
- * Live mini candle chart + floating hover preview for a homepage token grid
- * card (issue #440, redesigning issue #436's line sparkline), drawn from the
- * token's real trades (GET /api/token-trades — see
- * lib/use-grid-token-trades.ts, the only trade-reading path). The mini
- * candles are inline SVG bars built by the pure lib/token-candle-geometry.ts
- * (never a lightweight-charts instance per card — 24 chart instances on one
- * page is not acceptable) drawn once and reused for both the small in-art
- * chart and the bigger floating preview, exactly like issue #436's single
- * shared buildSparkline call.
- *
- * The floating preview's show/hide is still pure CSS (:hover/:focus-within in
- * hoodlums-token-grid.module.css, gated to `(hover: hover) and (pointer:
- * fine)` for the hover half so touch devices only ever see the mini chart),
- * so it can never intercept the card anchor's own click-through navigation.
- * Its *position*, though, can't be pure CSS: the panel must stay inside the
- * viewport for cards on the grid's left/right edges and last row, which needs
- * the anchor's real on-screen rect. A small effect measures the enclosing
- * `<a class="card">` (found via `.closest("a")` rather than a prop, since the
- * anchor is rendered by hoodlums-token-grid.tsx, not this component) on
- * mouseenter/focusin and writes the result as CSS custom properties the
- * panel's `left`/`top` reference — never React state, so a hover never
- * triggers a re-render of the whole card.
+ * The body of one homepage token card (owner direction, 4 Sep 2026: the
+ * pump.fun card shape). The recorded artwork fills the square art region
+ * edge to edge, and the token's real performance line — built by the pure
+ * lib/token-sparkline.ts from GET /api/token-trades via
+ * lib/use-grid-token-trades.ts, the only trade-reading path — is drawn over
+ * its lower half as inline SVG: lime when up, the design's grey when down,
+ * with a soft area fill and a short draw-in each time the line changes.
+ * Never a chart-library instance per card (twelve on one page is not
+ * acceptable), never candles, and never a floating hover preview — the
+ * numbers a viewer wants (market cap, change since launch, age) live on the
+ * card itself and update in place on every poll; the market cap figure
+ * remounts whenever its value CHANGES after first paint (never on the
+ * initial render, so a page load is calm) and its highlight flash marks the
+ * live move, exactly the reaction pump.fun's cards give. A token with no trades yet shows its art
+ * alone (no flat line, no empty box) with an em-dash market cap: nothing on
+ * this card is ever invented.
  */
 export function TokenGridCardChart({
   tokenName,
+  ticker,
   curveAddress,
   artworkThumbnail,
+  wholeTokenSupply,
+  launchedAt,
+  graduated,
+  progressLabel,
+  progressWidthPercent,
 }: {
   tokenName: string;
+  ticker: string;
   curveAddress: string;
   artworkThumbnail?: string | null;
+  wholeTokenSupply: string;
+  launchedAt: string | null;
+  graduated: boolean;
+  progressLabel: string;
+  progressWidthPercent: number;
 }) {
   const { ref, inView } = useInView<HTMLDivElement>();
-  const previewRef = useRef<HTMLDivElement>(null);
   const { trades } = useGridTokenTrades(curveAddress, inView);
-  const sparkline = buildSparkline(trades ?? []);
-  const candles = buildCandleGeometry(trades ?? []);
-  const color = sparkline.trend === "down" ? styles.sparklineDown : styles.sparklineUp;
-  const change = formatPriceChange(sparkline.changePercent);
-  const sinceLabel = sparkline.firstTimestamp !== null ? formatTimeAgoSeconds(sparkline.firstTimestamp) : null;
+  const sparkline = buildSparkline(trades ?? [], { paddingY: 4 });
+  const tone = sparkline.trend === "down" ? styles.sparklineDown : styles.sparklineUp;
+  const pill = buildGridChangePill(sparkline.changePercent);
+  const marketCap = formatGridMarketCap(computeGridMarketCapNative(sparkline.lastPrice, wholeTokenSupply));
   const letter = tokenName.trim().slice(0, 1).toUpperCase() || "?";
-
-  useEffect(() => {
-    const artNode = ref.current;
-    const preview = previewRef.current;
-    const anchor = artNode?.closest("a");
-    if (!anchor || !preview) return;
-
-    function updatePosition() {
-      if (!anchor || !preview || typeof window === "undefined") return;
-      const anchorRect = anchor.getBoundingClientRect();
-      const position = computePreviewPosition({
-        anchorLeft: anchorRect.left,
-        anchorTop: anchorRect.top,
-        anchorWidth: anchorRect.width,
-        anchorHeight: anchorRect.height,
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight,
-        previewWidth: PREVIEW_WIDTH,
-        previewHeight: PREVIEW_HEIGHT,
-      });
-      preview.style.setProperty("--preview-left", `${position.left}px`);
-      preview.style.setProperty("--preview-top", `${position.top}px`);
-    }
-
-    function handleEnter() {
-      updatePosition();
-      window.addEventListener("resize", updatePosition);
-      window.addEventListener("scroll", updatePosition, true);
-    }
-
-    function handleLeave() {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    }
-
-    anchor.addEventListener("mouseenter", handleEnter);
-    anchor.addEventListener("focusin", handleEnter);
-    anchor.addEventListener("mouseleave", handleLeave);
-    anchor.addEventListener("focusout", handleLeave);
-
-    return () => {
-      anchor.removeEventListener("mouseenter", handleEnter);
-      anchor.removeEventListener("focusin", handleEnter);
-      anchor.removeEventListener("mouseleave", handleLeave);
-      anchor.removeEventListener("focusout", handleLeave);
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [ref]);
+  const flashKey = useMarketCapFlash(marketCap);
 
   return (
     <>
       <div ref={ref} className={styles.art} data-token-grid-chart="true">
         {artworkThumbnail ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img className={styles.artImage} src={artworkThumbnail} alt="" />
         ) : (
           <span className={styles.artInitial}>{letter}</span>
         )}
-        {candles.hasData && (
-          <div className={styles.candleOverlay} aria-hidden="true">
+        {sparkline.hasData && (
+          <div className={`${styles.sparkOverlay} ${tone}`} aria-hidden="true">
             <svg
-              className={styles.candleSvg}
-              viewBox={`0 0 ${CANDLE_CHART_WIDTH} ${CANDLE_CHART_HEIGHT}`}
+              className={styles.sparkSvg}
+              viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`}
               preserveAspectRatio="none"
             >
-              {candles.bars.map((bar, index) => (
-                <g key={index}>
-                  <line
-                    x1={bar.wickX}
-                    x2={bar.wickX}
-                    y1={bar.wickTop}
-                    y2={bar.wickBottom}
-                    stroke={bar.color}
-                    strokeWidth={0.6}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                  <rect x={bar.x} y={bar.bodyTop} width={bar.bodyWidth} height={bar.bodyHeight} fill={bar.color} />
-                </g>
-              ))}
+              <path className={styles.sparkArea} d={sparkline.areaPath} />
+              <path
+                key={sparkline.linePath}
+                className={styles.sparkLine}
+                d={sparkline.linePath}
+                pathLength={100}
+                vectorEffect="non-scaling-stroke"
+              />
             </svg>
           </div>
         )}
       </div>
-      <div ref={previewRef} className={styles.preview} aria-hidden="true">
-        <svg
-          className={styles.previewChart}
-          viewBox={`0 0 ${CANDLE_CHART_WIDTH} ${CANDLE_CHART_HEIGHT}`}
-          preserveAspectRatio="none"
-        >
-          {candles.bars.map((bar, index) => (
-            <g key={index}>
-              <line
-                x1={bar.wickX}
-                x2={bar.wickX}
-                y1={bar.wickTop}
-                y2={bar.wickBottom}
-                stroke={bar.color}
-                strokeWidth={0.6}
-                vectorEffect="non-scaling-stroke"
-              />
-              <rect x={bar.x} y={bar.bodyTop} width={bar.bodyWidth} height={bar.bodyHeight} fill={bar.color} />
-            </g>
-          ))}
-        </svg>
-        <div className={styles.previewMeta}>
-          <span className={styles.previewPrice}>{formatNativeAmount(candles.lastPrice)}</span>
-          {sparkline.hasData ? <span className={color}>{change?.label ?? "—"}</span> : <span>No trades yet</span>}
-          {sinceLabel && <span>{sinceLabel} span</span>}
-        </div>
+
+      <div className={styles.nameRow}>
+        <b className={styles.cardName}>{tokenName}</b>
+        {pill && (
+          <span
+            className={`${styles.changePill} ${
+              pill.direction === "down" ? styles.changeDown : pill.direction === "up" ? styles.changeUp : styles.changeFlat
+            }`}
+          >
+            {pill.label}
+          </span>
+        )}
+      </div>
+      <div className={styles.tickerRow}>
+        <span className={styles.cardTicker}>${ticker}</span>
+        <span className={styles.age}>{formatGridAge(launchedAt)}</span>
+      </div>
+      <div className={styles.capRow}>
+        <b key={flashKey} className={flashKey > 0 ? `${styles.cardCap} ${styles.cardCapFlash}` : styles.cardCap}>
+          {marketCap}
+        </b>
+        <span className={styles.cardCapLabel}>MCAP</span>
+      </div>
+      <div className={styles.gradRow}>
+        <span>{graduated ? "Graduated" : "Graduation"}</span>
+        <b>{progressLabel}</b>
+      </div>
+      <div className={styles.gradBar}>
+        <span style={{ width: `${progressWidthPercent}%` }} />
       </div>
     </>
   );
+}
+
+/**
+ * Counts genuine market-cap changes after the first render. The count is
+ * used as the figure's React key, so each live move remounts the element and
+ * replays its CSS flash; the initial value (and a null-to-null poll) never
+ * flashes.
+ */
+function useMarketCapFlash(marketCap: string): number {
+  const previous = useRef<string | null>(null);
+  const [flashKey, setFlashKey] = useState(0);
+  useEffect(() => {
+    if (previous.current !== null && previous.current !== marketCap) {
+      setFlashKey((key) => key + 1);
+    }
+    previous.current = marketCap;
+  }, [marketCap]);
+  return flashKey;
 }

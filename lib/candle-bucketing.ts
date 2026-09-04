@@ -6,7 +6,7 @@ import type { TokenTrade } from "./token-trade-types";
 // network call or a chart library, matching lib/token-page-format.ts's own
 // no-dependency style.
 
-/** A fixed, directly-bucketable candle width. "all" is a UI-only selection (see resolveChartInterval) — never passed to bucketTradesIntoCandles itself. Ordered finest to coarsest — callers that pick "the first/last interval" (resolveAllTimeframeInterval, token-candle-geometry.ts's pickInterval) depend on that order. */
+/** A fixed, directly-bucketable candle width. "all" is a UI-only selection (see resolveChartInterval) — never passed to bucketTradesIntoCandles itself. Ordered finest to coarsest — callers that pick "the first/last interval" (resolveAllTimeframeInterval) depend on that order. */
 export type CandleInterval = "1s" | "15s" | "1m" | "5m" | "15m" | "1h" | "6h" | "1d";
 
 export type ChartTimeframe = CandleInterval | "all";

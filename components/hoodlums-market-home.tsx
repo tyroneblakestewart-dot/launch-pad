@@ -57,6 +57,10 @@ export function HoodlumsMarketHome({
         </div>
       </header>
 
+      {/* Twelve-panel page (owner direction, 4 Sep 2026): one full-width
+          column — hero, then eight Hoodlums cards in two rows of four, then
+          the four third-party trending panels — instead of a grid beside a
+          sidebar list, so every panel sits in the same four column tracks. */}
       <div className={styles.layout}>
         <div className={styles.main}>
           <section className={styles.hero} aria-labelledby="hoodlums-market-title">
@@ -82,9 +86,9 @@ export function HoodlumsMarketHome({
           </section>
 
           <HoodlumsTokenGrid liveSites={liveSites} />
-        </div>
 
-        <RobinhoodTrendingPanel />
+          <RobinhoodTrendingPanel />
+        </div>
       </div>
 
       <HoodlumsGraduatingRow />

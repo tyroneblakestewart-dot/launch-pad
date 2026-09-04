@@ -71,9 +71,11 @@
   cursor: pointer;
 }
 
+/* Single full-width column (owner direction, 4 Sep 2026): the trending
+   feed is a row of four cards under the Hoodlums grid, not a sidebar. */
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 256px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
@@ -146,12 +148,6 @@
   color: var(--text-label);
   font: 600 9.5px var(--mono);
   letter-spacing: 0.06em;
-}
-
-@media (max-width: 1099px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 @media (max-width: 640px) {

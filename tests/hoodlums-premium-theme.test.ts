@@ -97,7 +97,7 @@ describe("shared premium theme (token page design tokens)", () => {
 });
 
 describe("homepage stylesheets use the shared recipes, never the legacy palette", () => {
-  it("contains no legacy hard-coded palette colours (the pinned sparkline semantics excepted)", async () => {
+  it("contains no legacy hard-coded palette colours, the performance line included", async () => {
     for (const file of HOMEPAGE_STYLESHEETS) {
       const css = await source(file);
       for (const hex of LEGACY_HEXES) {
@@ -105,10 +105,13 @@ describe("homepage stylesheets use the shared recipes, never the legacy palette"
       }
       expect(css, `${file} still uses the old lime rgba`).not.toContain("rgba(188, 231, 89");
     }
-    // Chart semantics pinned since issue #440 stay exactly as they were.
+    // The homepage performance line follows the token page's up/down ruling
+    // (owner direction, 4 Sep 2026): lime up, the design's grey down.
     const grid = await source("components/hoodlums-token-grid.module.css");
-    expect(grid).toContain(".sparklineUp {\n  color: #91f0b6;\n}");
-    expect(grid).toContain(".sparklineDown {\n  color: #ff5f56;\n}");
+    expect(grid).toContain(".sparklineUp {\n  color: var(--accent-lime);\n}");
+    expect(grid).toContain(".sparklineDown {\n  color: var(--accent-down);\n}");
+    expect(grid).not.toContain("#91f0b6");
+    expect(grid).not.toContain("#ff5f56");
   });
 
   it("uses the token page's chip track + glowing chip recipe for the grid tabs and the trending tabs", async () => {

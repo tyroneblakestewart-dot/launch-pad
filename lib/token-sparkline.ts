@@ -26,15 +26,22 @@ export type SparklineResult = {
   changePercent: number | null;
   firstTimestamp: number | null;
   lastTimestamp: number | null;
+  /** The newest priced trade's spot price (native per whole token) — known from a single trade, unlike the line itself. */
+  lastPrice: number | null;
 };
 
 export const SPARKLINE_WIDTH = 100;
 export const SPARKLINE_HEIGHT = 32;
 const DEFAULT_PADDING_Y = 3;
 
-export const SPARKLINE_UP_COLOR = "#91f0b6";
-export const SPARKLINE_DOWN_COLOR = "#ff5f56";
-export const SPARKLINE_FLAT_COLOR = "#566054";
+// Owner direction (4 Sep 2026): the homepage performance line follows the
+// token page's settled up/down ruling — lime up, the design's grey down,
+// never red — so the grid and the trade page can never disagree on colour.
+// These are the same literal values as the shared premium theme's
+// --accent-lime / --accent-down / --text-faint (app/hoodlums-premium-theme.css).
+export const SPARKLINE_UP_COLOR = "#c6f53e";
+export const SPARKLINE_DOWN_COLOR = "#8d918c";
+export const SPARKLINE_FLAT_COLOR = "#6f746e";
 
 export function sparklineColor(trend: SparklineTrend): string {
   if (trend === "up") return SPARKLINE_UP_COLOR;
@@ -42,7 +49,12 @@ export function sparklineColor(trend: SparklineTrend): string {
   return SPARKLINE_FLAT_COLOR;
 }
 
-function flatResult(timestamp: number | null, width: number, height: number): SparklineResult {
+function flatResult(
+  timestamp: number | null,
+  lastPrice: number | null,
+  width: number,
+  height: number,
+): SparklineResult {
   const baselineY = height / 2;
   return {
     linePath: `M0,${baselineY} L${width},${baselineY}`,
@@ -52,6 +64,7 @@ function flatResult(timestamp: number | null, width: number, height: number): Sp
     changePercent: null,
     firstTimestamp: timestamp,
     lastTimestamp: timestamp,
+    lastPrice,
   };
 }
 
@@ -81,7 +94,7 @@ export function buildSparkline(
     .filter((point) => point.price > 0);
 
   if (priced.length < 2) {
-    return flatResult(priced[0]?.timestamp ?? null, width, height);
+    return flatResult(priced[0]?.timestamp ?? null, priced[0]?.price ?? null, width, height);
   }
 
   const prices = priced.map((point) => point.price);
@@ -115,5 +128,6 @@ export function buildSparkline(
     changePercent,
     firstTimestamp: priced[0].timestamp,
     lastTimestamp: priced[priced.length - 1].timestamp,
+    lastPrice: last,
   };
 }
