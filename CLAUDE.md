@@ -1698,3 +1698,45 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   a fix round is expected. Validated this session, on the final commit:
   `npm run test:app` — 292 test files / 3373 tests passing. `npm run lint` —
   0 errors (12 pre-existing warnings only). `npm run build` — succeeds.
+
+- `/social` adopts the shared premium theme (second page in the owner's
+  4 Sep "follow suit" rollout, after the homepage). This page had already
+  been tuned toward the token page by hand — its stylesheet carried the
+  token palette as literal hexes (`#c6f53e`, `#f4f7f1`, `#8d918c`, …) plus
+  its own `@import` of Archivo Black — but the recipes underneath still
+  differed: folder-style section tabs with a lime top underline instead of
+  the chip track, a 26px panel radius and bespoke shadows instead of the
+  master panel recipe, lime **gradient** CTAs (`#c6f53e → #a7dd4a`) where
+  the token page rule is solid lime, never a gradient, and flat inputs
+  instead of the inset well. `components/social-hub.tsx`'s root `<main>`
+  now opts in to `.hoodlums-premium`; `components/social-hub.module.css`
+  drops its own font import (globals.css loads Archivo Black for every
+  `(app)` page since the homepage PR) and every hand-copied hex resolves
+  through the shared variables. Recipes aligned, layout untouched: the
+  studio panel takes the master panel recipe and the tab bar the header
+  wash; Setup / Calendar & Schedule / Queue & History / Settings & Rules
+  sit in the chip track with the glowing active chip (the 860px mobile
+  grid layout of that track is kept, its pill-radius and underline
+  overrides removed so the same chip renders on phones); the PRO badge,
+  live-tools pills, connected/coming-soon states and the metaPill take the
+  chip-active recipe; the project picker and inner cards (connection,
+  bot, performance, schedule, template, composer) take the raised recipe;
+  text inputs take the inset well; Approve, the publish button, the
+  no-project CTA, selected chips/toggles/calendar days and the mascot tile
+  become solid `--cta-bg`; the shell background matches the token page's
+  own two lime radials over `#0a0b09`; eyebrows take the section-label
+  recipe; headings resolve `--display`. The sticky mobile tab bar contract
+  (issue #390: `position: sticky; top: 72px; z-index: 80`) and every
+  44px touch-target rule are unchanged. **Tests changed rather than only
+  added (rule 8, stated plainly):** one `social-studio-queue-action-row`
+  assertion pinned Approve's lime gradient
+  (`linear-gradient(180deg, #c6f53e, #a7dd4a)`) — the exact pattern the
+  CTA rule forbids — and now pins `var(--cta-bg)`. New coverage in
+  `tests/hoodlums-premium-theme.test.ts`: page opt-in, no own font import,
+  no hand-copied hex or lime-gradient CTA left, panel/chip/CTA/well recipes
+  on the named rules, and the #390 sticky contract still present. Not
+  verified in a browser or on a device from this session (rule 7) — the
+  owner compares the deployed `/social` against the token page. Validated
+  this session, on the final commit: `npm run test:app` — 292 test files /
+  3377 tests passing. `npm run lint` — 0 errors (12 pre-existing warnings
+  only). `npm run build` — succeeds.

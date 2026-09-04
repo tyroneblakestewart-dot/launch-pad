@@ -99,9 +99,9 @@ describe("Queue tab draft-card action row (issue #356)", () => {
     const css = await source("components", "social-hub.module.css");
     const rowBlock = css.slice(css.indexOf(".queueItemActions {"), css.indexOf(".statusPill {"));
 
-    // Approve: filled lime, same palette as the plan-card primary CTA.
+    // Approve: the shared solid-lime CTA recipe (token page rule: solid, never a gradient; owner direction 4 Sep 2026).
     expect(rowBlock).toContain(".queueActionApprove {");
-    expect(rowBlock).toContain("background: linear-gradient(180deg, #c6f53e, #a7dd4a);");
+    expect(rowBlock).toContain("background: var(--cta-bg);");
 
     // Post to X / Send to Telegram: ghost/outline secondary.
     expect(rowBlock).toContain(".queueActionSecondary {");

@@ -1813,7 +1813,7 @@ export function SocialHub() {
   }
 
   return (
-    <main className={styles.shell}>
+    <main className={`${styles.shell} hoodlums-premium`}>
       <div className={styles.pageFrame}>
         <header className={styles.hero}>
           <div className={styles.heroBrand}>
