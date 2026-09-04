@@ -490,20 +490,10 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     ///      `buy()`/`sell()`/`graduate()` entry points that call this.
     function _graduate() internal {
         uint256 tokenLiquidity = token.balanceOf(address(this));
-        uint256 reserve = realNativeReserve;
-        uint256 graduationFee = _graduationFee(reserve);
-        uint256 nativeLiquidity = reserve - graduationFee;
+        uint256 nativeLiquidity = _chargeGraduationFee();
         if (tokenLiquidity == 0 || nativeLiquidity == 0) revert InvalidConfiguration();
 
         graduated = true;
-        realNativeReserve = 0;
-
-        if (graduationFee > 0) {
-            treasuryFeeBalance += graduationFee;
-            totalFeesAccrued += graduationFee;
-            emit FeeAccrued(treasury, graduationFee);
-            emit GraduationFeeCharged(graduationFee);
-        }
 
         weth9.deposit{value: nativeLiquidity}();
 
@@ -544,6 +534,29 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         emit Graduated(pool, tokenId, tokenLiquidity, nativeLiquidity);
 
         _sweepGraduationLeftover(token0, amount0Desired, amount1Desired, amount0, amount1);
+    }
+
+    /// @dev Takes the one-off GRADUATION_FEE_BPS fee out of `realNativeReserve`,
+    ///      credits it 100% to `treasuryFeeBalance` (pull-payment, never pushed,
+    ///      never the creator's, and never through the 60/40 `_accrueFee` carry),
+    ///      zeroes the reserve, and returns the remainder destined for the pool.
+    ///      Kept as its own function deliberately: `_graduate()` already sits at
+    ///      the legacy codegen's stack limit, and holding the reserve and fee as
+    ///      extra locals there fails to compile with "Stack too deep". Pure
+    ///      state effects only — no external call — so it runs before any
+    ///      interaction in `_graduate()`.
+    function _chargeGraduationFee() internal returns (uint256 nativeLiquidity) {
+        uint256 reserve = realNativeReserve;
+        uint256 graduationFee = _graduationFee(reserve);
+        nativeLiquidity = reserve - graduationFee;
+        realNativeReserve = 0;
+
+        if (graduationFee > 0) {
+            treasuryFeeBalance += graduationFee;
+            totalFeesAccrued += graduationFee;
+            emit FeeAccrued(treasury, graduationFee);
+            emit GraduationFeeCharged(graduationFee);
+        }
     }
 
     /// @dev Orders the token/WETH pair the way Uniswap V3 requires (token0 <

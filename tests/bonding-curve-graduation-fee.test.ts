@@ -29,16 +29,24 @@ describe("HoodlumsTestBondingCurve graduation fee (contract source)", () => {
 
   it("credits the whole fee to the treasury balance before any external call, never to the creator or the 60/40 carry", async () => {
     const contract = await source("contracts/HoodlumsTestBondingCurve.sol");
-    const graduate = contract.slice(contract.indexOf("function _graduate() internal {"), contract.indexOf("function _orderGraduationTokens"));
-    expect(graduate).toContain("uint256 graduationFee = _graduationFee(reserve);");
-    expect(graduate).toContain("uint256 nativeLiquidity = reserve - graduationFee;");
-    expect(graduate).toContain("treasuryFeeBalance += graduationFee;");
-    expect(graduate).toContain("totalFeesAccrued += graduationFee;");
-    expect(graduate).toContain("emit GraduationFeeCharged(graduationFee);");
-    expect(graduate).not.toContain("creatorFeeBalance += graduationFee");
-    expect(graduate).not.toContain("_accrueFee(graduationFee)");
-    // Effects before interactions: the accrual precedes the WETH wrap.
-    expect(graduate.indexOf("treasuryFeeBalance += graduationFee;")).toBeLessThan(graduate.indexOf("weth9.deposit{value: nativeLiquidity}();"));
+    const graduate = contract.slice(contract.indexOf("function _graduate() internal {"), contract.indexOf("function _chargeGraduationFee()"));
+    const charge = contract.slice(contract.indexOf("function _chargeGraduationFee()"), contract.indexOf("function _orderGraduationTokens"));
+    // The fee lives in its own function so _graduate() keeps the local count
+    // that compiles — CI's solc rejected the inline version with "Stack too deep".
+    expect(graduate).toContain("uint256 nativeLiquidity = _chargeGraduationFee();");
+    expect(graduate).not.toContain("uint256 reserve = realNativeReserve;");
+    expect(charge).toContain("uint256 graduationFee = _graduationFee(reserve);");
+    expect(charge).toContain("nativeLiquidity = reserve - graduationFee;");
+    expect(charge).toContain("realNativeReserve = 0;");
+    expect(charge).toContain("treasuryFeeBalance += graduationFee;");
+    expect(charge).toContain("totalFeesAccrued += graduationFee;");
+    expect(charge).toContain("emit GraduationFeeCharged(graduationFee);");
+    expect(charge).not.toContain("creatorFeeBalance");
+    expect(charge).not.toContain("_accrueFee(");
+    expect(charge).not.toContain(".call");
+    expect(charge).not.toContain("weth9.");
+    // Effects before interactions: the charge precedes the WETH wrap.
+    expect(graduate.indexOf("_chargeGraduationFee();")).toBeLessThan(graduate.indexOf("weth9.deposit{value: nativeLiquidity}();"));
     // The pool is seeded with the post-fee amount, not the reserve.
     expect(graduate).toContain("emit Graduated(pool, tokenId, tokenLiquidity, nativeLiquidity);");
   });

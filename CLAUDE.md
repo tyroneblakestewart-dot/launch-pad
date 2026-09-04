@@ -1785,9 +1785,12 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   graduation, 100% to the treasury — mirroring pump.fun's original 6-of-85
   SOL migration take as the stepping stone before an own-swap fee model).
   `contracts/HoodlumsTestBondingCurve.sol` gains `GRADUATION_FEE_BPS = 500`:
-  `_graduate()` now computes `_graduationFee(realNativeReserve)` (floor-
-  rounded, so rounding favours pool liquidity), credits it to
-  `treasuryFeeBalance` and `totalFeesAccrued` before any external call, emits
+  `_graduate()` now calls a new `_chargeGraduationFee()` (its own function
+  because `_graduate()` already sits at the legacy codegen's stack limit —
+  CI's solc rejected the inline version with "Stack too deep"), which
+  computes `_graduationFee(realNativeReserve)` (floor-rounded, so rounding
+  favours pool liquidity), credits it to `treasuryFeeBalance` and
+  `totalFeesAccrued` before any external call, emits
   `FeeAccrued(treasury, fee)` plus a new `GraduationFeeCharged(amount)`, and
   seeds the pool with the remaining 95% (`Graduated.nativeLiquidity` is that
   post-fee figure). The creator receives none of it and the 60/40 carry is
