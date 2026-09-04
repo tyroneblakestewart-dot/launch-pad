@@ -81,6 +81,7 @@ contract HoodlumsTestBondingCurveFuzzTest {
     uint256 private constant BPS = 10_000;
     uint256 private constant TRADING_FEE_BPS = 100;
     uint256 private constant PROTOCOL_FEE_SHARE_BPS = 6_000;
+    uint256 private constant GRADUATION_FEE_BPS = 500;
     /// @dev Native currency handed to BUYER/SELLER before every single fuzz
     ///      run; large enough to cover MAX_FUZZ_NATIVE and the max-bounded
     ///      boundary tests below.
@@ -162,7 +163,19 @@ contract HoodlumsTestBondingCurveFuzzTest {
 
         require(freshCurve.graduated(), "exact-target buy did not graduate");
         require(freshCurve.nativeReserve() == 0, "graduated reserve not cleared");
-        require(freshCurve.totalFeesAccrued() == fee, "fee not accrued exactly on graduating buy");
+        // The graduating buy accrues its 1% trading fee (split 60/40) AND the
+        // one-off graduation fee (GRADUATION_FEE_BPS of the reserve, 100% to
+        // the treasury, floor-rounded). A fresh curve has no carry, so the
+        // treasury's trading share is exactly fee * 6000 / BPS.
+        uint256 graduationFee = (GRADUATION_TARGET * GRADUATION_FEE_BPS) / BPS;
+        uint256 treasuryTradingShare = (fee * PROTOCOL_FEE_SHARE_BPS) / BPS;
+        require(freshCurve.totalFeesAccrued() == fee + graduationFee, "fees not accrued exactly on graduating buy");
+        require(
+            freshCurve.treasuryFeeBalance() == treasuryTradingShare + graduationFee,
+            "treasury did not receive its trading share plus the whole graduation fee"
+        );
+        require(freshCurve.creatorFeeBalance() == fee - treasuryTradingShare, "creator received part of the graduation fee");
+        require(freshCurve.graduationFeeAtTarget() == graduationFee, "graduationFeeAtTarget mismatch");
     }
 
     function testBuyOneWeiBelowGraduationTargetDoesNotGraduate() public {

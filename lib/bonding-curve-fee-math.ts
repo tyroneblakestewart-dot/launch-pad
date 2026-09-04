@@ -63,3 +63,25 @@ export function grossNativeInForExactNet(targetNet: bigint): bigint {
   }
   return lo;
 }
+
+/**
+ * Mirrors the contract's `GRADUATION_FEE_BPS` (owner decision, 4 Sep 2026):
+ * a one-off 5% of the post-trading-fee native reserve, charged once at
+ * graduation and credited 100% to the treasury's claimable balance. Only the
+ * remaining 95% seeds the locked pool. Curves deployed before this constant
+ * existed charge nothing — the UI reads the live `GRADUATION_FEE_BPS()` per
+ * curve (lib/use-token-curve-status.ts) rather than trusting this mirror.
+ */
+export const GRADUATION_FEE_BPS = 500n;
+
+/** Mirrors `_graduationFee`: floor-rounded, so rounding only ever favours pool liquidity over the fee. */
+export function graduationFee(reserve: bigint, graduationFeeBps: bigint = GRADUATION_FEE_BPS): bigint {
+  if (reserve <= 0n || graduationFeeBps <= 0n) return 0n;
+  return (reserve * graduationFeeBps) / BPS;
+}
+
+/** Native currency that actually reaches the locked pool when a curve with this target graduates. */
+export function graduationPoolLiquidity(targetWei: bigint, graduationFeeBps: bigint = GRADUATION_FEE_BPS): bigint {
+  if (targetWei <= 0n) return 0n;
+  return targetWei - graduationFee(targetWei, graduationFeeBps);
+}

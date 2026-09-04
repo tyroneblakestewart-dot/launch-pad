@@ -29,7 +29,7 @@ import {
   tradingFee,
 } from "@/lib/bonding-curve-fee-math";
 import { applySlippageFloor } from "@/lib/bonding-curve-slippage";
-import type { BondingCurveGraduationStatus } from "@/lib/bonding-curve-status";
+import { formatGraduationFeeNote, type BondingCurveGraduationStatus } from "@/lib/bonding-curve-status";
 import { CHAIN_CONFIG, ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { describeTradeError, sanitiseTradeErrorForLogging } from "@/lib/trade-error-message";
 import { notifyTokenTradeConfirmed } from "@/lib/token-trade-events";
@@ -95,6 +95,8 @@ type CurveView =
       /** remainingNativeToGraduate() as of the shared curve status's last read — 0n once graduated. */
       remainingToGraduateWei: bigint;
       graduation: BondingCurveGraduationStatus;
+      /** This curve's own on-chain GRADUATION_FEE_BPS() — 0n for a pre-fee curve, which renders no fee note. */
+      graduationFeeBps: bigint;
     };
 
 /**
@@ -113,6 +115,7 @@ function toCurveView(curveStatus: TokenCurveStatus, decimals: number): CurveView
     creator: curveStatus.creator,
     remainingToGraduateWei: curveStatus.remainingToGraduateWei,
     graduation: curveStatus.graduation,
+    graduationFeeBps: curveStatus.graduationFeeBps,
   };
 }
 
@@ -210,6 +213,12 @@ export function TokenLeftColumn({
   const resolvedDecimals = marketStats.supported && marketStats.decimals !== null ? marketStats.decimals : DEFAULT_TOKEN_DECIMALS;
 
   const curveView = toCurveView(curveStatus, resolvedDecimals);
+  // Derived from the curve's own GRADUATION_FEE_BPS() read, so a curve
+  // deployed before the fee existed shows no graduation-fee note at all.
+  const graduationFeeNote =
+    curveView.kind === "ready"
+      ? formatGraduationFeeNote(curveView.graduationFeeBps, curveView.graduation.state === "graduated")
+      : null;
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("");
   // Tracks which preset button (0.1/0.5/1/MAX on buy, 25%/50%/75%/MAX on
@@ -1016,15 +1025,17 @@ export function TokenLeftColumn({
               <p className={styles.tradeHint}>{statusMessage}</p>
             ) : null}
             <p className={styles.feeNote}>{formatFeeNote(TRADING_FEE_BPS, PROTOCOL_FEE_SHARE_BPS, CREATOR_FEE_SHARE_BPS, false)}</p>
+            {graduationFeeNote && <p className={styles.feeNote}>{graduationFeeNote}</p>}
           </div>
         ) : curveView.kind === "ready" && curveView.graduation.state === "graduated" ? (
           <div className={`${styles.panel} ${styles.swapPanel}`}>
             <div className={styles.terminalFallback}>
               <span className={styles.sectionLabel}>Trading closed</span>
               <p className={styles.terminalFallbackCopy}>
-                This token graduated — its full curve balance moved into a permanently locked Robinhood DEX pool, and
-                buy/sell on the bonding curve is closed for good. Accrued trading fees remain withdrawable by the
-                treasury and creator.
+                This token graduated — its remaining tokens and raised ETH
+                {curveView.graduationFeeBps > 0n ? ", less the graduation fee," : ""} moved into a permanently locked
+                Robinhood DEX pool, and buy/sell on the bonding curve is closed for good. Accrued fees remain
+                withdrawable by the treasury and creator.
               </p>
               {curveView.graduation.liquidityPool && (
                 <a
@@ -1037,6 +1048,7 @@ export function TokenLeftColumn({
                 </a>
               )}
               <p className={styles.feeNote}>{formatFeeNote(TRADING_FEE_BPS, PROTOCOL_FEE_SHARE_BPS, CREATOR_FEE_SHARE_BPS, true)}</p>
+              {graduationFeeNote && <p className={styles.feeNote}>{graduationFeeNote}</p>}
             </div>
           </div>
         ) : (

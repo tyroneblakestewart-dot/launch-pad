@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPublicClient, defineChain, formatEther, formatUnits, http, type Address } from "viem";
-import { ERC20_MIN_ABI, HOODLUMS_BONDING_CURVE_HEADER_ABI } from "@/lib/bonding-curve-config";
+import {
+  ERC20_MIN_ABI,
+  HOODLUMS_BONDING_CURVE_GRADUATION_FEE_ABI,
+  HOODLUMS_BONDING_CURVE_HEADER_ABI,
+} from "@/lib/bonding-curve-config";
 import { computeBondingCurveGraduationStatus, type BondingCurveGraduationStatus } from "@/lib/bonding-curve-status";
 import { ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { TOKEN_TRADE_CONFIRMED_EVENT } from "@/lib/token-trade-events";
@@ -29,6 +33,13 @@ export type TokenCurveStatus =
       /** Native currency per whole token, derived from the curve's initial virtual reserves — used before any trade exists. */
       startingPriceNativePerToken: number;
       totalSupplyRaw: bigint;
+      /**
+       * The curve's own `GRADUATION_FEE_BPS()` — `0n` for a curve deployed
+       * before the graduation fee existed (the read reverts there and is
+       * treated as no fee), so the UI only ever describes a fee the specific
+       * curve actually charges.
+       */
+      graduationFeeBps: bigint;
     };
 
 function readError(error: unknown): string {
@@ -46,6 +57,7 @@ function statusesEqual(a: TokenCurveStatus, b: TokenCurveStatus): boolean {
     a.remainingToGraduateWei === b.remainingToGraduateWei &&
     a.startingPriceNativePerToken === b.startingPriceNativePerToken &&
     a.totalSupplyRaw === b.totalSupplyRaw &&
+    a.graduationFeeBps === b.graduationFeeBps &&
     a.graduation.state === b.graduation.state &&
     a.graduation.progressBps === b.graduation.progressBps &&
     a.graduation.raisedWei === b.graduation.raisedWei &&
@@ -103,6 +115,7 @@ export function useTokenCurveStatus(
           initialVirtualTokenReserve,
           initialVirtualEthReserve,
           totalSupplyRaw,
+          graduationFeeBps,
         ] = await Promise.all([
           publicClient.readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_HEADER_ABI, functionName: "token" }),
           publicClient.readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_HEADER_ABI, functionName: "funded" }),
@@ -139,6 +152,11 @@ export function useTokenCurveStatus(
             functionName: "initialVirtualEthReserve",
           }),
           publicClient.readContract({ address: tokenAddress as Address, abi: ERC20_MIN_ABI, functionName: "totalSupply" }),
+          // Pre-fee curves have no GRADUATION_FEE_BPS() and revert here; that
+          // is "no fee", never a failed load, so it must not poison Promise.all.
+          publicClient
+            .readContract({ address: curve, abi: HOODLUMS_BONDING_CURVE_GRADUATION_FEE_ABI, functionName: "GRADUATION_FEE_BPS" })
+            .catch(() => 0n),
         ]);
 
         if ((token as string).toLowerCase() !== tokenAddress.toLowerCase()) {
@@ -166,6 +184,7 @@ export function useTokenCurveStatus(
           remainingToGraduateWei: remainingToGraduate,
           startingPriceNativePerToken,
           totalSupplyRaw,
+          graduationFeeBps,
         };
         setStatus((current) => (statusesEqual(current, next) ? current : next));
         setStale(false);

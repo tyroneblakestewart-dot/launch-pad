@@ -31,8 +31,11 @@ interface IERC20Burnable {
 ///      the other recipient's withdrawal. Fee balances are tracked separately
 ///      from `realNativeReserve` and are never counted as curve or pool
 ///      liquidity, so they remain withdrawable before and after graduation.
-///      Graduation seeds a full-range Uniswap V3 position (wrapping the
-///      native reserve into WETH first) and permanently locks the resulting
+///      Graduation first charges a fixed 5% graduation fee on the post-trading-
+///      fee native reserve, credited 100% to the treasury's claimable balance
+///      (never the creator's, never pushed), then seeds a full-range Uniswap V3
+///      position with the remaining 95% (wrapping it into WETH first) and
+///      permanently locks the resulting
 ///      LP NFT at `LP_LOCK_ADDRESS`, so nobody — including the creator or
 ///      this contract's owner — can ever withdraw graduated liquidity.
 contract HoodlumsTestBondingCurve is ReentrancyGuard {
@@ -48,6 +51,11 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     uint256 public constant PROTOCOL_FEE_SHARE_BPS = 6_000;
     /// @dev Share of every trading fee paid to `creator`, in basis points of BPS.
     uint256 public constant CREATOR_FEE_SHARE_BPS = 4_000;
+    /// @dev One-off fee charged on the native reserve at graduation, in basis
+    ///      points of BPS (5%), credited entirely to `treasury`'s claimable
+    ///      balance. Only the remaining 95% seeds the locked pool. Rounded
+    ///      down, so rounding always favours pool liquidity, never the fee.
+    uint256 public constant GRADUATION_FEE_BPS = 500;
 
     /// @dev Uniswap V3's 1% fee tier, matching what Pons uses for graduated pools.
     uint24 public constant UNISWAP_FEE_TIER = 10_000;
@@ -90,9 +98,10 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     uint256 public treasuryFeeBalance;
     /// @notice Native currency owed to the creator, claimable via `withdrawFees()`.
     uint256 public creatorFeeBalance;
-    /// @notice Lifetime total of all trading fees ever accrued (treasury + creator).
+    /// @notice Lifetime total of all fees ever accrued (treasury + creator):
+    ///         every trading fee, the graduation fee, and any swept graduation dust.
     uint256 public totalFeesAccrued;
-    /// @notice Lifetime total of all trading fees ever withdrawn (treasury + creator).
+    /// @notice Lifetime total of all fees ever withdrawn (treasury + creator).
     uint256 public totalFeesWithdrawn;
     /// @notice Fractional treasury-share remainder (out of BPS) carried between
     ///         fee splits so integer rounding on tiny fees cannot permanently
@@ -148,12 +157,17 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         uint256 virtualTokenReserve,
         uint256 virtualEthReserve
     );
+    /// @notice `nativeLiquidity` is the post-graduation-fee amount actually
+    ///         deposited into the pool — the reserve minus `GraduationFeeCharged.amount`.
     event Graduated(
         address indexed pool,
         uint256 indexed tokenId,
         uint256 tokenLiquidity,
         uint256 nativeLiquidity
     );
+    /// @notice The one-off GRADUATION_FEE_BPS fee taken from the native reserve
+    ///         at graduation and credited to `treasuryFeeBalance`.
+    event GraduationFeeCharged(uint256 amount);
     event FeeAccrued(address indexed recipient, uint256 amount);
     event FeeWithdrawn(address indexed recipient, uint256 amount);
     /// @notice Dust left over after the graduation mint, swept instead of
@@ -417,14 +431,24 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         return treasuryFeeBalance + creatorFeeBalance;
     }
 
+    /// @notice The graduation fee that will be charged when the curve graduates,
+    ///         i.e. GRADUATION_FEE_BPS of `graduationTarget` (the reserve always
+    ///         equals the target exactly at the moment of graduation).
+    function graduationFeeAtTarget() external view returns (uint256) {
+        return _graduationFee(graduationTarget);
+    }
+
     /// @notice Minimum funding that both reaches the target and seeds a usable pool.
+    /// @dev The pool-liquidity floor is measured against the native amount that
+    ///      actually reaches the pool — the target minus the graduation fee.
     function minimumCurveFunding() public view returns (uint256) {
         uint256 tokensSoldAtTarget = Math.mulDiv(
             graduationTarget,
             initialVirtualTokenReserve,
             initialVirtualEthReserve + graduationTarget
         );
-        uint256 minimumPoolTokens = (POOL_MINIMUM_LIQUIDITY_SQUARED / graduationTarget) + 1;
+        uint256 nativeIntoPool = graduationTarget - _graduationFee(graduationTarget);
+        uint256 minimumPoolTokens = (POOL_MINIMUM_LIQUIDITY_SQUARED / nativeIntoPool) + 1;
         return tokensSoldAtTarget + minimumPoolTokens;
     }
 
@@ -451,10 +475,13 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         return Math.mulDiv(realNativeReserve, BPS, graduationTarget);
     }
 
-    /// @dev Seeds a full-range Uniswap V3 position using only `realNativeReserve`,
-    ///      which already excludes every accrued fee. Fee balances stay in this
-    ///      contract's native balance and remain withdrawable via
-    ///      `withdrawFees()` after graduation. Every step below is a plain
+    /// @dev Charges the one-off GRADUATION_FEE_BPS fee on `realNativeReserve`
+    ///      (which already excludes every accrued trading fee), crediting it
+    ///      100% to `treasuryFeeBalance` — a pull-payment balance like every
+    ///      trading fee, never pushed — then seeds a full-range Uniswap V3
+    ///      position with the remainder. Fee balances stay in this contract's
+    ///      native balance and remain withdrawable via `withdrawFees()` after
+    ///      graduation. Every step below is a plain
     ///      external call with no try/catch, so a failure anywhere — wrapping,
     ///      pool creation/initialization, or the liquidity mint itself —
     ///      reverts the entire transaction and undoes `graduated = true` and
@@ -463,11 +490,10 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     ///      `buy()`/`sell()`/`graduate()` entry points that call this.
     function _graduate() internal {
         uint256 tokenLiquidity = token.balanceOf(address(this));
-        uint256 nativeLiquidity = realNativeReserve;
+        uint256 nativeLiquidity = _chargeGraduationFee();
         if (tokenLiquidity == 0 || nativeLiquidity == 0) revert InvalidConfiguration();
 
         graduated = true;
-        realNativeReserve = 0;
 
         weth9.deposit{value: nativeLiquidity}();
 
@@ -508,6 +534,29 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
         emit Graduated(pool, tokenId, tokenLiquidity, nativeLiquidity);
 
         _sweepGraduationLeftover(token0, amount0Desired, amount1Desired, amount0, amount1);
+    }
+
+    /// @dev Takes the one-off GRADUATION_FEE_BPS fee out of `realNativeReserve`,
+    ///      credits it 100% to `treasuryFeeBalance` (pull-payment, never pushed,
+    ///      never the creator's, and never through the 60/40 `_accrueFee` carry),
+    ///      zeroes the reserve, and returns the remainder destined for the pool.
+    ///      Kept as its own function deliberately: `_graduate()` already sits at
+    ///      the legacy codegen's stack limit, and holding the reserve and fee as
+    ///      extra locals there fails to compile with "Stack too deep". Pure
+    ///      state effects only — no external call — so it runs before any
+    ///      interaction in `_graduate()`.
+    function _chargeGraduationFee() internal returns (uint256 nativeLiquidity) {
+        uint256 reserve = realNativeReserve;
+        uint256 graduationFee = _graduationFee(reserve);
+        nativeLiquidity = reserve - graduationFee;
+        realNativeReserve = 0;
+
+        if (graduationFee > 0) {
+            treasuryFeeBalance += graduationFee;
+            totalFeesAccrued += graduationFee;
+            emit FeeAccrued(treasury, graduationFee);
+            emit GraduationFeeCharged(graduationFee);
+        }
     }
 
     /// @dev Orders the token/WETH pair the way Uniswap V3 requires (token0 <
@@ -658,6 +707,14 @@ contract HoodlumsTestBondingCurve is ReentrancyGuard {
     function _tradingFee(uint256 amount) internal pure returns (uint256) {
         if (amount == 0) return 0;
         return Math.mulDiv(amount, TRADING_FEE_BPS, BPS, Math.Rounding.Ceil);
+    }
+
+    /// @dev The one-off graduation fee on a native reserve, rounded DOWN (unlike
+    ///      `_tradingFee`): the fee cannot be evaded by trade sizing because the
+    ///      reserve equals the immutable target at graduation, so rounding here
+    ///      only ever favours the pool's liquidity over the treasury's take.
+    function _graduationFee(uint256 reserve) internal pure returns (uint256) {
+        return Math.mulDiv(reserve, GRADUATION_FEE_BPS, BPS);
     }
 
     function _quoteBuyNet(uint256 netNativeIn) internal view returns (uint256 tokensOut) {

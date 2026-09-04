@@ -103,3 +103,19 @@ export function formatGraduationSummary(raisedWei: bigint, targetWei: bigint, pr
 export function formatGraduationRemainingLabel(remainingWei: bigint): string {
   return `${formatNativeAmountSixSigFigsTrimmed(Number(formatEther(remainingWei)))} ETH remaining`;
 }
+
+/**
+ * Plain-English note for the swap panel describing a curve's one-off
+ * graduation fee, built from that curve's own on-chain `GRADUATION_FEE_BPS()`
+ * (never a hard-coded percentage). Returns `null` for `0n` — a curve deployed
+ * before the fee existed charges nothing, and the panel then renders no note
+ * at all rather than describing a fee it does not take.
+ */
+export function formatGraduationFeeNote(graduationFeeBps: bigint, graduated: boolean): string | null {
+  if (graduationFeeBps <= 0n) return null;
+  const feePercent = Number(graduationFeeBps) / 100;
+  const poolPercent = Number(10_000n - graduationFeeBps) / 100;
+  return graduated
+    ? `${feePercent}% graduation fee went to the treasury · ${poolPercent}% of raised ETH is locked in the pool`
+    : `${feePercent}% graduation fee to treasury at graduation · ${poolPercent}% of raised ETH locks into the pool`;
+}
