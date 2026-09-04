@@ -207,23 +207,29 @@ describe("/social follows the same recipe (second page in the rollout)", () => {
     expect(css).not.toContain("linear-gradient(150deg, #c6f53e");
   });
 
-  it("uses the master panel recipe for the studio panel and the chip track + glowing chips for the section tabs", async () => {
+  it("uses the master panel recipe for the studio panel and the design's folder tab rail for the sections", async () => {
     const css = await source(SOCIAL);
     const panel = ruleBlock(css, ".studioPanel");
     expect(panel).toContain("border: var(--panel-border);");
     expect(panel).toContain("border-radius: var(--panel-radius);");
     expect(panel).toContain("background: var(--panel-bg);");
     expect(panel).toContain("box-shadow: var(--panel-shadow);");
+    // Design tab rail (`design/app-pages/social-studio-style-spec.md` section 2):
+    // a lime-washed strip whose tabs sit on its bottom edge, not a chip track.
+    const bar = ruleBlock(css, ".tabBar");
+    expect(bar).toContain("padding: 8px 16px 0;");
+    expect(bar).toContain("align-items: flex-end;");
+    expect(bar).toContain("background: var(--panel-header-wash);");
     const track = ruleBlock(css, ".tabs");
-    expect(track).toContain("border-radius: 999px;");
-    expect(track).toContain("box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;");
+    expect(track).not.toContain("border-radius: 999px;");
+    const tab = ruleBlock(css, ".tab,\n.tabActive");
+    expect(tab).toContain("border-radius: 12px 12px 0 0;");
+    expect(tab).toContain("padding: 14px 20px 16px;");
+    expect(tab).toContain("font: 800 12.5px/1 var(--sans);");
     const active = ruleBlock(css, ".tabActive");
-    expect(active).toContain("border-color: var(--chip-active-border-color);");
     expect(active).toContain("background: var(--chip-active-bg);");
-    expect(active).toContain("box-shadow: var(--chip-active-shadow);");
+    expect(active).toContain("0 3px 0 0 var(--accent-lime) inset");
     expect(active).toContain("text-shadow: var(--chip-active-text-shadow);");
-    // The folder-tab underline is gone.
-    expect(css).not.toContain("inset 0 3px");
     // The sticky mobile tab bar contract (issue #390) is untouched.
     expect(css).toContain("position: sticky");
     expect(css).toContain("top: 72px");

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  html, body { margin:0; padding:0; background:#0a0b09; }
+  * { box-sizing:border-box; }
+  a { color:#c6f53e; text-decoration:none; }
+  a:hover { color:#d9fa7d; }
+  ::selection { background:#c6f53e; color:#071008; }
+  button { transition:border-color .16s ease, background .16s ease, opacity .16s ease, transform .16s ease, box-shadow .16s ease; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.12); border-radius:99px; }
+  .hd-cols { display:grid; grid-template-columns:1fr; gap:14px; }
+  .hd-panels { display:grid; grid-template-columns:1fr; gap:14px; }
+  .hd-bundle { display:grid; grid-template-columns:1fr; gap:22px; }
+  .hd-continue { width:100%; }
+  .hd-cta { display:flex; }
+  @media (min-width:720px) { .hd-cols, .hd-panels { grid-template-columns:repeat(2,1fr); } }
+  @media (min-width:1000px) {
+    .hd-cols { grid-template-columns:repeat(4,1fr); }
+    .hd-bundle { grid-template-columns:minmax(0,0.9fr) minmax(0,1.1fr); gap:30px; }
+    .hd-continue { width:min(360px,100%); margin-inline:auto; }
+    .hd-cta { display:none; }
+  }
+</style>
+<template id="__bundler_thumbnail" data-bg-color="#0a0b09"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#0a0b09"></rect><rect x="18" y="26" width="14" height="48" rx="4" fill="#1b201c"></rect><rect x="36" y="26" width="14" height="48" rx="4" fill="#1b201c"></rect><rect x="54" y="20" width="14" height="54" rx="4" fill="#c6f53e"></rect><rect x="72" y="26" width="12" height="48" rx="4" fill="#1b201c"></rect></svg></template>
+</helmet>
+<div style="min-height:100vh;background:#0a0b09;background-image:radial-gradient(78% 44% at 50% -6%, rgba(198,245,62,0.11), transparent 62%);color:#f4f7f1;font-family:Inter, system-ui, sans-serif">
+
+  <div style="max-width:1180px;margin:0 auto;padding:22px 20px 108px;display:flex;flex-direction:column;gap:42px">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap">
+      <img src="assets/hoodlums-wordmark.png" alt="Hoodlums" style="height:44px;width:auto;display:block;filter:drop-shadow(0 0 14px rgba(198,245,62,0.18))">
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;text-align:center">
+      <span style="color:#c6f53e;font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.18em;text-transform:uppercase">Plans &amp; pricing</span>
+      <h1 style="margin:0 auto;max-width:24ch;font-size:clamp(30px,5.4vw,54px);font-weight:800;letter-spacing:-0.04em;line-height:1.03;text-wrap:balance">Pick your plan. Launch your token. Build your community.</h1>
+      <p style="margin:0 auto;max-width:600px;color:#a8aaa9;font-size:15px;line-height:1.6">The first AI marketing team purpose-built for token communities.</p>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <span style="color:#929693;font:700 10px 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase">Four ways in</span>
+        <div style="display:flex;padding:3px;gap:3px;border:1px solid rgba(255,255,255,0.09);border-radius:999px;background:rgba(255,255,255,0.03)">
+          <sc-for list="{{ billingOptions }}" as="b" hint-placeholder-count="2">
+            <button onClick="{{ b.apply }}" style="{{ b.style }}">{{ b.label }}</button>
+          </sc-for>
+        </div>
+      </div>
+
+      <div class="hd-cols">
+        <sc-for list="{{ plans }}" as="p" hint-placeholder-count="4">
+          <button onClick="{{ p.select }}" style="{{ p.colStyle }}" style-hover="border-color:rgba(198,245,62,0.45);transform:translateY(-2px)">
+            <sc-if value="{{ p.hasBadge }}" hint-placeholder-val="{{ false }}">
+              <span style="position:absolute;top:-11px;left:18px;padding:4px 10px;border-radius:999px;background:#c6f53e;color:#071008;box-shadow:0 0 14px rgba(198,245,62,0.45);font:800 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase;box-shadow:0 6px 18px rgba(198,245,62,0.3)">{{ p.badge }}</span>
+            </sc-if>
+            <span style="margin-top:6px;font-size:17px;font-weight:800;letter-spacing:-0.02em">{{ p.name }}</span>
+            <span style="color:#c6f53e;font:700 12px/1 'IBM Plex Mono',monospace">{{ p.price }}</span>
+            <span style="margin:8px 0 4px;color:#a8aaa9;font-size:12px;line-height:1.55">{{ p.tagline }}</span>
+            <span style="display:grid;gap:6px;margin-top:8px;width:100%">
+              <sc-for list="{{ p.bullets }}" as="b" hint-placeholder-count="4">
+                <span style="display:block;position:relative;padding-left:16px;color:#c3c9c4;font-size:11px;line-height:1.5">
+                  <span style="position:absolute;left:0;top:7px;width:6px;height:6px;border-radius:50%;background:#c6f53e"></span>{{ b }}
+                </span>
+              </sc-for>
+            </span>
+            <sc-if value="{{ p.hasFoot }}" hint-placeholder-val="{{ false }}">
+              <span style="margin-top:12px;width:100%;padding:9px 10px;border-radius:10px;border:1px solid rgba(198,245,62,0.22);background:rgba(198,245,62,0.06);color:#c6f53e;font:700 10px/1.5 'IBM Plex Mono',monospace">{{ p.foot }}</span>
+            </sc-if>
+          </button>
+        </sc-for>
+      </div>
+
+      <button class="hd-continue" style="{{ continueStyle }}" style-active="transform:translateY(1px)">{{ continueLabel }}</button>
+      <p style="margin:0 auto;max-width:480px;color:#929693;font-size:12px;line-height:1.5;text-align:center">Bond and Bond + Site are free forever. Paid plans are billed in the currency shown — see the <span style="color:#c8ccca;text-decoration:underline;text-underline-offset:3px">terms</span> before you upgrade.</p>
+    </div>
+
+    <div style="position:relative;overflow:hidden;border:1px solid rgba(198,245,62,0.34);border-radius:26px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -20px rgba(0,0,0,0.75), 0 8px 24px -8px rgba(0,0,0,0.6)">
+      <div style="position:absolute;inset:0;background:radial-gradient(70% 120% at 100% 0%, rgba(198,245,62,0.13), transparent 62%);pointer-events:none"></div>
+      <div class="hd-bundle" style="position:relative;padding:30px 26px 32px">
+        <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+          <span style="align-self:flex-start;padding:5px 11px;border-radius:999px;background:#c6f53e;color:#071008;box-shadow:0 0 14px rgba(198,245,62,0.45);font:800 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase;box-shadow:0 6px 18px rgba(198,245,62,0.3)">Pro Bundle</span>
+          <h2 style="margin:0;font-size:clamp(24px,3.2vw,36px);font-weight:800;letter-spacing:-0.035em;line-height:1.06;text-wrap:balance">Run your whole portfolio. One dashboard. One payment.</h2>
+          <p style="margin:0;max-width:46ch;color:#a8aaa9;font-size:13.5px;line-height:1.6">Three tokens, all active, all growing — without tripling your workload. Built for the builders who don't stop at one.</p>
+          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:6px">
+            <span style="font-size:clamp(34px,4.6vw,50px);font-weight:800;letter-spacing:-0.045em;line-height:1;color:#c6f53e">{{ bundlePrice }}</span>
+            <span style="color:#a8aaa9;font:700 12px/1 'IBM Plex Mono',monospace">{{ bundlePeriod }}</span>
+          </div>
+          <span style="color:#929693;font:500 11.5px/1.5 'IBM Plex Mono',monospace">{{ bundleNote }}</span>
+          <button style="align-self:flex-start;min-height:58px;margin-top:8px;padding:0 30px;border:0;border-radius:999px;background:#c6f53e;color:#061006;font-size:16px;font-weight:900;cursor:pointer;box-shadow:0 16px 40px rgba(198,245,62,0.16)" style-active="transform:translateY(1px)">Get Pro Bundle</button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+          <div style="display:grid;gap:9px;padding:20px;border:1px solid rgba(255,255,255,0.08);border-radius:18px;background:linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018));box-shadow:0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7)">
+            <sc-for list="{{ bundleFeatures }}" as="f" hint-placeholder-count="7">
+              <span style="display:block;position:relative;padding-left:18px;color:#c3c9c4;font-size:12.5px;line-height:1.55">
+                <span style="position:absolute;left:0;top:7px;width:6px;height:6px;border-radius:50%;background:#c6f53e"></span>{{ f }}
+              </span>
+            </sc-for>
+          </div>
+          <span style="color:#c6f53e;font:700 12px/1.6 'IBM Plex Mono',monospace">Serious builders run more than one token. Now they don't need three times the effort.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hd-panels">
+      <sc-for list="{{ callouts }}" as="c" hint-placeholder-count="2">
+        <div style="display:flex;flex-direction:column;gap:12px;padding:28px 26px;border:1px solid rgba(255,255,255,0.09);border-radius:26px;background:linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -20px rgba(0,0,0,0.75), 0 8px 24px -8px rgba(0,0,0,0.6)">
+          <span style="align-self:flex-start;padding:5px 11px;border-radius:999px;border:1px solid rgba(198,245,62,0.4);background:rgba(198,245,62,0.06);color:#c6f53e;font:800 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase">{{ c.kicker }}</span>
+          <h3 style="margin:0;font-size:clamp(21px,2.4vw,27px);font-weight:800;letter-spacing:-0.03em;line-height:1.15;text-wrap:balance">{{ c.heading }}</h3>
+          <p style="margin:0;color:#a8aaa9;font-size:13.5px;line-height:1.65">{{ c.body }}</p>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <h2 style="margin:0 0 4px;font-size:clamp(23px,3vw,32px);font-weight:800;letter-spacing:-0.03em">Questions, answered</h2>
+      <sc-for list="{{ faqs }}" as="q" hint-placeholder-count="5">
+        <div style="{{ q.wrapStyle }}">
+          <button onClick="{{ q.toggle }}" style="display:flex;align-items:center;gap:14px;width:100%;padding:18px 20px;border:0;background:transparent;cursor:pointer;text-align:left;color:#f4f7f1">
+            <span style="flex:1;min-width:0;font-size:14.5px;font-weight:700;line-height:1.4">{{ q.q }}</span>
+            <span style="{{ q.iconStyle }}">+</span>
+          </button>
+          <sc-if value="{{ q.open }}" hint-placeholder-val="{{ false }}">
+            <p style="margin:0;padding:0 20px 20px;max-width:76ch;color:#a8aaa9;font-size:13.5px;line-height:1.65">{{ q.a }}</p>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:44px 26px;border:1px solid rgba(198,245,62,0.28);border-radius:26px;background:radial-gradient(80% 130% at 50% 0%, rgba(198,245,62,0.11), transparent 64%), linear-gradient(180deg, rgba(24,28,25,0.99) 0%, rgba(15,18,16,0.99) 34%, rgba(9,11,10,0.99) 100%);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -20px rgba(0,0,0,0.75), 0 8px 24px -8px rgba(0,0,0,0.6);text-align:center">
+      <h2 style="margin:0;max-width:26ch;font-size:clamp(23px,3.4vw,38px);font-weight:800;letter-spacing:-0.035em;line-height:1.06;text-wrap:balance">Start with Bond — it's free. Upgrade any time.</h2>
+      <a href="https://hoodlums.dev" style="min-height:58px;display:inline-flex;align-items:center;padding:0 32px;border-radius:999px;background:#c6f53e;color:#061006;font-size:16px;font-weight:900;box-shadow:0 16px 40px rgba(198,245,62,0.16)">Launch your token →</a>
+    </div>
+
+    <sc-if value="{{ showStateB }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:16px;padding-top:26px;border-top:1px dashed rgba(255,255,255,0.14)">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="padding:6px 11px;border-radius:999px;border:1px solid rgba(198,245,62,0.45);background:rgba(198,245,62,0.06);color:#c6f53e;font:800 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase">State B — Pro selected</span>
+          <span style="color:#929693;font:500 11px 'IBM Plex Mono',monospace">interaction reference · not part of the shipped page</span>
+        </div>
+        <div class="hd-cols">
+          <sc-for list="{{ plansProSelected }}" as="p" hint-placeholder-count="4">
+            <div style="{{ p.colStyle }}">
+              <sc-if value="{{ p.hasBadge }}" hint-placeholder-val="{{ false }}">
+                <span style="position:absolute;top:-11px;left:18px;padding:4px 10px;border-radius:999px;background:#c6f53e;color:#071008;box-shadow:0 0 14px rgba(198,245,62,0.45);font:800 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;text-transform:uppercase;box-shadow:0 6px 18px rgba(198,245,62,0.3)">{{ p.badge }}</span>
+              </sc-if>
+              <span style="margin-top:6px;font-size:17px;font-weight:800;letter-spacing:-0.02em">{{ p.name }}</span>
+              <span style="color:#c6f53e;font:700 12px/1 'IBM Plex Mono',monospace">{{ p.price }}</span>
+              <span style="margin:8px 0 4px;color:#a8aaa9;font-size:12px;line-height:1.55">{{ p.tagline }}</span>
+              <span style="display:grid;gap:6px;margin-top:8px;width:100%">
+                <sc-for list="{{ p.bullets }}" as="b" hint-placeholder-count="4">
+                  <span style="display:block;position:relative;padding-left:16px;color:#c3c9c4;font-size:11px;line-height:1.5">
+                    <span style="position:absolute;left:0;top:7px;width:6px;height:6px;border-radius:50%;background:#c6f53e"></span>{{ b }}
+                  </span>
+                </sc-for>
+              </span>
+              <sc-if value="{{ p.hasFoot }}" hint-placeholder-val="{{ false }}">
+                <span style="margin-top:12px;width:100%;padding:9px 10px;border-radius:10px;border:1px solid rgba(198,245,62,0.22);background:rgba(198,245,62,0.06);color:#c6f53e;font:700 10px/1.5 'IBM Plex Mono',monospace">{{ p.foot }}</span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+        <button class="hd-continue" style="min-height:58px;border:0;border-radius:999px;background:#c6f53e;color:#061006;font-size:16px;font-weight:900;cursor:pointer;box-shadow:0 16px 40px rgba(198,245,62,0.16)">Continue with Pro</button>
+      </div>
+    </sc-if>
+  </div>
+
+  <div class="hd-cta" style="position:fixed;left:0;right:0;bottom:0;z-index:30;align-items:center;gap:12px;padding:12px 14px 16px;background:linear-gradient(180deg,rgba(6,8,7,0) 0%,rgba(6,8,7,0.92) 30%,rgba(6,8,7,0.99) 100%);border-top:1px solid rgba(198,245,62,0.2);backdrop-filter:blur(12px)">
+    <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+      <span style="font-size:13px;font-weight:800;letter-spacing:-0.02em">Bond is free</span>
+      <span style="color:#929693;font:500 10px 'IBM Plex Mono',monospace">Upgrade any time</span>
+    </span>
+    <a href="https://hoodlums.dev" style="min-height:48px;display:inline-flex;align-items:center;padding:0 22px;border-radius:999px;background:#c6f53e;color:#061006;font-size:15px;font-weight:900">Launch your token →</a>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;selectedPlan&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;None&quot;,&quot;Bond&quot;,&quot;Bond + Site&quot;,&quot;Bond + Pro Site&quot;,&quot;Pro&quot;],&quot;default&quot;:&quot;None&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Plans&quot;},&quot;billing&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Monthly&quot;,&quot;3 months upfront&quot;],&quot;default&quot;:&quot;Monthly&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Plans&quot;},&quot;showStateB&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Review&quot;}}">
+const PLANS = [
+  {
+    id: 'bond', name: 'Bond', price: 'Free',
+    tagline: 'Simple token launch on-chain.',
+    bullets: ['Token launch on-chain', 'Bonding curve', 'Graduation → locked liquidity', 'Basic site at hoodlums.dev/slug']
+  },
+  {
+    id: 'bond-site', name: 'Bond + Site', price: 'Free', badge: 'Most popular', recommended: true,
+    tagline: 'Launch your token with a real website.',
+    bullets: ['Everything in Bond', 'AI-generated website design', 'Dexscreener chart', 'Holder stats']
+  },
+  {
+    id: 'bond-pro-site', name: 'Bond + Pro Site', price: '~$10 in ETH · one-off', badge: 'Recommended',
+    tagline: 'Your token. Your domain. Your brand.',
+    bullets: ['Everything in Bond + Site', '[token].hoodlums.dev — your own subdomain', 'Premium bespoke AI design built around your artwork and story', 'Export your site — full HTML, host it anywhere, own it forever', 'Dexscreener chart + holder stats']
+  },
+  {
+    id: 'pro', name: 'Pro', price: '$50/month · USDT · per token',
+    tagline: "Your token's marketing, on autopilot. Whatever chain you're on.",
+    foot: 'First of its kind. Quality over noise.',
+    bullets: ['Works for any token — yours or third-party', '5 posts/day · 2 AI images', 'Drop your style — paste posts you like, AI learns your voice instantly', 'Drop your mascot — upload your artwork, AI generates memes in your character', 'Telegram buy alerts — every purchase announced automatically', 'Holder analytics dashboard', '20% off when you pay 3 months upfront']
+  }
+];
+const BUNDLE_FEATURES = [
+  'Everything in Pro for each of your 3 tokens',
+  '15 posts/day · 6 AI images — allocate across your tokens however you like',
+  'Cross-token analytics — instantly see which project is gaining traction fastest',
+  'Drop your style and mascot for each token — three distinct voices, three distinct characters',
+  'One dashboard to manage it all',
+  'Priority support',
+  '20% off when you pay 3 months upfront ($288 instead of $360)'
+];
+const CALLOUTS = [
+  {
+    kicker: 'Drop your style', heading: 'AI that sounds like you, not a bot.',
+    body: 'Paste in tweets, posts, captions — from your own account or any project whose vibe you want. Doesn\'t matter where they\'re from. The AI reads them, learns the tone, and posts in that voice for your token. Not a generic crypto template. Your voice.'
+  },
+  {
+    kicker: 'Drop your mascot', heading: 'Memes your community will actually use.',
+    body: 'Upload your token artwork once. From that point, every AI-generated image features your actual character — memes, announcements, community posts — all in your mascot\'s style. Your community will recognise it instantly.'
+  }
+];
+const FAQS = [
+  { q: 'Does Pro work for tokens I didn\'t launch here?', a: 'Yes — connect any token by contract address. Pro is for any token on any supported chain.' },
+  { q: 'What does Drop Your Style mean?', a: 'You paste in example posts from anywhere. The AI reads them and learns how to write in that voice for your project.' },
+  { q: 'Can I start with Bond and upgrade later?', a: 'Yes — start free, upgrade any time from your account.' },
+  { q: 'How does the 3-month discount work?', a: 'Pay 3 months upfront and get 20% off. For Pro that\'s $120 instead of $150. For Pro Bundle that\'s $288 instead of $360.' },
+  { q: 'What\'s the difference between Pro and Pro Bundle?', a: 'Pro covers one token. Pro Bundle covers up to 3 tokens from one dashboard at a saving of $30/month.' }
+];
+
+class Component extends DCLogic {
+  state = { selected: null, billing: null, openFaq: 0 };
+
+  columns(selectedId, interactive) {
+    const upfront = (this.state.billing || (this.props.billing ?? 'Monthly')) === '3 months upfront';
+    const anySelected = !!selectedId;
+    return PLANS.map(p => {
+      const on = selectedId === p.id;
+      const dimmed = anySelected && !on;
+      const CARD = 'linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%)', CARD_SH = '0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7)';
+      let base = 'position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:22px 18px 24px;border-radius:18px;color:#f4f7f1;text-align:left;font-family:inherit;' +
+        (interactive ? 'cursor:pointer;' : '') +
+        'transition:border-color .16s ease, background .16s ease, opacity .16s ease, transform .16s ease, box-shadow .16s ease;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);';
+      if (on) {
+        base += 'border:1px solid #c6f53e;background:rgba(198,245,62,0.11);box-shadow:0 0 0 1px #c6f53e, 0 18px 48px rgba(198,245,62,0.18);transform:translateY(-2px);';
+      } else if (p.recommended) {
+        base += 'border:1px solid rgba(198,245,62,0.45);background:linear-gradient(180deg, rgba(198,245,62,0.13) 0%, rgba(198,245,62,0.045) 40%, rgba(198,245,62,0.02) 100%);box-shadow:0 1px 0 0 rgba(198,245,62,0.2) inset, 0 10px 26px -14px rgba(0,0,0,0.75);'
+      } else {
+        base += 'border:1px solid rgba(255,255,255,0.1);background:' + CARD + ';box-shadow:' + CARD_SH + ';';
+      }
+      if (dimmed) base += 'opacity:0.5;';
+      return {
+        name: p.name, tagline: p.tagline, bullets: p.bullets,
+        price: p.id === 'pro' && upfront ? '$120 / 3 months · USDT · per token' : p.price,
+        badge: p.badge || '', hasBadge: !!p.badge,
+        foot: p.foot || '', hasFoot: !!p.foot,
+        select: interactive ? () => this.setState(s => ({ selected: s.selected === p.id ? null : p.id })) : null,
+        colStyle: base
+      };
+    });
+  }
+
+  renderVals() {
+    const billing = this.state.billing || (this.props.billing ?? 'Monthly');
+    const upfront = billing === '3 months upfront';
+    const propMap = { 'None': null, 'Bond': 'bond', 'Bond + Site': 'bond-site', 'Bond + Pro Site': 'bond-pro-site', 'Pro': 'pro' };
+    const selected = this.state.selected !== null ? this.state.selected : propMap[this.props.selectedPlan ?? 'None'];
+    const selectedName = (PLANS.find(p => p.id === selected) || {}).name;
+
+    return {
+      billingOptions: ['Monthly', '3 months upfront'].map(b => ({
+        label: b === 'Monthly' ? 'Monthly' : '3 months · −20%',
+        apply: () => this.setState({ billing: b }),
+        style: 'min-height:34px;padding:0 14px;border-radius:999px;cursor:pointer;font:800 10px \'IBM Plex Mono\',monospace;letter-spacing:0.08em;text-transform:uppercase;border:1px solid ' +
+          (billing === b
+            ? 'rgba(198,245,62,0.5);background:linear-gradient(180deg, rgba(198,245,62,0.2), rgba(198,245,62,0.05));box-shadow:0 1px 0 0 rgba(198,245,62,0.22) inset, 0 6px 18px -8px rgba(198,245,62,0.5);text-shadow:0 0 12px rgba(198,245,62,0.4);color:#c6f53e'
+            : 'transparent;background:transparent;color:#929693')
+      })),
+
+      plans: this.columns(selected, true),
+      plansProSelected: this.columns('pro', false),
+      showStateB: this.props.showStateB ?? true,
+      continueLabel: selectedName ? 'Continue with ' + selectedName : 'Pick a plan to continue',
+      continueStyle: 'min-height:58px;border:0;border-radius:999px;font-size:16px;font-weight:900;' +
+        (selectedName
+          ? 'cursor:pointer;background:#c6f53e;color:#061006;box-shadow:0 16px 40px rgba(198,245,62,0.16)'
+          : 'cursor:not-allowed;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.09);color:#5f645e'),
+
+      bundlePrice: upfront ? '$288' : '$120',
+      bundlePeriod: upfront ? '/3 months · USD' : '/month · USD',
+      bundleNote: upfront ? 'Up to 3 tokens · saving $72 against monthly' : 'Up to 3 tokens · 20% off paid 3 months upfront',
+      bundleFeatures: BUNDLE_FEATURES,
+      callouts: CALLOUTS,
+
+      faqs: FAQS.map((f, i) => {
+        const open = this.state.openFaq === i;
+        return {
+          q: f.q, a: f.a, open: open,
+          toggle: () => this.setState(s => ({ openFaq: s.openFaq === i ? -1 : i })),
+          wrapStyle: 'border-radius:18px;overflow:hidden;transition:border-color .16s ease, background .16s ease;border:1px solid ' +
+            (open ? 'rgba(198,245,62,0.45)' : 'rgba(255,255,255,0.09)') +
+            ';background:' + (open ? 'linear-gradient(180deg, rgba(198,245,62,0.13), rgba(198,245,62,0.02))' : 'linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.012) 100%)') +
+            ';box-shadow:' + (open ? '0 1px 0 0 rgba(198,245,62,0.2) inset, 0 10px 26px -14px rgba(0,0,0,0.7)' : '0 1px 0 0 rgba(255,255,255,0.05) inset, 0 8px 20px -12px rgba(0,0,0,0.7)'),
+          iconStyle: 'flex:none;width:26px;height:26px;border-radius:999px;display:grid;place-items:center;font-size:15px;font-weight:800;transition:transform .18s ease;transform:rotate(' +
+            (open ? '45deg' : '0deg') + ');' + (open ? 'background:#c6f53e;color:#071008' : 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.09);color:#929693')
+        };
+      })
+    };
+  }
+}
+
+</script>
+</body>
+</html>

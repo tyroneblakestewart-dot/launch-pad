@@ -10,6 +10,7 @@ import {
   clampQueueTarget,
   computeDefaultScheduledAt,
   connectedPlatforms,
+  countPostsScheduledToday,
   describeWalletMismatch,
   isAwaitingSend,
   isHistoryStatus,
@@ -223,5 +224,33 @@ describe("describeWalletMismatch (issue #388)", () => {
     expect(message).toContain(truncateAccountAddress(OTHER));
     expect(message).toContain(truncateAccountAddress(CONFIRMED));
     expect(message).toContain("Switch accounts in your wallet app, or re-confirm your wallet from the Account panel.");
+  });
+});
+
+describe("countPostsScheduledToday", () => {
+  const now = new Date(2026, 8, 4, 14, 0, 0);
+
+  it("counts only the timestamps landing on the same local calendar day", () => {
+    const count = countPostsScheduledToday(
+      [
+        new Date(2026, 8, 4, 0, 0, 0).toISOString(),
+        new Date(2026, 8, 4, 23, 59, 0).toISOString(),
+        new Date(2026, 8, 3, 23, 59, 0).toISOString(),
+        new Date(2026, 8, 5, 0, 1, 0).toISOString(),
+      ],
+      now,
+    );
+    expect(count).toBe(2);
+  });
+
+  it("returns zero for an empty list and ignores unparseable timestamps rather than counting them", () => {
+    expect(countPostsScheduledToday([], now)).toBe(0);
+    expect(countPostsScheduledToday(["", "not a date", "2026-13-45T99:99:99Z"], now)).toBe(0);
+  });
+
+  it("never exceeds the list length, so the pill can only ever read n of the cadence ceiling", () => {
+    const sameDay = new Date(2026, 8, 4, 9, 0, 0).toISOString();
+    expect(countPostsScheduledToday([sameDay, sameDay, sameDay], now)).toBe(3);
+    expect(countPostsScheduledToday([sameDay], now)).toBeLessThanOrEqual(cadenceQueueTarget("active"));
   });
 });

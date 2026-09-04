@@ -116,6 +116,28 @@ export function cadenceQueueTarget(cadence: PostingCadence): number {
   return POSTING_CADENCE_OPTIONS.find((option) => option.id === cadence)?.postsPerDayMax ?? DEFAULT_QUEUE_TARGET;
 }
 
+/**
+ * How many of `scheduledAtIso` fall on the same local calendar day as
+ * `now` — the numerator of the design's "TODAY 3/5 posts" pill. Local, not
+ * UTC, because the number describes the user's own day; an unparseable
+ * timestamp is ignored rather than counted.
+ */
+export function countPostsScheduledToday(scheduledAtIso: readonly string[], now: Date): number {
+  let count = 0;
+  for (const iso of scheduledAtIso) {
+    const at = new Date(iso);
+    if (Number.isNaN(at.getTime())) continue;
+    if (
+      at.getFullYear() === now.getFullYear() &&
+      at.getMonth() === now.getMonth() &&
+      at.getDate() === now.getDate()
+    ) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 /** Default schedule-time spread for a cadence: waking hours divided evenly across its daily posting ceiling, so approvals fan out across the day instead of clustering at "now". */
 export function cadenceSpreadHoursMs(cadence: PostingCadence): number {
   return Math.round(WAKING_HOURS_MS / cadenceQueueTarget(cadence));

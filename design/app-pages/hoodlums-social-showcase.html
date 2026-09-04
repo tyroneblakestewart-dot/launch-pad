@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0a0b09; -webkit-font-smoothing: antialiased; }
+  a { color: #c6f53e; text-decoration: none; }
+  a:hover { color: #d8ff6a; }
+  .hs-slide { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+  .hs-wrap { padding: 96px 34px 40px; }
+  @media (max-width: 900px) {
+    .hs-slide { grid-template-columns: 1fr; gap: 28px; }
+    .hs-wrap { padding: 56px 18px 32px; }
+  }
+</style>
+<meta name="ext-resource-dependency" content="assets/scene-trading.png">
+<meta name="ext-resource-dependency" content="assets/scene-beach.png">
+<meta name="ext-resource-dependency" content="assets/scene-space.png">
+<meta name="ext-resource-dependency" content="assets/scene-celebrating.png">
+<template id="__bundler_thumbnail" data-bg-color="#0a0b09"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#0a0b09"></rect><rect x="26" y="28" width="48" height="34" rx="7" fill="#c6f53e"></rect><circle cx="38" cy="72" r="4" fill="#c6f53e"></circle><circle cx="50" cy="72" r="4" fill="#3d4a2c"></circle><circle cx="62" cy="72" r="4" fill="#3d4a2c"></circle></svg></template>
+</helmet>
+
+<div style="background:#0a0b09;background-image:radial-gradient(circle at 78% 8%, rgba(198,245,62,0.12), transparent 30rem), radial-gradient(circle at 10% 78%, rgba(198,245,62,0.06), transparent 28rem);color:#f4f7f1;font-family:Inter,system-ui,sans-serif">
+<div class="hs-wrap" style="max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:34px">
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:12px;max-width:44ch">
+      <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#c6f53e">Hoodlums Pro</span>
+      <h2 style="margin:0;font:400 clamp(28px, 4.4vw, 44px) 'Archivo Black',Inter,sans-serif;letter-spacing:-0.02em;line-height:1.05">Your token's marketing, running while you sleep.</h2>
+    </div>
+    <div style="display:flex;gap:4px;padding:4px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset">
+      <sc-for list="{{ views }}" as="v" hint-placeholder-count="2">
+        <button onClick="{{ v.apply }}" style="{{ v.style }}">{{ v.label }}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <div class="hs-slide" style="{{ desktopStyle }}">
+    <div style="position:relative;min-height:420px;display:grid;place-items:center">
+
+      <sc-if value="{{ isOne }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;justify-content:center">
+          <div style="width:330px;border:1px solid rgba(255,255,255,0.09);border-radius:26px;background:rgba(18,21,19,0.99);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -22px rgba(0,0,0,0.8);overflow:hidden">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.07)">
+              <span style="display:inline-flex;align-items:center;gap:8px;font:600 11px 'IBM Plex Mono',monospace;color:#8d918c">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="#f4f7f1"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
+                9:00 AM
+              </span>
+              <span style="font:600 11px 'IBM Plex Mono',monospace;color:#8d918c">▪▪▪</span>
+            </div>
+            <div style="padding:16px;display:flex;flex-direction:column;gap:13px">
+              <div style="display:flex;align-items:center;gap:11px">
+                <img src="assets/hoodlums-mascot.png" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;object-position:52% 26%;border:1px solid rgba(198,245,62,0.35)">
+                <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                  <span style="font:800 13.5px Inter,sans-serif">Alley Cat</span>
+                  <span style="font-size:12px;color:#8d918c">@alleycat_eth</span>
+                </div>
+              </div>
+              <p style="margin:0;font-size:14px;line-height:1.55;color:#f4f7f1;text-wrap:pretty">woke up, checked the chart, went back to sleep. 340 of you did not. respect. $ALLEY</p>
+              <img src="assets/hoodlums-mascot.png" alt="" style="width:100%;height:186px;object-fit:cover;object-position:50% 34%;border-radius:16px;border:1px solid rgba(255,255,255,0.09)">
+              <div style="display:flex;align-items:center;gap:22px;font:600 12px 'IBM Plex Mono',monospace;color:#8d918c">
+                <span>♡ 214</span><span>↻ 63</span><span>💬 28</span>
+              </div>
+            </div>
+          </div>
+          <span style="display:inline-flex;align-items:center;gap:9px;margin-top:26px;padding:10px 15px;border-radius:999px;border:1px solid rgba(198,245,62,0.34);background:linear-gradient(180deg, rgba(198,245,62,0.15), rgba(198,245,62,0.04));box-shadow:0 1px 0 0 rgba(198,245,62,0.2) inset;font:700 10.5px/1.4 'IBM Plex Mono',monospace;letter-spacing:0.06em;color:#c6f53e;max-width:190px">
+            <span style="width:7px;height:7px;flex:none;border-radius:50%;background:#c6f53e;box-shadow:0 0 12px #c6f53e"></span>
+            Generated by your AI · 9:00 AM while you slept
+          </span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isTwo }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;width:100%;max-width:460px">
+            <div style="position:relative;aspect-ratio:1;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.09);box-shadow:0 1px 0 0 rgba(255,255,255,0.06) inset, 0 22px 50px -26px rgba(0,0,0,0.85)">
+              <img src="assets/scene-trading.png" alt="Trading desk" style="width:100%;height:100%;object-fit:cover;display:block">
+              <span style="position:absolute;inset:0;background:linear-gradient(180deg, transparent 58%, rgba(4,8,5,0.45));pointer-events:none"></span>
+              <span style="position:absolute;left:12px;bottom:12px;padding:6px 11px;border-radius:999px;background:rgba(4,8,5,0.74);backdrop-filter:blur(8px);border:1px solid rgba(198,245,62,0.28);font:700 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.09em;text-transform:uppercase;color:#c6f53e">Trading desk</span>
+            </div>
+            <div style="position:relative;aspect-ratio:1;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.09);box-shadow:0 1px 0 0 rgba(255,255,255,0.06) inset, 0 22px 50px -26px rgba(0,0,0,0.85)">
+              <img src="assets/scene-beach.png" alt="Beach" style="width:100%;height:100%;object-fit:cover;display:block">
+              <span style="position:absolute;inset:0;background:linear-gradient(180deg, transparent 58%, rgba(4,8,5,0.45));pointer-events:none"></span>
+              <span style="position:absolute;left:12px;bottom:12px;padding:6px 11px;border-radius:999px;background:rgba(4,8,5,0.74);backdrop-filter:blur(8px);border:1px solid rgba(198,245,62,0.28);font:700 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.09em;text-transform:uppercase;color:#c6f53e">Beach</span>
+            </div>
+            <div style="position:relative;aspect-ratio:1;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.09);box-shadow:0 1px 0 0 rgba(255,255,255,0.06) inset, 0 22px 50px -26px rgba(0,0,0,0.85)">
+              <img src="assets/scene-space.png" alt="Space" style="width:100%;height:100%;object-fit:cover;display:block">
+              <span style="position:absolute;inset:0;background:linear-gradient(180deg, transparent 58%, rgba(4,8,5,0.45));pointer-events:none"></span>
+              <span style="position:absolute;left:12px;bottom:12px;padding:6px 11px;border-radius:999px;background:rgba(4,8,5,0.74);backdrop-filter:blur(8px);border:1px solid rgba(198,245,62,0.28);font:700 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.09em;text-transform:uppercase;color:#c6f53e">Space</span>
+            </div>
+            <div style="position:relative;aspect-ratio:1;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.09);box-shadow:0 1px 0 0 rgba(255,255,255,0.06) inset, 0 22px 50px -26px rgba(0,0,0,0.85)">
+              <img src="assets/scene-celebrating.png" alt="Celebrating" style="width:100%;height:100%;object-fit:cover;display:block">
+              <span style="position:absolute;inset:0;background:linear-gradient(180deg, transparent 58%, rgba(4,8,5,0.45));pointer-events:none"></span>
+              <span style="position:absolute;left:12px;bottom:12px;padding:6px 11px;border-radius:999px;background:rgba(4,8,5,0.74);backdrop-filter:blur(8px);border:1px solid rgba(198,245,62,0.28);font:700 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.09em;text-transform:uppercase;color:#c6f53e">Celebrating</span>
+            </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isThree }}" hint-placeholder-val="{{ false }}">
+        <div style="width:100%;max-width:440px;border:1px solid rgba(255,255,255,0.09);border-radius:26px;background:rgba(18,21,19,0.99);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -22px rgba(0,0,0,0.8);padding:18px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div style="display:flex;gap:3px;padding:3px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset">
+              <span style="display:flex;align-items:center;height:30px;padding:0 13px;border-radius:999px;color:#8d918c;font:700 10.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em">AUTOPILOT</span>
+              <span style="display:flex;align-items:center;height:30px;padding:0 13px;border-radius:999px;background:linear-gradient(180deg, rgba(198,245,62,0.2), rgba(198,245,62,0.05));box-shadow:0 1px 0 0 rgba(198,245,62,0.22) inset;color:#c6f53e;font:800 10.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em">APPROVE FIRST</span>
+            </div>
+            <span style="display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;font:700 10.5px/1 'IBM Plex Mono',monospace;color:#c3c9c4"><span style="color:#c6f53e">3/5</span> posts · <span style="color:#c6f53e">1/2</span> AI images</span>
+          </div>
+          <sc-for list="{{ pending }}" as="p" hint-placeholder-count="2">
+            <div style="border:1px solid rgba(198,245,62,0.3);border-radius:18px;background:linear-gradient(180deg, rgba(198,245,62,0.1) 0%, rgba(198,245,62,0.03) 40%, rgba(255,255,255,0.012) 100%);box-shadow:0 1px 0 0 rgba(198,245,62,0.18) inset;padding:14px;display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;color:#c6f53e">{{ p.when }}</span>
+                <span style="width:1px;height:10px;background:rgba(255,255,255,0.16)"></span>
+                <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;color:#8d918c">{{ p.dest }}</span>
+              </div>
+              <p style="margin:0;font-size:13px;line-height:1.55;color:#f4f7f1;text-wrap:pretty">{{ p.text }}</p>
+              <div style="display:flex;gap:8px">
+                <span style="display:flex;align-items:center;height:34px;padding:0 17px;border-radius:999px;background:#c6f53e;color:#071008;font:800 12px Inter,sans-serif">Approve</span>
+                <span style="display:flex;align-items:center;height:34px;padding:0 15px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));color:#c3c9c4;font:700 12px Inter,sans-serif">Edit</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isFour }}" hint-placeholder-val="{{ false }}">
+        <div style="width:100%;max-width:620px;border:1px solid rgba(255,255,255,0.09);border-radius:22px;overflow:hidden;background:rgba(18,21,19,0.99);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -22px rgba(0,0,0,0.8)">
+          <div style="display:flex;align-items:center;gap:9px;padding:10px 14px;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.012));border-bottom:1px solid rgba(255,255,255,0.07)">
+            <span style="width:10px;height:10px;border-radius:50%;background:#3a4038"></span>
+            <span style="width:10px;height:10px;border-radius:50%;background:#3a4038"></span>
+            <span style="width:10px;height:10px;border-radius:50%;background:#3a4038"></span>
+            <span style="margin-left:8px;flex:1;display:flex;align-items:center;height:26px;padding:0 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.07);background:rgba(0,0,0,0.35);font:600 10px/1 'IBM Plex Mono',monospace;color:#8d918c">hoodlums.dev/social/setup</span>
+          </div>
+          <img src="assets/studio-setup.png" alt="The Hoodlums Social setup page" style="width:100%;height:auto;display:block">
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isFive }}" hint-placeholder-val="{{ false }}">
+        <div style="width:100%;max-width:560px;border:1px solid rgba(255,255,255,0.09);border-radius:22px;overflow:hidden;background:rgba(18,21,19,0.99);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -22px rgba(0,0,0,0.8)">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-bottom:1px solid rgba(255,255,255,0.07)">
+            <span style="font:400 14px 'Archivo Black',Inter,sans-serif">August 2026</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:rgba(0,0,0,0.35);font:700 9px/1 'IBM Plex Mono',monospace;color:#c3c9c4">LONDON (GMT+1)</span>
+          </div>
+          <div style="padding:14px;display:grid;grid-template-columns:1.5fr 1fr;gap:12px;align-items:start">
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+              <sc-for list="{{ calDays }}" as="c" hint-placeholder-count="42">
+                <span style="{{ c.style }}">{{ c.num }}<span style="{{ c.dotStyle }}"></span></span>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font:700 8.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.13em;text-transform:uppercase;color:#8d918c">Add to 14 August</span>
+              <div style="border:1px solid rgba(198,245,62,0.4);border-radius:12px;background:linear-gradient(180deg, rgba(198,245,62,0.16), rgba(198,245,62,0.03));box-shadow:0 1px 0 0 rgba(198,245,62,0.22) inset;padding:11px;display:flex;flex-direction:column;gap:4px">
+                <span style="font:800 11.5px Inter,sans-serif;color:#c6f53e">AI makes it</span>
+                <span style="font-size:10px;line-height:1.45;color:#c3c9c4">Describe the idea — we write it and draw it.</span>
+              </div>
+              <div style="border:1px solid rgba(255,255,255,0.09);border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));padding:11px;display:flex;flex-direction:column;gap:4px">
+                <span style="font:800 11.5px Inter,sans-serif">I'll post my own</span>
+                <span style="font-size:10px;line-height:1.45;color:#a8aaa9">Write it yourself, we publish on time.</span>
+              </div>
+              <div style="display:flex;gap:6px;padding-top:2px">
+                <span style="display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:0 11px;border-radius:999px;border:1px solid rgba(198,245,62,0.45);background:rgba(198,245,62,0.1);font:700 10px Inter,sans-serif;color:#c6f53e"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>X</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:0 11px;border-radius:999px;border:1px solid rgba(198,245,62,0.45);background:rgba(198,245,62,0.1);font:700 10px Inter,sans-serif;color:#c6f53e"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M21.94 4.3 18.9 19.1c-.23 1.02-.84 1.27-1.7.79l-4.7-3.46-2.27 2.18c-.25.25-.46.46-.94.46l.33-4.78 8.7-7.86c.38-.34-.08-.53-.59-.19l-10.75 6.77-4.63-1.45c-1.01-.31-1.03-1 .21-1.49l18.1-6.98c.84-.3 1.57.2 1.28 1.21z"></path></svg>Telegram</span>
+              </div>
+              <span style="font-size:9.5px;line-height:1.45;color:#8d918c">Never post between 23:00 and 07:00.</span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:22px">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#8d918c">{{ stepLabel }}</span>
+        <h3 style="margin:0;font:400 clamp(24px, 3.4vw, 34px) 'Archivo Black',Inter,sans-serif;letter-spacing:-0.015em;line-height:1.1">{{ title }}</h3>
+        <p style="margin:0;max-width:40ch;font-size:16px;line-height:1.6;color:#c3c9c4;text-wrap:pretty">{{ body }}</p>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+        <button style="background:#c6f53e;color:#071008;border:0;border-radius:999px;font:800 14px Inter,sans-serif;padding:16px 28px;cursor:pointer;box-shadow:0 18px 44px -20px rgba(198,245,62,0.7)">Get started with Pro — $50/month</button>
+        <div style="display:flex;align-items:center;gap:9px">
+          <sc-for list="{{ dots }}" as="d" hint-placeholder-count="5">
+            <button onClick="{{ d.apply }}" style="{{ d.style }}"></button>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="{{ mobileStyle }}">
+    <span style="font:700 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8d918c">Mobile · 390px</span>
+    <div style="width:390px;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.09);border-radius:26px;background:#030805;box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(0,0,0,0.5), 0 40px 90px -20px rgba(0,0,0,0.75);display:flex;flex-direction:column">
+      <div style="flex:1;padding:22px 16px calc(96px + 16px);display:flex;flex-direction:column;gap:18px;background-image:radial-gradient(circle at 80% 0%, rgba(198,245,62,0.12), transparent 18rem)">
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <span style="font:700 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.16em;text-transform:uppercase;color:#c6f53e">Hoodlums Pro</span>
+          <h3 style="margin:0;font:400 24px 'Archivo Black',Inter,sans-serif;letter-spacing:-0.02em;line-height:1.08">{{ title }}</h3>
+        </div>
+        <sc-if value="{{ isOne }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="border:1px solid rgba(255,255,255,0.09);border-radius:22px;background:rgba(18,21,19,0.99);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset, 0 24px 54px -26px rgba(0,0,0,0.85);padding:15px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <img src="assets/hoodlums-mascot.png" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover;object-position:52% 26%;border:1px solid rgba(198,245,62,0.35)">
+                <div style="display:flex;flex-direction:column;gap:2px"><span style="font:800 12.5px Inter,sans-serif">Alley Cat</span><span style="font-size:11px;color:#8d918c">@alleycat_eth</span></div>
+              </div>
+              <p style="margin:0;font-size:13px;line-height:1.55">woke up, checked the chart, went back to sleep. 340 of you did not. respect. $ALLEY</p>
+              <img src="assets/hoodlums-mascot.png" alt="" style="width:100%;height:150px;object-fit:cover;object-position:50% 34%;border-radius:14px;border:1px solid rgba(255,255,255,0.09)">
+            </div>
+            <span style="display:inline-flex;align-items:center;gap:8px;align-self:flex-start;padding:9px 13px;border-radius:999px;border:1px solid rgba(198,245,62,0.34);background:linear-gradient(180deg, rgba(198,245,62,0.15), rgba(198,245,62,0.04));font:700 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.06em;color:#c6f53e"><span style="width:6px;height:6px;border-radius:50%;background:#c6f53e;box-shadow:0 0 10px #c6f53e"></span>Generated by your AI · 9:00 AM</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isTwo }}" hint-placeholder-val="{{ false }}">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+              <div style="position:relative;aspect-ratio:1;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,0.09);box-shadow:0 1px 0 0 rgba(255,255,255,0.06) inset, 0 22px 50px -26px rgba(0,0,0,0.85)">
+                <img src="assets/scene-trading.png" alt="Trading desk" style="width:100%;height:100%;object-fit:cover;display:block">
+                <span style="position:absolute;inset:0;background:linear-gradient(180deg, transparent 58%, rgba(4,8,5,0.45));pointer-events:none"></span>
+                <span style="position:absolute;left:10px;bottom:10px;padding:5px 9px;border-radius:999px;background:rgba(4,8,5,0.74);backdrop-filter:blur(8px);border:1px solid rgba(198,245,62,0.28);font:700 8.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.09em;text-transform:uppercase;color:#c6f53e">Trading desk</span>
+              </div>
+              <div style="position:relative;aspect-ratio:1;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,0.09);box-shadow:0 1px 0 0 rgba(255,255,255,0.06) inset, 0 22px 50px -26px rgba(0,0,0,0.85)">
+                <img src="assets/scene-beach.png" alt="Beach" style="width:100%;height:100%;object-fit:cover;display:block">
+                <span style="position:absolute;inset:0;background:linear-gradient(180deg, transparent 58%, rgba(4,8,5,0.45));pointer-events:none"></span>
+                <span style="position:absolute;left:10px;bottom:10px;padding:5px 9px;border-radius:999px;background:rgba(4,8,5,0.74);backdrop-filter:blur(8px);border:1px solid rgba(198,245,62,0.28);font:700 8.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.09em;text-transform:uppercase;color:#c6f53e">Beach</span>
+              </div>
+              <div style="position:relative;aspect-ratio:1;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,0.09);box-shadow:0 1px 0 0 rgba(255,255,255,0.06) inset, 0 22px 50px -26px rgba(0,0,0,0.85)">
+                <img src="assets/scene-space.png" alt="Space" style="width:100%;height:100%;object-fit:cover;display:block">
+                <span style="position:absolute;inset:0;background:linear-gradient(180deg, transparent 58%, rgba(4,8,5,0.45));pointer-events:none"></span>
+                <span style="position:absolute;left:10px;bottom:10px;padding:5px 9px;border-radius:999px;background:rgba(4,8,5,0.74);backdrop-filter:blur(8px);border:1px solid rgba(198,245,62,0.28);font:700 8.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.09em;text-transform:uppercase;color:#c6f53e">Space</span>
+              </div>
+              <div style="position:relative;aspect-ratio:1;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,0.09);box-shadow:0 1px 0 0 rgba(255,255,255,0.06) inset, 0 22px 50px -26px rgba(0,0,0,0.85)">
+                <img src="assets/scene-celebrating.png" alt="Celebrating" style="width:100%;height:100%;object-fit:cover;display:block">
+                <span style="position:absolute;inset:0;background:linear-gradient(180deg, transparent 58%, rgba(4,8,5,0.45));pointer-events:none"></span>
+                <span style="position:absolute;left:10px;bottom:10px;padding:5px 9px;border-radius:999px;background:rgba(4,8,5,0.74);backdrop-filter:blur(8px);border:1px solid rgba(198,245,62,0.28);font:700 8.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.09em;text-transform:uppercase;color:#c6f53e">Celebrating</span>
+              </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isFour }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(255,255,255,0.09);border-radius:18px;overflow:hidden;background:rgba(18,21,19,0.99);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset">
+            <div style="display:flex;gap:2px;padding:6px 10px 0;background:linear-gradient(180deg, rgba(198,245,62,0.045), transparent);border-bottom:1px solid rgba(255,255,255,0.07)">
+              <sc-for list="{{ studioTabs }}" as="t" hint-placeholder-count="4">
+                <span style="{{ t.style }}">{{ t.label }}</span>
+              </sc-for>
+            </div>
+            <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;gap:8px">
+                <span style="flex:1;display:inline-flex;align-items:center;gap:7px;padding:9px 11px;border-radius:11px;border:1px solid rgba(255,255,255,0.09);background:rgba(255,255,255,0.04);font:700 10.5px Inter,sans-serif"><span style="width:22px;height:22px;border-radius:7px;display:grid;place-items:center;background:#000;border:1px solid rgba(255,255,255,0.12)"><svg width="10" height="10" viewBox="0 0 24 24" fill="#fff"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg></span>X<span style="margin-left:auto;width:6px;height:6px;border-radius:50%;background:#c6f53e;box-shadow:0 0 10px #c6f53e"></span></span>
+                <span style="flex:1;display:inline-flex;align-items:center;gap:7px;padding:9px 11px;border-radius:11px;border:1px solid rgba(255,255,255,0.09);background:rgba(255,255,255,0.04);font:700 10.5px Inter,sans-serif"><span style="width:22px;height:22px;border-radius:7px;display:grid;place-items:center;background:#229ED9"><svg width="11" height="11" viewBox="0 0 24 24" fill="#fff"><path d="M21.94 4.3 18.9 19.1c-.23 1.02-.84 1.27-1.7.79l-4.7-3.46-2.27 2.18c-.25.25-.46.46-.94.46l.33-4.78 8.7-7.86c.38-.34-.08-.53-.59-.19l-10.75 6.77-4.63-1.45c-1.01-.31-1.03-1 .21-1.49l18.1-6.98c.84-.3 1.57.2 1.28 1.21z"></path></svg></span>TG<span style="margin-left:auto;width:6px;height:6px;border-radius:50%;background:#c6f53e;box-shadow:0 0 10px #c6f53e"></span></span>
+              </div>
+              <div style="height:7px;border-radius:999px;background:rgba(0,0,0,0.4);box-shadow:0 2px 5px 0 rgba(0,0,0,0.5) inset;overflow:hidden"><div style="width:85%;height:100%;border-radius:999px;background:linear-gradient(90deg,#8fce2a,#c6f53e)"></div></div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <img src="assets/hoodlums-mascot.png" alt="" style="width:52px;height:52px;border-radius:12px;object-fit:cover;object-position:52% 30%;border:1px solid rgba(198,245,62,0.3)">
+                <span style="font-size:11px;line-height:1.5;color:#c3c9c4">Voice 17/20 · mascot set · 4 scenes picked</span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isFive }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(255,255,255,0.09);border-radius:18px;background:rgba(18,21,19,0.99);box-shadow:0 1px 0 0 rgba(255,255,255,0.07) inset;padding:12px;display:flex;flex-direction:column;gap:10px">
+            <span style="font:400 13px 'Archivo Black',Inter,sans-serif">August 2026</span>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+              <sc-for list="{{ calDays }}" as="c" hint-placeholder-count="42">
+                <span style="{{ c.style }}">{{ c.num }}<span style="{{ c.dotStyle }}"></span></span>
+              </sc-for>
+            </div>
+            <div style="border:1px solid rgba(198,245,62,0.4);border-radius:12px;background:linear-gradient(180deg, rgba(198,245,62,0.16), rgba(198,245,62,0.03));padding:11px;display:flex;flex-direction:column;gap:4px">
+              <span style="font:800 11.5px Inter,sans-serif;color:#c6f53e">AI makes it</span>
+              <span style="font-size:10px;line-height:1.45;color:#c3c9c4">14 August · posts to X + Telegram</span>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isThree }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:11px">
+            <span style="display:inline-flex;align-self:flex-start;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(255,255,255,0.02));box-shadow:0 2px 6px 0 rgba(0,0,0,0.5) inset;font:700 10px/1 'IBM Plex Mono',monospace;color:#c3c9c4"><span style="color:#c6f53e">3/5</span> posts · <span style="color:#c6f53e">1/2</span> AI images</span>
+            <sc-for list="{{ pending }}" as="p" hint-placeholder-count="2">
+              <div style="border:1px solid rgba(198,245,62,0.3);border-radius:16px;background:linear-gradient(180deg, rgba(198,245,62,0.1), rgba(255,255,255,0.012));box-shadow:0 1px 0 0 rgba(198,245,62,0.18) inset;padding:13px;display:flex;flex-direction:column;gap:9px">
+                <span style="font:700 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.08em;color:#c6f53e">{{ p.when }}</span>
+                <p style="margin:0;font-size:12.5px;line-height:1.55;color:#f4f7f1">{{ p.text }}</p>
+                <div style="display:flex;gap:7px">
+                  <span style="display:flex;align-items:center;height:32px;padding:0 15px;border-radius:999px;background:#c6f53e;color:#071008;font:800 11.5px Inter,sans-serif">Approve</span>
+                  <span style="display:flex;align-items:center;height:32px;padding:0 13px;border-radius:999px;border:1px solid rgba(255,255,255,0.09);background:linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));color:#c3c9c4;font:700 11.5px Inter,sans-serif">Edit</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#c3c9c4">{{ body }}</p>
+        <button style="background:#c6f53e;color:#071008;border:0;border-radius:999px;font:800 13.5px Inter,sans-serif;padding:15px;cursor:pointer;width:100%">Get started with Pro — $50/month</button>
+        <div style="display:flex;align-items:center;justify-content:center;gap:9px">
+          <sc-for list="{{ dots }}" as="d" hint-placeholder-count="5">
+            <button onClick="{{ d.apply }}" style="{{ d.style }}"></button>
+          </sc-for>
+        </div>
+      </div>
+      <div style="position:absolute;left:50%;transform:translateX(-50%);bottom:16px;z-index:1000;width:calc(100% - 32px);max-width:430px;height:62px;padding:7px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.13);background:rgba(4,8,5,0.58);backdrop-filter:blur(20px) saturate(145%);box-shadow:0 12px 34px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.05);display:grid;grid-template-columns:repeat(5,1fr);align-items:center;justify-items:center">
+        <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;border:1px solid rgba(198,245,62,0.34);background:rgba(198,245,62,0.14);box-shadow:0 0 18px rgba(198,245,62,0.08), inset 0 1px 0 rgba(255,255,255,0.05);color:#c6f53e"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"></path></svg></span>
+        <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;color:rgba(239,244,236,0.72)"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M9.5 19V5M15 19v-7M20.5 19v-4"></path></svg></span>
+        <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;color:rgba(239,244,236,0.72)"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg></span>
+        <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;color:rgba(239,244,236,0.72)"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-5 4z"></path></svg></span>
+        <span style="width:46px;height:46px;border-radius:999px;display:grid;place-items:center;color:rgba(239,244,236,0.72)"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11.2a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2ZM5 20c0-3.3 3.1-5.6 7-5.6s7 2.3 7 5.6"></path></svg></span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:22px;flex-wrap:wrap;padding:54px 0 8px;color:#6f746e;font:600 12px 'IBM Plex Mono',monospace">
+    <span>© 2026 Hoodlums</span>
+    <span style="display:flex;gap:20px"><a href="#">Plans</a><a href="#">Docs</a><a href="#">X</a><a href="#">Telegram</a></span>
+  </div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240},&quot;autoAdvanceSeconds&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:6,&quot;min&quot;:3,&quot;max&quot;:15,&quot;unit&quot;:&quot;s&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Behaviour&quot;},&quot;showMobileFrame&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behaviour&quot;},&quot;ctaLabel&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Get started with Pro — $50/month&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Copy&quot;}}">
+const SLIDES = [
+  {
+    step: 'Step 01',
+    title: 'Your voice, on autopilot',
+    body: 'Drop 20 example posts. It learns how you talk. Then it posts like you — 5 times a day, every day.'
+  },
+  {
+    step: 'Step 02',
+    title: 'Your mascot, everywhere',
+    body: 'Upload your mascot once. Get original artwork with every post — always your character, never anyone else\u2019s.'
+  },
+  {
+    step: 'Step 03',
+    title: 'You stay in control',
+    body: 'Approve every post before it goes out, or flip to full autopilot. Your rules, your banned words, your schedule.'
+  },
+  {
+    step: 'Step 04',
+    title: 'The whole studio, one screen',
+    body: 'Setup, calendar, queue and rules — four tabs, everything scoped to the token you pick. Your quota and holder count sit in view the whole time.'
+  },
+  {
+    step: 'Step 05',
+    title: 'Plan a month in minutes',
+    body: 'Tap any day, choose who writes it, pick where it lands. Quiet hours and time zone are set once and respected forever.'
+  }
+];
+
+const SCENES = [
+  { label: 'Trading desk', src: 'assets/scene-trading.png' },
+  { label: 'Beach', src: 'assets/scene-beach.png' },
+  { label: 'Space', src: 'assets/scene-space.png' },
+  { label: 'Celebrating', src: 'assets/scene-celebrating.png' }
+];
+
+class Component extends DCLogic {
+  state = { i: 0, view: 'desktop' };
+
+  componentDidMount() {
+    this.timer = setInterval(() => this.setState(s => ({ i: (s.i + 1) % SLIDES.length })), 6000);
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+
+  go(i) {
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.setState(s => ({ i: (s.i + 1) % SLIDES.length })), 6000);
+    this.setState({ i });
+  }
+
+  renderVals() {
+    const i = this.state.i, s = SLIDES[i];
+    const mobile = this.state.view === 'mobile';
+    return {
+      views: [['desktop', 'Desktop'], ['mobile', 'Mobile']].map(([id, label]) => ({
+        label, apply: () => this.setState({ view: id }),
+        style: 'min-height:34px;padding:0 16px;border-radius:999px;cursor:pointer;font:800 10.5px/1 \'IBM Plex Mono\',monospace;letter-spacing:0.1em;text-transform:uppercase;border:1px solid ' +
+          (this.state.view === id
+            ? 'rgba(198,245,62,0.5);background:linear-gradient(180deg, rgba(198,245,62,0.2), rgba(198,245,62,0.05));box-shadow:0 1px 0 0 rgba(198,245,62,0.22) inset, 0 6px 18px -8px rgba(198,245,62,0.5);text-shadow:0 0 12px rgba(198,245,62,0.4);color:#c6f53e'
+            : 'transparent;background:transparent;color:#8d918c')
+      })),
+      desktopStyle: mobile ? 'display:none' : '',
+      mobileStyle: mobile
+        ? 'display:flex;flex-direction:column;align-items:center;gap:16px;padding-top:6px'
+        : 'display:none',
+      stepLabel: s.step, title: s.title, body: s.body,
+      isOne: i === 0, isTwo: i === 1, isThree: i === 2, isFour: i === 3, isFive: i === 4,
+      studioTabs: ['Setup', 'Calendar', 'Queue', 'Rules'].map((label, n) => ({
+        label,
+        style: 'display:flex;align-items:center;height:32px;padding:0 13px;border-radius:9px 9px 0 0;font:800 10.5px/1 Inter,sans-serif;border:0;background:' +
+          (n === 0 ? 'linear-gradient(180deg, rgba(198,245,62,0.2), rgba(198,245,62,0.05));box-shadow:0 1px 0 0 rgba(198,245,62,0.28) inset, 0 3px 0 0 #c6f53e inset;color:#c6f53e' : 'transparent;color:#8d918c')
+      })),
+      calDays: Array.from({ length: 42 }, (_, n) => {
+        const num = n - 4, inMonth = num >= 1 && num <= 31, sel = num === 14;
+        const mark = [6, 11, 18, 25].indexOf(num) >= 0 ? 'post' : [14, 21].indexOf(num) >= 0 ? 'special' : '';
+        return {
+          num: inMonth ? String(num) : '',
+          style: 'aspect-ratio:1;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:1px solid ' +
+            (sel ? '#c6f53e' : inMonth ? 'rgba(255,255,255,0.09)' : 'transparent') + ';background:' +
+            (sel ? 'rgba(198,245,62,0.14)' : inMonth ? 'rgba(255,255,255,0.03)' : 'transparent') +
+            ';font:700 9px \'IBM Plex Mono\',monospace;color:' + (sel ? '#c6f53e' : '#a8aaa9'),
+          dotStyle: 'width:4px;height:4px;border-radius:50%;background:' +
+            (mark === 'special' ? '#c6f53e' : mark === 'post' ? 'rgba(255,255,255,0.32)' : 'transparent')
+        };
+      }),
+      dots: SLIDES.map((_, n) => ({
+        apply: () => this.go(n),
+        style: 'border:0;padding:0;cursor:pointer;height:8px;border-radius:999px;transition:width .2s ease, background .2s ease;width:' +
+          (n === i ? '30px' : '8px') + ';background:' + (n === i ? '#c6f53e' : 'rgba(255,255,255,0.2)') +
+          ';box-shadow:' + (n === i ? '0 0 16px rgba(198,245,62,0.6)' : 'none')
+      })),
+      scenes: SCENES.map(sc => ({
+        label: sc.label, src: sc.src,
+        imgStyle: 'width:100%;height:100%;object-fit:cover;object-position:50% 50%;display:block',
+        washStyle: 'position:absolute;inset:0;background:linear-gradient(180deg, transparent 55%, rgba(4,8,5,0.5));pointer-events:none'
+      })),
+      pending: [
+        { when: 'TODAY · 18:00', dest: 'X + TELEGRAM', text: '340 wallets and not one of you has sold. genuinely moved. $ALLEY' },
+        { when: 'TOMORROW · 09:30', dest: 'X', text: 'gm to the people who bought at 4am. the chart remembers.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
