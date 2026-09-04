@@ -41,6 +41,10 @@ export function HoodlumsMarketHome({
 
   return (
     <div className={`${styles.page} hoodlums-premium`}>
+      {/* Owner direction (4 Sep 2026, round 2): the Dexscreener trending feed
+          runs as a moving banner across the very top of the page. */}
+      <RobinhoodTrendingPanel />
+
       <header className={styles.topbar}>
         <span className={styles.pulse}>
           <span className={styles.pulseDot} />
@@ -57,10 +61,9 @@ export function HoodlumsMarketHome({
         </div>
       </header>
 
-      {/* Twelve-panel page (owner direction, 4 Sep 2026): one full-width
-          column — hero, then eight Hoodlums cards in two rows of four, then
-          the four third-party trending panels — instead of a grid beside a
-          sidebar list, so every panel sits in the same four column tracks. */}
+      {/* One full-width column (owner direction, 4 Sep 2026): hero, then the
+          Hoodlums cards six across, then the graduating row beneath in the
+          same six tracks — no sidebar. */}
       <div className={styles.layout}>
         <div className={styles.main}>
           <section className={styles.hero} aria-labelledby="hoodlums-market-title">
@@ -86,8 +89,6 @@ export function HoodlumsMarketHome({
           </section>
 
           <HoodlumsTokenGrid liveSites={liveSites} />
-
-          <RobinhoodTrendingPanel />
         </div>
       </div>
 

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  GRADUATING_PANEL_COUNT,
+  GRID_COLUMNS,
   GRID_PAGE_SIZE,
-  TRENDING_PANEL_COUNT,
   buildGridChangePill,
   computeGridMarketCapNative,
   formatGridAge,
@@ -9,10 +10,11 @@ import {
   formatGridMarketCapUsd,
 } from "@/lib/token-grid-card-model";
 
-describe("homepage twelve-panel layout constants (owner direction, 4 Sep 2026)", () => {
-  it("shows eight domestic cards (two rows of four) and four third-party panels", () => {
-    expect(GRID_PAGE_SIZE).toBe(8);
-    expect(TRENDING_PANEL_COUNT).toBe(4);
+describe("homepage layout constants (owner direction, 4 Sep 2026, round 2: six across)", () => {
+  it("shows two rows of six domestic cards and one row of six graduating tokens", () => {
+    expect(GRID_COLUMNS).toBe(6);
+    expect(GRID_PAGE_SIZE).toBe(12);
+    expect(GRADUATING_PANEL_COUNT).toBe(6);
   });
 });
 

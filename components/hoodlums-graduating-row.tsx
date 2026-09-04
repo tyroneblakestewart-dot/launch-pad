@@ -1,9 +1,9 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type TouchEvent } from "react";
+import { useEffect, useState } from "react";
 import type { GraduatingFeedResult, GraduatingToken } from "@/lib/server/pumpfun-graduating";
-import { clampShowcaseIndex, swipeDeltaToStep } from "@/lib/social-showcase";
+import { GRADUATING_PANEL_COUNT } from "@/lib/token-grid-card-model";
 import styles from "./hoodlums-graduating-row.module.css";
 
 // 5 minutes (up from 30s, issue #305), matching the server-side cache TTL
@@ -16,7 +16,6 @@ import styles from "./hoodlums-graduating-row.module.css";
 // on the free plan.
 const POLL_INTERVAL_MS = 300_000;
 const MIN_GRADUATING_TOKENS = 2;
-const TOKENS_PER_PAGE = 4;
 // A hanging image never fires onError (seen live with an ipfs.io gateway
 // URL, issue #297) — this bounds how long a card waits before giving up
 // and swapping to the letter tile.
@@ -33,7 +32,11 @@ function formatUpdatedAgo(seconds: number): string {
   return `${Math.floor(seconds / 60)}m ago`;
 }
 
-function GraduatingCard({ token }: { token: GraduatingToken }) {
+function clampPercent(value: number): number {
+  return Math.min(100, Math.max(0, value));
+}
+
+function GraduatingCard({ token, rank }: { token: GraduatingToken; rank: number }) {
   const [status, setStatus] = useState<"loading" | "loaded" | "failed">(
     token.artworkUrl ? "loading" : "failed",
   );
@@ -57,6 +60,7 @@ function GraduatingCard({ token }: { token: GraduatingToken }) {
   }, [status]);
 
   const showImage = status !== "failed" && Boolean(token.artworkUrl);
+  const progress = clampPercent(token.progressPercent);
 
   return (
     <a href={token.url} target="_blank" rel="noreferrer" className={styles.card}>
@@ -71,34 +75,42 @@ function GraduatingCard({ token }: { token: GraduatingToken }) {
             onError={() => setStatus("failed")}
           />
         ) : null}
+        <span className={styles.rank}>#{rank}</span>
+        <span className={styles.progressBadge}>{Math.round(progress)}%</span>
       </div>
-      <b className={styles.cardName}>{token.name}</b>
+      <div className={styles.nameRow}>
+        <b className={styles.cardName}>{token.name}</b>
+        <span className={styles.source}>pump.fun ↗</span>
+      </div>
       <span className={styles.cardTicker}>${token.ticker}</span>
       <div className={styles.gradRow}>
         <span>Graduation</span>
-        <b>{Math.round(Math.min(100, Math.max(0, token.progressPercent)))}%</b>
+        <b>{Math.round(progress)}%</b>
       </div>
       <div className={styles.gradBar}>
-        <span style={{ width: `${Math.min(100, Math.max(0, token.progressPercent))}%` }} />
+        <span style={{ width: `${progress}%` }} />
       </div>
     </a>
   );
 }
 
 /**
- * Full-width row of pump.fun tokens racing toward graduation, placed below
- * the HOODLUMS TOKENS grid (issue #295) rather than tucked into the narrow
- * trending sidebar. Same eligibility contract as before: hides itself
- * unless the feed returns at least two tokens with no error.
+ * The bottom row of the homepage (owner direction, 4 Sep 2026 round 2):
+ * third-party pump.fun tokens racing toward graduation, one row of
+ * GRADUATING_PANEL_COUNT cards in the same shape and six column tracks as
+ * the Hoodlums grid above (issue #295 first put this feed here as a
+ * swipeable, paged row; the paging is gone now that the row is exactly one
+ * screen wide). The section always renders so the page keeps its shape:
+ * with fewer than two tokens, or a feed error, it shows an honest notice
+ * instead of hiding, since this feed's data source (Bitquery today, a
+ * replacement decided by the owner next) can and does run dry.
  */
 export function HoodlumsGraduatingRow() {
   const [tokens, setTokens] = useState<GraduatingToken[]>([]);
   const [eligible, setEligible] = useState(false);
-  const [page, setPage] = useState(0);
+  const [loaded, setLoaded] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [updatedSecondsAgo, setUpdatedSecondsAgo] = useState(0);
-  const touchStartX = useRef<number | null>(null);
-  const dragStartX = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,6 +129,8 @@ export function HoodlumsGraduatingRow() {
           setTokens([]);
           setEligible(false);
         }
+      } finally {
+        if (!cancelled) setLoaded(true);
       }
     }
 
@@ -139,90 +153,34 @@ export function HoodlumsGraduatingRow() {
     return () => window.clearInterval(interval);
   }, [updatedAt]);
 
-  const pageCount = Math.max(1, Math.ceil(tokens.length / TOKENS_PER_PAGE));
-  // Clamped at render time rather than mirrored into state: `page` can go
-  // stale for one tick after the feed reloads with fewer pages, and this
-  // avoids a setState-in-effect cascade for it.
-  const currentPage = clampShowcaseIndex(page, pageCount);
-
-  function goToPage(index: number) {
-    setPage(clampShowcaseIndex(index, pageCount));
-  }
-
-  function handleTouchStart(event: TouchEvent<HTMLDivElement>) {
-    touchStartX.current = event.touches[0]?.clientX ?? null;
-  }
-
-  function handleTouchEnd(event: TouchEvent<HTMLDivElement>) {
-    const startX = touchStartX.current;
-    touchStartX.current = null;
-    if (startX === null) return;
-    const endX = event.changedTouches[0]?.clientX ?? startX;
-    const step = swipeDeltaToStep(endX - startX);
-    if (step !== 0) goToPage(currentPage + step);
-  }
-
-  function handleMouseDown(event: ReactMouseEvent<HTMLDivElement>) {
-    dragStartX.current = event.clientX;
-  }
-
-  function handleMouseUp(event: ReactMouseEvent<HTMLDivElement>) {
-    const startX = dragStartX.current;
-    dragStartX.current = null;
-    if (startX === null) return;
-    const step = swipeDeltaToStep(event.clientX - startX);
-    if (step !== 0) goToPage(currentPage + step);
-  }
-
-  if (!eligible) return null;
-
-  const visibleTokens = tokens.slice(
-    currentPage * TOKENS_PER_PAGE,
-    currentPage * TOKENS_PER_PAGE + TOKENS_PER_PAGE,
-  );
+  const visibleTokens = tokens.slice(0, GRADUATING_PANEL_COUNT);
 
   return (
     <section className={styles.section} aria-labelledby="graduating-now-title">
       <div className={styles.sectionHeader}>
         <p id="graduating-now-title" className={styles.eyebrow}>
+          <span className={styles.liveDot} aria-hidden="true" />
           GRADUATING NOW · LIVE FROM PUMP.FUN
+        </p>
+        <p className={styles.caption}>
+          live from pump.fun — Hoodlums graduations join this race at mainnet
+          {updatedAt !== null ? (
+            <span className={styles.updatedHint}> · updated {formatUpdatedAgo(updatedSecondsAgo)}</span>
+          ) : null}
         </p>
       </div>
 
-      <div
-        className={styles.track}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        onMouseDown={handleMouseDown}
-        onMouseUp={handleMouseUp}
-      >
-        {visibleTokens.map((token) => (
-          <GraduatingCard key={token.address} token={token} />
-        ))}
-      </div>
-
-      {pageCount > 1 ? (
-        <div className={styles.dots} role="tablist" aria-label="Graduating now pages">
-          {Array.from({ length: pageCount }, (_, index) => (
-            <button
-              key={index}
-              type="button"
-              role="tab"
-              aria-selected={index === currentPage}
-              aria-label={`Show page ${index + 1}`}
-              className={index === currentPage ? styles.dotActive : styles.dot}
-              onClick={() => goToPage(index)}
-            />
+      {eligible ? (
+        <div className={styles.track}>
+          {visibleTokens.map((token, index) => (
+            <GraduatingCard key={token.address} token={token} rank={index + 1} />
           ))}
         </div>
-      ) : null}
-
-      <p className={styles.caption}>
-        live from pump.fun — Hoodlums graduations join this race at mainnet
-        {updatedAt !== null ? (
-          <span className={styles.updatedHint}> · updated {formatUpdatedAgo(updatedSecondsAgo)}</span>
-        ) : null}
-      </p>
+      ) : (
+        <div className={styles.notice}>
+          <p>{loaded ? "Graduating feed unavailable right now — it comes back on its own once the source is reachable." : "Loading graduating tokens…"}</p>
+        </div>
+      )}
     </section>
   );
 }

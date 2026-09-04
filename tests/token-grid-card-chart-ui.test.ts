@@ -124,7 +124,7 @@ describe("TokenGridCardChart — the pump.fun card (owner direction, 4 Sep 2026)
   });
 });
 
-describe("HoodlumsTokenGrid twelve-panel wiring", () => {
+describe("HoodlumsTokenGrid six-across wiring", () => {
   it("renders TokenGridCardChart per card with the recorded artwork, supply, launch time and graduation figures", async () => {
     const component = await source("components/hoodlums-token-grid.tsx");
     expect(component).toContain('import { TokenGridCardChart } from "./token-grid-card-chart"');
@@ -137,14 +137,14 @@ describe("HoodlumsTokenGrid twelve-panel wiring", () => {
     expect(component).toContain("progressLabel={progressPercentLabel(launch)}");
   });
 
-  it("shows eight cards per tab (two rows of four) and folds the rest behind Show more, resetting on a tab switch", async () => {
+  it("shows twelve cards per tab (two rows of six) and folds the rest behind Show more, a row at a time, resetting on a tab switch", async () => {
     const component = await source("components/hoodlums-token-grid.tsx");
-    expect(component).toContain('import { GRID_PAGE_SIZE } from "@/lib/token-grid-card-model"');
+    expect(component).toContain('import { GRID_COLUMNS, GRID_PAGE_SIZE } from "@/lib/token-grid-card-model"');
     expect(component).toContain("useState(GRID_PAGE_SIZE)");
     expect(component).toContain("launches.slice(0, visibleCount)");
     expect(component).toContain("setVisibleCount(GRID_PAGE_SIZE);\n  }, [tab]);");
     expect(component).toContain("styles.showMore");
-    expect(component).toContain("Show {Math.min(hiddenCount, GRID_PAGE_SIZE / 2)} more");
+    expect(component).toContain("Show {Math.min(hiddenCount, GRID_COLUMNS)} more");
   });
 
   it("still maps each tab to the correct token_launches filter (unchanged from issue #412)", async () => {
@@ -169,7 +169,10 @@ describe("Grid card styling", () => {
     for (const block of css.split(/@media \(max-width: \d+px\) \{/).slice(1)) {
       expect(block).not.toMatch(/\.art\s*\{/);
     }
-    expect(css).toMatch(/\.grid\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/);
+    // Six across on desktop, three on tablets, two on phones (pump.fun's density).
+    expect(css).toMatch(/\.grid\s*\{[^}]*grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\);/);
+    expect(css).toContain("@media (max-width: 1099px) {\n  .grid {\n    grid-template-columns: repeat(3, minmax(0, 1fr));");
+    expect(css).toContain("@media (max-width: 700px) {\n  .grid {\n    grid-template-columns: repeat(2, minmax(0, 1fr));");
   });
 
   it("lays the performance line over the lower half of the art on a bottom-up wash, with a draw-in that respects reduced motion", async () => {
@@ -212,18 +215,30 @@ describe("Grid card styling", () => {
   });
 });
 
-describe("Third-party trending row (the bottom four panels)", () => {
-  it("renders the top four Dexscreener tokens as cards in the same four-column tracks, with rank, market cap and a lime/grey change pill", async () => {
+describe("Trending banner (the moving strip across the top)", () => {
+  it("renders the Dexscreener Solana feed as a seamless right-to-left ticker: the list twice, the copy hidden from assistive tech, sliding by half its width", async () => {
     const component = await source("components/robinhood-trending-panel.tsx");
     const css = await source("components/robinhood-trending-panel.module.css");
-    expect(component).toContain("tokens.slice(0, TRENDING_PANEL_COUNT)");
+    expect(component).toContain('{renderItems("a")}');
+    expect(component).toContain('{renderItems("b")}');
+    expect(component).toContain('aria-hidden={copy === "b" ? "true" : undefined}');
+    expect(component).toContain('tabIndex={copy === "b" ? -1 : undefined}');
     expect(component).toContain("formatGridMarketCapUsd(token.marketCapUsd)");
     expect(component).toContain("buildGridChangePill(token.priceChangePercent, 0)");
-    expect(component).toContain("#{token.rank}");
-    expect(component).toContain('className={styles.panel}');
     expect(component).not.toContain("<aside");
-    expect(css).toMatch(/\.row\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/);
-    expect(css).toMatch(/\.art\s*\{[^}]*aspect-ratio:\s*1 \/ 1;/);
+    expect(css).toMatch(/\.track\s*\{[^}]*animation:\s*ticker/);
+    expect(css).toContain("transform: translateX(-50%);");
+    expect(css).toContain(".viewport:hover .track {\n    animation-play-state: paused;");
+    // Reduced motion: no animation, an ordinary horizontal scroll instead.
+    const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce) {"));
+    expect(reduced).toContain(".track {\n    animation: none;");
+    expect(reduced).toContain("overflow-x: auto;");
+  });
+
+  it("keeps the full Dexscreener disclaimer available (as the strip's tooltip) while showing only a short note inline", async () => {
+    const component = await source("components/robinhood-trending-panel.tsx");
+    expect(component).toContain("Not Hoodlums launches. Not financial advice. Refreshes every 60s.");
+    expect(component).toContain("via Dexscreener · 60s");
   });
 
   it("never draws a performance line for third-party tokens — the feed carries no trade series", async () => {
@@ -233,15 +248,38 @@ describe("Third-party trending row (the bottom four panels)", () => {
   });
 });
 
+describe("Graduating row (the bottom six panels)", () => {
+  it("renders GRADUATING_PANEL_COUNT pump.fun tokens as cards in the same six tracks, with rank and progress badges, and never hides the section", async () => {
+    const component = await source("components/hoodlums-graduating-row.tsx");
+    const css = await source("components/hoodlums-graduating-row.module.css");
+    expect(component).toContain('import { GRADUATING_PANEL_COUNT } from "@/lib/token-grid-card-model"');
+    expect(component).toContain("tokens.slice(0, GRADUATING_PANEL_COUNT)");
+    expect(component).toContain("<GraduatingCard key={token.address} token={token} rank={index + 1} />");
+    expect(component).toContain("styles.progressBadge");
+    expect(component).toContain("#{rank}");
+    expect(component).not.toContain("return null;");
+    expect(component).toContain("Graduating feed unavailable right now");
+    expect(component).not.toContain("swipeDeltaToStep");
+    expect(component).not.toContain("TOKENS_PER_PAGE");
+    expect(css).toMatch(/\.track\s*\{[^}]*grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\);/);
+    expect(css).toMatch(/\.art\s*\{[^}]*aspect-ratio:\s*1 \/ 1;/);
+    expect(css).toContain("@media (max-width: 1099px) {\n  .track {\n    grid-template-columns: repeat(3, minmax(0, 1fr));");
+    expect(css).toContain("@media (max-width: 700px) {\n  .track {\n    grid-template-columns: repeat(2, minmax(0, 1fr));");
+  });
+});
+
 describe("Homepage layout", () => {
-  it("is one full-width column — the trending row sits under the token grid, not beside it", async () => {
+  it("runs the trending banner across the very top, then one full-width column: hero, six-across grid, graduating row", async () => {
     const component = await source("components/hoodlums-market-home.tsx");
     const css = await source("components/hoodlums-market-home.module.css");
+    const banner = component.indexOf("<RobinhoodTrendingPanel />");
+    const topbar = component.indexOf("<header className={styles.topbar}>");
     const grid = component.indexOf("<HoodlumsTokenGrid");
-    const trending = component.indexOf("<RobinhoodTrendingPanel");
-    const mainClose = component.indexOf("</div>", trending);
-    expect(trending).toBeGreaterThan(grid);
-    expect(mainClose).toBeGreaterThan(trending);
+    const graduating = component.indexOf("<HoodlumsGraduatingRow />");
+    expect(banner).toBeGreaterThan(-1);
+    expect(banner).toBeLessThan(topbar);
+    expect(topbar).toBeLessThan(grid);
+    expect(grid).toBeLessThan(graduating);
     expect(css).toMatch(/\.layout\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/);
     expect(css).not.toContain("256px");
   });

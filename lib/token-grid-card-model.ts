@@ -52,8 +52,11 @@ export function formatGridAge(launchedAtIso: string | null): string {
   return label === "—" ? "—" : label.toLowerCase();
 }
 
-/** How many domestic cards the grid shows before "Show more" — two rows of four (owner direction: 8 domestic + 4 third-party = 12 panels). */
-export const GRID_PAGE_SIZE = 8;
+/** Cards per row on desktop (owner direction, 4 Sep 2026 round 2: cards about a third smaller, six across like pump.fun). */
+export const GRID_COLUMNS = 6;
 
-/** Third-party panels shown in the bottom row. */
-export const TRENDING_PANEL_COUNT = 4;
+/** How many domestic cards the grid shows before "Show more" — two rows of six. */
+export const GRID_PAGE_SIZE = GRID_COLUMNS * 2;
+
+/** Third-party graduating tokens shown in the bottom row — one row of six. */
+export const GRADUATING_PANEL_COUNT = GRID_COLUMNS;
