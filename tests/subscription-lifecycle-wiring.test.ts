@@ -9,13 +9,15 @@ async function source(...parts: string[]): Promise<string> {
 }
 
 describe("global subscription lifecycle wiring", () => {
-  it("mounts the in-app reminder with the global Account chrome used by main and token pages", async () => {
+  it("mounts the in-app reminder with the Account chrome every (app) page and the token page carry (round 3: per-page mounts, not one shared layout mount)", async () => {
     const shell = await source("components", "account-overlay-shell.tsx");
-    const appLayout = await source("app", "(app)", "layout.tsx");
+    const homePage = await source("app", "(app)", "page.tsx");
+    const testnetPage = await source("app", "(app)", "testnet", "page.tsx");
     const tokenLayout = await source("app", "token", "[chain]", "[address]", "layout.tsx");
 
     expect(shell).toContain("SubscriptionLifecycleBanner");
-    expect(appLayout).toContain("<AccountOverlayShell />");
+    expect(homePage).toContain("accountOverlay={<AccountOverlayShell />}");
+    expect(testnetPage).toContain("<AccountOverlayShell />");
     expect(tokenLayout).toContain("<AccountOverlayShell />");
   });
 

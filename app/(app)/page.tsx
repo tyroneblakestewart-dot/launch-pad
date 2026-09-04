@@ -1,3 +1,4 @@
+import { AccountOverlayShell } from "@/components/account-overlay-shell";
 import { ArtworkUploadController } from "@/components/artwork-upload-controller";
 import { BespokeSitePremiumController } from "@/components/bespoke-site-premium-controller";
 import { BuildSiteGate } from "@/components/build-site-gate";
@@ -30,6 +31,7 @@ export default async function Home({ searchParams }: HomePageProps) {
       <BespokeSitePremiumController />
       <RobinhoodTestnetDeploymentController />
       <HoodlumsMarketHome
+        accountOverlay={<AccountOverlayShell />}
         liveSites={liveSites}
         heroEyebrow={content.hero_eyebrow}
         heroTitleLine1={content.hero_title_line1}

@@ -1,3 +1,4 @@
+import { AccountOverlayShell } from "@/components/account-overlay-shell";
 import { ProviderLauncher } from "@/components/provider-launcher";
 import { CMS_PREVIEW_QUERY_PARAM, resolvePageContent } from "@/lib/server/page-content";
 
@@ -13,6 +14,7 @@ export default async function ProvidersPage({ searchParams }: ProvidersPageProps
 
   return (
     <>
+      <AccountOverlayShell />
       <style>{`
         main > header > div:last-child,
         main > ol,

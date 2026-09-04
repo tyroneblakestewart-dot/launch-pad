@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { AccountOverlayShell } from "@/components/account-overlay-shell";
 import { AppNavigation, MobileBottomNavigation } from "@/components/app-navigation";
 import { GenerateSiteStyleAuthBridge } from "@/components/generate-site-style-auth-bridge";
 import { WalletProviderSelector } from "@/components/wallet-provider-selector";
@@ -48,7 +47,6 @@ export default function StudioLayout({ children }: Readonly<{ children: React.Re
       <GenerateSiteStyleAuthBridge />
       <div className="ambient-glow" aria-hidden="true" />
       <AppNavigation />
-      <AccountOverlayShell />
       {children}
       <MobileBottomNavigation />
       <WalletProviderSelector />

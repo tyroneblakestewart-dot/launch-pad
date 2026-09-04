@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AccountOverlayShell } from "@/components/account-overlay-shell";
 import { BondingCurveGraduationStatus } from "@/components/bonding-curve-graduation-status";
 import { isContentVisible } from "@/lib/page-content-registry";
 import { CMS_PREVIEW_QUERY_PARAM, resolvePageContent } from "@/lib/server/page-content";
@@ -51,7 +52,9 @@ export default async function BondingCurvePage({ searchParams }: BondingCurvePag
   const showNextStep = isContentVisible(content.next_step_visible);
 
   return (
-    <main className={styles.page}>
+    <>
+      <AccountOverlayShell />
+      <main className={styles.page}>
       <section className={styles.desktopWorkspace} aria-labelledby="desktop-bonding-title">
         <div className={styles.desktopFormPanel}>
           <div className={styles.desktopHeading}>
@@ -247,5 +250,6 @@ export default async function BondingCurvePage({ searchParams }: BondingCurvePag
         ) : null}
       </div>
     </main>
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AccountOverlayShell } from "@/components/account-overlay-shell";
 import { SocialHub } from "@/components/social-hub";
 import { SubscriptionAccessGate } from "@/components/subscription-access-gate";
 
@@ -10,8 +11,11 @@ export const metadata: Metadata = {
 
 export default function SocialPage() {
   return (
-    <SubscriptionAccessGate>
-      <SocialHub />
-    </SubscriptionAccessGate>
+    <>
+      <AccountOverlayShell />
+      <SubscriptionAccessGate>
+        <SocialHub />
+      </SubscriptionAccessGate>
+    </>
   );
 }

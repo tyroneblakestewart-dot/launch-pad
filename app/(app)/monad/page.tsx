@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AccountOverlayShell } from "@/components/account-overlay-shell";
 import { MonadTestnetLauncher } from "@/components/monad-testnet-launcher";
 
 export const metadata: Metadata = {
@@ -7,5 +8,10 @@ export const metadata: Metadata = {
 };
 
 export default function MonadTestnetPage() {
-  return <MonadTestnetLauncher />;
+  return (
+    <>
+      <AccountOverlayShell />
+      <MonadTestnetLauncher />
+    </>
+  );
 }
