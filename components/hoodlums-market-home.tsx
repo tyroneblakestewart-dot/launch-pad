@@ -40,7 +40,7 @@ export function HoodlumsMarketHome({
   }
 
   return (
-    <div className={styles.page}>
+    <div className={`${styles.page} hoodlums-premium`}>
       <header className={styles.topbar}>
         <span className={styles.pulse}>
           <span className={styles.pulseDot} />

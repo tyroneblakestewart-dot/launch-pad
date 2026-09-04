@@ -1,0 +1,61 @@
+/*
+ * HOODLUMS premium design tokens (owner direction, 4 Sep 2026): the exact
+ * variable set the token page v2 defines on its own `.page` root
+ * (components/token-page/token-page.module.css — the design source of truth,
+ * design/token-page-v2/), lifted into a shared scope class so other pages can
+ * adopt the same text palette, lime accent, panel/well/raised/chip recipes and
+ * fonts by reference instead of by eye. The token page keeps its own copy for
+ * now (its tests pin those declarations on `.page`); a test asserts the two
+ * sets stay identical so they can never drift apart.
+ *
+ * Scoped to `.hoodlums-premium` rather than `:root` deliberately: `--mono`,
+ * `--sans` and especially `--display` already exist globally in globals.css
+ * with the older values (Black Ops One), and this rollout is one page at a
+ * time. Apply the class to a page root to opt that page in.
+ */
+.hoodlums-premium {
+  --text-primary: #f4f7f1;
+  --text-body: #d9dfd6;
+  --text-value: #e6ebe4;
+  --text-secondary: #c3c9c4;
+  --text-sub: #a8aaa9;
+  --text-label: #8d918c;
+  --text-faint: #6f746e;
+  --text-disabled: #4a4f49;
+  --accent-lime: #c6f53e;
+  --accent-red: #e2564b;
+  --accent-down: #8d918c;
+  --accent-mint: #91f0b6;
+  --text-on-lime: #071008;
+  --mono: "IBM Plex Mono", monospace;
+  --sans: "Inter", sans-serif;
+  --display: "Archivo Black", "Inter", sans-serif;
+  --panel-border: 1px solid rgba(255, 255, 255, 0.09);
+  --panel-radius: 22px;
+  --panel-bg: linear-gradient( 180deg, rgba(24, 28, 25, 0.99) 0%, rgba(15, 18, 16, 0.99) 34%, rgba(9, 11, 10, 0.99) 100% );
+  --panel-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.07) inset, 0 0 0 1px rgba(0, 0, 0, 0.5), 0 30px 70px -24px rgba(0, 0, 0, 0.8);
+  --panel-header-border: 1px solid rgba(255, 255, 255, 0.07);
+  --panel-header-wash: linear-gradient(180deg, rgba(198, 245, 62, 0.045), transparent);
+  --panel-header-wash-soft: linear-gradient(180deg, rgba(198, 245, 62, 0.04), transparent);
+  --well-border: 1px solid rgba(255, 255, 255, 0.09);
+  --well-radius: 14px;
+  --well-bg: linear-gradient(180deg, rgba(0, 0, 0, 0.38), rgba(255, 255, 255, 0.022)), #0a0f0c;
+  --well-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;
+  --raised-border: 1px solid rgba(255, 255, 255, 0.1);
+  --raised-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02)), #111713;
+  --raised-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.07) inset, 0 6px 16px -10px rgba(0, 0, 0, 0.85);
+  --chip-idle-color: var(--text-label);
+  --chip-active-border-color: rgba(198, 245, 62, 0.5);
+  --chip-active-bg: linear-gradient(180deg, rgba(198, 245, 62, 0.2), rgba(198, 245, 62, 0.05));
+  --chip-active-shadow: 0 1px 0 0 rgba(198, 245, 62, 0.22) inset, 0 6px 16px -8px rgba(198, 245, 62, 0.5);
+  --chip-active-text-shadow: 0 0 12px rgba(198, 245, 62, 0.45);
+  --chip-active-color: var(--accent-lime);
+  --preset-idle-border: 1px solid rgba(255, 255, 255, 0.09);
+  --preset-idle-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.012));
+  --preset-idle-color: var(--text-sub);
+  --preset-selected-border: 1px solid rgba(198, 245, 62, 0.5);
+  --preset-selected-bg: linear-gradient(180deg, rgba(198, 245, 62, 0.2), rgba(198, 245, 62, 0.05));
+  --preset-selected-color: var(--accent-lime);
+  --cta-bg: #c6f53e;
+  --cta-color: #071008;
+}

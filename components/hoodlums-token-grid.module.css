@@ -14,9 +14,10 @@
 
 .eyebrow {
   margin: 0;
-  color: #566054;
-  font: 800 11px var(--mono);
-  letter-spacing: 0.12em;
+  color: var(--text-sub);
+  font: 600 9.5px/1 var(--mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
 .headerActions {
@@ -25,38 +26,52 @@
   gap: 10px;
 }
 
+/* Shared chip track + chip recipe (token page `.tabGroup` /
+   `.chartIntervalButton`): the glowing active segment. */
 .tabs {
   display: flex;
-  gap: 6px;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.4), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;
 }
 
 .createTokenButton {
-  padding: 8px 14px;
+  min-height: 34px;
+  padding: 0 16px;
   border: none;
   border-radius: 999px;
-  background: #bce759;
-  color: #071008;
-  font: 800 11px var(--mono);
+  background: var(--cta-bg);
+  color: var(--cta-color);
+  box-shadow: 0 14px 34px -12px rgba(198, 245, 62, 0.5);
+  font: 800 12px/1 var(--sans);
   white-space: nowrap;
   cursor: pointer;
 }
 
 .tab,
 .tabActive {
-  padding: 7px 12px;
-  border: 1px solid rgba(188, 231, 89, 0.12);
-  border-radius: 999px;
+  min-height: 28px;
+  min-width: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
   background: transparent;
-  color: #566054;
-  font: 700 10px var(--mono);
-  letter-spacing: 0.04em;
+  color: var(--chip-idle-color);
+  font: 700 10.5px/1 var(--mono);
+  letter-spacing: 0.07em;
   cursor: pointer;
+  transition: all 0.14s;
 }
 
 .tabActive {
-  border-color: #bce759;
-  background: rgba(188, 231, 89, 0.12);
-  color: #bce759;
+  border-color: var(--chip-active-border-color);
+  background: var(--chip-active-bg);
+  box-shadow: var(--chip-active-shadow);
+  text-shadow: var(--chip-active-text-shadow);
+  color: var(--chip-active-color);
 }
 
 .grid {
@@ -69,10 +84,11 @@
   position: relative;
   display: grid;
   gap: 3px;
-  padding: 10px;
-  border: 1px solid rgba(188, 231, 89, 0.1);
-  border-radius: 12px;
-  background: #0d120e;
+  padding: 12px;
+  border: var(--panel-border);
+  border-radius: var(--panel-radius);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
   color: inherit;
   text-decoration: none;
 }
@@ -92,9 +108,11 @@
   aspect-ratio: 1 / 1;
   height: auto;
   margin-bottom: 8px;
-  border-radius: 8px;
-  background: #060a07;
-  color: #bce759;
+  border: var(--well-border);
+  border-radius: var(--well-radius);
+  background: var(--well-bg);
+  box-shadow: var(--well-shadow);
+  color: var(--accent-lime);
   font: 800 22px var(--mono);
   overflow: hidden;
 }
@@ -162,10 +180,10 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 14px;
-  border: 1px solid rgba(188, 231, 89, 0.18);
-  border-radius: 14px;
-  background: #0d120e;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.55);
+  border: var(--raised-border);
+  border-radius: var(--well-radius);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow), 0 24px 48px rgba(0, 0, 0, 0.55);
   opacity: 0;
   transform: scale(0.97);
   transition: opacity 160ms ease, transform 160ms ease;
@@ -184,12 +202,12 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 8px;
-  color: #929693;
+  color: var(--text-label);
   font: 700 10px var(--mono);
 }
 
 .previewPrice {
-  color: #f4f7ef;
+  color: var(--text-value);
   font: 800 14px var(--mono);
 }
 
@@ -226,52 +244,55 @@
    meta line (the graduation row) — reached with a tighter type scale, not
    more spacing. */
 .cardName {
-  color: #f4f7ef;
-  font: 800 13px var(--mono);
+  color: var(--text-value);
+  font: 800 13px var(--sans);
   letter-spacing: 0.01em;
 }
 
 .cardTicker {
-  color: #566054;
+  color: var(--text-label);
   font: 600 10px var(--mono);
 }
 
 .cardCap {
   margin-top: 5px;
-  color: #bce759;
+  color: var(--accent-lime);
   font: 800 17px var(--mono);
   letter-spacing: -0.01em;
 }
 
 .cardCapLabel {
   margin-bottom: 4px;
-  color: #3a4238;
+  color: var(--text-faint);
   font: 600 9px var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .gradRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: #566054;
+  color: var(--text-label);
   font: 700 9px var(--mono);
 }
 
 .gradRow b {
-  color: #f4f7ef;
+  color: var(--text-value);
 }
 
 .gradBar {
   height: 3px;
   border-radius: 999px;
-  background: #2e3a2c;
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 
 .gradBar span {
   display: block;
   height: 100%;
-  background: #bce759;
+  background: var(--accent-lime);
+  box-shadow: 0 0 8px rgba(198, 245, 62, 0.5);
 }
 
 .emptyState {
@@ -280,24 +301,29 @@
   align-items: flex-start;
   gap: 12px;
   padding: 28px;
-  border: 1px dashed rgba(188, 231, 89, 0.2);
-  border-radius: 12px;
-  background: #0d120e;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: var(--panel-radius);
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
 }
 
 .emptyState p {
   margin: 0;
   max-width: 520px;
-  color: #566054;
+  color: var(--text-label);
   font: 500 12px/1.6 var(--mono);
 }
 
 .emptyCta {
-  padding: 10px 16px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 16px;
   border-radius: 999px;
-  background: #bce759;
-  color: #071008;
-  font: 800 11px var(--mono);
+  background: var(--cta-bg);
+  color: var(--cta-color);
+  box-shadow: 0 14px 34px -12px rgba(198, 245, 62, 0.5);
+  font: 800 12px/1 var(--sans);
   text-decoration: none;
 }
 
