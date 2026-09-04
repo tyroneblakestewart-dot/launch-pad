@@ -65,9 +65,11 @@ The Liquidity Lab supports a private, test-only constant-product pool on Robinho
 
 ### Bonding curve workflow
 
-The `/bonding-curve` route is the fifth launch-workflow page. It explains the approved full-supply launch model, wallet-signed curve trading, the graduation target, automatic Hoodlums pool creation, and permanent initial LP locking. The bonding-curve contract foundation is merged, but it is not deployed or connected to live buy/sell controls yet.
+The `/bonding-curve` route is the fifth launch-workflow page. It explains the approved full-supply launch model, wallet-signed curve trading, the graduation target, the one-off 5% graduation fee, automatic Hoodlums pool creation, and permanent initial LP locking. The bonding-curve contract foundation is merged, but it is not deployed or connected to live buy/sell controls yet.
 
 `contracts/HoodlumsTestBondingCurve.sol` charges a fixed **1% trading fee on every buy and sell**, split **60% to the protocol treasury and 40% to the token creator** (`TRADING_FEE_BPS = 100`, `PROTOCOL_FEE_SHARE_BPS = 6000`, `CREATOR_FEE_SHARE_BPS = 4000`; both the treasury and creator addresses are constructor parameters, never hardcoded). Fees use **pull payments only**: a buy or sell never pushes native currency to the treasury or creator, it only credits a claimable balance (`treasuryFeeBalance`, `creatorFeeBalance`), which either recipient withdraws themselves via `withdrawFees()`. This means a reverting or gas-griefing treasury or creator can never block a buy, a sell, graduation, or the other recipient's withdrawal. The fee is deducted from the gross trade amount before the curve quote (buys) or from the curve's gross output before payout (sells), so `realNativeReserve` and the graduation target only ever reflect post-fee amounts; accrued fees are tracked separately from curve/pool liquidity and remain withdrawable both before and after graduation.
+
+At graduation the curve also charges a **one-off 5% graduation fee** on the post-trading-fee native reserve (`GRADUATION_FEE_BPS = 500`, rounded down so rounding favours pool liquidity), credited **100% to the treasury's claimable balance** — the creator receives none of it, and like every trading fee it is pull-payment only (`withdrawFees()`), never pushed. Only the remaining 95% is wrapped and seeded into the locked pool; `Graduated.nativeLiquidity` reports that post-fee amount and a `GraduationFeeCharged(amount)` event reports the fee. `graduationFeeAtTarget()` exposes the fee a curve will charge, and `minimumCurveFunding()` measures its pool-liquidity floor against the post-fee amount. The fee never changes curve pricing, the graduation target or the buy clamp — `realNativeReserve` still has to equal `graduationTarget` exactly. Curves deployed before this constant existed charge no graduation fee; the token page reads each curve's own `GRADUATION_FEE_BPS()` and only describes a fee the specific curve actually charges. **The already-deployed testnet launch pipeline deploys the previous curve bytecode, so this fee only reaches new launches once the pipeline is redeployed** (see "Curve launch pipeline deployment").
 
 **Live graduation status.** `components/bonding-curve-graduation-status.tsx` is a read-only view rendered on `/bonding-curve` that reads a configured curve directly from a public Robinhood Chain Testnet RPC endpoint (no wallet connection required) and displays one of three states: **not yet funded** (creator hasn't placed the token supply into the curve), **bonding** (a progress bar showing `realNativeReserve` against `graduationTarget`, which already excludes every accrued trading fee, matching the contract's own `graduationProgressBps()`), or **graduated** (the locked pool address with an explorer link and a note that its liquidity is permanently locked). `lib/bonding-curve-config.ts` reads the curve address from `NEXT_PUBLIC_HOODLUMS_BONDING_CURVE_ADDRESSES` (public JSON, e.g. `{"46630":"0xYourDeployedCurve"}`), mirroring `NEXT_PUBLIC_HOODLUMS_FACTORY_ADDRESSES` / `getFactoryAddress` below — unlike the factory, there is no public default yet, so an unset env var renders a truthful "not deployed" state instead of guessing an address. This view never sends a transaction; buy/sell controls are still not wired up.
 
@@ -196,10 +198,10 @@ Optional overrides (documented defaults below are used when unset):
 | `HOODLUMS_BONDING_CURVE_VIRTUAL_ETH_RESERVE_ETHER` | `1` | Constructor `virtualEthReserve_`, in native testnet currency. |
 | `HOODLUMS_BONDING_CURVE_VIRTUAL_TOKEN_RESERVE_WHOLE` | `1000000` | Constructor `virtualTokenReserve_`, in whole tokens (scaled by the token's decimals). |
 
-The 1% trading fee and its 60/40 treasury/creator split are contract
-constants (`TRADING_FEE_BPS`, `PROTOCOL_FEE_SHARE_BPS`,
-`CREATOR_FEE_SHARE_BPS`), not constructor arguments — this script cannot
-change them. The script prints the deployed address, the exact constructor
+The 1% trading fee, its 60/40 treasury/creator split and the 5% graduation
+fee are contract constants (`TRADING_FEE_BPS`, `PROTOCOL_FEE_SHARE_BPS`,
+`CREATOR_FEE_SHARE_BPS`, `GRADUATION_FEE_BPS`), not constructor arguments —
+this script cannot change them. The script prints the deployed address, the exact constructor
 arguments for explorer verification, and `minimumCurveFunding()` so you know
 whether the token's total supply is enough to fund the curve.
 

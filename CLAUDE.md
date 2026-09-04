@@ -137,7 +137,10 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   never push native currency, and each recipient withdraws via
   `withdrawFees()`. `realNativeReserve` and the graduation target only
   count post-fee amounts; fee balances stay outside pool liquidity and
-  remain withdrawable after graduation. The curve is still not deployed or
+  remain withdrawable after graduation. A one-off **5% graduation fee**
+  (`GRADUATION_FEE_BPS = 500`, owner decision 4 Sep 2026) on the native
+  reserve is credited 100% to the treasury at graduation; only the other 95%
+  seeds the locked pool. The curve is still not deployed or
   wired into live UI controls.
 - Durable public publishing is implemented for review: Postgres via
   server-only `DATABASE_URL`, migration-managed `published_sites` and
@@ -1777,3 +1780,48 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   commit: `npm run test:app` — 293 test files / 3382 tests passing.
   `npm run lint` — 0 errors (12 pre-existing warnings only). `npm run build`
   — succeeds.
+
+- Graduation fee (owner decision, 4 Sep 2026: 5% of the raised ETH at
+  graduation, 100% to the treasury — mirroring pump.fun's original 6-of-85
+  SOL migration take as the stepping stone before an own-swap fee model).
+  `contracts/HoodlumsTestBondingCurve.sol` gains `GRADUATION_FEE_BPS = 500`:
+  `_graduate()` now computes `_graduationFee(realNativeReserve)` (floor-
+  rounded, so rounding favours pool liquidity), credits it to
+  `treasuryFeeBalance` and `totalFeesAccrued` before any external call, emits
+  `FeeAccrued(treasury, fee)` plus a new `GraduationFeeCharged(amount)`, and
+  seeds the pool with the remaining 95% (`Graduated.nativeLiquidity` is that
+  post-fee figure). The creator receives none of it and the 60/40 carry is
+  untouched; it is pull-payment only via the existing `withdrawFees()`. A new
+  `graduationFeeAtTarget()` view exposes the fee, and `minimumCurveFunding()`
+  measures its pool-liquidity floor against the post-fee amount. The fee never
+  changes pricing, the target, `remainingNativeToGraduate()` or the buy clamp.
+  **Tests changed rather than only added (rule 8, stated plainly):** two
+  `.t.sol` assertions pinning the pool's WETH at exactly `target` and the
+  `_predictGraduationDesiredAmounts` helper's `nativeLiquidity = target` pinned
+  the no-fee behaviour and now use `target - fee`; the dust test's expected
+  accrual chain gained the graduation fee between the final trading fee and
+  the sweep. Five new Solidity tests cover the exact 5%, treasury-only
+  accrual and event, treasury-only withdrawal, 0.2 ETH / 3.8 ETH at the 4 ETH
+  target, unchanged target/clamp/progress, and the post-fee funding floor.
+  Frontend: `lib/bonding-curve-fee-math.ts` mirrors the constant
+  (`graduationFee`, `graduationPoolLiquidity`); because every already-deployed
+  testnet curve predates the fee, the UI never trusts that mirror — a new
+  single-function `HOODLUMS_BONDING_CURVE_GRADUATION_FEE_ABI` is read per
+  curve in `lib/use-token-curve-status.ts` with a revert treated as `0n`, and
+  `formatGraduationFeeNote` (`lib/bonding-curve-status.ts`) returns `null` for
+  `0n`, so the swap panel's new note under the fee line (bonding and trading-
+  closed states) only ever describes a fee the specific curve charges; the
+  trading-closed copy no longer says the "full curve balance" moved to the
+  pool. `/bonding-curve`'s static model copy and README document the fee.
+  **Rule 10, stated plainly:** no new page, route or integration — the fee
+  accrues to the same on-chain `treasuryFeeBalance` the trading fee already
+  uses, which `/admin`'s Money section does not track today either (it shows
+  verified plan payments only); one on-chain treasury-fee revenue reader
+  covering both streams is the named follow-up. **Deploy note:** the live
+  testnet pipeline (`0x3c6a…72ed`) deploys the previous curve bytecode, so
+  this fee reaches new launches only after `npm run contracts:compile &&
+  npm run deploy:curve-launch-pipeline:robinhood` and updating
+  `NEXT_PUBLIC_HOODLUMS_CURVE_LAUNCH_PIPELINE_ADDRESSES`; existing curves are
+  immutable and never gain it. `npm run test:contracts` could not run in this
+  session — the proxy denies `binaries.soliditylang.org` (403, organisation
+  egress policy), so the Solidity suite is validated by CI's `npm test`.

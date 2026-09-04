@@ -34,7 +34,7 @@ const FLOW_STEPS = [
   {
     step: "04",
     title: "Pool creation",
-    copy: "The remaining tokens and raised test ETH automatically seed a new Hoodlums liquidity pool.",
+    copy: "A one-off 5% graduation fee on the raised test ETH goes to the Hoodlums treasury; the remaining tokens and the other 95% automatically seed a new Hoodlums liquidity pool.",
   },
   {
     step: "05",
@@ -101,10 +101,14 @@ export default async function BondingCurvePage({ searchParams }: BondingCurvePag
                 <span>Fee split</span>
                 <strong>60% treasury · 40% creator</strong>
               </div>
+              <div className={styles.readonlyField}>
+                <span>Graduation fee</span>
+                <strong>5% of raised ETH · 100% treasury</strong>
+              </div>
             </div>
             <div className={styles.readonlyField}>
               <span>Liquidity outcome</span>
-              <strong>Remaining tokens + raised test ETH seed a locked pool</strong>
+              <strong>Remaining tokens + 95% of raised test ETH seed a locked pool</strong>
             </div>
           </section>
 
@@ -139,6 +143,7 @@ export default async function BondingCurvePage({ searchParams }: BondingCurvePag
             <div><dt>Curve type</dt><dd>Full-supply testnet curve</dd></div>
             <div><dt>Starting configuration</dt><dd>Set at deployment</dd></div>
             <div><dt>Trading fee</dt><dd>1%</dd></div>
+            <div><dt>Graduation fee</dt><dd>5% to treasury</dd></div>
             <div><dt>Graduation target</dt><dd>Set at deployment</dd></div>
             <div><dt>Liquidity outcome</dt><dd>Locked pool</dd></div>
             <div><dt>Network</dt><dd>Robinhood testnet</dd></div>
@@ -192,8 +197,9 @@ export default async function BondingCurvePage({ searchParams }: BondingCurvePag
             <span className={styles.cardLabel}>GRADUATION</span>
             <h2>Automatic pool migration</h2>
             <p>
-              Reaching the exact funding target closes curve trading and moves the remaining token
-              inventory plus the recorded test ETH into a new Hoodlums pool.
+              Reaching the exact funding target closes curve trading, credits a one-off 5% graduation
+              fee on the recorded test ETH to the Hoodlums treasury, and moves the remaining token
+              inventory plus the other 95% into a new Hoodlums pool.
             </p>
           </article>
           <article className={styles.card}>
@@ -201,8 +207,9 @@ export default async function BondingCurvePage({ searchParams }: BondingCurvePag
             <h2>Testnet foundation only</h2>
             <p>
               The contract charges a fixed 1% trading fee on every buy and sell, split 60% to the
-              Hoodlums treasury and 40% to the token creator, claimed by each recipient separately.
-              It is otherwise unaudited and must not be used with mainnet funds.
+              Hoodlums treasury and 40% to the token creator, plus a one-off 5% graduation fee paid
+              entirely to the treasury, each claimed by its recipient separately. It is otherwise
+              unaudited and must not be used with mainnet funds.
             </p>
           </article>
         </section>

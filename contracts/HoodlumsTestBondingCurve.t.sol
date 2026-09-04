@@ -124,9 +124,11 @@ contract HoodlumsTestBondingCurveTest {
     uint256 private constant BPS = 10_000;
     uint256 private constant TRADING_FEE_BPS = 100;
     uint256 private constant PROTOCOL_FEE_SHARE_BPS = 6_000;
+    uint256 private constant GRADUATION_FEE_BPS = 500;
     uint256 private constant EXACT_GRADUATION_TARGET = 4 ether;
     bytes32 private constant GRADUATED_EVENT_SIGNATURE =
         keccak256("Graduated(address,uint256,uint256,uint256)");
+    bytes32 private constant GRADUATION_FEE_EVENT_SIGNATURE = keccak256("GraduationFeeCharged(uint256)");
 
     FixedSupplyMemeToken private token;
     HoodlumsTestBondingCurve private curve;
@@ -612,7 +614,10 @@ contract HoodlumsTestBondingCurveTest {
         (address posToken0,,,,, uint256 posAmount0, uint256 posAmount1,) =
             positionManagerMock.positions(tokenId);
         uint256 wethAmount = posToken0 == address(wethMock) ? posAmount0 : posAmount1;
-        require(wethAmount == target, "fees leaked into pool liquidity");
+        require(
+            wethAmount == target - _expectedGraduationFee(target),
+            "pool did not receive exactly the reserve minus the graduation fee"
+        );
 
         uint256 treasuryOwed = graduatingCurve.treasuryFeeBalance();
         uint256 creatorOwed = graduatingCurve.creatorFeeBalance();
@@ -745,7 +750,10 @@ contract HoodlumsTestBondingCurveTest {
         );
         uint256 wethAmount = posToken0 == address(wethMock) ? posAmount0 : posAmount1;
         uint256 tokenAmount = posToken0 == address(wethMock) ? posAmount1 : posAmount0;
-        require(wethAmount == target, "post-fee reserve not fully seeded, or fee leaked in");
+        require(
+            wethAmount == target - _expectedGraduationFee(target),
+            "pool did not receive exactly the reserve minus the graduation fee"
+        );
         require(tokenAmount > 0, "token liquidity missing");
 
         require(graduatingToken.balanceOf(address(graduatingCurve)) == 0, "curve retained tokens");
@@ -781,6 +789,154 @@ contract HoodlumsTestBondingCurveTest {
         require(
             positionManagerMock.ownerOf(graduatingCurve.lpTokenId()) == address(1),
             "LP NFT not locked at address(1) at exact target"
+        );
+    }
+
+    /// @dev Owner decision (4 Sep): a one-off 5% graduation fee on the raised
+    ///      native reserve, 100% to the treasury, mirroring pump.fun's original
+    ///      6-of-85 SOL migration take. Proves the exact amount, that it lands
+    ///      only on the treasury's claimable balance (the creator's is exactly
+    ///      the trading-fee share it would have been without it), that it is
+    ///      counted in `totalFeesAccrued`, that the pool receives exactly the
+    ///      remaining 95%, and that the event reports the same figure.
+    function testGraduationChargesExactFivePercentOfReserveToTreasuryOnly() public {
+        uint256 target = 0.99 ether;
+        (, HoodlumsTestBondingCurve graduatingCurve) = _deployFreshFundedCurve(target);
+        FeeAccrual memory acc;
+        uint256 expectedFee = _expectedGraduationFee(target);
+        require(expectedFee == 0.0495 ether, "test arithmetic: 5% of 0.99 ether");
+        require(graduatingCurve.GRADUATION_FEE_BPS() == GRADUATION_FEE_BPS, "graduation fee constant is not 5%");
+        require(graduatingCurve.graduationFeeAtTarget() == expectedFee, "graduationFeeAtTarget mismatch");
+
+        vm.deal(BUYER, 2 ether);
+        _accrueExpectedFee(acc, graduatingCurve.quoteBuyFee(0.5 ether));
+        vm.prank(BUYER);
+        graduatingCurve.buy{value: 0.5 ether}(0, DEADLINE);
+        require(graduatingCurve.treasuryFeeBalance() == acc.treasury, "treasury accrued before graduation");
+
+        _accrueExpectedFee(acc, graduatingCurve.quoteBuyFee(0.5 ether));
+        _accrueExpectedGraduationFee(acc, expectedFee);
+
+        vm.recordLogs();
+        vm.prank(BUYER);
+        graduatingCurve.buy{value: 0.5 ether}(0, DEADLINE);
+        VmLog[] memory logs = vm.getRecordedLogs();
+
+        require(graduatingCurve.graduated(), "curve did not graduate");
+        require(graduatingCurve.treasuryFeeBalance() == acc.treasury, "treasury did not receive exactly the graduation fee");
+        require(graduatingCurve.creatorFeeBalance() == acc.creator, "creator balance moved on graduation");
+        require(graduatingCurve.totalFeesAccrued() == acc.total, "graduation fee missing from totalFeesAccrued");
+        require(
+            graduatingCurve.actualNativeBalance() ==
+                graduatingCurve.treasuryFeeBalance() + graduatingCurve.creatorFeeBalance(),
+            "native balance is not exactly the outstanding fee liability"
+        );
+
+        (address posToken0,,,,, uint256 posAmount0, uint256 posAmount1,) =
+            positionManagerMock.positions(graduatingCurve.lpTokenId());
+        uint256 wethAmount = posToken0 == address(wethMock) ? posAmount0 : posAmount1;
+        require(wethAmount == target - expectedFee, "pool did not receive exactly 95% of the reserve");
+
+        _assertGraduationFeeEventEmitted(logs, address(graduatingCurve), expectedFee);
+    }
+
+    /// @dev The graduation fee follows the same pull-payment rule as trading
+    ///      fees: the treasury withdraws it itself via `withdrawFees()`, and
+    ///      the creator's withdrawal is unaffected by it.
+    function testGraduationFeeIsWithdrawableByTreasuryOnlyAfterGraduation() public {
+        uint256 target = 0.99 ether;
+        (, HoodlumsTestBondingCurve graduatingCurve) = _deployFreshFundedCurve(target);
+        FeeAccrual memory acc;
+
+        vm.deal(BUYER, 2 ether);
+        _accrueExpectedFee(acc, graduatingCurve.quoteBuyFee(0.5 ether));
+        vm.prank(BUYER);
+        graduatingCurve.buy{value: 0.5 ether}(0, DEADLINE);
+        _accrueExpectedFee(acc, graduatingCurve.quoteBuyFee(0.5 ether));
+        vm.prank(BUYER);
+        graduatingCurve.buy{value: 0.5 ether}(0, DEADLINE);
+        require(graduatingCurve.graduated(), "curve did not graduate");
+
+        uint256 expectedFee = _expectedGraduationFee(target);
+        uint256 treasuryBefore = TREASURY.balance;
+        vm.prank(TREASURY);
+        uint256 treasuryWithdrawn = graduatingCurve.withdrawFees();
+        require(treasuryWithdrawn == acc.treasury + expectedFee, "treasury withdrawal excludes the graduation fee");
+        require(TREASURY.balance == treasuryBefore + acc.treasury + expectedFee, "treasury did not receive the fee");
+
+        uint256 creatorBefore = address(this).balance;
+        uint256 creatorWithdrawn = graduatingCurve.withdrawFees();
+        require(creatorWithdrawn == acc.creator, "creator withdrawal includes part of the graduation fee");
+        require(address(this).balance == creatorBefore + acc.creator, "creator received the wrong amount");
+
+        require(graduatingCurve.totalFeesWithdrawn() == graduatingCurve.totalFeesAccrued(), "fees left outstanding");
+        require(graduatingCurve.actualNativeBalance() == 0, "native left in the curve after both withdrawals");
+    }
+
+    /// @dev At the 4 ether mainnet-shaped target the fee is exactly 0.2 ether
+    ///      and exactly 3.8 ether reaches the pool.
+    function testGraduationFeeAtFourEtherTargetIsExactlyPointTwoEther() public {
+        (, HoodlumsTestBondingCurve graduatingCurve) = _deployFreshFundedCurve(EXACT_GRADUATION_TARGET);
+        require(graduatingCurve.graduationFeeAtTarget() == 0.2 ether, "fee at 4 ether target is not 0.2 ether");
+
+        vm.deal(BUYER, 10 ether);
+        uint256 gross = _grossNeededForExactNet(graduatingCurve, EXACT_GRADUATION_TARGET);
+        uint256 treasuryBefore = graduatingCurve.treasuryFeeBalance();
+        uint256 tradingFee = graduatingCurve.quoteBuyFee(gross);
+        vm.prank(BUYER);
+        graduatingCurve.buy{value: gross}(0, DEADLINE);
+        require(graduatingCurve.graduated(), "curve did not graduate at 4 ether");
+
+        (address posToken0,,,,, uint256 posAmount0, uint256 posAmount1,) =
+            positionManagerMock.positions(graduatingCurve.lpTokenId());
+        uint256 wethAmount = posToken0 == address(wethMock) ? posAmount0 : posAmount1;
+        require(wethAmount == 3.8 ether, "pool did not receive exactly 3.8 ether");
+        // Treasury gained its 60% of the single trading fee plus the whole 0.2 ether.
+        uint256 treasuryGain = graduatingCurve.treasuryFeeBalance() - treasuryBefore;
+        require(treasuryGain >= 0.2 ether && treasuryGain <= 0.2 ether + tradingFee, "treasury gain outside expected range");
+        require(treasuryGain - 0.2 ether == (tradingFee * PROTOCOL_FEE_SHARE_BPS) / BPS, "treasury trading share wrong");
+    }
+
+    /// @dev The graduation fee never touches curve pricing or progress: the
+    ///      buy that graduates is still capped by `remainingNativeToGraduate()`
+    ///      exactly as before, and progress reads 100% at the target.
+    function testGraduationFeeDoesNotChangeTheTargetOrTheBuyClamp() public {
+        uint256 target = 0.99 ether;
+        (, HoodlumsTestBondingCurve graduatingCurve) = _deployFreshFundedCurve(target);
+
+        vm.deal(BUYER, 2 ether);
+        vm.prank(BUYER);
+        graduatingCurve.buy{value: 0.5 ether}(0, DEADLINE);
+        require(graduatingCurve.remainingNativeToGraduate() == target - 0.495 ether, "remaining changed by the fee");
+        require(graduatingCurve.graduationProgressBps() == (0.495 ether * BPS) / target, "progress changed by the fee");
+
+        vm.prank(BUYER);
+        (bool overshoot,) = address(graduatingCurve).call{value: 0.5 ether + 0.02 ether}(
+            abi.encodeCall(HoodlumsTestBondingCurve.buy, (0, DEADLINE))
+        );
+        require(!overshoot, "buy past the target was accepted");
+
+        vm.prank(BUYER);
+        graduatingCurve.buy{value: 0.5 ether}(0, DEADLINE);
+        require(graduatingCurve.graduated(), "exact-target buy did not graduate");
+        require(graduatingCurve.graduationProgressBps() == BPS, "progress not 100% after graduation");
+    }
+
+    /// @dev `minimumCurveFunding()` measures the pool-liquidity floor against
+    ///      the native that actually reaches the pool (target minus fee). A
+    ///      target in [1_002_001, 1_054_737] wei is the band where that
+    ///      distinction changes the answer: 1_002_001 / target rounds to 0 but
+    ///      1_002_001 / (0.95 x target) rounds to 1.
+    function testMinimumCurveFundingMeasuresPoolFloorAgainstPostGraduationFeeNative() public {
+        uint256 target = 1_010_000;
+        FixedSupplyMemeToken smallToken = _deployToken(WHOLE_TOKEN_SUPPLY);
+        HoodlumsTestBondingCurve smallCurve = _deployCurve(smallToken, target);
+        uint256 tokensSoldAtTarget = Math.mulDiv(target, VIRTUAL_TOKEN_RESERVE, VIRTUAL_ETH_RESERVE + target);
+        uint256 nativeIntoPool = target - _expectedGraduationFee(target);
+        require(1_002_001 / target == 0 && 1_002_001 / nativeIntoPool == 1, "test band no longer distinguishing");
+        require(
+            smallCurve.minimumCurveFunding() == tokensSoldAtTarget + 2,
+            "minimum funding not measured against post-fee pool native"
         );
     }
 
@@ -991,9 +1147,12 @@ contract HoodlumsTestBondingCurveTest {
         require(dust.leftoverToken > 0 && dust.leftoverWeth > 0, "test setup produced no dust");
 
         // The trading fee on the graduating buy accrues first (inside buy()),
-        // then the dust sweep accrues on top of it (inside _graduate()), so
-        // the carry must be threaded through in that same order.
+        // then the 100%-treasury graduation fee (inside _graduate(), before any
+        // external call — it never touches the 60/40 carry), then the dust
+        // sweep accrues on top of both, so the carry must be threaded through
+        // in that same order.
         _accrueExpectedFee(acc, dustCurve.quoteBuyFee(0.5 ether));
+        _accrueExpectedGraduationFee(acc, _expectedGraduationFee(target));
         _accrueExpectedFee(acc, dust.leftoverWeth);
 
         uint256 supplyBeforeGraduation = dustToken.totalSupply();
@@ -1015,7 +1174,7 @@ contract HoodlumsTestBondingCurveTest {
         require(dustCurve.totalFeesAccrued() == acc.total, "total fees accrued after sweep wrong");
         require(
             dustCurve.treasuryFeeBalance() + dustCurve.creatorFeeBalance() == dustCurve.totalFeesAccrued(),
-            "60/40 split lost wei after dust sweep"
+            "fee accounting lost wei across graduation fee and dust sweep"
         );
 
         _assertDustEventEmitted(logs, address(dustCurve), dust.leftoverToken, dust.leftoverWeth);
@@ -1031,6 +1190,35 @@ contract HoodlumsTestBondingCurveTest {
         acc.treasury += treasuryShare;
         acc.creator += fee - treasuryShare;
         acc.total += fee;
+    }
+
+    /// @dev Mirrors `_graduate()`'s fee accrual: 100% to the treasury, no
+    ///      creator share, and the 60/40 carry is deliberately untouched.
+    function _accrueExpectedGraduationFee(FeeAccrual memory acc, uint256 fee) internal pure {
+        acc.treasury += fee;
+        acc.total += fee;
+    }
+
+    /// @dev Mirrors the contract's `_graduationFee`: GRADUATION_FEE_BPS of the
+    ///      reserve, rounded down. At graduation the reserve equals the target.
+    function _expectedGraduationFee(uint256 target) internal pure returns (uint256) {
+        return (target * GRADUATION_FEE_BPS) / BPS;
+    }
+
+    function _assertGraduationFeeEventEmitted(VmLog[] memory logs, address emitter, uint256 expectedFee)
+        internal
+        pure
+    {
+        bool found;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].emitter != emitter) continue;
+            if (logs[i].topics.length == 0 || logs[i].topics[0] != GRADUATION_FEE_EVENT_SIGNATURE) continue;
+            uint256 amount = abi.decode(logs[i].data, (uint256));
+            require(amount == expectedFee, "GraduationFeeCharged amount wrong");
+            require(!found, "GraduationFeeCharged emitted more than once");
+            found = true;
+        }
+        require(found, "GraduationFeeCharged event not emitted");
     }
 
     function _predictGraduationDust(
@@ -1134,7 +1322,7 @@ contract HoodlumsTestBondingCurveTest {
         uint256 target
     ) internal view returns (address token0, address token1, uint256 amount0Desired, uint256 amount1Desired) {
         uint256 tokenLiquidity = targetCurve.tokensAvailable() - targetCurve.quoteBuy(finalBuyGross);
-        uint256 nativeLiquidity = target;
+        uint256 nativeLiquidity = target - _expectedGraduationFee(target);
         bool tokenIsToken0 = address(targetToken) < address(wethMock);
         token0 = tokenIsToken0 ? address(targetToken) : address(wethMock);
         token1 = tokenIsToken0 ? address(wethMock) : address(targetToken);

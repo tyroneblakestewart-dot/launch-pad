@@ -92,6 +92,18 @@ export const HOODLUMS_BONDING_CURVE_HEADER_ABI = parseAbi([
 ]);
 
 /**
+ * The curve's one-off graduation fee constant (owner decision, 4 Sep 2026:
+ * 5%, 100% to treasury). Kept as its own single-function ABI, separate from
+ * `HOODLUMS_BONDING_CURVE_HEADER_ABI`, because curves deployed before the
+ * fee existed have no such function and the read reverts — callers must
+ * treat that revert as `0n` (no fee) rather than as an error, so the swap
+ * panel never claims a fee a given curve does not charge.
+ */
+export const HOODLUMS_BONDING_CURVE_GRADUATION_FEE_ABI = parseAbi([
+  "function GRADUATION_FEE_BPS() view returns (uint256)",
+]);
+
+/**
  * The frontend reads a deployed bonding-curve address from a single env var,
  * mirroring FACTORY_ADDRESSES_ENV_VAR / getFactoryAddress in
  * lib/factory-config.ts, so wiring a newly deployed curve into the UI never

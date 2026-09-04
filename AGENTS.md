@@ -137,7 +137,10 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   never push native currency, and each recipient withdraws via
   `withdrawFees()`. `realNativeReserve` and the graduation target only
   count post-fee amounts; fee balances stay outside pool liquidity and
-  remain withdrawable after graduation. The curve is still not deployed or
+  remain withdrawable after graduation. A one-off **5% graduation fee**
+  (`GRADUATION_FEE_BPS = 500`, owner decision 4 Sep 2026) on the native
+  reserve is credited 100% to the treasury at graduation; only the other 95%
+  seeds the locked pool. The curve is still not deployed or
   wired into live UI controls.
 - Durable public publishing is implemented for review: Postgres via
   server-only `DATABASE_URL`, migration-managed `published_sites` and
