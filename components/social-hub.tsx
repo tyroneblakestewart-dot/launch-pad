@@ -10,7 +10,12 @@ import {
 import { TelegramMark, XMark } from "@/components/brand-icons";
 import { MASCOT_REFERENCE_TIPS, assessMascotReference, type MascotReferenceAssessment } from "@/lib/mascot-reference-guidance";
 import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
-import { VOICE_EXAMPLE_TARGET, cleanPastedPosts, voiceTrainingHint } from "@/lib/social-voice-examples";
+import {
+  VOICE_EXAMPLE_TARGET,
+  addVoiceExamples,
+  describeAddVoiceExamplesResult,
+  voiceTrainingHint,
+} from "@/lib/social-voice-examples";
 import { getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
 import {
   advanceRollingRecentDrafts,
@@ -400,16 +405,15 @@ export function SocialHub() {
   const [timezoneId, setTimezoneId] = useState(TIMEZONES[0].id);
 
   const [walletAddress, setWalletAddress] = useState("");
-  // What the user pasted, chrome and all. `voiceExamplesText` below is the
-  // cleaned form — one post per line, names/handles/timestamps/hashtags gone —
-  // and is what every downstream count, persist and API call reads.
-  const [voiceExamplesRawText, setVoiceExamplesRawText] = useState("");
-  const voiceExamplesText = useMemo(() => cleanPastedPosts(voiceExamplesRawText).join("\n"), [voiceExamplesRawText]);
-  const pastedChromeRemoved = useMemo(() => {
-    const rawNonEmpty = voiceExamplesRawText.split("\n").filter((line) => line.trim()).length;
-    const cleaned = voiceExamplesText ? voiceExamplesText.split("\n").length : 0;
-    return rawNonEmpty > cleaned ? rawNonEmpty - cleaned : 0;
-  }, [voiceExamplesRawText, voiceExamplesText]);
+  // The examples are a LIST (owner spec, 5 Sep 2026): the box holds one post
+  // at a time and "Add example" cleans it and appends it as its own row, so
+  // posts can never be glued together by a paste with no handles between them.
+  // `voiceExamplesText` is the one-post-per-line form every downstream count,
+  // persist and API call reads.
+  const [voiceExamples, setVoiceExamples] = useState<string[]>([]);
+  const [voiceDraftText, setVoiceDraftText] = useState("");
+  const [voiceAddStatus, setVoiceAddStatus] = useState<PanelStatus>(null);
+  const voiceExamplesText = useMemo(() => voiceExamples.join("\n"), [voiceExamples]);
   const [voiceProfile, setVoiceProfile] = useState<VoiceProfile | null>(null);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [sampleLineFeedback, setSampleLineFeedback] = useState<SampleLineFeedback[]>([]);
@@ -665,7 +669,7 @@ export function SocialHub() {
     async function loadRecord() {
       if (!selectedProjectId) {
         setVoiceProfile(null);
-        setVoiceExamplesRawText("");
+        setVoiceExamples([]); setVoiceDraftText("");
         setMascotVisualDNA(null);
         setMascotReferenceImage(null);
         setQueue([]);
@@ -684,7 +688,9 @@ export function SocialHub() {
       const record = await getSocialStudioRecord(selectedProjectId).catch(() => EMPTY_SOCIAL_STUDIO_RECORD);
       if (cancelled) return;
       setVoiceProfile(record.voiceProfile);
-      setVoiceExamplesRawText(record.voiceExamples.join("\n"));
+      setVoiceExamples(record.voiceExamples);
+      setVoiceDraftText("");
+      setVoiceAddStatus(null);
       setMascotVisualDNA(record.mascotVisualDNA);
       setMascotReferenceImage(record.mascotReferenceImage);
       setQueue(record.queue);
@@ -708,10 +714,7 @@ export function SocialHub() {
   function currentSocialStudioRecord(overrides: Partial<SocialStudioProjectRecord> = {}): SocialStudioProjectRecord {
     return {
       voiceProfile,
-      voiceExamples: voiceExamplesText
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean),
+      voiceExamples,
       mascotVisualDNA,
       mascotReferenceImage,
       queue,
@@ -1158,6 +1161,28 @@ export function SocialHub() {
         ? { tone: "error", message: "Nothing to clear — every kept line is on Fire. Use Clear all if you really want them gone." }
         : { tone: "success", message: `Cleared ${removed} line${removed === 1 ? "" : "s"} from your persona bank.` },
     );
+  }
+
+  /** "Add example": clean whatever is in the box into discrete posts and append each as its own row. */
+  function addVoiceExampleFromBox() {
+    const result = addVoiceExamples(voiceExamples, voiceDraftText);
+    if (result.added.length > 0) {
+      setVoiceExamples(result.examples);
+      persistSocialStudio({ voiceExamples: result.examples });
+      setVoiceDraftText("");
+    }
+    setVoiceAddStatus({
+      tone: result.added.length > 0 ? "success" : "error",
+      message: describeAddVoiceExamplesResult(result),
+    });
+  }
+
+  /** The × on an example row. */
+  function removeVoiceExample(index: number) {
+    const next = voiceExamples.filter((_, position) => position !== index);
+    setVoiceExamples(next);
+    persistSocialStudio({ voiceExamples: next });
+    setVoiceAddStatus(null);
   }
 
   async function buildVoiceProfile() {
@@ -2287,10 +2312,9 @@ export function SocialHub() {
                       </div>
                       <div className={styles.insetPanel}>
                         <textarea
-                          value={voiceExamplesRawText}
-                          onChange={(event) => setVoiceExamplesRawText(event.target.value)}
-                          onBlur={() => persistSocialStudio()}
-                          placeholder="Paste a post here, one per line"
+                          value={voiceDraftText}
+                          onChange={(event) => setVoiceDraftText(event.target.value)}
+                          placeholder="Paste one post here — several is fine if each has its name and @handle above it"
                           rows={5}
                         />
                         <div className={styles.disabledActions}>
@@ -2303,19 +2327,29 @@ export function SocialHub() {
                           <button
                             type="button"
                             className={styles.voiceLearnButton}
-                            onClick={buildVoiceProfile}
-                            disabled={voiceBusy || voiceExampleCount < MIN_USABLE_VOICE_EXAMPLES}
+                            onClick={addVoiceExampleFromBox}
+                            disabled={!voiceDraftText.trim() || voiceExamples.length >= VOICE_EXAMPLE_TARGET}
                           >
-                            {voiceBusy ? "Learning your voice…" : "Learn my voice"}
+                            Add example
                           </button>
                         </div>
                       </div>
-                      <InlineStatus status={voiceStatus} />
-                      {pastedChromeRemoved > 0 ? (
-                        <p className={styles.exampleLabel}>
-                          {pastedChromeRemoved} pasted line{pastedChromeRemoved === 1 ? "" : "s"} of names, handles, timestamps or
-                          hashtags removed — only the post text is kept.
-                        </p>
+                      <InlineStatus status={voiceAddStatus} />
+                      {voiceExamples.length > 0 ? (
+                        <ul className={styles.exampleList}>
+                          {voiceExamples.map((example, index) => (
+                            <li className={styles.exampleRow} key={`${index}-${example.slice(0, 24)}`}>
+                              <p>{example}</p>
+                              <button
+                                type="button"
+                                aria-label={`Delete example ${index + 1}`}
+                                onClick={() => removeVoiceExample(index)}
+                              >
+                                ×
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
                       ) : null}
                       {voiceExampleFilter.rejectedCount > 0 ? (
                         <p className={styles.exampleLabel}>
@@ -2335,6 +2369,18 @@ export function SocialHub() {
                         <div className={styles.progressTrack}><span style={{ width: `${voiceProgressPercent}%` }} /></div>
                         <p className={styles.voiceHint}>{voiceTrainingHint(voiceExampleCount)}</p>
                       </div>
+                      <div className={styles.voiceLearnRow}>
+                        <button
+                          type="button"
+                          className={styles.voiceLearnButton}
+                          onClick={buildVoiceProfile}
+                          disabled={voiceBusy || voiceExampleCount < MIN_USABLE_VOICE_EXAMPLES}
+                        >
+                          {voiceBusy ? "Learning your voice…" : "Learn my voice"}
+                        </button>
+                        <span>Builds the voice profile from every example above.</span>
+                      </div>
+                      <InlineStatus status={voiceStatus} />
                       <p className={styles.limeNote}>
                         <i aria-hidden="true">i</i>
                         <span>

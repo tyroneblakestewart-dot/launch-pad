@@ -174,3 +174,100 @@ export function voiceTrainingHint(usableCount: number, target: number = VOICE_EX
   }
   return "Perfect — the voice is fully trained.";
 }
+
+/** Mirrors lib/server/social-voice-profile-pipeline.ts's MAX_VOICE_EXAMPLE_LENGTH so the box can refuse at Add time instead of the server refusing at Learn time. */
+export const MAX_VOICE_EXAMPLE_LENGTH = 500;
+
+/** How many non-empty pasted lines were chrome (name above a handle, handle, date, counts, captions, hashtag-only lines) rather than post body. */
+export function countPostChromeLines(rawText: string): number {
+  const lines = rawText.replace(/\r\n?/g, "\n").split("\n").map((line) => line.trim());
+  let count = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line) continue;
+    const next = lines[index + 1];
+    if (isPostChromeLine(line) || HASHTAG_ONLY_LINE.test(line) || (next !== undefined && HANDLE_LINE.test(next))) count += 1;
+  }
+  return count;
+}
+
+export type AddVoiceExamplesRejection = {
+  text: string;
+  reason: "too_short" | "too_long" | "duplicate" | "limit";
+};
+
+export type AddVoiceExamplesResult = {
+  examples: string[];
+  added: string[];
+  rejected: AddVoiceExamplesRejection[];
+  /** Non-empty pasted lines that were chrome (name, handle, date, tags…) and dropped. */
+  chromeLinesRemoved: number;
+};
+
+/**
+ * The "Add example" step (owner spec, 5 Sep 2026): the box holds ONE post (or
+ * several, each with its name/@handle), Add cleans it with cleanPastedPosts
+ * and appends each resulting post as its own example. Duplicates (case-
+ * insensitive), too-short and over-length posts are refused by name, and the
+ * list never exceeds `max`. Pure; the caller persists the returned list.
+ */
+export function addVoiceExamples(
+  existing: readonly string[],
+  pasted: string,
+  options: { max?: number; maxLength?: number; minLength?: number } = {},
+): AddVoiceExamplesResult {
+  const max = options.max ?? VOICE_EXAMPLE_TARGET;
+  const maxLength = options.maxLength ?? MAX_VOICE_EXAMPLE_LENGTH;
+  const minLength = options.minLength ?? MIN_VOICE_EXAMPLE_LENGTH;
+  const posts = cleanPastedPosts(pasted);
+  const chromeLinesRemoved = countPostChromeLines(pasted);
+
+  const examples = [...existing];
+  const seen = new Set(existing.map((example) => example.toLowerCase()));
+  const added: string[] = [];
+  const rejected: AddVoiceExamplesRejection[] = [];
+
+  for (const post of posts) {
+    const key = post.toLowerCase();
+    if (post.length < minLength) {
+      rejected.push({ text: post, reason: "too_short" });
+    } else if (post.length > maxLength) {
+      rejected.push({ text: post, reason: "too_long" });
+    } else if (seen.has(key)) {
+      rejected.push({ text: post, reason: "duplicate" });
+    } else if (examples.length >= max) {
+      rejected.push({ text: post, reason: "limit" });
+    } else {
+      examples.push(post);
+      seen.add(key);
+      added.push(post);
+    }
+  }
+
+  return { examples, added, rejected, chromeLinesRemoved };
+}
+
+/** One plain sentence for the status line after Add. */
+export function describeAddVoiceExamplesResult(result: AddVoiceExamplesResult, max: number = VOICE_EXAMPLE_TARGET): string {
+  const parts: string[] = [];
+  if (result.added.length > 0) parts.push(`Added ${result.added.length} example${result.added.length === 1 ? "" : "s"}`);
+  const tooLong = result.rejected.filter((entry) => entry.reason === "too_long");
+  const duplicate = result.rejected.filter((entry) => entry.reason === "duplicate").length;
+  const tooShort = result.rejected.filter((entry) => entry.reason === "too_short").length;
+  const limit = result.rejected.filter((entry) => entry.reason === "limit").length;
+  if (tooLong.length > 0) {
+    parts.push(
+      tooLong.length === 1
+        ? `one post is ${tooLong[0].text.length} characters — ${MAX_VOICE_EXAMPLE_LENGTH} is the max, so it wasn't added`
+        : `${tooLong.length} posts are over ${MAX_VOICE_EXAMPLE_LENGTH} characters and weren't added`,
+    );
+  }
+  if (duplicate > 0) parts.push(`${duplicate} already in your examples`);
+  if (tooShort > 0) parts.push(`${tooShort} too short to teach anything`);
+  if (limit > 0) parts.push(`${limit} not added — ${max} is the most the AI reads`);
+  if (result.chromeLinesRemoved > 0) {
+    parts.push(`${result.chromeLinesRemoved} line${result.chromeLinesRemoved === 1 ? "" : "s"} of names, handles, dates or hashtags removed`);
+  }
+  if (parts.length === 0) return "Nothing to add — paste a post first.";
+  return parts.join(" · ") + ".";
+}

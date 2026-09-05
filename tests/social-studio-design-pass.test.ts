@@ -197,17 +197,32 @@ describe("Social Studio design pass", () => {
     expect(css).toContain(".connectionOptions summary::-webkit-details-marker { display: none; }");
   });
 
-  it("cleans pasted posts to their body before anything counts, persists or sends them, and says so", async () => {
+  it("keeps examples as a list: the box holds one post, Add example cleans and appends it, each row has its own delete (owner spec replacing #495's raw textarea)", async () => {
     const hub = await source("components", "social-hub.tsx");
-    expect(hub).toContain("const [voiceExamplesRawText, setVoiceExamplesRawText] = useState(\"\");");
-    expect(hub).toContain(
-      'const voiceExamplesText = useMemo(() => cleanPastedPosts(voiceExamplesRawText).join("\\n"), [voiceExamplesRawText]);',
-    );
-    // The textarea shows the raw paste; every reader uses the cleaned text.
-    expect(hub).toContain("value={voiceExamplesRawText}");
+    expect(hub).toContain("const [voiceExamples, setVoiceExamples] = useState<string[]>([]);");
+    expect(hub).toContain("const [voiceDraftText, setVoiceDraftText] = useState(\"\");");
+    expect(hub).toContain('const voiceExamplesText = useMemo(() => voiceExamples.join("\\n"), [voiceExamples]);');
+    // The pinned filter line downstream is untouched.
     expect(hub).toContain("const voiceExampleFilter = useMemo(() => filterUsableVoiceExamples(voiceExamplesText), [voiceExamplesText]);");
-    expect(hub).not.toContain("setVoiceExamplesText(");
-    expect(hub).toContain("of names, handles, timestamps or");
+    // The box is the draft; Add cleans + appends; × deletes one row.
+    expect(hub).toContain("value={voiceDraftText}");
+    expect(hub).toContain("function addVoiceExampleFromBox()");
+    expect(hub).toContain("const result = addVoiceExamples(voiceExamples, voiceDraftText);");
+    expect(hub).toContain("onClick={addVoiceExampleFromBox}");
+    expect(hub).toContain(">\n                            Add example\n");
+    expect(hub).toContain("function removeVoiceExample(index: number)");
+    expect(hub).toContain("aria-label={`Delete example ${index + 1}`}");
+    expect(hub).toContain("<ul className={styles.exampleList}>");
+    // The list is what persists, and what Learn my voice reads.
+    expect(hub).toContain("      voiceExamples,\n      mascotVisualDNA,");
+    expect(hub).toContain("setVoiceExamples(record.voiceExamples);");
+    expect(hub).not.toContain("voiceExamplesRawText");
+    // Add refuses over-length posts here rather than letting the server refuse later.
+    const lib = await source("lib", "social-voice-examples.ts");
+    expect(lib).toContain("export const MAX_VOICE_EXAMPLE_LENGTH = 500;");
+    // The box-row lime button must beat the shared pill rule on specificity.
+    const css = await source("components", "social-hub.module.css");
+    expect(css).toMatch(/\.disabledActions \.voiceLearnButton \{[^}]*background: var\(--cta-bg\);/s);
   });
 
   it("renders the sorting station: three verdicts per card, a persona bank bar with two-tap clears, and an explicit start button (never auto-spend on load)", async () => {

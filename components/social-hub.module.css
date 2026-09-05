@@ -1057,6 +1057,48 @@
 }
 .voiceHint { margin: 0; color: var(--text-label); font: 600 11px var(--mono); }
 
+/* The examples list: one row per post, each with its own delete. */
+.exampleList { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.exampleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: var(--studio-card-bg);
+  box-shadow: var(--studio-card-shadow);
+}
+.exampleRow p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.exampleRow button {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: var(--text-label);
+  background: var(--studio-ghost-bg);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.exampleRow button:hover { color: var(--text-primary); }
+.voiceLearnRow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.voiceLearnRow span { color: var(--text-label); font-size: 11.5px; }
+@media (pointer: coarse) {
+  .exampleRow button { width: 44px; height: 44px; }
+}
+
 /* The trainer's primary action, the design's solid lime pill inside the paste box. */
 .voiceLearnButton {
   min-height: 38px;
@@ -1071,6 +1113,16 @@
   cursor: pointer;
 }
 .voiceLearnButton:disabled { cursor: not-allowed; opacity: 0.45; box-shadow: none; }
+/* Inside the paste box's action row the shared pill rule (.disabledActions button)
+   outranks .voiceLearnButton on specificity; restate the lime here so the
+   design's "Add example" is lime, not a grey ghost. */
+.disabledActions .voiceLearnButton {
+  border: 0;
+  color: var(--cta-color);
+  background: var(--cta-bg);
+  box-shadow: 0 10px 24px -12px rgba(198, 245, 62, 0.5);
+}
+.disabledActions .voiceLearnButton:disabled { box-shadow: none; }
 
 .limeNote {
   margin: 0;
