@@ -9,7 +9,7 @@ import {
 } from "@/lib/account-wallet-state";
 import { TelegramMark, XMark } from "@/components/brand-icons";
 import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
-import { VOICE_EXAMPLE_TARGET, voiceTrainingHint } from "@/lib/social-voice-examples";
+import { VOICE_EXAMPLE_TARGET, cleanPastedPosts, voiceTrainingHint } from "@/lib/social-voice-examples";
 import { getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
 import {
   advanceRollingRecentDrafts,
@@ -376,7 +376,16 @@ export function SocialHub() {
   const [timezoneId, setTimezoneId] = useState(TIMEZONES[0].id);
 
   const [walletAddress, setWalletAddress] = useState("");
-  const [voiceExamplesText, setVoiceExamplesText] = useState("");
+  // What the user pasted, chrome and all. `voiceExamplesText` below is the
+  // cleaned form — one post per line, names/handles/timestamps/hashtags gone —
+  // and is what every downstream count, persist and API call reads.
+  const [voiceExamplesRawText, setVoiceExamplesRawText] = useState("");
+  const voiceExamplesText = useMemo(() => cleanPastedPosts(voiceExamplesRawText).join("\n"), [voiceExamplesRawText]);
+  const pastedChromeRemoved = useMemo(() => {
+    const rawNonEmpty = voiceExamplesRawText.split("\n").filter((line) => line.trim()).length;
+    const cleaned = voiceExamplesText ? voiceExamplesText.split("\n").length : 0;
+    return rawNonEmpty > cleaned ? rawNonEmpty - cleaned : 0;
+  }, [voiceExamplesRawText, voiceExamplesText]);
   const [voiceProfile, setVoiceProfile] = useState<VoiceProfile | null>(null);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [sampleLineFeedback, setSampleLineFeedback] = useState<SampleLineFeedback[]>([]);
@@ -621,7 +630,7 @@ export function SocialHub() {
     async function loadRecord() {
       if (!selectedProjectId) {
         setVoiceProfile(null);
-        setVoiceExamplesText("");
+        setVoiceExamplesRawText("");
         setMascotVisualDNA(null);
         setMascotReferenceImage(null);
         setQueue([]);
@@ -638,7 +647,7 @@ export function SocialHub() {
       const record = await getSocialStudioRecord(selectedProjectId).catch(() => EMPTY_SOCIAL_STUDIO_RECORD);
       if (cancelled) return;
       setVoiceProfile(record.voiceProfile);
-      setVoiceExamplesText(record.voiceExamples.join("\n"));
+      setVoiceExamplesRawText(record.voiceExamples.join("\n"));
       setMascotVisualDNA(record.mascotVisualDNA);
       setMascotReferenceImage(record.mascotReferenceImage);
       setQueue(record.queue);
@@ -2129,8 +2138,8 @@ export function SocialHub() {
                       </div>
                       <div className={styles.insetPanel}>
                         <textarea
-                          value={voiceExamplesText}
-                          onChange={(event) => setVoiceExamplesText(event.target.value)}
+                          value={voiceExamplesRawText}
+                          onChange={(event) => setVoiceExamplesRawText(event.target.value)}
                           onBlur={() => persistSocialStudio()}
                           placeholder="Paste a post here, one per line"
                           rows={5}
@@ -2153,6 +2162,12 @@ export function SocialHub() {
                         </div>
                       </div>
                       <InlineStatus status={voiceStatus} />
+                      {pastedChromeRemoved > 0 ? (
+                        <p className={styles.exampleLabel}>
+                          {pastedChromeRemoved} pasted line{pastedChromeRemoved === 1 ? "" : "s"} of names, handles, timestamps or
+                          hashtags removed — only the post text is kept.
+                        </p>
+                      ) : null}
                       {voiceExampleFilter.rejectedCount > 0 ? (
                         <p className={styles.exampleLabel}>
                           {voiceExampleFilter.rejectedCount} pasted line{voiceExampleFilter.rejectedCount === 1 ? "" : "s"} skipped as too

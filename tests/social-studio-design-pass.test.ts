@@ -196,4 +196,17 @@ describe("Social Studio design pass", () => {
     expect(drawerCss).toContain("background: var(--well-bg);");
     expect(css).toContain(".connectionOptions summary::-webkit-details-marker { display: none; }");
   });
+
+  it("cleans pasted posts to their body before anything counts, persists or sends them, and says so", async () => {
+    const hub = await source("components", "social-hub.tsx");
+    expect(hub).toContain("const [voiceExamplesRawText, setVoiceExamplesRawText] = useState(\"\");");
+    expect(hub).toContain(
+      'const voiceExamplesText = useMemo(() => cleanPastedPosts(voiceExamplesRawText).join("\\n"), [voiceExamplesRawText]);',
+    );
+    // The textarea shows the raw paste; every reader uses the cleaned text.
+    expect(hub).toContain("value={voiceExamplesRawText}");
+    expect(hub).toContain("const voiceExampleFilter = useMemo(() => filterUsableVoiceExamples(voiceExamplesText), [voiceExamplesText]);");
+    expect(hub).not.toContain("setVoiceExamplesText(");
+    expect(hub).toContain("of names, handles, timestamps or");
+  });
 });
