@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { MIN_VOICE_EXAMPLE_LENGTH, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
-import { VOICE_EXAMPLE_TARGET, cleanPastedPosts, stripPostChrome, voiceTrainingHint } from "@/lib/social-voice-examples";
+import {
+  MAX_VOICE_EXAMPLE_LENGTH,
+  VOICE_EXAMPLE_TARGET,
+  addVoiceExamples,
+  cleanPastedPosts,
+  describeAddVoiceExamplesResult,
+  stripPostChrome,
+  voiceTrainingHint,
+} from "@/lib/social-voice-examples";
 
 describe("filterUsableVoiceExamples", () => {
   it("keeps real posts that read like voice examples", () => {
@@ -174,5 +182,60 @@ describe("cleanPastedPosts", () => {
       "Paragraph one of the first post. Paragraph two of the first post.",
       "The second post.",
     ]);
+  });
+});
+
+describe("addVoiceExamples (the Add example step)", () => {
+  const GIGGLE = [
+    "Square profile picture",
+    "Giggle Academy",
+    "@GiggleAcademy",
+    "·",
+    "Sep 4",
+    "Aww, we love this resolution! 🎶❤️ Learning Christmas songs in English is such a fun way to build confidence!",
+    "",
+    "Keep singing, keep learning, and keep giggling! ✨🎤",
+    "",
+    "#GiggleAcademy #BackToSchool",
+  ].join("\n");
+
+  it("adds one cleaned post as one example, reporting the chrome it dropped, and leaves existing examples untouched", () => {
+    const result = addVoiceExamples(["An earlier example that stays exactly where it was."], GIGGLE);
+    expect(result.added).toHaveLength(1);
+    expect(result.examples).toHaveLength(2);
+    expect(result.examples[0]).toBe("An earlier example that stays exactly where it was.");
+    expect(result.examples[1]).toMatch(/^Aww, we love this resolution!/);
+    expect(result.examples[1]).not.toContain("#GiggleAcademy");
+    expect(result.rejected).toEqual([]);
+    expect(result.chromeLinesRemoved).toBe(6);
+    expect(describeAddVoiceExamplesResult(result)).toBe("Added 1 example · 6 lines of names, handles, dates or hashtags removed.");
+  });
+
+  it("refuses a post over the server's 500-character cap by name, at Add time, without touching the list", () => {
+    const long = "x".repeat(MAX_VOICE_EXAMPLE_LENGTH + 12);
+    const result = addVoiceExamples(["kept example post here"], long);
+    expect(result.added).toEqual([]);
+    expect(result.examples).toEqual(["kept example post here"]);
+    expect(result.rejected).toEqual([{ text: long, reason: "too_long" }]);
+    expect(describeAddVoiceExamplesResult(result)).toContain(`one post is ${MAX_VOICE_EXAMPLE_LENGTH + 12} characters — ${MAX_VOICE_EXAMPLE_LENGTH} is the max`);
+  });
+
+  it("refuses duplicates case-insensitively and too-short posts, and stops at the 20 cap", () => {
+    const existing = Array.from({ length: VOICE_EXAMPLE_TARGET - 1 }, (_, index) => `Existing example number ${index} here.`);
+    const result = addVoiceExamples(existing, "EXISTING EXAMPLE NUMBER 3 HERE.\n\ntiny\n\nA brand new post that fits in the last slot.\n\nOne more that no longer fits anywhere.");
+    expect(result.added).toEqual(["A brand new post that fits in the last slot."]);
+    expect(result.examples).toHaveLength(VOICE_EXAMPLE_TARGET);
+    expect(result.rejected.map((entry) => entry.reason)).toEqual(["duplicate", "too_short", "limit"]);
+    const summary = describeAddVoiceExamplesResult(result);
+    expect(summary).toContain("Added 1 example");
+    expect(summary).toContain("1 already in your examples");
+    expect(summary).toContain("1 too short to teach anything");
+    expect(summary).toContain(`1 not added — ${VOICE_EXAMPLE_TARGET} is the most the AI reads`);
+  });
+
+  it("says so plainly when the box had nothing usable", () => {
+    const result = addVoiceExamples([], "   \n\n");
+    expect(result.added).toEqual([]);
+    expect(describeAddVoiceExamplesResult(result)).toBe("Nothing to add — paste a post first.");
   });
 });
