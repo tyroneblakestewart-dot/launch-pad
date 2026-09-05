@@ -16,6 +16,7 @@ export const AI_FEATURE_KEYS = {
   SITE_STYLE_INSPIRATION_SEARCH: "site-style.inspiration-search",
   SITE_STYLE_FINAL: "site-style.final",
   SOCIAL_VOICE_PROFILE: "social.voice-profile",
+  SOCIAL_VOICE_PROFILE_RETRY: "social.voice-profile-retry",
   SOCIAL_VOICE_SAMPLE: "social.voice-sample",
   SOCIAL_DRAFT: "social.draft",
   SOCIAL_DRAFT_RETRY: "social.draft-retry",

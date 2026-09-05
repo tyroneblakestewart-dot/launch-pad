@@ -11,6 +11,7 @@ import { recordTextOperationCostBestEffort, runAfterResponse, type AiOperationAc
 import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
 import { contentFilterRejectionMessage, runContentFilterFailOpen } from "@/lib/server/content-filter";
 import type { OpenAIResponse } from "@/lib/server/generate-site-style";
+import type { VoiceProfile } from "@/lib/social-studio-types";
 import { normaliseLikedSampleLines } from "@/lib/server/social-reinforcement";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import { authoriseSocialProjectSlot } from "@/lib/server/social-project-slot-entitlement";
@@ -153,66 +154,85 @@ export async function POST(request: Request) {
     );
   }
 
-  let response: Response;
-  try {
-    response = await fetch(ai.responsesUrl, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${ai.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(
-        buildVoiceProfileRequestBody({ name, ticker }, normalisedExamples.examples, ai.model, likedSampleLines),
-      ),
-      signal: AbortSignal.timeout(25_000),
-    });
-  } catch (error) {
-    console.error("Voice-profile request failed before receiving a response", error instanceof Error ? error.message : error);
-    return NextResponse.json(
-      { error: "The voice-profile request could not reach the AI provider. Try again." },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
-  }
-
-  if (!response.ok) {
-    const message = await response.text().catch(() => "");
-    console.error("Voice-profile request failed", response.status, message.slice(0, 500));
-    return NextResponse.json(
-      { error: "The voice-profile request failed. Try again." },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
-    );
-  }
-
-  let payload: OpenAIResponse;
-  try {
-    payload = (await response.json()) as OpenAIResponse;
-  } catch {
-    return NextResponse.json({ error: "The AI returned an invalid response." }, { status: 502, headers: noStoreHeaders(rateHeaders) });
-  }
-
   const walletAddress = authorisation.walletAddress;
   const accessSource: AiOperationAccessSource = authorisation.accessSource ?? "unknown";
-  runAfterResponse(() =>
-    recordTextOperationCostBestEffort({
-      featureKey: AI_FEATURE_KEYS.SOCIAL_VOICE_PROFILE,
-      walletAddress,
-      accessSource,
-      provider: ai.source,
-      response: payload,
-      fallbackModel: ai.model,
-    }),
-  );
+  const examples = normalisedExamples.examples;
+  const requestBody = JSON.stringify(buildVoiceProfileRequestBody({ name, ticker }, examples, ai.model, likedSampleLines));
 
-  const parsed = parseVoiceProfileResponseDetailed(payload, normalisedExamples.examples.length);
-  if (!parsed.ok) {
-    console.error("Voice-profile parse failed", parsed);
-    const incomplete = parsed.reason === "empty_output" || parsed.reason === "json_parse_error";
-    return NextResponse.json(
-      {
-        error: incomplete
-          ? "The AI response was incomplete. Try again."
-          : "The AI response didn't match the expected format. Try again.",
-      },
-      { status: 502, headers: noStoreHeaders(rateHeaders) },
+  type AttemptResult =
+    | { ok: true; profile: VoiceProfile }
+    | { ok: false; status: 502; error: string; incomplete: boolean };
+
+  /**
+   * One provider round-trip, metered as its own row. Identical body on every
+   * attempt — a retry here is for a blank or truncated answer from the model,
+   * not a correction, so there is nothing to change in the prompt.
+   */
+  async function attempt(featureKey: (typeof AI_FEATURE_KEYS)[keyof typeof AI_FEATURE_KEYS]): Promise<AttemptResult> {
+    let response: Response;
+    try {
+      response = await fetch(ai!.responsesUrl, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${ai!.apiKey}`, "Content-Type": "application/json" },
+        body: requestBody,
+        signal: AbortSignal.timeout(25_000),
+      });
+    } catch (error) {
+      console.error("Voice-profile request failed before receiving a response", error instanceof Error ? error.message : error);
+      return { ok: false, status: 502, error: "The voice-profile request could not reach the AI provider. Try again.", incomplete: false };
+    }
+
+    if (!response.ok) {
+      const message = await response.text().catch(() => "");
+      console.error("Voice-profile request failed", response.status, message.slice(0, 500));
+      return { ok: false, status: 502, error: "The voice-profile request failed. Try again.", incomplete: false };
+    }
+
+    let payload: OpenAIResponse;
+    try {
+      payload = (await response.json()) as OpenAIResponse;
+    } catch {
+      return { ok: false, status: 502, error: "The AI returned an invalid response.", incomplete: true };
+    }
+
+    runAfterResponse(() =>
+      recordTextOperationCostBestEffort({
+        featureKey,
+        walletAddress,
+        accessSource,
+        provider: ai!.source,
+        response: payload,
+        fallbackModel: ai!.model,
+      }),
     );
+
+    const parsed = parseVoiceProfileResponseDetailed(payload, examples.length);
+    if (!parsed.ok) {
+      console.error("Voice-profile parse failed", parsed);
+      const incomplete = parsed.reason === "empty_output" || parsed.reason === "json_parse_error";
+      return {
+        ok: false,
+        status: 502,
+        error: incomplete ? "The AI response was incomplete. Try again." : "The AI response didn't match the expected format. Try again.",
+        incomplete,
+      };
+    }
+    return { ok: true, profile: parsed.profile };
   }
+
+  // The gateway model occasionally returns a blank or cut-off answer to an
+  // otherwise fine request (owner-reported, 5 Sep 2026). One automatic retry
+  // for exactly that case — never for a provider error or a malformed
+  // profile, which a repeat would not fix — so a one-off blip is invisible.
+  let result = await attempt(AI_FEATURE_KEYS.SOCIAL_VOICE_PROFILE);
+  if (!result.ok && result.incomplete) {
+    console.warn("Voice-profile response was incomplete; retrying once with the same request");
+    result = await attempt(AI_FEATURE_KEYS.SOCIAL_VOICE_PROFILE_RETRY);
+  }
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status, headers: noStoreHeaders(rateHeaders) });
+  }
+  const parsed = { ok: true as const, profile: result.profile };
 
   const outputContentFilter = runContentFilterFailOpen({
     tone: parsed.profile.tone,
