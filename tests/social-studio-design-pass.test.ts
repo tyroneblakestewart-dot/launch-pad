@@ -209,4 +209,24 @@ describe("Social Studio design pass", () => {
     expect(hub).not.toContain("setVoiceExamplesText(");
     expect(hub).toContain("of names, handles, timestamps or");
   });
+
+  it("renders the sorting station: three verdicts per card, a persona bank bar with two-tap clears, and an explicit start button (never auto-spend on load)", async () => {
+    const hub = await source("components", "social-hub.tsx");
+    expect(hub).toContain("const STATION_SIZE = 3;");
+    expect(hub).toContain("🔥 Fire");
+    expect(hub).toContain(">\n                                  Sounds right\n");
+    expect(hub).toContain(">\n                                  Bin\n");
+    expect(hub).toContain("{personaKept.length}/{PERSONA_BANK_SIZE} kept");
+    expect(hub).toContain('{bankClearConfirm === "half" ? "Tap again to clear 50%" : "Clear 50%"}');
+    expect(hub).toContain('{bankClearConfirm === "all" ? "Tap again to clear all" : "Clear all"}');
+    expect(hub).toContain('{stationBusyCount > 0 ? "Reshaping…" : "Start sorting"}');
+    // The supply is the user's own pasted posts, each reshaped once.
+    expect(hub).toContain('fetch("/api/social/voice-sample"');
+    expect(hub).toContain("sortedVoiceSourceKeys,\n      ...overrides,");
+    // Full bank blocks the kept verdicts, never Bin.
+    expect(hub).toContain('if (verdict !== "disliked" && personaBankFull) {');
+    expect(hub).toContain("disabled={personaBankFull}\n                                  aria-label=\"Fire");
+    // No station call fires from an effect on load — only from a tap or a sort.
+    expect(hub).not.toMatch(/useEffect\([^)]*fillSortingStation/);
+  });
 });

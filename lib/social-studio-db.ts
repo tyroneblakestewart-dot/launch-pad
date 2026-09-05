@@ -103,6 +103,9 @@ function normaliseSocialStudioRecord(
     queueTarget: normaliseQueueTarget(merged.queueTarget),
     postingCadence: normalisePostingCadence(merged.postingCadence),
     directionBrief: normaliseDirectionBrief(merged.directionBrief),
+    sortedVoiceSourceKeys: Array.isArray(merged.sortedVoiceSourceKeys)
+      ? merged.sortedVoiceSourceKeys.filter((key): key is string => typeof key === "string")
+      : [],
   };
 }
 

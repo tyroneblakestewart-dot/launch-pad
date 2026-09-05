@@ -1064,6 +1064,79 @@
 }
 .limeNote b { color: var(--accent-lime); }
 
+/* Sorting station: one card per reshaped sample, three verdicts, and the
+   persona bank bar above it. */
+.bankBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: var(--well-border);
+  border-radius: var(--well-radius);
+  background: var(--well-bg);
+  box-shadow: var(--well-shadow);
+}
+.bankMeta { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.bankMeta span { color: var(--text-label); font: 700 9.5px var(--mono); letter-spacing: 0.14em; }
+.bankMeta b { color: var(--accent-lime); font: 800 12px var(--mono); }
+.bankMeta em { color: var(--text-secondary); font: 700 10.5px var(--mono); font-style: normal; }
+.bankActions { display: flex; gap: 8px; flex-wrap: wrap; }
+.bankActions button {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: var(--studio-ghost-bg);
+  box-shadow: var(--studio-ghost-shadow);
+  font: 700 10.5px var(--mono);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.bankActions button:disabled { cursor: not-allowed; opacity: 0.4; }
+
+.stationList { display: flex; flex-direction: column; gap: 10px; }
+.stationCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  background: var(--studio-card-bg);
+  box-shadow: var(--studio-card-shadow);
+}
+.stationCard p { margin: 0; color: var(--text-primary); font-size: 13.5px; line-height: 1.55; }
+.stationActions { display: flex; gap: 8px; flex-wrap: wrap; }
+.stationFire,
+.stationKeep,
+.stationBin {
+  min-height: 36px;
+  padding: 0 15px;
+  border-radius: 999px;
+  font: 800 12px var(--sans);
+  cursor: pointer;
+}
+.stationFire {
+  border: 1px solid rgba(198, 245, 62, 0.5);
+  color: var(--accent-lime);
+  background: var(--studio-lime-card-bg);
+  box-shadow: var(--studio-lime-card-shadow);
+}
+.stationKeep { border: 0; color: var(--cta-color); background: var(--cta-bg); }
+.stationBin {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: var(--text-secondary);
+  background: var(--studio-ghost-bg);
+  box-shadow: var(--studio-ghost-shadow);
+}
+.stationFire:disabled,
+.stationKeep:disabled,
+.stationBin:disabled { cursor: not-allowed; opacity: 0.4; }
+.previewEmpty .voiceLearnButton { margin-top: 6px; }
+
 .sampleLineRow { display: flex; align-items: flex-start; gap: 8px; }
 .sampleLineRow .limeNote { flex: 1; }
 .sampleLineActions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
