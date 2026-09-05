@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MIN_VOICE_EXAMPLE_LENGTH, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
-import { VOICE_EXAMPLE_TARGET, voiceTrainingHint } from "@/lib/social-voice-examples";
+import { VOICE_EXAMPLE_TARGET, cleanPastedPosts, stripPostChrome, voiceTrainingHint } from "@/lib/social-voice-examples";
 
 describe("filterUsableVoiceExamples", () => {
   it("keeps real posts that read like voice examples", () => {
@@ -77,5 +77,59 @@ describe("voiceTrainingHint", () => {
   it("never reports a negative or fractional remainder", () => {
     expect(voiceTrainingHint(-3)).toBe("Nothing added yet — paste your first example above.");
     expect(voiceTrainingHint(2.7)).toBe("Add 18 more and the voice locks in properly.");
+  });
+});
+
+describe("cleanPastedPosts", () => {
+  it("keeps only what the person wrote from a copied X post (the owner's own example)", () => {
+    const pasted = [
+      "Michaelis Renvicus",
+      "@michaelisrenvic",
+      "Macron and his wife leaving Downing Street yesterday…",
+      "Apparently she just wanted to phone home.",
+      "",
+      "#Macron #France #UKPolitics #PoliticalSatire",
+    ].join("\n");
+    expect(cleanPastedPosts(pasted)).toEqual([
+      "Macron and his wife leaving Downing Street yesterday… Apparently she just wanted to phone home.",
+    ]);
+  });
+
+  it("drops handle-and-time lines, engagement counts and Show more, and splits back-to-back posts at the next name/handle pair", () => {
+    const pasted = [
+      "Someone Else",
+      "@else · 2h",
+      "GM to everyone still refreshing the chart.",
+      "1.2K likes 40 reposts",
+      "Show more",
+      "Another Name",
+      "@another",
+      "No roadmap, no promises.",
+      "#gm",
+    ].join("\n");
+    expect(cleanPastedPosts(pasted)).toEqual(["GM to everyone still refreshing the chart.", "No roadmap, no promises."]);
+  });
+
+  it("leaves plain pasted lines exactly as they are, one post per blank-line-separated block", () => {
+    expect(cleanPastedPosts("Just a plain line of text with no chrome at all.\n\nSecond plain post.")).toEqual([
+      "Just a plain line of text with no chrome at all.",
+      "Second plain post.",
+    ]);
+    expect(cleanPastedPosts("one\ntwo")).toEqual(["one two"]);
+  });
+
+  it("returns nothing for a paste that was only chrome, and handles Windows line endings", () => {
+    expect(cleanPastedPosts("Name\r\n@handle\r\n#tag #tag2\r\n3:14 PM · Sep 4, 2026\r\n")).toEqual([]);
+    expect(cleanPastedPosts("")).toEqual([]);
+  });
+
+  it("keeps hashtags that sit inside a sentence — only hashtag-only trailing lines are tags", () => {
+    expect(stripPostChrome(["Loving the #Hoodlums energy today", "#gm #wagmi"])).toBe("Loving the #Hoodlums energy today");
+  });
+
+  it("does not treat an ordinary first line as a display name unless an @handle follows it", () => {
+    expect(stripPostChrome(["Short punchy opener.", "Then the rest of the thought."])).toBe(
+      "Short punchy opener. Then the rest of the thought.",
+    );
   });
 });

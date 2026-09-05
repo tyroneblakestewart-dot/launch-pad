@@ -32,6 +32,93 @@ function isBoilerplateLine(line: string): boolean {
   return BOILERPLATE_LINE_PATTERNS.some((pattern) => pattern.test(line));
 }
 
+// A pasted post usually arrives with its chrome: the author's display name,
+// the @handle, a relative timestamp or "· 2h", "Show more", engagement counts
+// and a trailing line of hashtags. None of that is the person's voice. These
+// patterns identify a line that is chrome rather than body.
+const HANDLE_LINE = /^@[A-Za-z0-9_]{1,30}(\s*[·•]\s*.*)?$/;
+const TIMESTAMP_LINE = /^(\d{1,2}:\d{2}\s*(AM|PM)?\s*[·•]\s*)?(\d{1,2}\s+)?(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s*\d{0,2},?\s*\d{0,4}(\s*[·•].*)?$/i;
+const RELATIVE_TIME_LINE = /^[·•]?\s*\d{1,2}\s?(s|m|h|d|w|min|mins|hr|hrs|hour|hours|day|days|week|weeks)\s*(ago)?$/i;
+const ENGAGEMENT_LINE = /^[\d.,]+\s?[KkMm]?\s+(replies?|reposts?|retweets?|likes?|views?|quotes?|bookmarks?|comments?|shares?)\b.*$/i;
+const CHROME_LINE = /^(show more|show this thread|read more|see more|translate post|translate tweet|follow|following|verified account|pinned|promoted|ad)$/i;
+const HASHTAG_ONLY_LINE = /^(#[\p{L}\p{N}_]+\s*)+$/u;
+const MENTION_ONLY_LINE = /^(@[A-Za-z0-9_]+\s*)+$/;
+
+function isPostChromeLine(line: string): boolean {
+  return (
+    HANDLE_LINE.test(line) ||
+    TIMESTAMP_LINE.test(line) ||
+    RELATIVE_TIME_LINE.test(line) ||
+    ENGAGEMENT_LINE.test(line) ||
+    CHROME_LINE.test(line) ||
+    MENTION_ONLY_LINE.test(line)
+  );
+}
+
+/**
+ * Strips a pasted post down to what the person actually wrote. Given the
+ * lines of ONE post: a leading display-name line is dropped when the line
+ * after it is an @handle (or the name itself sits directly above chrome),
+ * every chrome line is dropped wherever it appears, trailing hashtag-only
+ * lines are dropped, and the remaining body lines are joined into one line so
+ * the rest of the trainer's one-example-per-line contract is unchanged.
+ * Returns "" when nothing but chrome was pasted.
+ */
+export function stripPostChrome(postLines: readonly string[]): string {
+  const lines = postLines.map((line) => line.trim()).filter(Boolean);
+  if (lines.length === 0) return "";
+
+  const body: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const next = lines[index + 1];
+    // Display-name line: sits right above the handle (or above a handle-and-time line).
+    if (index === 0 && next !== undefined && HANDLE_LINE.test(next)) continue;
+    if (isPostChromeLine(line)) continue;
+    body.push(line);
+  }
+
+  // Trailing hashtag-only lines are tags, not voice.
+  while (body.length > 0 && HASHTAG_ONLY_LINE.test(body[body.length - 1])) body.pop();
+
+  return body.join(" ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Splits raw pasted text into posts. Posts are separated by one or more blank
+ * lines; a new post also starts wherever a display-name line is immediately
+ * followed by an @handle line, so several copied posts pasted back to back
+ * with no gap still come apart. Each post is then reduced to its body with
+ * stripPostChrome, and empty results are dropped.
+ */
+export function cleanPastedPosts(rawText: string): string[] {
+  const lines = rawText.replace(/\r\n?/g, "\n").split("\n").map((line) => line.trim());
+  const posts: string[][] = [];
+  let current: string[] = [];
+
+  const flush = () => {
+    if (current.length > 0) posts.push(current);
+    current = [];
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const next = lines[index + 1];
+    if (!line) {
+      flush();
+      continue;
+    }
+    // "Name" then "@handle" opens a new post even without a blank line.
+    if (current.length > 0 && next !== undefined && HANDLE_LINE.test(next) && !HANDLE_LINE.test(line) && !isPostChromeLine(line)) {
+      flush();
+    }
+    current.push(line);
+  }
+  flush();
+
+  return posts.map(stripPostChrome).filter(Boolean);
+}
+
 /** Separates real voice examples from page furniture: short lines, boilerplate, and case-insensitive duplicates are excluded from `usable`. */
 export function filterUsableVoiceExamples(rawText: string): VoiceExampleFilterResult {
   const pastedLines = rawText
