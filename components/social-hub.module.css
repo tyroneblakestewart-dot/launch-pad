@@ -407,6 +407,7 @@
 }
 
 .metaLabel { color: var(--text-label); font: 700 9px var(--mono); letter-spacing: 0.12em; }
+.metaPillDivider { display: inline-block; width: 1px; height: 11px; margin: 0 4px; background: rgba(255, 255, 255, 0.14); }
 
 .metaPill,
 .metaPillMuted {

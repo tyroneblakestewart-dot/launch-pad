@@ -94,9 +94,10 @@ describe("Social Studio design pass", () => {
     expect(hub).toContain("countPostsScheduledToday(");
     expect(hub).toContain('post.status !== "canceled"');
     expect(hub).toContain("const cadencePostsPerDay = cadenceQueueTarget(postingCadence);");
-    // Holder count and the AI-image half of the design's pill are not tracked
-    // yet, so neither is rendered — a made-up number is worse than none.
-    expect(hub).not.toContain("AI images");
+    // The AI-image half of the pill is now server-backed (daily allowance) and
+    // renders only once the server has answered; the holder count is still not
+    // tracked and still not rendered — a made-up number is worse than none.
+    expect(hub).not.toContain("holders ▲");
   });
 
   it("keeps the page's own card, lime-card and ghost recipes local rather than widening the shared theme", async () => {
@@ -280,5 +281,21 @@ describe("Social Studio design pass", () => {
     // .mascotTips is its own rule, never grouped with a button selector.
     expect(css).toMatch(/\n\.mascotTips \{\n  width: 100%;/);
     expect(css).not.toMatch(/button,\n\.mascotTips \{/);
+  });
+
+  it("shows today's mascot-image allowance from the server and blocks Generate at the cap — never a guessed count", async () => {
+    const hub = await source("components", "social-hub.tsx");
+    expect(hub).toContain("const [mascotImageUsage, setMascotImageUsage] = useState<MascotImageUsage | null>(null);");
+    expect(hub).toContain("async function loadMascotImageUsage()");
+    expect(hub).toContain("`/api/social/mascot/image?walletAddress=${encodeURIComponent(walletAddress)}&projectId=${encodeURIComponent(selectedProjectId)}`");
+    expect(hub).toContain("if (payload.usage) setMascotImageUsage(payload.usage);");
+    expect(hub).toContain("|| isMascotImageAllowanceUsed(mascotImageUsage)}");
+    expect(hub).toContain('"Daily image allowance used"');
+    expect(hub).toContain("<span>{describeMascotImageAllowanceDetail(mascotImageUsage)}</span>");
+    // The rail's TODAY pill only shows the images half once the server has answered.
+    expect(hub).toContain("{mascotImageUsage ? (");
+    expect(hub).toContain("</b> AI images");
+    const pipeline = await source("lib", "server", "system-health-pipeline.ts");
+    expect(pipeline).toContain('stage("image-allowance", label, "green", rule)');
   });
 });

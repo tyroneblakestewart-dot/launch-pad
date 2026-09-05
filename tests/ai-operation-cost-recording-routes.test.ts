@@ -15,6 +15,11 @@ import {
 } from "@/lib/server/social-project-slots-store";
 import { setSocialStudioAuthoriserForTests, resetSocialStudioAuthoriserForTests } from "@/lib/server/social-studio-entitlement";
 import { createMemorySocialProjectSlotsStore } from "./social-project-slots-test-helpers";
+import {
+  createMemoryMascotImageUsageStore,
+  resetMascotImageUsageStoreForTests,
+  setMascotImageUsageStoreForTests,
+} from "@/lib/server/mascot-image-usage-store";
 import { VALID_STYLE } from "./site-style-fixture";
 
 const ORIGIN = "https://hoodlums.dev";
@@ -42,6 +47,7 @@ describe("AI operation cost recording (issue #368)", () => {
     resetSocialStudioRateLimitsForTests();
     resetSocialStudioAuthoriserForTests();
     setSocialProjectSlotsStoreForTests(createMemorySocialProjectSlotsStore());
+    setMascotImageUsageStoreForTests(createMemoryMascotImageUsageStore());
     vi.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
@@ -52,6 +58,7 @@ describe("AI operation cost recording (issue #368)", () => {
     resetSocialStudioRateLimitsForTests();
     resetSocialStudioAuthoriserForTests();
     resetSocialProjectSlotsStoreForTests();
+    resetMascotImageUsageStoreForTests();
     resetAiOperationCostStoreForTests();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
