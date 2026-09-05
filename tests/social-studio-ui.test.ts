@@ -225,31 +225,17 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain("chatId: telegramConnection.externalId");
   });
 
-  it("adds a 'sounds like me' / 'not me' feedback control to each Voice preview sample line, feeding likes back into generation (issue #348)", async () => {
+  it("sorts Voice preview samples through the station — Fire / Sounds right / Bin — feeding kept lines back into generation (owner spec replacing issue #348's thumbs)", async () => {
     const social = await source("components", "social-hub.tsx");
-
-    // State + persistence, loaded and reset alongside the rest of the per-project record.
-    expect(social).toContain("const [sampleLineFeedback, setSampleLineFeedback] = useState<SampleLineFeedback[]>([]);");
-    expect(social).toContain("setSampleLineFeedback(record.sampleLineFeedback);");
-    expect(social).toContain("setSampleLineFeedback([]);");
-    expect(social).toContain("sampleLineFeedback,\n      ...overrides,");
-
-    // Toggle handler: never a publish action, explicit accessible labelling that disambiguates from posting.
-    expect(social).toContain("function toggleSampleLineLike(text: string, sentiment: SampleLineFeedback[\"sentiment\"])");
-    expect(social).toContain("persistSocialStudio({ sampleLineFeedback: next });");
-    expect(social).toContain("sounds like me, not a request to post it");
-    expect(social).toContain("aria-pressed={liked}");
-    expect(social).toContain("aria-pressed={disliked}");
-    expect(social).toContain('onClick={() => toggleSampleLineLike(line, "liked")}');
-    expect(social).toContain('onClick={() => toggleSampleLineLike(line, "disliked")}');
-
-    // Liked lines are sent back to both generation endpoints as reinforcement, capped/ordered by the shared helper.
-    expect(social).toContain("import { likedReinforcementLines, toggleSampleLineFeedback } from \"@/lib/social-voice-feedback\";");
-    expect(social).toContain("likedSampleLines: likedReinforcementLines(sampleLineFeedback),");
-
-    // Re-running "Learn my voice" does not clear existing likes, and the preview makes their continued effect obvious.
-    expect(social).not.toContain("setSampleLineFeedback(null)");
-    expect(social).toContain("still reinforce new drafts and voice");
+    expect(social).toContain("function sortStationSample(sample: StationSample, verdict: SampleLineFeedback[\"sentiment\"])");
+    expect(social).toContain('onClick={() => sortStationSample(sample, "fire")}');
+    expect(social).toContain('onClick={() => sortStationSample(sample, "liked")}');
+    expect(social).toContain('onClick={() => sortStationSample(sample, "disliked")}');
+    expect(social).not.toContain("toggleSampleLineLike(");
+    expect(social).not.toContain("👍");
+    // Kept lines reach both the voice profile and every draft.
+    expect(social.match(/likedSampleLines: likedReinforcementLines\(sampleLineFeedback\)/g)?.length).toBe(2);
+    expect(social).toContain("personaLines: likedReinforcementLines(sampleLineFeedback)");
   });
 
   it("compacts Ready-to-review draft cards behind a collapsed X preview, still exposing edit/approve/delete (issue #358)", async () => {

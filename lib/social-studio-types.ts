@@ -33,7 +33,8 @@ export type SocialDraft = {
  */
 export type SampleLineFeedback = {
   text: string;
-  sentiment: "liked" | "disliked";
+  /** "fire" and "liked" are kept in the persona bank (fire is protected from Clear 50%); "disliked" is binned. */
+  sentiment: "fire" | "liked" | "disliked";
   updatedAt: string;
 };
 
@@ -88,6 +89,8 @@ export type SocialStudioProjectRecord = {
   postingCadence: PostingCadence;
   /** Optional free-text steering for AI drafts (issue #358) — "Tell the AI your focus this week." Empty by default; empty changes nothing about generation. */
   directionBrief: string;
+  /** Lower-cased pasted posts already reshaped and sorted in the station, so a source is never served twice. */
+  sortedVoiceSourceKeys: string[];
 };
 
 export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
@@ -100,4 +103,5 @@ export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
   queueTarget: DEFAULT_QUEUE_TARGET,
   postingCadence: DEFAULT_POSTING_CADENCE,
   directionBrief: "",
+  sortedVoiceSourceKeys: [],
 };

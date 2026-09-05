@@ -53,6 +53,7 @@ const RECORD: SocialStudioProjectRecord = {
   queueTarget: 8,
   postingCadence: "conservative",
   directionBrief: "Push the community angle, big announcement coming Friday",
+  sortedVoiceSourceKeys: [],
 };
 
 describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
@@ -102,6 +103,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         queueTarget: DEFAULT_QUEUE_TARGET,
         postingCadence: DEFAULT_POSTING_CADENCE,
         directionBrief: "",
+        sortedVoiceSourceKeys: [],
       });
     });
 
@@ -121,6 +123,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         queueTarget: DEFAULT_QUEUE_TARGET,
         postingCadence: DEFAULT_POSTING_CADENCE,
         directionBrief: "",
+        sortedVoiceSourceKeys: [],
       });
     });
 
@@ -140,6 +143,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         ...legacy,
         postingCadence: DEFAULT_POSTING_CADENCE,
         directionBrief: "",
+        sortedVoiceSourceKeys: [],
       });
     });
 

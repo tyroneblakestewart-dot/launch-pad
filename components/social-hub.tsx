@@ -43,7 +43,15 @@ import {
   MAX_POSTS_PER_DAY,
   POSTING_CADENCE_OPTIONS,
 } from "@/lib/social-studio-types";
-import { likedReinforcementLines, toggleSampleLineFeedback } from "@/lib/social-voice-feedback";
+import {
+  PERSONA_BANK_SIZE,
+  clearHalfOfPersonaBank,
+  clearPersonaBank,
+  isPersonaBankFull,
+  keptSampleLines,
+  likedReinforcementLines,
+  toggleSampleLineFeedback,
+} from "@/lib/social-voice-feedback";
 import type { TokenProject } from "@/lib/types";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./social-hub.module.css";
@@ -58,6 +66,11 @@ type DraftMap = Record<string, string>;
 
 // Per-panel status shown inline next to the control that triggered it, instead of one status bar far below the fold.
 type PanelStatus = { tone: "progress" | "success" | "error"; message: string } | null;
+
+/** One card in the sorting station: a pasted post reshaped to this project, waiting for Fire / Sounds right / Bin. */
+type StationSample = { id: string; text: string; sourceKey: string };
+/** How many cards the station keeps on the table at once. */
+const STATION_SIZE = 3;
 
 type TelegramConnectionState = {
   status: "connected" | "reconnect_needed";
@@ -389,6 +402,15 @@ export function SocialHub() {
   const [voiceProfile, setVoiceProfile] = useState<VoiceProfile | null>(null);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [sampleLineFeedback, setSampleLineFeedback] = useState<SampleLineFeedback[]>([]);
+  // Sorting station (owner spec, 5 Sep 2026). Cards are ephemeral; the verdicts
+  // land in sampleLineFeedback (the persona bank) and the source keys in
+  // sortedVoiceSourceKeys so a pasted post is never reshaped twice.
+  const [sortedVoiceSourceKeys, setSortedVoiceSourceKeys] = useState<string[]>([]);
+  const [stationSamples, setStationSamples] = useState<StationSample[]>([]);
+  const [stationBusyCount, setStationBusyCount] = useState(0);
+  const [stationStatus, setStationStatus] = useState<PanelStatus>(null);
+  const [bankClearConfirm, setBankClearConfirm] = useState<"half" | "all" | null>(null);
+  const stationInFlightRef = useRef<Set<string>>(new Set());
   const [mascotVisualDNA, setMascotVisualDNA] = useState<MascotVisualDNA | null>(null);
   const [mascotReferenceImage, setMascotReferenceImage] = useState<string | null>(null);
   const [mascotBusy, setMascotBusy] = useState(false);
@@ -635,6 +657,8 @@ export function SocialHub() {
         setMascotReferenceImage(null);
         setQueue([]);
         setSampleLineFeedback([]);
+        setSortedVoiceSourceKeys([]);
+        setStationSamples([]);
         setQueueTarget(DEFAULT_QUEUE_TARGET);
         setDirectionBrief("");
         setPostingCadence(DEFAULT_POSTING_CADENCE);
@@ -652,6 +676,8 @@ export function SocialHub() {
       setMascotReferenceImage(record.mascotReferenceImage);
       setQueue(record.queue);
       setSampleLineFeedback(record.sampleLineFeedback);
+      setSortedVoiceSourceKeys(record.sortedVoiceSourceKeys);
+      setStationSamples([]);
       setQueueTarget(record.queueTarget);
       setDirectionBrief(record.directionBrief);
       setPostingCadence(record.postingCadence);
@@ -680,6 +706,7 @@ export function SocialHub() {
       postingCadence,
       directionBrief,
       sampleLineFeedback,
+      sortedVoiceSourceKeys,
       ...overrides,
     };
   }
@@ -1011,13 +1038,113 @@ export function SocialHub() {
     };
   }
 
-  /** Toggles "sounds like me" / "not me" on one Voice preview sample line — a style signal only, never a publish action (issue #348). */
-  function toggleSampleLineLike(text: string, sentiment: SampleLineFeedback["sentiment"]) {
-    setSampleLineFeedback((current) => {
-      const next = toggleSampleLineFeedback(current, text, sentiment, new Date().toISOString());
-      persistSocialStudio({ sampleLineFeedback: next });
-      return next;
+  // ---- Sorting station -------------------------------------------------------
+
+  const personaKept = useMemo(() => keptSampleLines(sampleLineFeedback), [sampleLineFeedback]);
+  const personaFireCount = personaKept.filter((entry) => entry.sentiment === "fire").length;
+  const personaBankFull = isPersonaBankFull(sampleLineFeedback);
+
+  /** Pasted posts not yet reshaped and sorted, and not already on the table. */
+  const stationSupply = useMemo(() => {
+    const sorted = new Set(sortedVoiceSourceKeys);
+    const onTable = new Set(stationSamples.map((sample) => sample.sourceKey));
+    return voiceExampleFilter.usable.filter((example) => {
+      const key = example.toLowerCase();
+      return !sorted.has(key) && !onTable.has(key);
     });
+  }, [voiceExampleFilter.usable, sortedVoiceSourceKeys, stationSamples]);
+
+  /** Supply minus anything already being reshaped right now — read at call time, never during render. */
+  function availableStationSupply(): string[] {
+    return stationSupply.filter((example) => !stationInFlightRef.current.has(example.toLowerCase()));
+  }
+
+  /** Reshape ONE pasted post into a sample for this project and put it on the table. One small AI call. */
+  async function fetchStationSample(sourcePost: string) {
+    const project = draftProjectPayload();
+    if (!project) return;
+    const sourceKey = sourcePost.toLowerCase();
+    stationInFlightRef.current.add(sourceKey);
+    setStationBusyCount((count) => count + 1);
+    try {
+      const response = await fetch("/api/social/voice-sample", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          walletAddress,
+          projectId: selectedProject?.id,
+          displayName: selectedProject?.name,
+          project: { name: project.name, ticker: project.ticker, description: project.description },
+          sourcePost,
+          personaLines: likedReinforcementLines(sampleLineFeedback),
+        }),
+      });
+      const payload = (await response.json()) as { sample?: string; error?: string };
+      if (!response.ok || !payload.sample) throw new Error(payload.error || "The sample could not be reshaped.");
+      const text = payload.sample;
+      setStationSamples((current) =>
+        current.some((sample) => sample.text === text)
+          ? current
+          : [...current, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text, sourceKey }],
+      );
+      setStationStatus(null);
+    } catch (error) {
+      setStationStatus({ tone: "error", message: error instanceof Error ? error.message : "The sample could not be reshaped." });
+    } finally {
+      stationInFlightRef.current.delete(sourceKey);
+      setStationBusyCount((count) => Math.max(0, count - 1));
+    }
+  }
+
+  /** Fill the table up to STATION_SIZE from the remaining supply. Explicit tap or a refill after a sort — never on page load. */
+  function fillSortingStation(slots = STATION_SIZE - stationSamples.length) {
+    if (personaBankFull) return;
+    const next = availableStationSupply().slice(0, Math.max(0, slots));
+    if (next.length === 0) return;
+    setStationStatus({ tone: "progress", message: `Reshaping ${next.length} of your posts to ${selectedProject?.name ?? "your project"}…` });
+    void Promise.all(next.map((source) => fetchStationSample(source)));
+  }
+
+  /**
+   * One verdict on one card. Fire and Sounds right go into the persona bank
+   * (Fire protected from Clear 50%); Bin is discarded and remembered so the
+   * text is never re-served. Every verdict removes the card, marks its source
+   * as sorted, and pulls the next sample in behind it.
+   */
+  function sortStationSample(sample: StationSample, verdict: SampleLineFeedback["sentiment"]) {
+    if (verdict !== "disliked" && personaBankFull) {
+      setStationStatus({ tone: "error", message: `Your persona bank is full at ${PERSONA_BANK_SIZE}. Clear 50% or clear all to keep sorting.` });
+      return;
+    }
+    const nextFeedback = toggleSampleLineFeedback(sampleLineFeedback, sample.text, verdict, new Date().toISOString());
+    const nextSorted = sortedVoiceSourceKeys.includes(sample.sourceKey) ? sortedVoiceSourceKeys : [...sortedVoiceSourceKeys, sample.sourceKey];
+    setSampleLineFeedback(nextFeedback);
+    setSortedVoiceSourceKeys(nextSorted);
+    setStationSamples((current) => current.filter((entry) => entry.id !== sample.id));
+    persistSocialStudio({ sampleLineFeedback: nextFeedback, sortedVoiceSourceKeys: nextSorted });
+    setBankClearConfirm(null);
+    if (!isPersonaBankFull(nextFeedback)) {
+      const refill = availableStationSupply().find((source) => source.toLowerCase() !== sample.sourceKey);
+      if (refill) void fetchStationSample(refill);
+    }
+  }
+
+  /** Two-tap clear: the first tap arms, the second applies. Clear 50% drops the oldest half of Sounds-right lines (Fire untouched); Clear all empties the bank. */
+  function clearBank(mode: "half" | "all") {
+    if (bankClearConfirm !== mode) {
+      setBankClearConfirm(mode);
+      return;
+    }
+    const nextFeedback = mode === "half" ? clearHalfOfPersonaBank(sampleLineFeedback) : clearPersonaBank(sampleLineFeedback);
+    setSampleLineFeedback(nextFeedback);
+    persistSocialStudio({ sampleLineFeedback: nextFeedback });
+    setBankClearConfirm(null);
+    const removed = keptSampleLines(sampleLineFeedback).length - keptSampleLines(nextFeedback).length;
+    setStationStatus(
+      removed === 0
+        ? { tone: "error", message: "Nothing to clear — every kept line is on Fire. Use Clear all if you really want them gone." }
+        : { tone: "success", message: `Cleared ${removed} line${removed === 1 ? "" : "s"} from your persona bank.` },
+    );
   }
 
   async function buildVoiceProfile() {
@@ -2203,59 +2330,101 @@ export function SocialHub() {
                         </div>
                       </div>
                       {voiceProfile ? (
-                        <div className={styles.insetPanel}>
-                          <p className={styles.exampleLabel}>
-                            Tone: {voiceProfile.tone} · Vocabulary: {voiceProfile.vocabulary} · Cadence: {voiceProfile.cadence} · Emoji: {voiceProfile.emojiHabits}
-                          </p>
-                          {voiceProfile.sampleLines.map((line, index) => {
-                            const feedback = sampleLineFeedback.find((entry) => entry.text === line);
-                            const liked = feedback?.sentiment === "liked";
-                            const disliked = feedback?.sentiment === "disliked";
-                            return (
-                              <div className={styles.sampleLineRow} key={index}>
-                                <p className={styles.limeNote}>{line}</p>
-                                <div className={styles.sampleLineActions}>
-                                  <button
-                                    type="button"
-                                    aria-pressed={liked}
-                                    aria-label={
-                                      liked
-                                        ? "Remove: this sample sounds like me"
-                                        : "Mark this sample: sounds like me, not a request to post it"
-                                    }
-                                    className={liked ? styles.sampleLineButtonLikedActive : styles.sampleLineButton}
-                                    onClick={() => toggleSampleLineLike(line, "liked")}
-                                  >
-                                    👍
-                                  </button>
-                                  <button
-                                    type="button"
-                                    aria-pressed={disliked}
-                                    aria-label={disliked ? "Remove: this sample doesn't sound like me" : "Mark this sample: doesn't sound like me"}
-                                    className={disliked ? styles.sampleLineButtonDislikedActive : styles.sampleLineButton}
-                                    onClick={() => toggleSampleLineLike(line, "disliked")}
-                                  >
-                                    👎
-                                  </button>
-                                </div>
+                        <p className={styles.exampleLabel}>
+                          Tone: {voiceProfile.tone} · Vocabulary: {voiceProfile.vocabulary} · Cadence: {voiceProfile.cadence} · Emoji: {voiceProfile.emojiHabits}
+                        </p>
+                      ) : null}
+
+                      <div className={styles.bankBar}>
+                        <div className={styles.bankMeta}>
+                          <span>PERSONA</span>
+                          <b>
+                            {personaKept.length}/{PERSONA_BANK_SIZE} kept
+                          </b>
+                          {personaFireCount > 0 ? <em>🔥 {personaFireCount} on fire</em> : null}
+                        </div>
+                        <div className={styles.bankActions}>
+                          <button type="button" onClick={() => clearBank("half")} disabled={personaKept.length === 0}>
+                            {bankClearConfirm === "half" ? "Tap again to clear 50%" : "Clear 50%"}
+                          </button>
+                          <button type="button" onClick={() => clearBank("all")} disabled={personaKept.length === 0}>
+                            {bankClearConfirm === "all" ? "Tap again to clear all" : "Clear all"}
+                          </button>
+                        </div>
+                      </div>
+                      {personaBankFull ? (
+                        <p className={styles.exampleLabel}>
+                          Your persona bank is full at {PERSONA_BANK_SIZE}. Fire and Sounds right are paused until you clear 50% or
+                          clear all.
+                        </p>
+                      ) : null}
+
+                      {stationSamples.length > 0 ? (
+                        <div className={styles.stationList}>
+                          {stationSamples.map((sample) => (
+                            <article className={styles.stationCard} key={sample.id}>
+                              <p>{sample.text}</p>
+                              <div className={styles.stationActions}>
+                                <button
+                                  type="button"
+                                  className={styles.stationFire}
+                                  disabled={personaBankFull}
+                                  aria-label="Fire: keep this line in the protected half of your persona bank"
+                                  onClick={() => sortStationSample(sample, "fire")}
+                                >
+                                  🔥 Fire
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.stationKeep}
+                                  disabled={personaBankFull}
+                                  aria-label="Sounds right: keep this line in your persona bank"
+                                  onClick={() => sortStationSample(sample, "liked")}
+                                >
+                                  Sounds right
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.stationBin}
+                                  aria-label="Bin: discard this line"
+                                  onClick={() => sortStationSample(sample, "disliked")}
+                                >
+                                  Bin
+                                </button>
                               </div>
-                            );
-                          })}
-                          {likedReinforcementLines(sampleLineFeedback).length > 0 && (
-                            <p className={styles.exampleLabel}>
-                              {likedReinforcementLines(sampleLineFeedback).length} previously-approved line
-                              {likedReinforcementLines(sampleLineFeedback).length === 1 ? "" : "s"} still reinforce new drafts and voice
-                              updates, alongside your pasted examples.
-                            </p>
-                          )}
+                            </article>
+                          ))}
                         </div>
                       ) : (
                         <div className={styles.previewEmpty}>
-                          <span>AI VOICE PREVIEW</span>
-                          <b>Add examples to unlock voice samples.</b>
-                          <p>Paste at least two example posts, then select &quot;Learn my voice&quot;.</p>
+                          <span>SORTING STATION</span>
+                          {voiceExampleCount < MIN_USABLE_VOICE_EXAMPLES ? (
+                            <>
+                              <b>Paste a few of your posts first.</b>
+                              <p>Each one gets reshaped to {selectedProject?.name ?? "your project"} in its own voice, then you sort it: Fire, Sounds right, or Bin.</p>
+                            </>
+                          ) : stationSupply.length === 0 && stationBusyCount === 0 ? (
+                            <>
+                              <b>Every pasted post has been through the station.</b>
+                              <p>Paste more posts on the left to keep building the persona.</p>
+                            </>
+                          ) : (
+                            <>
+                              <b>Ready to sort.</b>
+                              <p>{stationSupply.length} of your posts are waiting. Each is reshaped to {selectedProject?.name ?? "your project"} — one small AI call per sample.</p>
+                              <button
+                                type="button"
+                                className={styles.voiceLearnButton}
+                                onClick={() => fillSortingStation()}
+                                disabled={stationBusyCount > 0 || personaBankFull || !walletAddress}
+                              >
+                                {stationBusyCount > 0 ? "Reshaping…" : "Start sorting"}
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
+                      <InlineStatus status={stationStatus} />
                     </div>
                   </section>
 

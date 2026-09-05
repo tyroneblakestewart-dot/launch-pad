@@ -25,6 +25,7 @@ import {
   SOCIAL_MASCOT_IMAGE_LIMIT,
   SOCIAL_STUDIO_WINDOW_MS,
   SOCIAL_VOICE_PROFILE_LIMIT,
+  SOCIAL_VOICE_SAMPLE_LIMIT,
 } from "@/lib/server/api-protection";
 import { getAdminOperationsStore } from "@/lib/server/admin-operations-store";
 import { getCurveProgressCacheHealth, type CurveProgressCacheHealth } from "@/lib/server/curve-progress-cache";
@@ -303,7 +304,7 @@ function socialStudioRateLimiterStage(env: Record<string, string | undefined>): 
     "rate-limiter",
     "Rate limiter",
     "green",
-    `Configured per IP per ${windowMinutes} minutes: voice-profile ${SOCIAL_VOICE_PROFILE_LIMIT}, draft ${SOCIAL_DRAFT_LIMIT}, mascot analysis ${SOCIAL_MASCOT_DNA_LIMIT}, mascot image ${SOCIAL_MASCOT_IMAGE_LIMIT}.`,
+    `Configured per IP per ${windowMinutes} minutes: voice-profile ${SOCIAL_VOICE_PROFILE_LIMIT}, voice-sample ${SOCIAL_VOICE_SAMPLE_LIMIT}, draft ${SOCIAL_DRAFT_LIMIT}, mascot analysis ${SOCIAL_MASCOT_DNA_LIMIT}, mascot image ${SOCIAL_MASCOT_IMAGE_LIMIT}.`,
   );
 }
 

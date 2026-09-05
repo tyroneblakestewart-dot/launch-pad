@@ -35,6 +35,8 @@ export const CHAT_RATE_WINDOW_MS = 60 * 60 * 1000;
 // draft and scene-image generation are meant to be used repeatedly.
 export const SOCIAL_VOICE_PROFILE_LIMIT = 10;
 export const SOCIAL_DRAFT_LIMIT = 30;
+// Sorting-station samples are one short text call each and arrive one per sort tap.
+export const SOCIAL_VOICE_SAMPLE_LIMIT = 120;
 export const SOCIAL_MASCOT_DNA_LIMIT = 10;
 export const SOCIAL_MASCOT_IMAGE_LIMIT = 20;
 export const SOCIAL_STUDIO_WINDOW_MS = 60 * 60 * 1000;
@@ -366,6 +368,10 @@ export function consumeSocialVoiceProfileRateLimit(ip: string, now = Date.now())
   return consumeRateLimit(namedRateStore("social-voice-profile"), ip, SOCIAL_VOICE_PROFILE_LIMIT, SOCIAL_STUDIO_WINDOW_MS, now);
 }
 
+export function consumeSocialVoiceSampleRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("social-voice-sample"), ip, SOCIAL_VOICE_SAMPLE_LIMIT, SOCIAL_STUDIO_WINDOW_MS, now);
+}
+
 export function consumeSocialDraftRateLimit(ip: string, now = Date.now()) {
   return consumeRateLimit(namedRateStore("social-draft"), ip, SOCIAL_DRAFT_LIMIT, SOCIAL_STUDIO_WINDOW_MS, now);
 }
@@ -379,7 +385,7 @@ export function consumeSocialMascotImageRateLimit(ip: string, now = Date.now()) 
 }
 
 export function resetSocialStudioRateLimitsForTests() {
-  ["social-voice-profile", "social-draft", "social-mascot-dna", "social-mascot-image"].forEach((name) =>
+  ["social-voice-profile", "social-voice-sample", "social-draft", "social-mascot-dna", "social-mascot-image"].forEach((name) =>
     namedRateStore(name).clear(),
   );
 }
