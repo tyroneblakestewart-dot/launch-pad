@@ -248,4 +248,12 @@ describe("Social Studio design pass", () => {
     expect(pipeline).toContain("Do your best with whatever is given");
     expect(pipeline).toContain("never refuse or return placeholder text because of image quality");
   });
+
+  it("registers the voice-sample route with the auth bridge, so the browser attaches the shared secret it requires", async () => {
+    const bridge = await source("components", "generate-site-style-auth-bridge.tsx");
+    const arrayStart = bridge.indexOf("const PROTECTED_GENERATION_ROUTES = [");
+    const arrayBody = bridge.slice(arrayStart, bridge.indexOf("] as const;", arrayStart));
+    expect(arrayBody).toContain('"/api/social/voice-sample"');
+    expect(arrayBody).toContain('"/api/social/mascot/image"');
+  });
 });
