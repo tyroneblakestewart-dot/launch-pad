@@ -256,4 +256,14 @@ describe("Social Studio design pass", () => {
     expect(arrayBody).toContain('"/api/social/voice-sample"');
     expect(arrayBody).toContain('"/api/social/mascot/image"');
   });
+
+  it("keeps the bot / trainer / mascot buttons on the shared pill rule (regression: #498 spliced .mascotTips into that selector list)", async () => {
+    const css = await source("components", "social-hub.module.css");
+    const block = ruleBlock(css, ".botRow button,\n.disabledActions button,\n.mascotDrop button");
+    expect(block).toContain("min-height: 38px;");
+    expect(block).toContain("border-radius: 999px;");
+    // .mascotTips is its own rule, never grouped with a button selector.
+    expect(css).toMatch(/\n\.mascotTips \{\n  width: 100%;/);
+    expect(css).not.toMatch(/button,\n\.mascotTips \{/);
+  });
 });
