@@ -413,6 +413,9 @@ export function SocialHub() {
   const [telegramConfigured, setTelegramConfigured] = useState<boolean | null>(null);
   const [telegramConnectInput, setTelegramConnectInput] = useState("");
   const [telegramConnectBusy, setTelegramConnectBusy] = useState(false);
+  // The connect drawer under the Telegram row (design: the card is one slim row;
+  // anything more lives in a dropdown box opened from the row's own action).
+  const [telegramConnectOpen, setTelegramConnectOpen] = useState(false);
 
   // Queue tab backend wiring (issue #352): connections (both platforms, not
   // just Telegram), the durable approve-first queue read from GET
@@ -1985,16 +1988,17 @@ export function SocialHub() {
                           <span className={styles.xIcon}><XMark /></span>
                           <div>
                             <b>X</b>
-                            <span>{xHandle || "Not connected yet"}</span>
+                            <span>{xHandle ? `${xHandle} · not connected yet` : "Not connected yet"}</span>
                           </div>
-                          <button type="button" className={styles.connectionActionPrimary} disabled>
+                          <button
+                            type="button"
+                            className={styles.connectionActionPrimary}
+                            disabled
+                            title="Connecting X isn't switched on yet. Until it is, use “Post to X” below — it opens X's own composer with your text filled in, so you tap send yourself."
+                          >
                             Connect X
                           </button>
                         </div>
-                        <p className={styles.connectionHelper}>
-                          Connecting X isn&apos;t switched on yet. Until it is, use &ldquo;Post to X&rdquo; below — it opens
-                          X&apos;s own composer with your text filled in, so you tap send yourself.
-                        </p>
                       </article>
                       <article className={styles.connectionCard}>
                         <div className={styles.connectionCardTop}>
@@ -2020,73 +2024,67 @@ export function SocialHub() {
                             >
                               {telegramConnectBusy ? "Disconnecting…" : "Disconnect"}
                             </button>
-                          ) : (
-                            <span
-                              className={
-                                telegramConfigured === false
-                                  ? styles.connectionStateError
-                                  : telegramConnection?.status === "reconnect_needed"
-                                    ? styles.connectionStateWarning
-                                    : styles.connectionState
-                              }
+                          ) : telegramConfigured ? (
+                            <button
+                              type="button"
+                              className={styles.connectionActionPrimary}
+                              aria-expanded={telegramConnectOpen}
+                              onClick={() => setTelegramConnectOpen((current) => !current)}
                             >
-                              {telegramConfigured === null
-                                ? "Checking…"
-                                : telegramConfigured === false
-                                  ? "Not configured"
-                                  : telegramConnection?.status === "reconnect_needed"
-                                    ? "Reconnect needed"
-                                    : "Not connected"}
+                              {telegramConnection?.status === "reconnect_needed" ? "Reconnect" : "Connect Telegram"}
+                            </button>
+                          ) : (
+                            <span className={telegramConfigured === false ? styles.connectionStateError : styles.connectionState}>
+                              {telegramConfigured === null ? "Checking…" : "Not configured"}
                             </span>
                           )}
                         </div>
 
-                        {telegramConfigured === false ? (
-                          <p className={styles.connectionHelper}>
-                            The Hoodlums Telegram bot isn&apos;t set up on this deployment yet. Ask the site owner to set{" "}
-                            <code>TELEGRAM_BOT_TOKEN</code> (and optionally <code>TELEGRAM_BOT_USERNAME</code>) in Vercel.
-                          </p>
-                        ) : telegramConnection?.status === "connected" ? (
-                          <p className={styles.connectionHelper}>
-                            The Hoodlums bot can post in {telegramConnection.displayName}.
-                          </p>
-                        ) : (
-                          <>
+                        {telegramConfigured && telegramConnection?.status !== "connected" && telegramConnectOpen ? (
+                          <div className={styles.connectionDrawer}>
                             <label className={styles.connectionField}>
                               <span>Channel username or chat ID</span>
                               <input
                                 value={telegramConnectInput}
                                 onChange={(event) => setTelegramConnectInput(event.target.value)}
                                 placeholder="@yourchannel or -1001234567890"
-                                disabled={!telegramConfigured || telegramConnectBusy}
+                                disabled={telegramConnectBusy}
                               />
                             </label>
-                            {telegramConnection?.status === "reconnect_needed" && telegramConnection.reconnectReason ? (
-                              <p className={styles.connectionHelper}>{telegramConnection.reconnectReason}</p>
-                            ) : null}
-                            <button
-                              type="button"
-                              className={styles.aiMakeButton}
-                              onClick={connectTelegramChannel}
-                              disabled={!telegramConfigured || telegramConnectBusy || !walletAddress}
-                            >
-                              <b>{telegramConnectBusy ? "Verifying…" : "Connect Telegram"}</b>
-                              <span>
-                                {walletAddress
+                            <p className={styles.connectionHelper}>
+                              {telegramConnection?.status === "reconnect_needed" && telegramConnection.reconnectReason
+                                ? telegramConnection.reconnectReason
+                                : walletAddress
                                   ? "Add the Hoodlums bot as an admin in your channel first, then connect it here."
                                   : "Connect your wallet first, then link a Telegram channel here."}
-                              </span>
+                            </p>
+                            <button
+                              type="button"
+                              className={styles.connectionActionPrimary}
+                              onClick={connectTelegramChannel}
+                              disabled={telegramConnectBusy || !walletAddress}
+                            >
+                              {telegramConnectBusy ? "Verifying…" : "Verify & connect"}
                             </button>
-                          </>
-                        )}
-                        <label className={styles.checkbox}>
-                          <input
-                            type="checkbox"
-                            checked={includeArtwork}
-                            onChange={(event) => setIncludeArtwork(event.target.checked)}
-                          />
-                          <span>Include project artwork when available</span>
-                        </label>
+                          </div>
+                        ) : null}
+                        <details className={styles.connectionOptions}>
+                          <summary>Options</summary>
+                          <label className={styles.checkbox}>
+                            <input
+                              type="checkbox"
+                              checked={includeArtwork}
+                              onChange={(event) => setIncludeArtwork(event.target.checked)}
+                            />
+                            <span>Include project artwork when available</span>
+                          </label>
+                          {telegramConfigured === false ? (
+                            <p className={styles.connectionHelper}>
+                              The Hoodlums Telegram bot isn&apos;t set up on this deployment yet. Ask the site owner to set{" "}
+                              <code>TELEGRAM_BOT_TOKEN</code> (and optionally <code>TELEGRAM_BOT_USERNAME</code>) in Vercel.
+                            </p>
+                          ) : null}
+                        </details>
                         <InlineStatus status={telegramStatus} />
                       </article>
                     </div>

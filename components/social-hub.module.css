@@ -540,9 +540,35 @@
   padding: 18px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   border-radius: 16px;
 }
+
+/* The dropdown box opened from the row's Connect action — the only place the
+   Telegram card ever grows past its one design row. */
+.connectionDrawer {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: var(--well-border);
+  border-radius: var(--well-radius);
+  background: var(--well-bg);
+  box-shadow: var(--well-shadow);
+}
+.connectionDrawer .connectionActionPrimary { justify-self: start; }
+
+.connectionOptions summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-label);
+  font: 700 9.5px var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.connectionOptions summary::-webkit-details-marker { display: none; }
+.connectionOptions summary::after { content: " ▾"; }
+.connectionOptions[open] summary::after { content: " ▴"; }
+.connectionOptions > :not(summary) { margin-top: 10px; }
 
 .connectionCardTop {
   display: grid;

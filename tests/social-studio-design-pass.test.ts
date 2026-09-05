@@ -23,12 +23,12 @@ function ruleBlock(css: string, selector: string): string {
 describe("Social Studio design pass", () => {
   it("gives the connection cards the design's row shape, with X's connect action disabled and Telegram's real disconnect in its place", async () => {
     const hub = await source("components", "social-hub.tsx");
-    expect(hub).toContain('<button type="button" className={styles.connectionActionPrimary} disabled>');
+    expect(hub).toMatch(/className=\{styles\.connectionActionPrimary\}\n\s+disabled\n/);
     expect(hub).toContain("Connect X");
     // The browser-handoff path is still the honest thing to point at, and is
-    // still the only way to post to X today.
-    expect(hub).toContain("it opens");
-    expect(hub).toContain("X&apos;s own composer");
+    // still the only way to post to X today — now said in the disabled
+    // button's title so the card stays one slim row.
+    expect(hub).toContain("it opens X's own composer");
     expect(hub).toContain("className={styles.connectionAction}");
     expect(hub).toContain("onClick={disconnectTelegramChannel}");
     // Disconnect now lives in the card's own action slot, not a separate row.
@@ -167,5 +167,33 @@ describe("Social Studio design pass", () => {
     expect(css).not.toContain("background: #229ed9;");
     // A lime-active destination toggle keeps the X mark white.
     expect(css).toContain(".destinationToggleActive svg { color: var(--text-primary); }");
+  });
+
+  it("keeps each connector card to the design's one slim row, with anything more behind a drawer or Options disclosure", async () => {
+    const hub = await source("components", "social-hub.tsx");
+    // X: the not-available note moved off the card into the disabled button's title.
+    expect(hub).not.toContain("Connecting X isn&apos;t switched on yet.");
+    expect(hub).toContain("title=\"Connecting X isn't switched on yet.");
+    // Telegram: the row's own action opens the connect drawer; the chat-ID field
+    // and the real connect call live inside it, never on the bare card.
+    expect(hub).toContain("const [telegramConnectOpen, setTelegramConnectOpen] = useState(false);");
+    expect(hub).toContain("aria-expanded={telegramConnectOpen}");
+    expect(hub).toContain("telegramConnectOpen ? (\n                          <div className={styles.connectionDrawer}>");
+    const drawer = hub.slice(hub.indexOf("<div className={styles.connectionDrawer}>"));
+    expect(drawer.slice(0, 1600)).toContain("Channel username or chat ID");
+    expect(drawer.slice(0, 1600)).toContain("onClick={connectTelegramChannel}");
+    expect(drawer.slice(0, 1600)).toContain("Verify & connect");
+    // Artwork preference and the not-configured explanation fold into Options.
+    expect(hub).toContain("<details className={styles.connectionOptions}>");
+    const options = hub.slice(hub.indexOf("<details className={styles.connectionOptions}>"));
+    expect(options.slice(0, 1200)).toContain("Include project artwork when available");
+    expect(options.slice(0, 1200)).toContain("<code>TELEGRAM_BOT_TOKEN</code>");
+    // The tall lime-tinted connect card is gone from the connector.
+    expect(hub).not.toContain("className={styles.aiMakeButton}\n                              onClick={connectTelegramChannel}");
+
+    const css = await source("components", "social-hub.module.css");
+    const drawerCss = ruleBlock(css, ".connectionDrawer");
+    expect(drawerCss).toContain("background: var(--well-bg);");
+    expect(css).toContain(".connectionOptions summary::-webkit-details-marker { display: none; }");
   });
 });
