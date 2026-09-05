@@ -17,6 +17,9 @@ export const SOCIAL_STUDIO_ACTION_PURPOSES = [
   "social:post-cancel",
   "social:post-reschedule",
   "social:project-slot-release",
+  "social:buy-bot-enable",
+  "social:buy-bot-update",
+  "social:buy-bot-disable",
 ] as const;
 
 export type SocialStudioActionPurpose = (typeof SOCIAL_STUDIO_ACTION_PURPOSES)[number];

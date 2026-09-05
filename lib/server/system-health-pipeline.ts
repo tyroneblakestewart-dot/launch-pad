@@ -34,9 +34,11 @@ import { getTokenTradesReadHealth, type TokenTradesReadHealth } from "@/lib/serv
 import { getTokenHolderStatsReadHealth, type TokenHolderStatsReadHealth } from "@/lib/server/token-holder-stats";
 import { getSocialXCostStore, readXApiSendCostUsd, readXMonthlyCostCapUsd, type SocialXCostStore } from "@/lib/server/social-x-cost-store";
 import { getTokenLaunchesStore } from "@/lib/server/token-launches-store";
+import { getBuyBotStore, type BuyBotStore } from "@/lib/server/buy-bot-store";
 import {
   CLIENT_ERRORS_RED_THRESHOLD,
   contractsClient,
+  evaluateScheduledJobFreshness,
   evaluateSocialPostingCronFreshness,
   HEALTH_CHECK_TIMEOUT_MS,
   withTimeout,
@@ -1989,6 +1991,128 @@ export async function buildTokenLaunchesPipeline(
 }
 
 // ---------------------------------------------------------------------------
+// Buy Bot (per-token Telegram buy announcer, owner direction 5 Sep 2026)
+// ---------------------------------------------------------------------------
+
+export type BuyBotPipelineDeps = {
+  env?: Record<string, string | undefined>;
+  getPool?: (databaseUrl: string) => PoolLike;
+  getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
+  getStore?: () => Pick<BuyBotStore, "tableExists" | "countByStatus" | "countPostedLast24h">;
+  now?: Date;
+};
+
+export async function buildBuyBotPipeline(deps: BuyBotPipelineDeps = {}): Promise<AdminServicePipeline> {
+  const env = deps.env ?? process.env;
+  const getServiceControl =
+    deps.getServiceControl ?? ((key: AdminServiceKey) => getAdminOperationsStore().getServiceControl(key));
+  const databaseUrl = env.DATABASE_URL?.trim() ?? "";
+
+  const isolationStage = await chatIsolationStage("buy-bot", getServiceControl);
+  const telegramConfigured = Boolean((env.TELEGRAM_BOT_TOKEN || "").trim());
+  const telegramStage = stage(
+    "telegram-configured",
+    "TELEGRAM_BOT_TOKEN",
+    telegramConfigured ? "green" : "amber",
+    telegramConfigured
+      ? "The platform Telegram bot is configured; Buy Bots can post."
+      : "Dormant: TELEGRAM_BOT_TOKEN is unset. Enabling a Buy Bot 503s and the cron sends nothing.",
+  );
+  const encryptionStage = socialPostingEncryptionStage(env);
+
+  if (!databaseUrl) {
+    const message = "DATABASE_URL is not configured.";
+    return {
+      id: "buy-bot",
+      label: "Buy Bot",
+      stages: [
+        isolationStage,
+        telegramStage,
+        encryptionStage,
+        stage("table-exists", "social_buy_bots table exists", "amber", message),
+        stage("cron-heartbeat", "Buy Bot cron freshness", "amber", message),
+        stage("bot-counts", "Bot counts (active/paused/reconnect_needed)", "amber", message),
+        stage("alerts-24h", "Bots that announced a buy in the last 24h", "amber", message),
+      ],
+    };
+  }
+
+  const store = (deps.getStore ?? (() => getBuyBotStore()))();
+  const pool = (deps.getPool ?? ((url: string) => getPostgresPool(url) as unknown as PoolLike))(databaseUrl);
+
+  let tableExists = false;
+  let tableExistsStage: AdminPipelineStage;
+  try {
+    tableExists = await withTimeout(store.tableExists(), HEALTH_CHECK_TIMEOUT_MS, "timed out");
+    tableExistsStage = tableExists
+      ? stage("table-exists", "social_buy_bots table exists", "green", "The social_buy_bots table is present.")
+      : stage("table-exists", "social_buy_bots table exists", "red", "Migration 032_social_buy_bots.sql has not been applied yet.");
+  } catch {
+    tableExistsStage = stage("table-exists", "social_buy_bots table exists", "red", "Could not check whether the social_buy_bots table exists.");
+  }
+
+  const heartbeatLabel = "Buy Bot cron freshness";
+  let heartbeatStage: AdminPipelineStage;
+  if (!tableExists) {
+    heartbeatStage = stage("cron-heartbeat", heartbeatLabel, "amber", "Not probed; the social_buy_bots table does not exist yet.");
+  } else {
+    try {
+      const heartbeat = await withTimeout(
+        pool.query<{ last_succeeded_at: Date | string | null }>(
+          `SELECT last_succeeded_at FROM scheduled_job_heartbeats WHERE job_key = $1`,
+          ["buy-bot"],
+        ),
+        HEALTH_CHECK_TIMEOUT_MS,
+        "timed out",
+      );
+      const freshness = evaluateScheduledJobFreshness(heartbeat.rows[0]?.last_succeeded_at ?? null, deps.now ?? new Date(), "buy-bot");
+      const intentionallyIsolated = isolationStage.message.startsWith("Isolated by an administrator");
+      heartbeatStage = stage(
+        "cron-heartbeat",
+        heartbeatLabel,
+        intentionallyIsolated && freshness.status === "red" ? "amber" : freshness.status,
+        intentionallyIsolated ? `The service is intentionally isolated. ${freshness.message}` : freshness.message,
+        freshness.observedAt,
+      );
+    } catch {
+      heartbeatStage = stage("cron-heartbeat", heartbeatLabel, "red", "Could not read the cron heartbeat. Apply migration 023_scheduled_job_heartbeats.sql.");
+    }
+  }
+
+  const countsLabel = "Bot counts (active/paused/reconnect_needed)";
+  let countsStage: AdminPipelineStage;
+  let alertsStage: AdminPipelineStage;
+  if (!tableExists) {
+    countsStage = stage("bot-counts", countsLabel, "amber", "Not probed; the social_buy_bots table does not exist yet.");
+    alertsStage = stage("alerts-24h", "Bots that announced a buy in the last 24h", "amber", "Not probed; the social_buy_bots table does not exist yet.");
+  } else {
+    try {
+      const counts = await withTimeout(store.countByStatus(), HEALTH_CHECK_TIMEOUT_MS, "timed out");
+      countsStage = stage(
+        "bot-counts",
+        countsLabel,
+        counts.reconnect_needed > 0 ? "amber" : "green",
+        `${counts.active} active, ${counts.paused} paused, ${counts.reconnect_needed} need re-adding to their channel.`,
+      );
+    } catch {
+      countsStage = stage("bot-counts", countsLabel, "red", "Could not count Buy Bot rows.");
+    }
+    try {
+      const count = await withTimeout(store.countPostedLast24h(), HEALTH_CHECK_TIMEOUT_MS, "timed out");
+      alertsStage = stage("alerts-24h", "Bots that announced a buy in the last 24h", "green", `${count} bot(s) posted at least one buy in the last 24 hours.`);
+    } catch {
+      alertsStage = stage("alerts-24h", "Bots that announced a buy in the last 24h", "red", "Could not read recent Buy Bot activity.");
+    }
+  }
+
+  return {
+    id: "buy-bot",
+    label: "Buy Bot",
+    stages: [isolationStage, telegramStage, encryptionStage, tableExistsStage, heartbeatStage, countsStage, alertsStage],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
 
@@ -2009,6 +2133,7 @@ export type SystemHealthPipelineDeps = {
   contentFilter?: ContentFilterPipelineDeps;
   support?: SupportPipelineDeps;
   tokenLaunches?: TokenLaunchesPipelineDeps;
+  buyBot?: BuyBotPipelineDeps;
 };
 
 /** Builds a single service's pipeline on demand — used by the drill-down endpoint. */
@@ -2055,5 +2180,7 @@ export async function buildServicePipeline(
       return buildSupportPipeline({ env: deps.env, ...deps.support });
     case "token-launches":
       return buildTokenLaunchesPipeline({ env: deps.env, ...deps.tokenLaunches });
+    case "buy-bot":
+      return buildBuyBotPipeline({ env: deps.env, ...deps.buyBot });
   }
 }

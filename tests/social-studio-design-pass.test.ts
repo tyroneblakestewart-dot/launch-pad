@@ -66,15 +66,20 @@ describe("Social Studio design pass", () => {
     expect(css).toMatch(/\.buyAlertThreshold select \{[^}]*box-shadow: var\(--well-shadow\);/s);
   });
 
-  it("draws the buy-alert row from the design, with its threshold and an explicit coming-soon badge", async () => {
+  it("draws the buy-alert row from the design, now live: the threshold select is bound to the selected token's Buy Bot and only disabled when there is none", async () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("Tell Telegram about every buy");
     expect(hub).toContain('const BUY_ALERT_THRESHOLDS = ["0.01 ETH", "0.05 ETH", "0.1 ETH"] as const;');
     expect(hub).toContain("<label className={styles.buyAlertThreshold}>");
-    // Nothing here is wired, so it must say so rather than look live.
+    // The row is wired to the real bot now (owner direction, 5 Sep 2026), so
+    // the coming-soon badge is gone from it and the select reads/writes the
+    // bot's own threshold — disabled only while no bot exists for this token.
     const row = hub.slice(hub.indexOf("Tell Telegram about every buy"));
-    expect(row.slice(0, 900)).toContain("<ComingSoon compact />");
-    expect(hub).toContain('<select disabled defaultValue="0.01 ETH">');
+    expect(row.slice(0, 1400)).not.toContain("<ComingSoon compact />");
+    expect(row.slice(0, 1400)).toContain("disabled={!selectedBuyBot || buyBotBusy}");
+    expect(row.slice(0, 1400)).toContain("value={formatBuyBotThreshold(selectedBuyBot?.thresholdWei ?? DEFAULT_BUY_BOT_THRESHOLD_WEI)}");
+    expect(row.slice(0, 1400)).toContain("updateBuyBot({ thresholdWei: buyBotThresholdWeiForLabel(event.target.value) })");
+    expect(hub).not.toContain('<select disabled defaultValue="0.01 ETH">');
   });
 
   it("selects a calendar day as a lime-tinted card, never a solid lime block", async () => {

@@ -1942,3 +1942,86 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   page, route or integration). Not verified in a browser or on a device
   from this session (rule 7) — the owner compares the deployed homepage and
   a fix round is expected.
+
+- Buy Bot — the first of the three Social Studio bots goes live (owner
+  decisions, 5 Sep 2026: Buy Bot first; each bot bound to a Telegram channel
+  of its own, separate from the wallet's posting connection; announcements
+  are text plus the launch's recorded artwork; default threshold 0.01 ETH).
+  Hype Bot and Watchtower stay disabled "Coming soon" cards. **Data** —
+  `db/migrations/032_social_buy_bots.sql` (numbered past #500's still-open
+  031) adds `social_buy_bots`: one row per wallet+token, the channel binding
+  AES-256-GCM encrypted at rest via the existing
+  `lib/server/social-credentials-crypto.ts`, the preset threshold in wei, an
+  `active`/`paused`/`reconnect_needed` status and a `(block, log index)`
+  cursor marking the last trade already announced; it also widens both
+  admin service-key constraints for a new `buy-bot` service and seeds its
+  control row. `lib/server/buy-bot-store.ts` follows the connections-store
+  shape (interface + fail-safe unconfigured fallback + test seam +
+  Postgres). **Routes** — `GET/POST /api/social/buy-bot` (list / enable),
+  `POST /api/social/buy-bot/update` (threshold, pause, resume) and
+  `POST /api/social/buy-bot/disable`, all wallet-signed through the shared
+  `/api/social/challenge` flow with three new purposes
+  (`social:buy-bot-enable|update|disable`). Enabling additionally requires
+  the Pro/Pro Bundle entitlement, that the signing wallet is the recorded
+  `token_launches` creator of that token (nobody can announce someone else's
+  token into their own channel), a real `getChat`/`getChatMember` admin
+  check of the named channel, and a successful read of the curve's trades to
+  seat the cursor at the newest one — history is never replayed, and a
+  trade-read failure blocks enabling (502) rather than guessing. Robinhood
+  Chain Testnet only. **Cron** — `/api/cron/buy-bot` every minute
+  (`lib/server/buy-bot-cron.ts`) reuses the exact cached
+  `lib/server/token-trades-rpc.ts` read the token page already polls, picks
+  buys strictly after each active bot's cursor at or above its threshold
+  (gross amount paid; sells never; post-graduation pool buys yes), posts up
+  to 5 per bot per run via the existing `publishTelegramPost` with the launch
+  thumbnail as the photo, and advances the cursor only after a delivered
+  send. Message maths live in the pure `lib/server/buy-bot-alerts.ts` and
+  use the token page's own formatters (spot price from the trade's emitted
+  reserves, graduation % from the cached progress read); the body is plain
+  text, no parse_mode. A channel-lost Telegram error (kicked, rights removed,
+  chat not found) flips the bot to `reconnect_needed` immediately; other
+  errors only after five consecutive failures; a trade-read failure never
+  touches status or cursor. The fail-closed content filter runs before every
+  send (a blocked body is skipped, not retried forever). The heartbeat reuses
+  `createSocialPostingHeartbeatRecorder` under job key `buy-bot` (the
+  recorder gained an optional `jobKey`; its SQL is unchanged), and
+  `evaluateSocialPostingCronFreshness` now delegates to a shared
+  `evaluateScheduledJobFreshness(lastSucceededAt, now, jobName)` with
+  identical thresholds and byte-identical social-posting wording. Nothing
+  here spends money — Telegram Bot API only, no model call. **UI**
+  (`components/social-hub.tsx`) — the Buy Bot card's "Add to your channel"
+  opens its own drawer (channel field + threshold select + "Verify & add");
+  a live bot shows a lit "Live · channel" chip, the threshold select, Pause/
+  Resume and Remove; a lost channel shows the reason with "Add again" and
+  Remove; the action is disabled with a plain reason when there is no
+  wallet, no project, or the project isn't a Robinhood launch. The Settings
+  & Rules "Tell Telegram about every buy" row is now live: its select is
+  bound to the selected token's bot threshold and disabled only while no bot
+  exists. `lib/buy-bot-presets.ts` is the one shared source of the three
+  presets/wei values. **Rule 10** — `ADMIN_SERVICE_DEFINITIONS` gains
+  `buy-bot` (isolation switch), `SYSTEM_HEALTH_CHECK_IDS` gains a `buy-bot`
+  check (`checkBuyBotHealth`) and pipeline (`buildBuyBotPipeline`: isolation,
+  Telegram configured, encryption key, table, cron freshness, bot counts,
+  bots that posted in 24h), and four Activity kinds (`buy-bot-enabled`,
+  `-updated`, `-disabled`, `-reconnect-needed`; the cron also records the
+  existing `content-filter-rejected`). **Tests changed rather than only
+  added (rule 8, stated plainly):** the design-pass pin that the Rules row
+  is `<select disabled defaultValue="0.01 ETH">` with a coming-soon badge
+  pinned the unwired state and now pins the live binding; the route/module
+  inventory, the health-check id lists in `system-health`/`admin-endpoints`,
+  the `vercel.json` cron pins in `vercel-cron-config`/
+  `subscription-lifecycle-wiring`, and the `admin-operations-store`
+  service-count (12 → 13) were extended for the new entries. Checked in a
+  headless Chromium at 1400px and 390px via a temporary seeded page (drawer,
+  live, paused/lost and Rules states) — not on a physical iPhone (rule 7);
+  the owner confirms on device. **Deploy notes for the owner:** run
+  migration 032 in Supabase before merging; no new env vars (reuses
+  `TELEGRAM_BOT_TOKEN`, `SOCIAL_CREDENTIALS_ENCRYPTION_KEY`, `CRON_SECRET`);
+  Vercel picks up the new cron from `vercel.json` on deploy. Known limits:
+  a burst of more than 5 qualifying buys a minute drains at 5 per minute per
+  bot; a crash between a delivered send and the cursor write can repeat one
+  announcement once; Hype Bot and Watchtower are the next two builds.
+  Validated this session, on the final commit: `npm run test:app` — 304
+  test files / 3544 tests passing. `npm run lint` — 0 errors (11
+  pre-existing warnings only). `npm run build` — succeeds, `/api/cron/buy-bot`
+  and the three `/api/social/buy-bot` routes listed in the route output.

@@ -1886,3 +1886,44 @@
   .dialList > div > div { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .dialList button { padding: 0 5px; }
 }
+
+/* Buy Bot card (owner direction, 5 Sep 2026): the one live bot in the trio.
+   The shared `.botRow button` ghost rule above still styles Pause/Resume/
+   Remove; the primary action and the live/paused chip get their own recipes. */
+.botRow .botActionPrimary {
+  border: 0;
+  color: var(--cta-color);
+  background: var(--cta-bg);
+  box-shadow: 0 8px 22px rgba(198, 245, 62, 0.18);
+}
+.botRow .botActionPrimary:disabled { opacity: 0.45; box-shadow: none; }
+.botRowHead .comingSoonCompact { margin-left: auto; }
+.botLive { display: grid; gap: 10px; }
+.botLiveState,
+.botPausedState {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(198, 245, 62, 0.35);
+  color: var(--accent-lime);
+  background: var(--studio-lime-card-bg);
+  font: 700 11.5px/1 var(--sans);
+}
+.botLiveState::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-lime);
+  box-shadow: 0 0 10px rgba(198, 245, 62, 0.7);
+}
+.botPausedState { border-color: rgba(255, 255, 255, 0.12); color: var(--text-secondary); background: var(--studio-ghost-bg); }
+.botActions { display: flex; gap: 8px; }
+.botRow .botActions button { width: auto; flex: 1; }
+.botRow .botHint,
+.botRow .botWarning { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--text-label); }
+.botRow .botWarning { color: #f0c66a; }
+.botRow .connectionDrawer .buyAlertThreshold { justify-content: space-between; }

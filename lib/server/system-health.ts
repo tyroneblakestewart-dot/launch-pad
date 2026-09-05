@@ -28,7 +28,8 @@ export type SystemHealthCheck = {
     | "operations-cost"
     | "content-filter"
     | "support"
-    | "token-launches";
+    | "token-launches"
+    | "buy-bot";
   label: string;
   status: SystemHealthStatus;
   message: string;
@@ -415,10 +416,25 @@ export function evaluateSocialPostingCronFreshness(
   lastSucceededAt: Date | string | null,
   now = new Date(),
 ): SocialPostingCronFreshness {
+  return evaluateScheduledJobFreshness(lastSucceededAt, now, "social-posting");
+}
+
+/**
+ * Shared freshness rule for every every-minute scheduled job that writes a
+ * scheduled_job_heartbeats row: green within 3 minutes of the last
+ * successful completion, amber to 10 minutes, red beyond. `jobName` only
+ * changes the two messages that name the job — the thresholds are the same
+ * for the social-posting and Buy Bot crons, which both run every minute.
+ */
+export function evaluateScheduledJobFreshness(
+  lastSucceededAt: Date | string | null,
+  now = new Date(),
+  jobName = "social-posting",
+): SocialPostingCronFreshness {
   if (!lastSucceededAt) {
     return {
       status: "amber",
-      message: "The social-posting cron has not completed successfully yet.",
+      message: `The ${jobName} cron has not completed successfully yet.`,
       observedAt: null,
     };
   }
@@ -429,7 +445,7 @@ export function evaluateSocialPostingCronFreshness(
   if (Number.isNaN(observed.getTime())) {
     return {
       status: "red",
-      message: "The stored social-posting cron heartbeat is invalid.",
+      message: `The stored ${jobName} cron heartbeat is invalid.`,
       observedAt: null,
     };
   }
@@ -832,6 +848,75 @@ export async function checkTokenLaunchesHealth(deps: {
   }
 }
 
+export type BuyBotHealthPing = () => Promise<{
+  lastSucceededAt: Date | string | null;
+  counts: { active: number; paused: number; reconnect_needed: number };
+}>;
+
+/**
+ * Reports whether the Buy Bot registry (`social_buy_bots`) and the cron's
+ * constant-size heartbeat are reachable, plus whether Telegram is configured
+ * at all (owner direction, 5 Sep 2026). No Telegram or RPC call is made.
+ */
+export async function checkBuyBotHealth(
+  deps: {
+    databaseUrl?: string;
+    ping?: BuyBotHealthPing;
+    env?: Record<string, string | undefined>;
+    now?: Date;
+  } = {},
+): Promise<SystemHealthCheck> {
+  const id = "buy-bot" as const;
+  const label = "Buy Bot";
+  const env = deps.env ?? process.env;
+  const telegramConfigured = Boolean((env.TELEGRAM_BOT_TOKEN || "").trim());
+  const telegramNote = telegramConfigured
+    ? "Telegram is configured."
+    : "Dormant: TELEGRAM_BOT_TOKEN is unset, so no bot can post.";
+
+  const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl && !deps.ping) {
+    return { id, label, status: "amber", message: `DATABASE_URL is not configured. ${telegramNote}` };
+  }
+
+  const ping =
+    deps.ping ??
+    (async () => {
+      const pool = getPostgresPool(databaseUrl);
+      const counts = await pool.query<{ status: string; count: number | string }>(
+        `SELECT status, COUNT(*)::int AS count FROM social_buy_bots GROUP BY status`,
+      );
+      const heartbeat = await pool.query<{ last_succeeded_at: Date | string | null }>(
+        `SELECT last_succeeded_at FROM scheduled_job_heartbeats WHERE job_key = $1`,
+        ["buy-bot"],
+      );
+      const tallied = { active: 0, paused: 0, reconnect_needed: 0 };
+      for (const row of counts.rows) {
+        if (row.status in tallied) tallied[row.status as keyof typeof tallied] = Number(row.count);
+      }
+      return { lastSucceededAt: heartbeat.rows[0]?.last_succeeded_at ?? null, counts: tallied };
+    });
+
+  try {
+    const { lastSucceededAt, counts } = await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, "Buy Bot health check timed out.");
+    const freshness = evaluateScheduledJobFreshness(lastSucceededAt, deps.now ?? new Date(), "buy-bot");
+    const status = freshness.status === "green" && !telegramConfigured ? "amber" : freshness.status;
+    return {
+      id,
+      label,
+      status,
+      message: `${counts.active} active, ${counts.paused} paused, ${counts.reconnect_needed} need re-adding. ${freshness.message} ${telegramNote}`,
+    };
+  } catch {
+    return {
+      id,
+      label,
+      status: "red",
+      message: `The social_buy_bots table or the cron heartbeat is not reachable. Apply migration 032_social_buy_bots.sql. ${telegramNote}`,
+    };
+  }
+}
+
 export type SystemHealthDeps = {
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
@@ -847,6 +932,7 @@ export type SystemHealthDeps = {
   contentFilter?: Parameters<typeof checkContentFilterHealth>[0];
   support?: Parameters<typeof checkSupportHealth>[0];
   tokenLaunches?: Parameters<typeof checkTokenLaunchesHealth>[0];
+  buyBot?: Parameters<typeof checkBuyBotHealth>[0];
 };
 
 /**
@@ -871,6 +957,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     contentFilter,
     support,
     tokenLaunches,
+    buyBot,
   ] = await Promise.all([
     checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
     checkDatabaseHealth(deps.database),
@@ -887,6 +974,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     checkContentFilterHealth(deps.contentFilter),
     checkSupportHealth({ env: deps.env, ...deps.support }),
     checkTokenLaunchesHealth({ env: deps.env, ...deps.tokenLaunches }),
+    checkBuyBotHealth({ env: deps.env, ...deps.buyBot }),
   ]);
   return [
     websiteGeneration,
@@ -904,5 +992,6 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     contentFilter,
     support,
     tokenLaunches,
+    buyBot,
   ];
 }
