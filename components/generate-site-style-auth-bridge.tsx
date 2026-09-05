@@ -19,6 +19,7 @@ const PROTECTED_GENERATION_ROUTES = [
   "/api/social/draft",
   "/api/social/mascot/visual-dna",
   "/api/social/mascot/image",
+  "/api/social/voice-sample",
 ] as const;
 const BESPOKE_CHALLENGE_ROUTE = "/api/generate-site-page/challenge";
 const BESPOKE_GENERATION_ROUTE = "/api/generate-site-page";
