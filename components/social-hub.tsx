@@ -8,6 +8,7 @@ import {
   parseStoredAccountWallet,
 } from "@/lib/account-wallet-state";
 import { TelegramMark, XMark } from "@/components/brand-icons";
+import { MASCOT_REFERENCE_TIPS, assessMascotReference, type MascotReferenceAssessment } from "@/lib/mascot-reference-guidance";
 import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
 import { VOICE_EXAMPLE_TARGET, cleanPastedPosts, voiceTrainingHint } from "@/lib/social-voice-examples";
 import { getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
@@ -156,6 +157,16 @@ function storedWalletAddress(): string {
   } catch {
     return "";
   }
+}
+
+/** Reads an image's pixel size in the browser. Untested DOM driver (same split as lib/token-artwork-thumbnail.ts); resolves 0×0 rather than throwing so the upload never depends on it. */
+function readImageDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => resolve({ width: 0, height: 0 });
+    image.src = dataUrl;
+  });
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -431,6 +442,8 @@ export function SocialHub() {
   // control that triggered them instead of only in the far-below statusBar.
   const [voiceStatus, setVoiceStatus] = useState<PanelStatus>(null);
   const [mascotUploadStatus, setMascotUploadStatus] = useState<PanelStatus>(null);
+  // Best-results read-out for the last uploaded reference — advice only, the upload proceeds regardless.
+  const [mascotReferenceAssessment, setMascotReferenceAssessment] = useState<MascotReferenceAssessment | null>(null);
   const [mascotSceneStatus, setMascotSceneStatus] = useState<PanelStatus>(null);
   const [setupDraftStatus, setSetupDraftStatus] = useState<PanelStatus>(null);
   const [calendarDraftStatus, setCalendarDraftStatus] = useState<PanelStatus>(null);
@@ -1740,6 +1753,9 @@ export function SocialHub() {
     setMascotUploadStatus({ tone: "progress", message: "Reading the mascot's visual identity…" });
     try {
       const imageDataUrl = await readFileAsDataUrl(file);
+      const dimensions = await readImageDimensions(imageDataUrl);
+      const assessment = assessMascotReference({ ...dimensions, mimeType: file.type });
+      setMascotReferenceAssessment(assessment);
       const response = await fetch("/api/social/mascot/visual-dna", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1753,7 +1769,13 @@ export function SocialHub() {
       setMascotVisualDNA(payload.mascotVisualDNA);
       setMascotReferenceImage(imageDataUrl);
       persistSocialStudio({ mascotVisualDNA: payload.mascotVisualDNA, mascotReferenceImage: imageDataUrl });
-      setMascotUploadStatus({ tone: "success", message: "Mascot identity locked in. Choose a scene to generate artwork." });
+      setMascotUploadStatus({
+        tone: "success",
+        message:
+          assessment.verdict === "great"
+            ? "Mascot identity locked in. Choose a scene to generate artwork."
+            : `Mascot identity locked in — ${assessment.summary} Choose a scene to generate artwork.`,
+      });
     } catch (error) {
       setMascotUploadStatus({ tone: "error", message: error instanceof Error ? error.message : "The mascot artwork could not be analysed." });
     } finally {
@@ -2645,6 +2667,25 @@ export function SocialHub() {
                         )}
                         <b>{mascotVisualDNA ? "Mascot identity locked in" : "Upload mascot artwork"}</b>
                         <p>PNG, JPG or WEBP, under 3MB</p>
+                        <details className={styles.mascotTips} open={!mascotReferenceImage}>
+                          <summary>For best results</summary>
+                          <ul>
+                            {MASCOT_REFERENCE_TIPS.map((tip) => (
+                              <li key={tip}>{tip}</li>
+                            ))}
+                          </ul>
+                          <p>Whatever you upload, we&apos;ll do our best with it — these just make the mascot sharper.</p>
+                        </details>
+                        {mascotReferenceAssessment && mascotReferenceAssessment.notes.length > 0 ? (
+                          <div className={styles.mascotNotes} data-verdict={mascotReferenceAssessment.verdict}>
+                            <b>{mascotReferenceAssessment.summary}</b>
+                            <ul>
+                              {mascotReferenceAssessment.notes.map((note) => (
+                                <li key={note}>{note}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
                         <input
                           ref={mascotFileInputRef}
                           type="file"

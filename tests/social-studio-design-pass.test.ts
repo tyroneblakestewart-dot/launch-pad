@@ -229,4 +229,23 @@ describe("Social Studio design pass", () => {
     // No station call fires from an effect on load — only from a tap or a sort.
     expect(hub).not.toMatch(/useEffect\([^)]*fillSortingStation/);
   });
+
+  it("guides the mascot upload for best results and reports how the reference measures up — advice only, never a gate", async () => {
+    const hub = await source("components", "social-hub.tsx");
+    expect(hub).toContain("<summary>For best results</summary>");
+    expect(hub).toContain("{MASCOT_REFERENCE_TIPS.map((tip) => (");
+    expect(hub).toContain("Whatever you upload, we&apos;ll do our best with it");
+    // Assessment happens before the AI call and the upload proceeds regardless of verdict.
+    const handler = hub.slice(hub.indexOf("async function handleMascotFileChange"));
+    const assessAt = handler.indexOf("assessMascotReference({ ...dimensions, mimeType: file.type })");
+    const fetchAt = handler.indexOf('fetch("/api/social/mascot/visual-dna"');
+    expect(assessAt).toBeGreaterThan(-1);
+    expect(fetchAt).toBeGreaterThan(assessAt);
+    expect(handler.slice(assessAt, fetchAt)).not.toMatch(/return;/);
+    expect(hub).toContain('data-verdict={mascotReferenceAssessment.verdict}');
+
+    const pipeline = await source("lib", "server", "mascot-visual-dna-pipeline.ts");
+    expect(pipeline).toContain("Do your best with whatever is given");
+    expect(pipeline).toContain("never refuse or return placeholder text because of image quality");
+  });
 });

@@ -722,6 +722,42 @@
 
 .botRow button,
 .disabledActions button,
+.mascotTips {
+  width: 100%;
+  max-width: 320px;
+  text-align: left;
+}
+.mascotTips summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-label);
+  font: 700 9.5px var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.mascotTips summary::-webkit-details-marker { display: none; }
+.mascotTips summary::after { content: " ▾"; }
+.mascotTips[open] summary::after { content: " ▴"; }
+.mascotTips ul { margin: 8px 0 0; padding-left: 16px; display: grid; gap: 4px; }
+.mascotTips li,
+.mascotTips p { color: var(--text-sub); font-size: 11.5px; line-height: 1.5; }
+.mascotTips p { margin: 8px 0 0; color: var(--text-label); }
+
+.mascotNotes {
+  width: 100%;
+  max-width: 320px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  text-align: left;
+  background: var(--studio-card-bg);
+  box-shadow: var(--studio-card-shadow);
+}
+.mascotNotes[data-verdict="rough"] { border-color: rgba(255, 174, 54, 0.35); }
+.mascotNotes b { display: block; color: var(--text-primary); font-size: 12px; }
+.mascotNotes ul { margin: 8px 0 0; padding-left: 16px; display: grid; gap: 4px; }
+.mascotNotes li { color: var(--text-sub); font-size: 11.5px; line-height: 1.5; }
+
 .mascotDrop button {
   min-height: 38px;
   border: 1px solid rgba(255, 255, 255, 0.09);
