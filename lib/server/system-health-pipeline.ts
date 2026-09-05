@@ -30,6 +30,7 @@ import {
 import { getAdminOperationsStore } from "@/lib/server/admin-operations-store";
 import { getCurveProgressCacheHealth, type CurveProgressCacheHealth } from "@/lib/server/curve-progress-cache";
 import { getPostgresPool } from "@/lib/server/postgres";
+import { MAX_MASCOT_IMAGES_PER_DAY } from "@/lib/social-studio-types";
 import { getTokenTradesReadHealth, type TokenTradesReadHealth } from "@/lib/server/token-trades-rpc";
 import { getTokenHolderStatsReadHealth, type TokenHolderStatsReadHealth } from "@/lib/server/token-holder-stats";
 import { getSocialXCostStore, readXApiSendCostUsd, readXMonthlyCostCapUsd, type SocialXCostStore } from "@/lib/server/social-x-cost-store";
@@ -329,6 +330,33 @@ function socialStudioImageProviderStage(env: Record<string, string | undefined>,
 // now fails closed with a 503 if social_project_slots can't be read, a new
 // dependency the AI Social Studio pipeline should surface directly rather
 // than silently folding into the generic entitlement stage above.
+async function mascotImageAllowanceStage(
+  databaseUrl: string,
+  getPool: (databaseUrl: string) => PoolLike,
+): Promise<AdminPipelineStage> {
+  const label = "Daily image allowance (social_mascot_image_usage)";
+  const rule = `${MAX_MASCOT_IMAGES_PER_DAY} mascot images per token per UTC day, hard-blocked at the cap.`;
+  if (!databaseUrl) {
+    return stage("image-allowance", label, "red", `DATABASE_URL is not configured; every mascot-image request fails closed with a 503 rather than skip the ${rule}`);
+  }
+  try {
+    const pool = getPool(databaseUrl);
+    const result = await withTimeout(
+      pool.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'social_mascot_image_usage'`,
+      ),
+      HEALTH_CHECK_TIMEOUT_MS,
+      "timed out",
+    );
+    if (result.rows.length === 0) {
+      return stage("image-allowance", label, "red", "Migration 031_social_mascot_image_usage.sql has not been applied. Every mascot-image request fails closed with a 503.");
+    }
+    return stage("image-allowance", label, "green", rule);
+  } catch {
+    return stage("image-allowance", label, "red", "The daily image allowance table could not be queried.");
+  }
+}
+
 async function socialProjectSlotRegistryStage(
   databaseUrl: string,
   getPool: (databaseUrl: string) => PoolLike,
@@ -384,6 +412,7 @@ export async function buildSocialStudioAiPipeline(deps: SocialStudioAiPipelineDe
 
   const isolationStage = await chatIsolationStage("social-studio-ai", getServiceControl);
   const registryStage = await socialProjectSlotRegistryStage(databaseUrl, getPool);
+  const imageAllowanceStage = await mascotImageAllowanceStage(databaseUrl, getPool);
 
   return {
     id: "social-studio-ai",
@@ -396,6 +425,7 @@ export async function buildSocialStudioAiPipeline(deps: SocialStudioAiPipelineDe
       socialStudioEntitlementStage(env),
       socialStudioImageProviderStage(env, requestOidcToken),
       registryStage,
+      imageAllowanceStage,
     ],
   };
 }

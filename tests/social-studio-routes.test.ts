@@ -17,6 +17,11 @@ import {
   setSocialStudioAuthoriserForTests,
 } from "@/lib/server/social-studio-entitlement";
 import { createMemorySocialProjectSlotsStore } from "./social-project-slots-test-helpers";
+import {
+  createMemoryMascotImageUsageStore,
+  resetMascotImageUsageStoreForTests,
+  setMascotImageUsageStoreForTests,
+} from "@/lib/server/mascot-image-usage-store";
 
 const SECRET = "hoodlums-test-secret";
 const ORIGIN = "https://hoodlums.dev";
@@ -53,9 +58,11 @@ beforeEach(() => {
   resetSocialStudioRateLimitsForTests();
   resetSocialStudioAuthoriserForTests();
   resetSocialProjectSlotsStoreForTests();
+  setMascotImageUsageStoreForTests(createMemoryMascotImageUsageStore());
 });
 
 afterEach(() => {
+  resetMascotImageUsageStoreForTests();
   delete process.env.GENERATE_SITE_STYLE_SHARED_SECRET;
   delete process.env.GENERATE_SITE_STYLE_ALLOWED_ORIGIN;
   delete process.env.OPENAI_API_KEY;

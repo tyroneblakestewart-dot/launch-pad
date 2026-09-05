@@ -65,6 +65,14 @@ export type PostingCadence = "conservative" | "active";
 
 export const MAX_POSTS_PER_DAY = 5;
 
+/**
+ * Daily mascot-image allowance per token (owner decision, 5 Sep 2026): two a
+ * day, hard-blocked at the cap until the next UTC midnight. A Pro Bundle wallet
+ * gets this on each of its tokens, not a shared pool. Enforced server-side in
+ * app/api/social/mascot/image/route.ts; shown client-side as "N/2 AI images".
+ */
+export const MAX_MASCOT_IMAGES_PER_DAY = 2;
+
 export const POSTING_CADENCE_OPTIONS: Array<{
   id: PostingCadence;
   label: string;
