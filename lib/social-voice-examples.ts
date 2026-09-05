@@ -57,3 +57,20 @@ export function filterUsableVoiceExamples(rawText: string): VoiceExampleFilterRe
     rejectedCount: pastedLines.length - usable.length,
   };
 }
+
+/** The design's ideal example count — the "/ 20" in the trainer, and the target the hint line counts down to. */
+export const VOICE_EXAMPLE_TARGET = 20;
+
+/**
+ * The one-line hint under the EXAMPLES ADDED bar, from the design's own
+ * copy: nothing yet / how many more until the voice "locks in" / trained.
+ */
+export function voiceTrainingHint(usableCount: number, target: number = VOICE_EXAMPLE_TARGET): string {
+  const count = Math.max(0, Math.floor(usableCount));
+  if (count === 0) return "Nothing added yet — paste your first example above.";
+  if (count < target) {
+    const remaining = target - count;
+    return `Add ${remaining} more and the voice locks in properly.`;
+  }
+  return "Perfect — the voice is fully trained.";
+}

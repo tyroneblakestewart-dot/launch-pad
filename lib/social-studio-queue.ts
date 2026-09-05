@@ -173,3 +173,18 @@ export function describeWalletMismatch(activeAccount: string, confirmedAddress: 
   if (activeAccount.toLowerCase() === confirmedAddress.toLowerCase()) return null;
   return `Your wallet app is on a different account (${truncateAccountAddress(activeAccount)}) than the one confirmed on Hoodlums (${truncateAccountAddress(confirmedAddress)}). Switch accounts in your wallet app, or re-confirm your wallet from the Account panel.`;
 }
+
+/**
+ * The header badge's text, from the plan the project-slots read reports —
+ * "PRO BUNDLE · 3 TOKENS" / "PRO · 1 TOKEN" as the design draws it. Until
+ * that read has answered (or when it cannot name a plan) the badge falls back
+ * to the product name rather than guessing a tier.
+ */
+export function describePlanBadge(
+  slotUsage: { plan: "pro" | "pro-bundle" | null; limit: number | null; unlimited: boolean } | null,
+): string {
+  if (!slotUsage || !slotUsage.plan) return "PRO · AI SOCIAL STUDIO";
+  const tier = slotUsage.plan === "pro-bundle" ? "PRO BUNDLE" : "PRO";
+  if (slotUsage.unlimited || slotUsage.limit === null) return tier;
+  return `${tier} · ${slotUsage.limit} ${slotUsage.limit === 1 ? "TOKEN" : "TOKENS"}`;
+}

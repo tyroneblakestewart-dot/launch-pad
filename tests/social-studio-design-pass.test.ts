@@ -108,4 +108,64 @@ describe("Social Studio design pass", () => {
     const theme = await source("app", "hoodlums-premium-theme.css");
     expect(theme).not.toContain("--studio-card-bg");
   });
+
+  it("orders Setup as the design does — connect, bots, voice, then the rest — with Compose left where it was", async () => {
+    const hub = await source("components", "social-hub.tsx");
+    const connect = hub.indexOf("<h2>Connect your accounts</h2>");
+    const bots = hub.indexOf("PICK A HOODLUMS BOT");
+    const voice = hub.indexOf("<h2>Teach the AI your voice</h2>");
+    const compose = hub.indexOf("<h2>Compose now</h2>");
+    const mascot = hub.indexOf("<h2>Your mascot</h2>");
+    expect(connect).toBeGreaterThan(-1);
+    expect(bots).toBeGreaterThan(connect);
+    expect(voice).toBeGreaterThan(bots);
+    expect(compose).toBeGreaterThan(voice);
+    expect(mascot).toBeGreaterThan(compose);
+  });
+
+  it("finishes the voice trainer to the design: lime primary pill in the paste box, a hint line under the bar, the ⓘ note", async () => {
+    const hub = await source("components", "social-hub.tsx");
+    expect(hub).toContain("className={styles.voiceLearnButton}");
+    expect(hub).toContain("{voiceBusy ? \"Learning your voice…\" : \"Learn my voice\"}");
+    // The big lime-tinted card it replaced is gone from the trainer.
+    expect(hub).not.toContain("<span>Builds a reusable voice profile for AI drafts and mascot posts.</span>");
+    expect(hub).toContain("{voiceExampleCount} / {VOICE_EXAMPLE_TARGET}");
+    expect(hub).toContain("<p className={styles.voiceHint}>{voiceTrainingHint(voiceExampleCount)}</p>");
+    expect(hub).toContain('<i aria-hidden="true">i</i>');
+    expect(hub).toContain("Your examples teach <b>style only</b>.");
+
+    const css = await source("components", "social-hub.module.css");
+    const pill = ruleBlock(css, ".voiceLearnButton");
+    expect(pill).toContain("background: var(--cta-bg);");
+    expect(pill).toContain("border-radius: 999px;");
+    expect(css).toMatch(/\.progressTrack span \{[^}]*box-shadow: 0 0 16px rgba\(198, 245, 62, 0\.5\);/s);
+  });
+
+  it("reads the header badge from the real plan instead of a fixed label", async () => {
+    const hub = await source("components", "social-hub.tsx");
+    expect(hub).toContain("<span className={styles.proBadge}>{describePlanBadge(slotUsage)}</span>");
+    expect(hub).not.toContain("<span className={styles.proBadge}>PRO · AI SOCIAL STUDIO</span>");
+  });
+
+  it("renders the connector brand marks in their official colours everywhere they appear", async () => {
+    const icons = await source("components", "brand-icons.tsx");
+    // Telegram's own brand disc (#2AABEE → #229ED9) with a white plane, carried
+    // by the mark itself so no lime toggle or grey row can recolour it.
+    expect(icons).toContain('<stop offset="0" stopColor="#2AABEE" />');
+    expect(icons).toContain('<stop offset="1" stopColor="#229ED9" />');
+    expect(icons).toContain('<circle cx="12" cy="12" r="12" fill="#fff" />');
+    expect(icons).toContain('fill="url(#hoodlums-telegram-brand)"');
+    // The official path itself is unchanged.
+    expect(icons).toContain("M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0z");
+    // X stays black/white, never tinted.
+    expect(icons).toContain('<svg viewBox="0 0 251 256" aria-hidden="true" fill="currentColor" {...props}>');
+
+    const css = await source("components", "social-hub.module.css");
+    // Both connector tiles are the same black tile, so the marks carry the brand.
+    expect(css).toMatch(/\.telegramIcon \{[^}]*background: #000;/s);
+    expect(css).toMatch(/\.xIcon \{[^}]*background: #000;/s);
+    expect(css).not.toContain("background: #229ed9;");
+    // A lime-active destination toggle keeps the X mark white.
+    expect(css).toContain(".destinationToggleActive svg { color: var(--text-primary); }");
+  });
 });

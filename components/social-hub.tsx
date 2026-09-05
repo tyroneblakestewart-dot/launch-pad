@@ -9,12 +9,14 @@ import {
 } from "@/lib/account-wallet-state";
 import { TelegramMark, XMark } from "@/components/brand-icons";
 import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
+import { VOICE_EXAMPLE_TARGET, voiceTrainingHint } from "@/lib/social-voice-examples";
 import { getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
 import {
   advanceRollingRecentDrafts,
   buildXIntentUrl,
   cadenceQueueTarget,
   countPostsScheduledToday,
+  describePlanBadge,
   cadenceSpreadHoursMs,
   computeDefaultScheduledAt,
   connectedPlatforms,
@@ -700,7 +702,7 @@ export function SocialHub() {
   );
   const voiceExampleFilter = useMemo(() => filterUsableVoiceExamples(voiceExamplesText), [voiceExamplesText]);
   const voiceExampleCount = voiceExampleFilter.usable.length;
-  const voiceProgressPercent = Math.min(100, Math.round((voiceExampleCount / 20) * 100));
+  const voiceProgressPercent = Math.min(100, Math.round((voiceExampleCount / VOICE_EXAMPLE_TARGET) * 100));
   const projectInitial = (selectedProject?.name || "H").slice(0, 1).toUpperCase();
   const projectTicker = selectedProject?.ticker?.trim().toUpperCase() || "PROJECT";
   const xHandle = selectedProject?.xHandle ? cleanHandle(selectedProject.xHandle) : "";
@@ -1848,7 +1850,7 @@ export function SocialHub() {
           </div>
 
           <div className={styles.heroActions}>
-            <span className={styles.proBadge}>PRO · AI SOCIAL STUDIO</span>
+            <span className={styles.proBadge}>{describePlanBadge(slotUsage)}</span>
             <div className={styles.projectPicker}>
               <button
                 type="button"
@@ -2092,6 +2094,33 @@ export function SocialHub() {
 
                   <div className={styles.divider} />
 
+                  <section className={styles.block}>
+                    <div className={styles.sectionHeading}>
+                      <div>
+                        <span className={styles.eyebrow}>PICK A HOODLUMS BOT</span>
+                        <p>Choose one of our bots and add it to your channel. Nothing to paste, nothing to set up.</p>
+                      </div>
+                      <ComingSoon compact />
+                    </div>
+                    <div className={styles.botList}>
+                      {BOTS.map((bot) => (
+                        <div className={styles.botRow} key={bot.name}>
+                          <div className={styles.botRowHead}>
+                            <span className={styles.botMark} aria-hidden="true">{bot.mark}</span>
+                            <div className={styles.botRowInfo}>
+                              <b>{bot.name}</b>
+                              <em>{bot.kind}</em>
+                            </div>
+                          </div>
+                          <p>{bot.description}</p>
+                          <button type="button" disabled>Add to your channel</button>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <div className={styles.divider} />
+
                   <section className={`${styles.twoColsTop} ${styles.voiceRow}`}>
                     <div className={styles.blockInner}>
                       <div className={styles.sectionHeading}>
@@ -2113,10 +2142,19 @@ export function SocialHub() {
                           <span>
                             {voiceExampleFilter.pastedLineCount > 0
                               ? `${voiceExampleCount} usable / ${voiceExampleFilter.pastedLineCount} pasted`
-                              : `${voiceExampleCount} / 20 examples`}
+                              : `${voiceExampleCount} / ${VOICE_EXAMPLE_TARGET} examples`}
                           </span>
+                          <button
+                            type="button"
+                            className={styles.voiceLearnButton}
+                            onClick={buildVoiceProfile}
+                            disabled={voiceBusy || voiceExampleCount < MIN_USABLE_VOICE_EXAMPLES}
+                          >
+                            {voiceBusy ? "Learning your voice…" : "Learn my voice"}
+                          </button>
                         </div>
                       </div>
+                      <InlineStatus status={voiceStatus} />
                       {voiceExampleFilter.rejectedCount > 0 ? (
                         <p className={styles.exampleLabel}>
                           {voiceExampleFilter.rejectedCount} pasted line{voiceExampleFilter.rejectedCount === 1 ? "" : "s"} skipped as too
@@ -2126,20 +2164,22 @@ export function SocialHub() {
                         <p className={styles.exampleLabel}>Screenshot-to-text isn&apos;t available yet — paste post text above instead.</p>
                       )}
                       <div className={styles.progressRow}>
-                        <div><span>EXAMPLES ADDED</span><b>{voiceExampleCount} / 20</b></div>
+                        <div>
+                          <span>EXAMPLES ADDED</span>
+                          <b>
+                            {voiceExampleCount} / {VOICE_EXAMPLE_TARGET}
+                          </b>
+                        </div>
                         <div className={styles.progressTrack}><span style={{ width: `${voiceProgressPercent}%` }} /></div>
+                        <p className={styles.voiceHint}>{voiceTrainingHint(voiceExampleCount)}</p>
                       </div>
-                      <button
-                        type="button"
-                        className={styles.aiMakeButton}
-                        onClick={buildVoiceProfile}
-                        disabled={voiceBusy || voiceExampleCount < MIN_USABLE_VOICE_EXAMPLES}
-                      >
-                        <b>{voiceBusy ? "Learning your voice…" : "Learn my voice"}</b>
-                        <span>Builds a reusable voice profile for AI drafts and mascot posts.</span>
-                      </button>
-                      <InlineStatus status={voiceStatus} />
-                      <p className={styles.limeNote}>Your examples teach style only — the AI will only ever talk about your project.</p>
+                      <p className={styles.limeNote}>
+                        <i aria-hidden="true">i</i>
+                        <span>
+                          Your examples teach <b>style only</b>. The AI will never copy their content, names, tags or tickers — it only
+                          ever talks about YOUR project.
+                        </span>
+                      </p>
                     </div>
 
                     <div className={styles.blockInner}>
@@ -2320,33 +2360,6 @@ export function SocialHub() {
                         </div>
                       </div>
                     ) : null}
-                  </section>
-
-                  <div className={styles.divider} />
-
-                  <section className={styles.block}>
-                    <div className={styles.sectionHeading}>
-                      <div>
-                        <span className={styles.eyebrow}>PICK A HOODLUMS BOT</span>
-                        <p>Choose one of our bots and add it to your channel. Nothing to paste, nothing to set up.</p>
-                      </div>
-                      <ComingSoon compact />
-                    </div>
-                    <div className={styles.botList}>
-                      {BOTS.map((bot) => (
-                        <div className={styles.botRow} key={bot.name}>
-                          <div className={styles.botRowHead}>
-                            <span className={styles.botMark} aria-hidden="true">{bot.mark}</span>
-                            <div className={styles.botRowInfo}>
-                              <b>{bot.name}</b>
-                              <em>{bot.kind}</em>
-                            </div>
-                          </div>
-                          <p>{bot.description}</p>
-                          <button type="button" disabled>Add to your channel</button>
-                        </div>
-                      ))}
-                    </div>
                   </section>
 
                   <div className={styles.divider} />
