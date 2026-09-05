@@ -486,6 +486,7 @@ describe("getSystemHealth", () => {
     });
     expect(checks.map((check) => check.id).sort()).toEqual(
       [
+        "buy-bot",
         "client-errors",
         "content-filter",
         "contracts",

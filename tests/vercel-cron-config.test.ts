@@ -8,7 +8,7 @@ type VercelConfig = {
 };
 
 describe("Vercel cron configuration", () => {
-  it("keeps the existing schedules and runs Social Studio posting every minute", async () => {
+  it("keeps the existing schedules and runs Social Studio posting and the Buy Bot every minute", async () => {
     const source = await readFile(path.join(process.cwd(), "vercel.json"), "utf8");
     const config = JSON.parse(source) as VercelConfig;
 
@@ -16,7 +16,9 @@ describe("Vercel cron configuration", () => {
       { path: "/api/cron/subscription-lifecycle", schedule: "0 9 * * *" },
       { path: "/api/cron/outreach", schedule: "*/30 * * * *" },
       { path: "/api/cron/social-posting", schedule: "* * * * *" },
+      { path: "/api/cron/buy-bot", schedule: "* * * * *" },
     ]);
+    expect(config.functions["app/api/cron/buy-bot/route.ts"]?.maxDuration).toBe(60);
     expect(config.functions["app/api/cron/social-posting/route.ts"]?.maxDuration).toBe(60);
     expect(config.functions["app/api/cron/subscription-lifecycle/route.ts"]?.maxDuration).toBe(60);
     expect(config.functions["app/api/cron/outreach/route.ts"]?.maxDuration).toBe(60);

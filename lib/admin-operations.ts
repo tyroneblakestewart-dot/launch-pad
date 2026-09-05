@@ -76,6 +76,13 @@ export const ADMIN_SERVICE_DEFINITIONS = [
     affectedRoutes: "/api/token-launches/challenge, /api/token-launches",
   },
   {
+    key: "buy-bot",
+    label: "Buy Bot",
+    description:
+      "Per-token Telegram buy announcer for Social Studio: wallet-signed enable/pause/remove of a bot bound to its own channel, and the every-minute cron that reads curve buys and posts them. Free — no AI, Telegram Bot API only.",
+    affectedRoutes: "/api/social/buy-bot, /api/social/buy-bot/update, /api/social/buy-bot/disable, /api/cron/buy-bot",
+  },
+  {
     key: "test-access",
     label: "Wallet test-access allowlist",
     description:
@@ -124,7 +131,11 @@ export type AdminActivityKind =
   | "slot-released-by-user"
   | "slot-released-by-admin"
   | "token-launched"
-  | "token-graduated";
+  | "token-graduated"
+  | "buy-bot-enabled"
+  | "buy-bot-updated"
+  | "buy-bot-disabled"
+  | "buy-bot-reconnect-needed";
 
 export type AdminActivityItem = {
   id: string;
@@ -152,6 +163,7 @@ export const SYSTEM_HEALTH_CHECK_IDS = [
   "content-filter",
   "support",
   "token-launches",
+  "buy-bot",
 ] as const;
 
 export type SystemHealthCheckId = (typeof SYSTEM_HEALTH_CHECK_IDS)[number];

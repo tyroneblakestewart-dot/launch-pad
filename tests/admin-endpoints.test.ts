@@ -121,6 +121,7 @@ async function expectWorkingSessionAndHealth(loginResponse: Response): Promise<v
   };
   expect(payload.checks.map((check) => check.id).sort()).toEqual(
     [
+      "buy-bot",
       "client-errors",
       "content-filter",
       "contracts",

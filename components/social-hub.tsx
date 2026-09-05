@@ -8,6 +8,14 @@ import {
   parseStoredAccountWallet,
 } from "@/lib/account-wallet-state";
 import { TelegramMark, XMark } from "@/components/brand-icons";
+import {
+  BUY_BOT_THRESHOLD_PRESETS,
+  DEFAULT_BUY_BOT_THRESHOLD_WEI,
+  buyBotThresholdWeiForLabel,
+  formatBuyBotThreshold,
+  type BuyBotSummary,
+} from "@/lib/buy-bot-presets";
+import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { MASCOT_REFERENCE_TIPS, assessMascotReference, type MascotReferenceAssessment } from "@/lib/mascot-reference-guidance";
 import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
 import {
@@ -128,6 +136,9 @@ const SOCIAL_STUDIO_ACTION_PURPOSES = {
   postCancel: "social:post-cancel",
   postReschedule: "social:post-reschedule",
   projectSlotRelease: "social:project-slot-release",
+  buyBotEnable: "social:buy-bot-enable",
+  buyBotUpdate: "social:buy-bot-update",
+  buyBotDisable: "social:buy-bot-disable",
 } as const;
 
 function platformLabel(platform: SocialPlatform): string {
@@ -479,6 +490,16 @@ export function SocialHub() {
   // "error" instead.
   const [connections, setConnections] = useState<SocialConnectionSummary[]>([]);
   const [connectionsStatus, setConnectionsStatus] = useState<"loading" | "loaded" | "error">("loading");
+  // Buy Bot (owner direction, 5 Sep 2026): the wallet's per-token bots from
+  // GET /api/social/buy-bot, plus the Setup card's own drawer state. Each bot
+  // is bound to its own Telegram channel — separate from the posting
+  // connection above — so the card carries its own channel field.
+  const [buyBots, setBuyBots] = useState<BuyBotSummary[]>([]);
+  const [buyBotDrawerOpen, setBuyBotDrawerOpen] = useState(false);
+  const [buyBotChannelInput, setBuyBotChannelInput] = useState("");
+  const [buyBotThresholdWei, setBuyBotThresholdWei] = useState(DEFAULT_BUY_BOT_THRESHOLD_WEI);
+  const [buyBotBusy, setBuyBotBusy] = useState(false);
+  const [buyBotStatus, setBuyBotStatus] = useState<PanelStatus>(null);
   const [queueTarget, setQueueTarget] = useState(DEFAULT_QUEUE_TARGET);
   const [scheduledPosts, setScheduledPosts] = useState<ScheduledPostSummary[]>([]);
   const [postsStatus, setPostsStatus] = useState<PanelStatus>(null);
@@ -640,6 +661,26 @@ export function SocialHub() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletAddress]);
 
+  async function loadBuyBots() {
+    if (!walletAddress) {
+      setBuyBots([]);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/social/buy-bot?walletAddress=${encodeURIComponent(walletAddress)}`, { cache: "no-store" });
+      const payload = await readJsonResponse<{ bots?: BuyBotSummary[] }>(response, "Could not load your Buy Bots.");
+      setBuyBots(Array.isArray(payload.bots) ? payload.bots : []);
+    } catch {
+      // A failed read keeps whatever was last shown — the card never claims a bot is gone on a network hiccup.
+    }
+  }
+
+  useEffect(() => {
+    void loadBuyBots();
+    // loadBuyBots closes over the latest walletAddress on every render already.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAddress]);
+
   /** Refreshes the "Project X of Y" usage summary — called on wallet change and after any claim/release (issue #407). */
   async function loadSlotUsage() {
     if (!walletAddress) {
@@ -749,6 +790,21 @@ export function SocialHub() {
         }
       : null;
   }, [connections]);
+
+  /** The selected project's own Buy Bot, matched on its contract address — only Robinhood Chain Testnet launches have a curve to watch. */
+  const selectedBuyBot = useMemo<BuyBotSummary | null>(() => {
+    const contract = selectedProject?.contractAddress?.trim().toLowerCase();
+    if (!contract || selectedProject?.chain !== "robinhood") return null;
+    return buyBots.find((bot) => bot.tokenAddress.toLowerCase() === contract && bot.chainId === ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL) ?? null;
+  }, [buyBots, selectedProject]);
+  const buyBotTokenAddress = selectedProject?.chain === "robinhood" ? selectedProject.contractAddress?.trim() || "" : "";
+  const buyBotUnavailableReason = !walletAddress
+    ? "Connect your wallet first."
+    : !selectedProject
+      ? "Pick a project first."
+      : !buyBotTokenAddress
+        ? "Launch this token on Robinhood Chain Testnet first — the Buy Bot watches its curve."
+        : null;
 
   const xCharacterCount = message.length;
   const xReady = xCharacterCount > 0 && xCharacterCount <= 280;
@@ -1399,6 +1455,106 @@ export function SocialHub() {
       setPostsStatus(null);
     } catch (error) {
       setPostsStatus({ tone: "error", message: error instanceof Error ? error.message : "Could not load approved posts." });
+    }
+  }
+
+  /** Switches the Buy Bot on for the selected token (or re-binds a bot that needs re-adding): one wallet signature, then the server verifies the platform bot is an admin in the channel before storing anything. */
+  async function enableBuyBot() {
+    const chatId = buyBotChannelInput.trim();
+    if (!buyBotTokenAddress) {
+      setBuyBotStatus({ tone: "error", message: buyBotUnavailableReason ?? "Pick a launched token first." });
+      return;
+    }
+    if (!chatId) {
+      setBuyBotStatus({ tone: "error", message: "Enter the Telegram channel username or numeric chat ID first." });
+      return;
+    }
+    setBuyBotBusy(true);
+    setBuyBotStatus({ tone: "progress", message: "Checking that the Hoodlums bot is an admin in that channel…" });
+    try {
+      const chainId = String(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL);
+      const auth = await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.buyBotEnable, {
+        chainId,
+        tokenAddress: buyBotTokenAddress,
+        chatId,
+        thresholdWei: buyBotThresholdWei,
+      });
+      const response = await fetch("/api/social/buy-bot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chainId,
+          tokenAddress: buyBotTokenAddress,
+          chatId,
+          thresholdWei: buyBotThresholdWei,
+          challengeId: auth.challengeId,
+          nonce: auth.nonce,
+          signature: auth.signature,
+        }),
+      });
+      const payload = await readJsonResponse<{ bot: BuyBotSummary }>(response, "The Buy Bot could not be added to that channel.");
+      setBuyBots((current) => [
+        payload.bot,
+        ...current.filter((bot) => !(bot.tokenAddress.toLowerCase() === payload.bot.tokenAddress.toLowerCase() && bot.chainId === payload.bot.chainId)),
+      ]);
+      setBuyBotDrawerOpen(false);
+      setBuyBotChannelInput("");
+      setBuyBotStatus({ tone: "success", message: `Live. Buys above ${formatBuyBotThreshold(payload.bot.thresholdWei)} now post in ${payload.bot.channelDisplayName}.` });
+    } catch (error) {
+      setBuyBotStatus({ tone: "error", message: error instanceof Error ? error.message : "The Buy Bot could not be added to that channel." });
+    } finally {
+      setBuyBotBusy(false);
+    }
+  }
+
+  /** Threshold change or pause/resume for the selected token's bot — wallet-signed, and the server only ever touches this wallet's own row. */
+  async function updateBuyBot(changes: { thresholdWei?: string; status?: "active" | "paused" }) {
+    if (!selectedBuyBot) return;
+    setBuyBotBusy(true);
+    setBuyBotStatus({ tone: "progress", message: changes.status ? (changes.status === "paused" ? "Pausing…" : "Resuming…") : "Saving the threshold…" });
+    try {
+      const chainId = String(selectedBuyBot.chainId);
+      const payload = { chainId, tokenAddress: selectedBuyBot.tokenAddress, thresholdWei: changes.thresholdWei ?? "", status: changes.status ?? "" };
+      const auth = await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.buyBotUpdate, payload);
+      const response = await fetch("/api/social/buy-bot/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, challengeId: auth.challengeId, nonce: auth.nonce, signature: auth.signature }),
+      });
+      const result = await readJsonResponse<{ bot: BuyBotSummary }>(response, "The Buy Bot could not be updated.");
+      setBuyBots((current) => current.map((bot) => (bot.tokenAddress.toLowerCase() === result.bot.tokenAddress.toLowerCase() && bot.chainId === result.bot.chainId ? result.bot : bot)));
+      setBuyBotStatus({
+        tone: "success",
+        message: changes.status === "paused" ? "Paused — nothing posts until you resume." : changes.status === "active" ? "Resumed." : `Now posting buys above ${formatBuyBotThreshold(result.bot.thresholdWei)}.`,
+      });
+    } catch (error) {
+      setBuyBotStatus({ tone: "error", message: error instanceof Error ? error.message : "The Buy Bot could not be updated." });
+    } finally {
+      setBuyBotBusy(false);
+    }
+  }
+
+  /** Removes the selected token's bot from its channel entirely (channel binding included). */
+  async function disableBuyBot() {
+    if (!selectedBuyBot) return;
+    setBuyBotBusy(true);
+    setBuyBotStatus({ tone: "progress", message: "Removing…" });
+    try {
+      const chainId = String(selectedBuyBot.chainId);
+      const payload = { chainId, tokenAddress: selectedBuyBot.tokenAddress };
+      const auth = await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.buyBotDisable, payload);
+      const response = await fetch("/api/social/buy-bot/disable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, challengeId: auth.challengeId, nonce: auth.nonce, signature: auth.signature }),
+      });
+      await readJsonResponse<{ ok: boolean }>(response, "The Buy Bot could not be removed.");
+      setBuyBots((current) => current.filter((bot) => !(bot.tokenAddress.toLowerCase() === selectedBuyBot.tokenAddress.toLowerCase() && bot.chainId === selectedBuyBot.chainId)));
+      setBuyBotStatus({ tone: "success", message: "Removed. The bot no longer posts in that channel." });
+    } catch (error) {
+      setBuyBotStatus({ tone: "error", message: error instanceof Error ? error.message : "The Buy Bot could not be removed." });
+    } finally {
+      setBuyBotBusy(false);
     }
   }
 
@@ -2279,9 +2435,8 @@ export function SocialHub() {
                     <div className={styles.sectionHeading}>
                       <div>
                         <span className={styles.eyebrow}>PICK A HOODLUMS BOT</span>
-                        <p>Choose one of our bots and add it to your channel. Nothing to paste, nothing to set up.</p>
+                        <p>Choose one of our bots and add it to your channel. Each bot posts into a channel of its own.</p>
                       </div>
-                      <ComingSoon compact />
                     </div>
                     <div className={styles.botList}>
                       {BOTS.map((bot) => (
@@ -2292,9 +2447,101 @@ export function SocialHub() {
                               <b>{bot.name}</b>
                               <em>{bot.kind}</em>
                             </div>
+                            {bot.name !== "Buy Bot" ? <ComingSoon compact /> : null}
                           </div>
                           <p>{bot.description}</p>
-                          <button type="button" disabled>Add to your channel</button>
+                          {bot.name !== "Buy Bot" ? (
+                            <button type="button" disabled>Add to your channel</button>
+                          ) : selectedBuyBot && selectedBuyBot.status !== "reconnect_needed" ? (
+                            <div className={styles.botLive}>
+                              <span className={selectedBuyBot.status === "active" ? styles.botLiveState : styles.botPausedState}>
+                                {selectedBuyBot.status === "active" ? "Live" : "Paused"} · {selectedBuyBot.channelDisplayName}
+                              </span>
+                              <label className={styles.buyAlertThreshold}>
+                                <span>Only above</span>
+                                <select
+                                  value={selectedBuyBot.thresholdWei}
+                                  disabled={buyBotBusy}
+                                  onChange={(event) => void updateBuyBot({ thresholdWei: event.target.value })}
+                                >
+                                  {BUY_BOT_THRESHOLD_PRESETS.map((preset) => (
+                                    <option key={preset.wei} value={preset.wei}>{preset.label}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <div className={styles.botActions}>
+                                <button
+                                  type="button"
+                                  onClick={() => void updateBuyBot({ status: selectedBuyBot.status === "active" ? "paused" : "active" })}
+                                  disabled={buyBotBusy}
+                                >
+                                  {selectedBuyBot.status === "active" ? "Pause" : "Resume"}
+                                </button>
+                                <button type="button" onClick={() => void disableBuyBot()} disabled={buyBotBusy}>
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              {selectedBuyBot?.status === "reconnect_needed" ? (
+                                <p className={styles.botWarning}>
+                                  {selectedBuyBot.lastError || "The bot can no longer post in its channel."} Add it again below, or remove it.
+                                </p>
+                              ) : null}
+                              <button
+                                type="button"
+                                className={styles.botActionPrimary}
+                                aria-expanded={buyBotDrawerOpen}
+                                disabled={Boolean(buyBotUnavailableReason) || telegramConfigured === false}
+                                title={buyBotUnavailableReason ?? undefined}
+                                onClick={() => setBuyBotDrawerOpen((current) => !current)}
+                              >
+                                {selectedBuyBot?.status === "reconnect_needed" ? "Add again" : "Add to your channel"}
+                              </button>
+                              {buyBotUnavailableReason ? <p className={styles.botHint}>{buyBotUnavailableReason}</p> : null}
+                              {buyBotDrawerOpen && !buyBotUnavailableReason ? (
+                                <div className={styles.connectionDrawer}>
+                                  <label className={styles.connectionField}>
+                                    <span>Channel username or chat ID</span>
+                                    <input
+                                      value={buyBotChannelInput}
+                                      onChange={(event) => setBuyBotChannelInput(event.target.value)}
+                                      placeholder="@yourbuyschannel or -1001234567890"
+                                      disabled={buyBotBusy}
+                                    />
+                                  </label>
+                                  <label className={styles.buyAlertThreshold}>
+                                    <span>Only above</span>
+                                    <select value={buyBotThresholdWei} disabled={buyBotBusy} onChange={(event) => setBuyBotThresholdWei(event.target.value)}>
+                                      {BUY_BOT_THRESHOLD_PRESETS.map((preset) => (
+                                        <option key={preset.wei} value={preset.wei}>{preset.label}</option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <p className={styles.connectionHelper}>
+                                    Add the Hoodlums bot as an admin in that channel first. Only buys after you add it are announced — never old ones.
+                                  </p>
+                                  <button
+                                    type="button"
+                                    className={`${styles.connectionActionPrimary} ${styles.botActionPrimary}`}
+                                    onClick={() => void enableBuyBot()}
+                                    disabled={buyBotBusy}
+                                  >
+                                    {buyBotBusy ? "Verifying…" : "Verify & add"}
+                                  </button>
+                                </div>
+                              ) : null}
+                              {selectedBuyBot?.status === "reconnect_needed" ? (
+                                <div className={styles.botActions}>
+                                  <button type="button" onClick={() => void disableBuyBot()} disabled={buyBotBusy}>
+                                    Remove
+                                  </button>
+                                </div>
+                              ) : null}
+                            </>
+                          )}
+                          {bot.name === "Buy Bot" ? <InlineStatus status={buyBotStatus} /> : null}
                         </div>
                       ))}
                     </div>
@@ -3315,17 +3562,24 @@ export function SocialHub() {
                     <div className={styles.buyAlertRow}>
                       <div>
                         <b>Tell Telegram about every buy</b>
-                        <span>We&apos;ll drop a message in your channel each time someone buys.</span>
+                        <span>
+                          {selectedBuyBot
+                            ? `The Buy Bot is ${selectedBuyBot.status === "active" ? "live" : selectedBuyBot.status === "paused" ? "paused" : "waiting to be re-added"} in ${selectedBuyBot.channelDisplayName}.`
+                            : "Add the Buy Bot in Setup and we'll drop a message in its channel each time someone buys."}
+                        </span>
                       </div>
                       <label className={styles.buyAlertThreshold}>
                         <span>Only above</span>
-                        <select disabled defaultValue="0.01 ETH">
+                        <select
+                          value={formatBuyBotThreshold(selectedBuyBot?.thresholdWei ?? DEFAULT_BUY_BOT_THRESHOLD_WEI)}
+                          disabled={!selectedBuyBot || buyBotBusy}
+                          onChange={(event) => void updateBuyBot({ thresholdWei: buyBotThresholdWeiForLabel(event.target.value) })}
+                        >
                           {BUY_ALERT_THRESHOLDS.map((threshold) => (
                             <option key={threshold}>{threshold}</option>
                           ))}
                         </select>
                       </label>
-                      <ComingSoon compact />
                     </div>
 
                     <button type="button" disabled className={styles.advancedButton}>

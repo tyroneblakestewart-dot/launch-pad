@@ -95,6 +95,8 @@ const NOOP_SOCIAL_POSTING_HEARTBEAT: SocialPostingHeartbeatRecorder = {
 export function createSocialPostingHeartbeatRecorder(
   env: Record<string, string | undefined> = process.env,
   getPool: (databaseUrl: string) => HeartbeatPool = getPostgresPool,
+  /** The scheduled_job_heartbeats row to write. Defaults to this cron's own key; the Buy Bot cron reuses the exact same statements under its own key. */
+  jobKey: string = SOCIAL_POSTING_JOB_KEY,
 ): SocialPostingHeartbeatRecorder {
   const databaseUrl = (env.DATABASE_URL || "").trim();
   if (!databaseUrl) return NOOP_SOCIAL_POSTING_HEARTBEAT;
@@ -116,7 +118,7 @@ export function createSocialPostingHeartbeatRecorder(
            last_started_at = EXCLUDED.last_started_at,
            last_status = 'running',
            updated_at = EXCLUDED.updated_at`,
-        [SOCIAL_POSTING_JOB_KEY, startedAt],
+        [jobKey, startedAt],
       );
     },
     async markCompleted(result, completedAt) {
@@ -166,7 +168,7 @@ export function createSocialPostingHeartbeatRecorder(
            last_routed_to_composer = EXCLUDED.last_routed_to_composer,
            updated_at = EXCLUDED.updated_at`,
         [
-          SOCIAL_POSTING_JOB_KEY,
+          jobKey,
           new Date(result.ranAt),
           completedAt,
           succeeded,
@@ -181,9 +183,10 @@ export function createSocialPostingHeartbeatRecorder(
   };
 }
 
-async function recordHeartbeatBestEffort(
+export async function recordHeartbeatBestEffort(
   action: "start" | "completion",
   operation: () => Promise<void>,
+  jobLabel = "Social posting cron",
 ): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -193,7 +196,7 @@ async function recordHeartbeatBestEffort(
     await Promise.race([operation(), timeout]);
   } catch (error) {
     console.error(
-      `Social posting cron heartbeat ${action} could not be recorded.`,
+      `${jobLabel} heartbeat ${action} could not be recorded.`,
       error instanceof Error ? error.message : error,
     );
   } finally {
