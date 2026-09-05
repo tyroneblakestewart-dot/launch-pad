@@ -40,12 +40,16 @@ const HANDLE_LINE = /^@[A-Za-z0-9_]{1,30}(\s*[·•]\s*.*)?$/;
 const TIMESTAMP_LINE = /^(\d{1,2}:\d{2}\s*(AM|PM)?\s*[·•]\s*)?(\d{1,2}\s+)?(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s*\d{0,2},?\s*\d{0,4}(\s*[·•].*)?$/i;
 const RELATIVE_TIME_LINE = /^[·•]?\s*\d{1,2}\s?(s|m|h|d|w|min|mins|hr|hrs|hour|hours|day|days|week|weeks)\s*(ago)?$/i;
 const ENGAGEMENT_LINE = /^[\d.,]+\s?[KkMm]?\s+(replies?|reposts?|retweets?|likes?|views?|quotes?|bookmarks?|comments?|shares?)\b.*$/i;
-const CHROME_LINE = /^(show more|show this thread|read more|see more|translate post|translate tweet|follow|following|verified account|pinned|promoted|ad)$/i;
+const CHROME_LINE =
+  /^(show more|show this thread|read more|see more|translate post|translate tweet|follow|following|verified account|pinned|promoted|ad|quote|square profile picture|profile picture|opens profile photo|image|gif|video|the following media includes potentially sensitive content|replying to .*)$/i;
+// A lone separator — X renders "·" between the handle and the time on its own line when copied.
+const SEPARATOR_LINE = /^[·•.\-–—|\s]+$/;
 const HASHTAG_ONLY_LINE = /^(#[\p{L}\p{N}_]+\s*)+$/u;
 const MENTION_ONLY_LINE = /^(@[A-Za-z0-9_]+\s*)+$/;
 
 function isPostChromeLine(line: string): boolean {
   return (
+    SEPARATOR_LINE.test(line) ||
     HANDLE_LINE.test(line) ||
     TIMESTAMP_LINE.test(line) ||
     RELATIVE_TIME_LINE.test(line) ||
@@ -57,8 +61,8 @@ function isPostChromeLine(line: string): boolean {
 
 /**
  * Strips a pasted post down to what the person actually wrote. Given the
- * lines of ONE post: a leading display-name line is dropped when the line
- * after it is an @handle (or the name itself sits directly above chrome),
+ * lines of ONE post: the display-name line is dropped wherever it sits, being
+ * the line directly above an @handle,
  * every chrome line is dropped wherever it appears, trailing hashtag-only
  * lines are dropped, and the remaining body lines are joined into one line so
  * the rest of the trainer's one-example-per-line contract is unchanged.
@@ -72,8 +76,9 @@ export function stripPostChrome(postLines: readonly string[]): string {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     const next = lines[index + 1];
-    // Display-name line: sits right above the handle (or above a handle-and-time line).
-    if (index === 0 && next !== undefined && HANDLE_LINE.test(next)) continue;
+    // Display-name line: the line sitting directly above an @handle, wherever it
+    // falls — X's copied alt text ("Square profile picture") often precedes it.
+    if (next !== undefined && HANDLE_LINE.test(next) && !isPostChromeLine(line)) continue;
     if (isPostChromeLine(line)) continue;
     body.push(line);
   }
@@ -85,17 +90,27 @@ export function stripPostChrome(postLines: readonly string[]): string {
 }
 
 /**
- * Splits raw pasted text into posts. Posts are separated by one or more blank
- * lines; a new post also starts wherever a display-name line is immediately
- * followed by an @handle line, so several copied posts pasted back to back
- * with no gap still come apart. Each post is then reduced to its body with
- * stripPostChrome, and empty results are dropped.
+ * Splits raw pasted text into posts.
+ *
+ * Copied X posts carry chrome — "Name" then "@handle" above the body — and
+ * their bodies often run to several paragraphs separated by blank lines. So
+ * when a paste contains ANY post chrome, a new post starts only at the next
+ * display-name/@handle pair (or a bare @handle line), and blank lines are
+ * paragraph breaks inside the current post, never boundaries. A paste with no
+ * chrome at all keeps the trainer's original contract: one example per
+ * non-empty line. Each post is then reduced to its body with stripPostChrome
+ * and empty results are dropped.
  */
 export function cleanPastedPosts(rawText: string): string[] {
   const lines = rawText.replace(/\r\n?/g, "\n").split("\n").map((line) => line.trim());
+  const hasChrome = lines.some((line) => line && isPostChromeLine(line));
+
+  if (!hasChrome) {
+    return lines.filter(Boolean);
+  }
+
   const posts: string[][] = [];
   let current: string[] = [];
-
   const flush = () => {
     if (current.length > 0) posts.push(current);
     current = [];
@@ -103,13 +118,11 @@ export function cleanPastedPosts(rawText: string): string[] {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    if (!line) continue; // paragraph break, not a new post
     const next = lines[index + 1];
-    if (!line) {
-      flush();
-      continue;
-    }
-    // "Name" then "@handle" opens a new post even without a blank line.
-    if (current.length > 0 && next !== undefined && HANDLE_LINE.test(next) && !HANDLE_LINE.test(line) && !isPostChromeLine(line)) {
+    const startsWithNameHandle = next !== undefined && HANDLE_LINE.test(next) && !isPostChromeLine(line);
+    const startsWithBareHandle = HANDLE_LINE.test(line) && !(index > 0 && lines[index - 1] && !isPostChromeLine(lines[index - 1]));
+    if (current.some((existing) => !isPostChromeLine(existing)) && (startsWithNameHandle || startsWithBareHandle)) {
       flush();
     }
     current.push(line);

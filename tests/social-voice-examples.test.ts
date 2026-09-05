@@ -115,7 +115,8 @@ describe("cleanPastedPosts", () => {
       "Just a plain line of text with no chrome at all.",
       "Second plain post.",
     ]);
-    expect(cleanPastedPosts("one\ntwo")).toEqual(["one two"]);
+    // No chrome anywhere in the paste keeps the original one-example-per-line contract.
+    expect(cleanPastedPosts("one\ntwo")).toEqual(["one", "two"]);
   });
 
   it("returns nothing for a paste that was only chrome, and handles Windows line endings", () => {
@@ -131,5 +132,47 @@ describe("cleanPastedPosts", () => {
     expect(stripPostChrome(["Short punchy opener.", "Then the rest of the thought."])).toBe(
       "Short punchy opener. Then the rest of the thought.",
     );
+  });
+
+  it("keeps a multi-paragraph X post as ONE example, dropping the alt text, name, handle, separator, date and tags (the owner's Giggle Academy paste)", () => {
+    const pasted = [
+      "Square profile picture",
+      "Giggle Academy",
+      "@GiggleAcademy",
+      "·",
+      "Sep 4",
+      "Aww, we love this resolution! 🎶❤️ Learning Christmas songs in English and then performing them at school is such a fun way to build confidence and practice English!",
+      "",
+      "Keep singing, keep learning, and keep giggling! ✨🎤",
+      "",
+      "Maybe Mai and Max can be your English practice buddy along the way! 😉",
+      "",
+      "#GiggleAcademy #BackToSchool #NewSemesterResolution #LearnEnglish #LearnWithMax",
+    ].join("\n");
+    const posts = cleanPastedPosts(pasted);
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toMatch(/^Aww, we love this resolution!/);
+    expect(posts[0]).toMatch(/along the way! 😉$/);
+    expect(posts[0]).not.toContain("Giggle Academy");
+    expect(posts[0]).not.toContain("Square profile picture");
+    expect(posts[0]).not.toContain("·");
+    expect(posts[0]).not.toContain("#GiggleAcademy");
+  });
+
+  it("splits two multi-paragraph posts only at the next name/handle pair, never at their paragraph breaks", () => {
+    const pasted = [
+      "First Person",
+      "@first",
+      "Paragraph one of the first post.",
+      "",
+      "Paragraph two of the first post.",
+      "Second Person",
+      "@second",
+      "The second post.",
+    ].join("\n");
+    expect(cleanPastedPosts(pasted)).toEqual([
+      "Paragraph one of the first post. Paragraph two of the first post.",
+      "The second post.",
+    ]);
   });
 });
