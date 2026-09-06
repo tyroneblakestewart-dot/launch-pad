@@ -11,9 +11,10 @@ import {
   type StoredAccountWallet,
 } from "@/lib/account-wallet-state";
 import { AccountWalletBridge } from "./account-wallet-bridge";
+import { GoogleAccountPanel } from "./google-account-panel";
 import styles from "./account-overlay.module.css";
 
-type ProviderName = "Google" | "GitHub" | "X" | "MetaMask" | "Rabby" | "Phantom";
+type ProviderName = "Google" | "X" | "MetaMask" | "Rabby" | "Phantom";
 
 type AccountContentResponse = {
   content?: AccountOverlayContent;
@@ -21,7 +22,6 @@ type AccountContentResponse = {
 
 const PROVIDER_LOGOS: Record<ProviderName, string> = {
   Google: "/logos/google.svg",
-  GitHub: "/logos/github.svg",
   X: "/logos/x.svg",
   MetaMask: "/logos/metamask.svg",
   Rabby: "/logos/rabby.svg",
@@ -119,11 +119,10 @@ export function AccountOverlay({ initialContent }: { initialContent: AccountOver
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   }
 
-  const webAccounts: { name: ProviderName; note: string }[] = [
-    { name: "Google", note: content.google_note },
-    { name: "GitHub", note: content.github_note },
-    { name: "X", note: content.x_note },
-  ];
+  // Google is live (phase 1, 6 Sep 2026) and rendered by GoogleAccountPanel
+  // below; GitHub was dropped as no use for this audience; X stays "coming
+  // next" (Social Studio already connects X for posting through its own flow).
+  const webAccounts: { name: ProviderName; note: string }[] = [{ name: "X", note: content.x_note }];
 
   const wallets: { name: ProviderName; note: string }[] = [
     { name: "MetaMask", note: content.metamask_note },
@@ -187,6 +186,7 @@ export function AccountOverlay({ initialContent }: { initialContent: AccountOver
                 <small>{content.web_accounts_subtitle}</small>
               </div>
               <div className={styles.options}>
+                <GoogleAccountPanel note={content.google_note} logo={PROVIDER_LOGOS.Google} mark="google" />
                 {webAccounts.map((account) => (
                   <button key={account.name} className={styles.option} type="button" disabled>
                     <ProviderMark name={account.name} />

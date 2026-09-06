@@ -2118,3 +2118,55 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Validated on the final commit: `npm run test:app` — 307 test files / 3584
   tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
   `npm run build` — succeeds, `/api/social/stats` listed in the route output.
+
+- Sign in with Google, phase 1 (owner decisions, 6 Sep 2026: the wallet
+  stays the identity; Google is a linked credential whose useful by-product is
+  an email on file; GitHub is dropped as no use for this audience; X stays
+  "coming next"; project sync across devices is a later phase). Flow:
+  `GET /api/account/google/start` mints a PKCE verifier + anti-CSRF state,
+  seals both in a 10-minute encrypted httpOnly cookie (reusing
+  `lib/server/social-credentials-crypto.ts`'s AES-256-GCM key) and redirects to
+  Google with `openid email profile` only; `GET /api/account/google/callback`
+  checks the state, exchanges the code, reads userinfo (id, email, verified
+  flag, name) and then DROPS the access token — nothing Google-issued is ever
+  stored (`lib/server/google-sign-in.ts`; unverified emails are refused) —
+  upserts `user_accounts` on `google_sub`, creates a 30-day session whose
+  SHA-256 is stored in `user_sessions` (`lib/server/account-session.ts`,
+  same shape as the admin session), and redirects back into the app with
+  `?account=open&google=success|error&reason=`. Migration
+  `db/migrations/033_user_accounts.sql` (both tables, a partial unique index
+  on `LOWER(linked_wallet_address)` so one wallet ↔ one Google account,
+  sessions cascade on delete, both admin service constraints widened for
+  `google-sign-in`). Linking a wallet is one wallet signature over a
+  server-issued challenge (`POST /api/account/challenge` →
+  `POST /api/account/link-wallet`, purpose `account:link-wallet` in
+  `lib/server/account-link-auth.ts`, on `lib/server/chat-auth.ts`'s
+  primitives) bound to the SESSION's account id, so a challenge issued to one
+  account can never link a wallet to another; a wallet already bound
+  elsewhere returns 409 `wallet-taken`. Unlink, logout and a two-tap Delete
+  (`/api/account/unlink-wallet`, `/logout`, `/delete`) are session-only, since
+  they take nothing away from the wallet. A session never authorises a paid or
+  on-chain action — those still take a wallet signature (rule 4). UI:
+  `components/google-account-panel.tsx` inside the account overlay's
+  "Continue with" group — disabled "Coming next" until
+  `GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET` (server-only, named in
+  `.env.example`) plus the encryption key are set, "Sign in" once configured,
+  and when signed in the email with link state plus Link/Unlink, Sign out and
+  Delete; the GitHub row and `github_note` are removed. **Rule 10** —
+  `google-sign-in` service key (isolation switch across all nine routes),
+  `checkGoogleSignInHealth` + `buildGoogleSignInPipeline` (endpoint-reachable,
+  oauth-client, encryption-key, callback-url naming the exact redirect URI to
+  register with Google, table-exists, account-counts), four Activity kinds
+  (`account-google-signed-in`, `account-wallet-linked`,
+  `account-wallet-unlinked`, `account-deleted` — ids and wallets only, never
+  an email), and a read-only `/admin` Sign-ins section backed by
+  `GET /api/admin/google-accounts`. Checked in headless Chromium at 1400px
+  and 390px in all four states (unconfigured, signed out, signed in
+  unlinked/linked) with the session route mocked — not on a physical iPhone;
+  the owner confirms on device. **Deploy notes for the owner:** create a
+  Google Cloud OAuth 2.0 Web client with
+  `${HOODLUMS_APP_ORIGIN}/api/account/google/callback` as the authorised
+  redirect URI, set the two vars in Vercel (server-only, never
+  `NEXT_PUBLIC_`), and run migration 033 in Supabase before merging. Not
+  built, by decision: project sync (phase 2), X sign-in (phase 3), any use of
+  the email for mail-outs.

@@ -29,11 +29,20 @@ describe("backend test inventory", () => {
 
     expect(routeFiles).toEqual([
       "app/api/account-content/route.ts",
+      "app/api/account/challenge/route.ts",
+      "app/api/account/delete/route.ts",
+      "app/api/account/google/callback/route.ts",
+      "app/api/account/google/start/route.ts",
+      "app/api/account/link-wallet/route.ts",
+      "app/api/account/logout/route.ts",
+      "app/api/account/session/route.ts",
+      "app/api/account/unlink-wallet/route.ts",
       "app/api/admin/accounts/[wallet]/route.ts",
       "app/api/admin/accounts/route.ts",
       "app/api/admin/challenge/route.ts",
       "app/api/admin/client-errors/actions/route.ts",
       "app/api/admin/client-errors/route.ts",
+      "app/api/admin/google-accounts/route.ts",
       "app/api/admin/health/pipeline/route.ts",
       "app/api/admin/health/route.ts",
       "app/api/admin/login/route.ts",
@@ -127,11 +136,20 @@ describe("backend test inventory", () => {
 
     expect(Object.fromEntries(methods)).toEqual({
       "app/api/account-content/route.ts": ["GET"],
+      "app/api/account/challenge/route.ts": ["POST"],
+      "app/api/account/delete/route.ts": ["POST"],
+      "app/api/account/google/callback/route.ts": ["GET"],
+      "app/api/account/google/start/route.ts": ["GET"],
+      "app/api/account/link-wallet/route.ts": ["POST"],
+      "app/api/account/logout/route.ts": ["POST"],
+      "app/api/account/session/route.ts": ["GET"],
+      "app/api/account/unlink-wallet/route.ts": ["POST"],
       "app/api/admin/accounts/[wallet]/route.ts": ["GET"],
       "app/api/admin/accounts/route.ts": ["GET"],
       "app/api/admin/challenge/route.ts": ["POST"],
       "app/api/admin/client-errors/actions/route.ts": ["POST"],
       "app/api/admin/client-errors/route.ts": ["GET"],
+      "app/api/admin/google-accounts/route.ts": ["GET"],
       "app/api/admin/health/pipeline/route.ts": ["GET"],
       "app/api/admin/health/route.ts": ["GET"],
       "app/api/admin/login/route.ts": ["POST"],
@@ -221,6 +239,8 @@ describe("backend test inventory", () => {
       .sort();
 
     expect(serverFiles).toEqual([
+      "lib/server/account-link-auth.ts",
+      "lib/server/account-session.ts",
       "lib/server/admin-accounts.ts",
       "lib/server/admin-auth.ts",
       "lib/server/admin-operations-costs.ts",
@@ -247,6 +267,7 @@ describe("backend test inventory", () => {
       "lib/server/fixed-operating-costs-store.ts",
       "lib/server/generate-site-page-stream.ts",
       "lib/server/generate-site-style.ts",
+      "lib/server/google-sign-in.ts",
       "lib/server/hoodchat-store.ts",
       "lib/server/mascot-image-request.ts",
       "lib/server/mascot-prompt-builder.ts",
@@ -318,6 +339,7 @@ describe("backend test inventory", () => {
       "lib/server/token-launches-store.ts",
       "lib/server/token-market-stats.ts",
       "lib/server/token-trades-rpc.ts",
+      "lib/server/user-accounts-store.ts",
       "lib/server/x-oauth1-signing.ts",
       "lib/server/x-tweets-client.ts",
     ]);

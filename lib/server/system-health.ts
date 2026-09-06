@@ -29,7 +29,8 @@ export type SystemHealthCheck = {
     | "content-filter"
     | "support"
     | "token-launches"
-    | "buy-bot";
+    | "buy-bot"
+    | "google-sign-in";
   label: string;
   status: SystemHealthStatus;
   message: string;
@@ -917,6 +918,60 @@ export async function checkBuyBotHealth(
   }
 }
 
+export type GoogleSignInHealthPing = () => Promise<{ accounts: number; linked: number; signedIn7d: number }>;
+
+/**
+ * Google sign-in (phase 1, 6 Sep 2026): whether the OAuth client and the
+ * state-cookie encryption key are configured, and whether the
+ * user_accounts/user_sessions tables are reachable, with account counts. No
+ * Google call is made.
+ */
+export async function checkGoogleSignInHealth(
+  deps: { databaseUrl?: string; ping?: GoogleSignInHealthPing; env?: Record<string, string | undefined>; now?: Date } = {},
+): Promise<SystemHealthCheck> {
+  const id = "google-sign-in" as const;
+  const label = "Google sign-in";
+  const env = deps.env ?? process.env;
+  const clientConfigured = Boolean((env.GOOGLE_OAUTH_CLIENT_ID || "").trim() && (env.GOOGLE_OAUTH_CLIENT_SECRET || "").trim());
+  const keyConfigured = Boolean((env.SOCIAL_CREDENTIALS_ENCRYPTION_KEY || "").trim());
+  const configNote = clientConfigured && keyConfigured
+    ? "Google OAuth client and state-cookie key are configured."
+    : !clientConfigured
+      ? "Dormant: GOOGLE_OAUTH_CLIENT_ID/SECRET unset — the Google row stays 'coming next'."
+      : "Google client is set but SOCIAL_CREDENTIALS_ENCRYPTION_KEY is missing — sign-in fails closed.";
+
+  const databaseUrl = deps.databaseUrl ?? env.DATABASE_URL?.trim() ?? "";
+  if (!databaseUrl && !deps.ping) {
+    return { id, label, status: "amber", message: `DATABASE_URL is not configured. ${configNote}` };
+  }
+
+  const ping =
+    deps.ping ??
+    (async () => {
+      const pool = getPostgresPool(databaseUrl);
+      const result = await pool.query<{ accounts: number | string; linked: number | string; signed_in_7d: number | string }>(
+        `SELECT COUNT(*)::int AS accounts,
+                COUNT(linked_wallet_address)::int AS linked,
+                COUNT(*) FILTER (WHERE last_sign_in_at >= NOW() - INTERVAL '7 days')::int AS signed_in_7d
+           FROM user_accounts`,
+      );
+      const row = result.rows[0];
+      return { accounts: Number(row?.accounts ?? 0), linked: Number(row?.linked ?? 0), signedIn7d: Number(row?.signed_in_7d ?? 0) };
+    });
+
+  try {
+    const counts = await withTimeout(ping(), HEALTH_CHECK_TIMEOUT_MS, "Google sign-in health check timed out.");
+    return {
+      id,
+      label,
+      status: clientConfigured && keyConfigured ? "green" : "amber",
+      message: `${counts.accounts} account(s), ${counts.linked} linked to a wallet, ${counts.signedIn7d} signed in this week. ${configNote}`,
+    };
+  } catch {
+    return { id, label, status: "red", message: `The user_accounts table is not reachable. Apply migration 033_user_accounts.sql. ${configNote}` };
+  }
+}
+
 export type SystemHealthDeps = {
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
@@ -933,6 +988,7 @@ export type SystemHealthDeps = {
   support?: Parameters<typeof checkSupportHealth>[0];
   tokenLaunches?: Parameters<typeof checkTokenLaunchesHealth>[0];
   buyBot?: Parameters<typeof checkBuyBotHealth>[0];
+  googleSignIn?: Parameters<typeof checkGoogleSignInHealth>[0];
 };
 
 /**
@@ -958,6 +1014,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     support,
     tokenLaunches,
     buyBot,
+    googleSignIn,
   ] = await Promise.all([
     checkWebsiteGenerationHealth(deps.env, deps.requestOidcToken),
     checkDatabaseHealth(deps.database),
@@ -975,6 +1032,7 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     checkSupportHealth({ env: deps.env, ...deps.support }),
     checkTokenLaunchesHealth({ env: deps.env, ...deps.tokenLaunches }),
     checkBuyBotHealth({ env: deps.env, ...deps.buyBot }),
+    checkGoogleSignInHealth({ env: deps.env, ...deps.googleSignIn }),
   ]);
   return [
     websiteGeneration,
@@ -993,5 +1051,6 @@ export async function getSystemHealth(deps: SystemHealthDeps = {}): Promise<Syst
     support,
     tokenLaunches,
     buyBot,
+    googleSignIn,
   ];
 }
