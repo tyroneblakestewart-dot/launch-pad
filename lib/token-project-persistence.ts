@@ -1,8 +1,7 @@
 import { deleteProjectBlob, getProjectBlob, putProjectBlob } from "@/lib/token-project-db";
 import {
-  serialiseSavedTokenProjects,
   toIndexEntry,
-  TOKEN_STUDIO_PROJECTS_STORAGE_KEY,
+  writeProjectIndex,
   type SavedProjectIndexEntry,
 } from "@/lib/token-project-storage";
 import type { TokenProject } from "@/lib/types";
@@ -12,8 +11,16 @@ function describeError(error: unknown): string {
   return "Something went wrong. Try again in a moment.";
 }
 
-function writeIndex(index: SavedProjectIndexEntry[]) {
-  localStorage.setItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY, serialiseSavedTokenProjects(index));
+/**
+ * Which owner's partition a write lands in (per-wallet project scoping,
+ * 6 Sep 2026). Callers holding an index for a specific owner pass that
+ * owner explicitly so the index and the partition it is written to can
+ * never disagree; `undefined` falls back to the wallet confirmed right now.
+ */
+type OwnerArgument = string | null | undefined;
+
+function writeIndex(index: SavedProjectIndexEntry[], owner: OwnerArgument) {
+  writeProjectIndex(index, owner);
 }
 
 export type SaveProjectOutcome =
@@ -31,6 +38,7 @@ export type SaveProjectOutcome =
 export async function saveProjectToStorage(
   project: TokenProject,
   currentIndex: readonly SavedProjectIndexEntry[],
+  owner?: OwnerArgument,
 ): Promise<SaveProjectOutcome> {
   try {
     await putProjectBlob(project.id, {
@@ -46,7 +54,7 @@ export async function saveProjectToStorage(
 
   const nextIndex = [toIndexEntry(project), ...currentIndex.filter((item) => item.id !== project.id)];
   try {
-    writeIndex(nextIndex);
+    writeIndex(nextIndex, owner);
   } catch (error) {
     // Roll back the blob write so it doesn't linger as an orphan with no
     // index entry pointing at it.
@@ -89,10 +97,11 @@ export type DeleteProjectOutcome =
 export async function deleteProjectFromStorage(
   id: string,
   currentIndex: readonly SavedProjectIndexEntry[],
+  owner?: OwnerArgument,
 ): Promise<DeleteProjectOutcome> {
   const nextIndex = currentIndex.filter((item) => item.id !== id);
   try {
-    writeIndex(nextIndex);
+    writeIndex(nextIndex, owner);
   } catch (error) {
     return { success: false, error: `Could not remove this project — ${describeError(error)}` };
   }

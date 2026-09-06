@@ -9,10 +9,11 @@ import {
   type ProjectSaveResultDetail,
 } from "@/lib/project-save-result";
 import {
-  parseSavedTokenProjects,
-  TOKEN_STUDIO_PROJECTS_STORAGE_KEY,
+  currentProjectOwner,
+  readProjectIndex,
+  readUnassignedProjectIndex,
+  writeProjectIndex,
 } from "@/lib/token-project-storage";
-import type { TokenProject } from "@/lib/types";
 import {
   OPEN_WORKSPACE_REQUEST_EVENT,
   type OpenWorkspaceRequestDetail,
@@ -24,13 +25,14 @@ type PendingAction = "new" | "saved" | null;
 
 function cleanUpSeededHoodlumsLaunch() {
   try {
-    const raw = localStorage.getItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY);
-    if (!raw) return;
-    const parsed = parseSavedTokenProjects(raw);
+    // The seeded record only ever lived in the pre-wallet-scoping bucket,
+    // which is now the "no wallet confirmed" partition.
+    const parsed = readUnassignedProjectIndex();
+    if (parsed.length === 0) return;
 
     const cleaned = removeSeededHoodlumsLaunch(parsed);
     if (cleaned.length !== parsed.length) {
-      localStorage.setItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY, JSON.stringify(cleaned));
+      writeProjectIndex(cleaned, null);
     }
   } catch {
     // If storage can't be read there is nothing to clean up.
@@ -158,11 +160,15 @@ export function TokenStudioWorkspace() {
   }
 
   function openSavedLaunches() {
-    const savedLaunches = parseSavedTokenProjects(
-      localStorage.getItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY),
-    );
+    // The confirmed wallet's own partition only (per-wallet project scoping).
+    // A confirmed wallet with nothing of its own still gets the studio's
+    // vault when unassigned drafts exist, since that is where the explicit
+    // "Move to this wallet" row lives — otherwise the empty state would hide
+    // the only way to adopt them.
+    const savedLaunches = readProjectIndex();
+    const hasUnassignedToOffer = currentProjectOwner() !== null && readUnassignedProjectIndex().length > 0;
 
-    if (savedLaunches.length === 0) {
+    if (savedLaunches.length === 0 && !hasUnassignedToOffer) {
       setPendingAction(null);
       setShowEmptySavedLaunches(true);
       setIsOpen(true);

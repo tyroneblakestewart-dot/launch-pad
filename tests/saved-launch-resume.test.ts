@@ -105,7 +105,7 @@ describe("Saved launches", () => {
     const saveBlock = studio.slice(saveStart, saveEnd);
     expect(saveBlock).toContain("const saved: TokenProject = {");
     expect(saveBlock).toContain("...project,");
-    expect(saveBlock).toContain("const outcome = await saveProjectToStorage(saved, projects);");
+    expect(saveBlock).toContain("const outcome = await saveProjectToStorage(saved, projects, owner);");
     expect(saveBlock).toContain("if (!outcome.success) {");
     expect(saveBlock).toContain("setNotice(outcome.error);");
     expect(saveBlock).toContain("setProjects(outcome.index);");
@@ -156,7 +156,8 @@ describe("Saved launches", () => {
     const resumeEnd = workspace.indexOf("function saveAndClose", resumeStart);
     const resumeBlock = workspace.slice(resumeStart, resumeEnd);
 
-    expect(resumeBlock).toContain("parseSavedTokenProjects(");
+    // Per-wallet project scoping (6 Sep 2026): reads the confirmed wallet's own partition through the shared accessor.
+    expect(resumeBlock).toContain("readProjectIndex(");
     expect(resumeBlock).toContain("setStudioInstanceKey((current) => current + 1);");
     expect(resumeBlock).toContain('setPendingAction("saved");');
     expect(workspace).toContain("key={studioInstanceKey}");

@@ -67,9 +67,8 @@ describe("token studio workspace no longer force-seeds the operator's launch", (
     expect(openWorkspaceBlock).not.toContain("cleanUpSeededHoodlumsLaunch");
     expect(openWorkspaceBlock).not.toContain("localStorage");
     expect(openSavedLaunchesBlock).not.toContain("cleanUpSeededHoodlumsLaunch");
-    expect(openSavedLaunchesBlock).toContain(
-      "localStorage.getItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY)",
-    );
+    // Per-wallet project scoping (6 Sep 2026): reads the confirmed wallet's own partition through the shared accessor.
+    expect(openSavedLaunchesBlock).toContain("readProjectIndex()");
     expect(openSavedLaunchesBlock).not.toContain("localStorage.setItem");
   });
 });

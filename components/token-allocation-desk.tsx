@@ -13,11 +13,12 @@ import {
   type Hash,
 } from "viem";
 import { ROBINHOOD_TESTNET } from "@/lib/chains";
+import { readProjectIndex } from "@/lib/token-project-storage";
 import type { TokenProject } from "@/lib/types";
+import { useProjectOwner } from "@/lib/use-project-owner";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./token-allocation-desk.module.css";
 
-const PROJECT_STORAGE_KEY = "private-meme-token-studio-projects-v1";
 const ALLOCATION_STORAGE_KEY = "private-meme-token-studio-allocation-plans-v1";
 
 const ERC20_ABI = parseAbi([
@@ -136,6 +137,8 @@ export function TokenAllocationDesk({
   headerIntro = "Plan the supply, save a record, then approve each real ERC-20 transfer yourself.",
 }: TokenAllocationDeskProps = {}) {
   const [projects, setProjects] = useState<TokenProject[]>([]);
+  // Per-wallet project scoping: the list reloads whenever the confirmed wallet changes.
+  const projectOwner = useProjectOwner();
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [contractAddress, setContractAddress] = useState("");
   const [walletAddress, setWalletAddress] = useState("");
@@ -168,23 +171,22 @@ export function TokenAllocationDesk({
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
-      const parsed = raw ? (JSON.parse(raw) as TokenProject[]) : [];
-      const deployed = Array.isArray(parsed)
-        ? parsed.filter((project) => project.chain === "robinhood" && isAddress(project.contractAddress))
-        : [];
+      const parsed = readProjectIndex(projectOwner) as TokenProject[];
+      const deployed = parsed.filter((project) => project.chain === "robinhood" && isAddress(project.contractAddress));
       setProjects(deployed);
       if (deployed[0]) {
         setSelectedProjectId(deployed[0].id);
         setContractAddress(deployed[0].contractAddress);
         loadSavedPlan(deployed[0].contractAddress);
+      } else {
+        setSelectedProjectId("");
       }
     } catch {
       setStatus("Saved projects could not be loaded. Paste the token contract address manually.");
     }
-    // Browser storage is intentionally loaded once after hydration.
+    // Browser storage is reloaded after hydration and whenever the confirmed wallet changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [projectOwner]);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) || null,

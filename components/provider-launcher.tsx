@@ -11,11 +11,12 @@ import {
   type Hash,
 } from "viem";
 import { ROBINHOOD_MAINNET } from "@/lib/chains";
+import { readProjectIndex, writeProjectIndex } from "@/lib/token-project-storage";
 import type { TokenProject } from "@/lib/types";
+import { useProjectOwner } from "@/lib/use-project-owner";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./provider-launcher.module.css";
 
-const PROJECT_STORAGE_KEY = "private-meme-token-studio-projects-v1";
 const LAUNCH_STORAGE_KEY = "private-meme-token-studio-provider-launches-v1";
 
 const ERC20_ABI = parseAbi([
@@ -97,6 +98,8 @@ export function ProviderLauncher({
   backToStudioLabel = "Back to studio",
 }: ProviderLauncherProps = {}) {
   const [projects, setProjects] = useState<TokenProject[]>([]);
+  // Per-wallet project scoping: the list reloads whenever the confirmed wallet changes.
+  const projectOwner = useProjectOwner();
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [providerId, setProviderId] = useState<ProviderId>("pons");
   const [name, setName] = useState("");
@@ -125,22 +128,20 @@ export function ProviderLauncher({
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as TokenProject[];
-      const robinhoodProjects = Array.isArray(parsed)
-        ? parsed.filter((item) => item.chain === "robinhood")
-        : [];
+      const parsed = readProjectIndex(projectOwner) as TokenProject[];
+      const robinhoodProjects = parsed.filter((item) => item.chain === "robinhood");
       setProjects(robinhoodProjects);
       if (robinhoodProjects[0]) {
         loadProject(robinhoodProjects[0], robinhoodProjects);
+      } else {
+        setSelectedProjectId("");
       }
     } catch {
       setStatus("Saved projects could not be loaded. You can still enter a launch manually.");
     }
-    // Loading browser-only projects after hydration is intentional.
+    // Browser-only projects load after hydration and reload whenever the confirmed wallet changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [projectOwner]);
 
   const provider = PROVIDERS[providerId];
   const selectedProject = useMemo(
@@ -464,9 +465,8 @@ export function ProviderLauncher({
     );
 
     if (!selectedProjectId) return;
-    const rawProjects = localStorage.getItem(PROJECT_STORAGE_KEY);
-    if (!rawProjects) return;
-    const allProjects = JSON.parse(rawProjects) as TokenProject[];
+    const allProjects = readProjectIndex() as TokenProject[];
+    if (allProjects.length === 0) return;
     const updated = allProjects.map((item) =>
       item.id === selectedProjectId
         ? {
@@ -477,7 +477,7 @@ export function ProviderLauncher({
           }
         : item,
     );
-    localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(updated));
+    writeProjectIndex(updated);
     setProjects(updated.filter((item) => item.chain === "robinhood"));
   }
 

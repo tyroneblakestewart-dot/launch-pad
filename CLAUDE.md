@@ -2170,3 +2170,51 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   `NEXT_PUBLIC_`), and run migration 033 in Supabase before merging. Not
   built, by decision: project sync (phase 2), X sign-in (phase 3), any use of
   the email for mail-outs.
+
+- Saved projects are scoped per wallet (owner direction, 6 Sep 2026: "every
+  new wallet has to have its own clean slate, no room for error"). Drafts are
+  browser-local and carried no owner, so any wallet confirmed in the same
+  browser saw every project. Now `lib/token-project-storage.ts` keeps one
+  localStorage index PER OWNER — the confirmed wallet's lower-cased address
+  (`private-meme-token-studio-projects-v1:<wallet>`) or, for drafts saved
+  with no wallet confirmed, the unchanged pre-scoping key, which therefore
+  becomes the "unassigned" bucket every existing draft lands in rather than
+  being attributed to whichever wallet happened to be confirmed at deploy. A
+  wallet only ever reads its own partition, so switching wallets can never
+  show another wallet's projects. Every reader goes through
+  `readProjectIndex`/`writeProjectIndex` (the studio, the workspace shell's
+  Saved launches button, the studio launch modal, the provider transfer and
+  launch desk, Social Studio's project picker and the allocation desk);
+  `tests/project-wallet-isolation.test.ts` walks `components/` and `app/`
+  and fails if any file names the raw key or reads it from localStorage
+  directly, so a new reader cannot bypass the partition. The owner comes
+  from `hoodlums.account.wallet` via a new `useSyncExternalStore` hook,
+  `lib/use-project-owner.ts` (same-tab `ACCOUNT_WALLET_CHANGE_EVENT` plus the
+  cross-tab `storage` event), so the lists reload the moment a wallet is
+  confirmed, changed or disconnected. `saveProjectToStorage`/
+  `deleteProjectFromStorage` take the owner explicitly from the studio, so
+  the in-memory index and the partition it is written to can never
+  disagree. **Ownership never changes silently:** unassigned drafts move only
+  by an explicit one-tap "Move to this wallet" row in the Saved projects
+  modal (shown when a wallet is confirmed and the bucket is non-empty, with
+  the count and a note that moving is one way), or when the single draft
+  being edited was saved with no wallet and the user confirms a wallet while
+  it is open — an explicit act on that one draft. Switching to a different
+  wallet while another wallet's project is open closes it with a notice
+  naming both wallets; unsaved edits to it are lost, which is the price of
+  never carrying a project across. The modal's heading states whose vault it
+  is ("Wallet 0x1234…abcd · only this wallet sees these" or "No wallet
+  confirmed · drafts saved now stay unassigned…"). Side stores keyed by
+  project id (IndexedDB artwork/HTML blobs, Social Studio records, social
+  drafts, allocation plans) need no change — they are only reachable through
+  a project id the wallet can see. **Tests changed rather than only added
+  (rule 8, stated plainly):** `tests/saved-launch-resume.test.ts`,
+  `tests/token-studio-slug-flow.test.ts`, `tests/social-studio-ui.test.ts`
+  and `tests/token-studio-workspace-seed-cleanup.test.ts` pinned the old
+  two-argument save call or the raw-key reads (`parseSavedTokenProjects(`,
+  `PROJECT_STORAGE_KEY`, `localStorage.getItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY)`)
+  and now pin the accessor/owner-carrying forms. Rule 10 needs nothing (no
+  page, route or integration; nothing leaves the browser). Checked in
+  headless Chromium at 1400px and 390px with seeded legacy and per-wallet
+  drafts — not on a physical iPhone; the owner confirms on device by
+  switching wallets in the Account panel and opening Saved launches.

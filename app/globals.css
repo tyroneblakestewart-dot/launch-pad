@@ -381,6 +381,18 @@ label small { display: block; margin-top: 5px; color: #5f6a61; font: 10px var(--
 .modal-heading button { width: 34px; height: 34px; color: #9ba59d; background: #111713; border: 1px solid var(--line); border-radius: 6px; font-size: 20px; }
 .empty-state { padding: 45px 15px; margin-bottom: 15px; border: 1px dashed var(--line); color: #667169; text-align: center; font: 11px var(--mono); }
 .project-list { display: grid; gap: 8px; margin-bottom: 15px; }
+/* Per-wallet project scoping (6 Sep 2026): which wallet's vault this is, and the one-tap adoption row for drafts saved with no wallet. */
+.vault-owner { display: block; margin-top: 4px; color: #68736a; font: 9px var(--mono); letter-spacing: .04em; }
+.vault-unassigned { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; padding: 11px 13px; border: 1px dashed rgba(198, 245, 62, .35); border-radius: 7px; background: rgba(198, 245, 62, .05); }
+.vault-unassigned > span { flex: 1; min-width: 0; }
+.vault-unassigned b, .vault-unassigned small { display: block; }
+.vault-unassigned b { margin-bottom: 3px; font-size: 11px; color: var(--paper); }
+.vault-unassigned small { color: #68736a; font: 9px var(--mono); line-height: 1.4; }
+.vault-unassigned button { flex-shrink: 0; min-height: 34px; padding: 8px 12px; border: 0; border-radius: 7px; background: #c6f53e; color: #071006; font: 800 10px var(--mono); cursor: pointer; }
+@media (max-width: 640px) {
+  .vault-unassigned { flex-direction: column; align-items: stretch; }
+  .vault-unassigned button { min-height: 44px; }
+}
 .project-list article { display: flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: #090d0a; }
 .project-main { flex: 1; display: flex; align-items: center; gap: 11px; padding: 13px; color: var(--paper); background: transparent; text-align: left; }
 .project-main > span:nth-child(2) { flex: 1; }

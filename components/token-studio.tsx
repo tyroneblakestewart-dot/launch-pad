@@ -1,10 +1,11 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   REOPEN_GENERATED_SITE_EVENT,
   type PublishableSitePayload,
 } from "@/components/full-website-generator";
+import { truncateAccountAddress } from "@/lib/account-wallet-state";
 import { MAX_ARTWORK_SOURCE_BYTES } from "@/lib/artwork-compression";
 import { CHAIN_CONFIG, ROBINHOOD_MAINNET } from "@/lib/chains";
 import { FREE_SITE_SECTION_DEFAULTS, type FreeSiteSectionKey } from "@/lib/free-site-sections";
@@ -20,11 +21,15 @@ import {
 } from "@/lib/token-project-persistence";
 import {
   migrateLegacySavedProjects,
-  serialiseSavedTokenProjects,
-  TOKEN_STUDIO_PROJECTS_STORAGE_KEY,
+  moveUnassignedProjects,
+  projectIndexStorageKey,
+  readProjectIndex,
+  readUnassignedProjectIndex,
+  writeProjectIndex,
   type SavedProjectIndexEntry,
 } from "@/lib/token-project-storage";
 import type { LaunchPath, SupportedChain, TokenProject, WalletState } from "@/lib/types";
+import { useProjectOwner } from "@/lib/use-project-owner";
 import { TokenPathChooser } from "./token-path-chooser";
 
 // CHAIN_CONFIG.label carries the wallet-facing "Robinhood Chain Testnet"
@@ -107,6 +112,25 @@ function shortAddress(address: string): string {
     : address;
 }
 
+/**
+ * Loads one owner's saved-project partition (per-wallet project scoping,
+ * 6 Sep 2026), migrating any pre-#307 row still carrying inline artwork/HTML
+ * into IndexedDB on the way. Idempotent — safe to run on every load.
+ */
+async function loadOwnerProjectIndex(owner: string | null) {
+  const raw = localStorage.getItem(projectIndexStorageKey(owner));
+  const { index, migratedCount, droppedCount } = await migrateLegacySavedProjects(raw);
+  if (migratedCount > 0 || droppedCount > 0) {
+    try {
+      writeProjectIndex(index, owner);
+    } catch {
+      // Nothing more useful to do if even the small index can't be
+      // written back; the in-memory list is still correct.
+    }
+  }
+  return { index, droppedCount };
+}
+
 function formatSupply(value: string): string {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric.toLocaleString("en-GB") : value;
@@ -156,6 +180,13 @@ const IDENTITY_KEYS = new Set<keyof TokenProject>([
 export function TokenStudio() {
   const [project, setProject] = useState<TokenProject>(DEFAULT_PROJECT);
   const [projects, setProjects] = useState<SavedProjectIndexEntry[]>([]);
+  // Per-wallet project scoping (6 Sep 2026): `projects` is always the index
+  // for `owner` — the confirmed wallet's address, or null for drafts saved
+  // with no wallet confirmed. A wallet change swaps the whole list (see the
+  // effect below); unassigned drafts only ever move by an explicit act.
+  const owner = useProjectOwner();
+  const previousOwnerRef = useRef<string | null | undefined>(undefined);
+  const [unassignedCount, setUnassignedCount] = useState(0);
   const [wallet, setWallet] = useState<WalletState | null>(null);
   // Empty until something happens; the notice bar only renders with a message.
   const [notice, setNotice] = useState("");
@@ -164,24 +195,46 @@ export function TokenStudio() {
   const [showLaunchSummary, setShowLaunchSummary] = useState(false);
   const [showPathChooser, setShowPathChooser] = useState(false);
 
+  const projectRef = useRef(project);
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
+
   useEffect(() => {
     let cancelled = false;
+    const previous = previousOwnerRef.current;
+    previousOwnerRef.current = owner;
+
+    // A wallet switch while the studio is open must never carry the previous
+    // owner's project across to the new wallet — the open project is closed.
+    // The one exception is a draft saved with NO wallet: confirming a wallet
+    // while that very draft is open is an explicit act, so that single draft
+    // moves to the new wallet and stays open.
+    function applyWalletSwitch() {
+      if (previous === undefined || previous === owner) return;
+      const open = projectRef.current;
+      if (!open.id || !readProjectIndex(previous).some((entry) => entry.id === open.id)) return;
+      const openName = open.name || "The open project";
+      if (previous === null && owner) {
+        moveUnassignedProjects(owner, [open.id]);
+        setNotice(`${openName} now belongs to ${truncateAccountAddress(owner)}.`);
+        return;
+      }
+      setProject(makeProject());
+      setShowLaunchSummary(false);
+      setShowPathChooser(false);
+      setNotice(
+        owner
+          ? `Wallet changed to ${truncateAccountAddress(owner)}. ${openName} stays with ${truncateAccountAddress(previous ?? "")} and was closed.`
+          : `Wallet disconnected. ${openName} stays with ${truncateAccountAddress(previous ?? "")} and was closed.`,
+      );
+    }
 
     async function loadIndex() {
-      const raw = localStorage.getItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY);
-      const { index, migratedCount, droppedCount } = await migrateLegacySavedProjects(raw);
+      const { index, droppedCount } = await loadOwnerProjectIndex(owner);
       if (cancelled) return;
-
-      if (migratedCount > 0 || droppedCount > 0) {
-        try {
-          localStorage.setItem(TOKEN_STUDIO_PROJECTS_STORAGE_KEY, serialiseSavedTokenProjects(index));
-        } catch {
-          // Nothing more useful to do if even the small index can't be
-          // written back; the in-memory list below is still correct.
-        }
-      }
-
       setProjects(index);
+      setUnassignedCount(owner ? readUnassignedProjectIndex().length : 0);
       if (droppedCount > 0) {
         setNotice(
           `${droppedCount} saved launch${droppedCount === 1 ? "" : "es"} could not be recovered and ${droppedCount === 1 ? "was" : "were"} removed.`,
@@ -189,16 +242,24 @@ export function TokenStudio() {
       }
     }
 
-    loadIndex().catch(() => {
-      if (!cancelled) {
-        setNotice("Saved projects could not be read. A new local workspace was opened.");
+    queueMicrotask(() => {
+      if (cancelled) return;
+      try {
+        applyWalletSwitch();
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "The open draft could not be moved to this wallet.");
       }
+      loadIndex().catch(() => {
+        if (!cancelled) {
+          setNotice("Saved projects could not be read. A new local workspace was opened.");
+        }
+      });
     });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [owner]);
 
   useEffect(() => {
     function onSiteGenerated(event: Event) {
@@ -308,7 +369,7 @@ export function TokenStudio() {
       websiteSlug: slug,
     };
 
-    const outcome = await saveProjectToStorage(saved, projects);
+    const outcome = await saveProjectToStorage(saved, projects, owner);
     if (!outcome.success) {
       setNotice(outcome.error);
       window.dispatchEvent(
@@ -344,7 +405,7 @@ export function TokenStudio() {
   }
 
   async function deleteProject(id: string) {
-    const outcome = await deleteProjectFromStorage(id, projects);
+    const outcome = await deleteProjectFromStorage(id, projects, owner);
     if (!outcome.success) {
       setNotice(outcome.error);
       return;
@@ -352,6 +413,26 @@ export function TokenStudio() {
     setProjects(outcome.index);
     if (project.id === id) setProject(makeProject());
     setNotice("Project removed from local storage.");
+  }
+
+  // Explicit, one-tap adoption of drafts saved with no wallet confirmed
+  // (which includes every draft saved before per-wallet scoping existed).
+  // Nothing moves until the user taps this.
+  async function moveUnassignedIntoWallet() {
+    if (!owner) return;
+    try {
+      const { moved } = moveUnassignedProjects(owner);
+      const { index } = await loadOwnerProjectIndex(owner);
+      setProjects(index);
+      setUnassignedCount(readUnassignedProjectIndex().length);
+      setNotice(
+        moved === 0
+          ? "No unassigned drafts to move."
+          : `${moved} draft${moved === 1 ? "" : "s"} moved to ${truncateAccountAddress(owner)}. Only this wallet sees them now.`,
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The drafts could not be moved to this wallet.");
+    }
   }
 
   async function loadProject(entry: SavedProjectIndexEntry) {
@@ -803,11 +884,28 @@ export function TokenStudio() {
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal-card projects-modal">
             <div className="modal-heading">
-              <div><p className="eyebrow">LOCAL VAULT</p><h2>Saved projects</h2></div>
+              <div>
+                <p className="eyebrow">LOCAL VAULT</p>
+                <h2>Saved projects</h2>
+                <small className="vault-owner">
+                  {owner
+                    ? `Wallet ${truncateAccountAddress(owner)} · only this wallet sees these`
+                    : "No wallet confirmed · drafts saved now stay unassigned until you confirm a wallet"}
+                </small>
+              </div>
               <button onClick={() => setShowProjects(false)}>×</button>
             </div>
+            {owner && unassignedCount > 0 ? (
+              <div className="vault-unassigned">
+                <span>
+                  <b>{unassignedCount} draft{unassignedCount === 1 ? "" : "s"} saved before a wallet was confirmed.</b>
+                  <small>No wallet can see them until you move them. Moving is one way.</small>
+                </span>
+                <button type="button" onClick={moveUnassignedIntoWallet}>Move to this wallet</button>
+              </div>
+            ) : null}
             {projects.length === 0 ? (
-              <div className="empty-state">No saved projects yet.</div>
+              <div className="empty-state">{owner ? "No saved projects for this wallet yet." : "No saved projects yet."}</div>
             ) : (
               <div className="project-list">
                 {projects.map((saved) => (
