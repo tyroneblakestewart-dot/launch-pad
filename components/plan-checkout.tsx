@@ -160,7 +160,7 @@ export function PlanCheckout({
   const currentQuote =
     quote?.plan === plan &&
     quote.billingPeriod === expectedBilling &&
-    (!subscription || !paymentToken || quote.asset === paymentToken)
+    (!paymentToken || quote.asset === paymentToken)
       ? quote
       : null;
   const busy =
@@ -241,6 +241,10 @@ export function PlanCheckout({
         (stored.billingPeriod === "monthly" || stored.billingPeriod === "upfront")
       ) {
         setBillingPeriod(stored.billingPeriod);
+      }
+      // Every plan pays in a catalog stablecoin now; a recovery record from
+      // the old native-ETH one-off carries "ETH", which is not a token option.
+      if (stored.paymentToken && stored.paymentToken !== "ETH") {
         setPaymentToken(stored.paymentToken);
       }
     }, 0);
@@ -253,10 +257,7 @@ export function PlanCheckout({
 
   useEffect(() => {
     const controller = new AbortController();
-    const tokenQuery =
-      subscription && paymentToken
-        ? `&token=${encodeURIComponent(paymentToken)}`
-        : "";
+    const tokenQuery = paymentToken ? `&token=${encodeURIComponent(paymentToken)}` : "";
 
     Promise.all([
       fetch(
@@ -295,7 +296,7 @@ export function PlanCheckout({
         if (!mounted.current || controller.signal.aborted) return;
 
         setQuote(nextQuote);
-        if (subscription && paymentToken !== nextQuote.asset) {
+        if (paymentToken !== nextQuote.asset) {
           setPaymentToken(nextQuote.asset);
         }
         setRecoveryOrigin(preflight.recoveryOrigin || null);
@@ -314,7 +315,7 @@ export function PlanCheckout({
         setMessage(
           nextQuote.tokenAddress
             ? `Payment safety check passed. Your confirmed wallet can send ${nextQuote.asset} to the configured Hoodlums treasury. Access unlocks only after the server verifies the selected token contract, wallet proof, transfer and confirmed receipt.`
-            : "Payment safety check passed. Your confirmed wallet can send ETH to the configured Hoodlums treasury. Access unlocks only after server verification.",
+            : "Payment safety check passed. Your confirmed wallet can pay the configured Hoodlums treasury. Access unlocks only after server verification.",
         );
       })
       .catch((error) => {
@@ -850,7 +851,7 @@ export function PlanCheckout({
         </div>
       ) : null}
 
-      {subscription && currentQuote?.paymentTokens.length ? (
+      {currentQuote?.paymentTokens.length ? (
         <div className={styles.billingToggle} aria-label="Stablecoin payment token">
           {currentQuote.paymentTokens.map((token) => (
             <button

@@ -221,9 +221,11 @@ describe("server verification and admin revenue standing rule", () => {
   it("keeps Bond + Pro Site configuration visible in System Health", async () => {
     const health = await source("lib", "server", "subscription-lifecycle-pipeline.ts");
 
-    expect(health).toContain('"HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI"');
+    // Rule 8, stated plainly: the native-ETH amount is gone (6 Sep 2026); the
+    // one-off is a stablecoin payment checked through the same quote builder.
+    expect(health).not.toContain("HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI");
     expect(health).toContain('getPlanPaymentQuote("bond-pro-site", "one_off", environment)');
-    expect(health).toContain("Bond + Pro Site native payment");
+    expect(health).toContain("stablecoin payments (Bond + Pro Site one-off and subscriptions)");
     expect(health).toContain("plan_payment_events");
   });
 
@@ -233,7 +235,7 @@ describe("server verification and admin revenue standing rule", () => {
 
     expect(config).toContain('configuredAddress(environment, "HOODLUMS_TREASURY_ADDRESS")');
     expect(config).toContain("HOODLUMS_PAYMENT_TOKENS_JSON");
-    expect(config).toContain("nativeAmountWeiEnvironmentKey");
+    expect(config).not.toContain("nativeAmountWeiEnvironmentKey");
     expect(client).not.toContain("HOODLUMS_TREASURY_ADDRESS");
     expect(client).not.toContain("HOODLUMS_PAYMENT_TOKENS_JSON");
     expect(client).not.toContain("HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI");

@@ -32,7 +32,6 @@ beforeEach(() => {
   process.env.HOODLUMS_TREASURY_ADDRESS = TREASURY;
   process.env.HOODLUMS_PAYMENT_RPC_URL = "https://rpc.example.test";
   process.env.HOODLUMS_PAYMENT_CHAIN_ID = String(CHAIN_ID);
-  process.env.HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI = "1000000000000000";
   process.env.HOODLUMS_USDT_TOKEN_ADDRESS = USDT;
   process.env.HOODLUMS_USDT_DECIMALS = String(USDT_DECIMALS);
 });
@@ -41,7 +40,6 @@ afterEach(() => {
   delete process.env.HOODLUMS_TREASURY_ADDRESS;
   delete process.env.HOODLUMS_PAYMENT_RPC_URL;
   delete process.env.HOODLUMS_PAYMENT_CHAIN_ID;
-  delete process.env.HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI;
   delete process.env.HOODLUMS_USDT_TOKEN_ADDRESS;
   delete process.env.HOODLUMS_USDT_DECIMALS;
 });
@@ -103,30 +101,6 @@ function usdtChain(
   };
 }
 
-function ethChain(
-  overrides: Partial<ChainTransaction> = {},
-  receipt: Partial<ChainReceipt> = {},
-) {
-  return {
-    getChainId: async () => CHAIN_ID,
-    getTransaction: async () => ({
-      from: WALLET,
-      to: TREASURY,
-      value: 1_000_000_000_000_000n,
-      input: "0x" as Hex,
-      ...overrides,
-    }),
-    getReceipt: async () => ({
-      status: "success" as const,
-      blockNumber: 123n,
-      logs: [],
-      ...receipt,
-    }),
-    getConfirmations: async () => 1n,
-    getTokenDecimals: async () => USDT_DECIMALS,
-  };
-}
-
 describe("plan payment configuration", () => {
   it("builds an exact USDT transfer for a monthly Pro subscription", () => {
     const quote = getPlanPaymentQuote("pro", "monthly");
@@ -162,15 +136,21 @@ describe("plan payment configuration", () => {
     });
   });
 
-  it("keeps Bond + Pro Site as a server-priced one-off ETH payment", () => {
+  // Rule 8, stated plainly: this pinned Bond + Pro Site as a native-ETH one-off
+  // priced by HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI. Owner decision (6 Sep 2026):
+  // it is a stablecoin transfer priced from the USD catalog like the subscriptions.
+  it("prices Bond + Pro Site as a one-off stablecoin transfer from the USD catalog", () => {
     expect(getPlanPaymentQuote("bond-pro-site")).toMatchObject({
-      asset: "ETH",
+      asset: "USDT",
       billingPeriod: "one_off",
       subscriptionDays: null,
-      amountDisplay: "0.001",
-      transactionTo: TREASURY,
-      transactionData: "0x",
+      amountDisplay: "15",
+      usdCents: 1_500,
+      tokenAddress: USDT,
+      transactionTo: USDT,
+      transactionValue: "0x0",
     });
+    expect(getPlanPaymentQuote("bond-pro-site").transactionData).not.toBe("0x");
   });
 
   it("fails closed when USDT address or decimals are not configured", () => {
@@ -276,18 +256,30 @@ describe("server-side USDT verification", () => {
     ).rejects.toMatchObject({ code: "missing-transfer-log" });
   });
 
-  it("still verifies the one-off ETH plan independently", async () => {
+  // Rule 8, stated plainly: this verified a native-ETH one-off; the one-off is
+  // now a 15-token stablecoin transfer verified by the same rules as subscriptions.
+  it("verifies the one-off Bond + Pro Site stablecoin transfer with the subscription rules", async () => {
+    const amount = 15_000_000n;
     await expect(
       verifyPlanPaymentTransaction(
         { plan: "bond-pro-site", walletAddress: WALLET, transactionHash: HASH },
-        ethChain(),
+        usdtChain({ input: transferInput(TREASURY, amount) }, { logs: [transferLog({ amount })] }),
       ),
     ).resolves.toMatchObject({
-      asset: "ETH",
-      amountDisplay: "0.001",
+      asset: "USDT",
+      amountAtomic: amount,
+      amountDisplay: "15",
+      amountEth: null,
       usdCents: 1_500,
       subscriptionDays: null,
+      billingPeriod: "one_off",
     });
+    await expect(
+      verifyPlanPaymentTransaction(
+        { plan: "bond-pro-site", walletAddress: WALLET, transactionHash: HASH },
+        usdtChain({ to: TREASURY, value: 1_000_000_000_000_000n, input: "0x" as Hex }),
+      ),
+    ).rejects.toBeDefined();
   });
 });
 

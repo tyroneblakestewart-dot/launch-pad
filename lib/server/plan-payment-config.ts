@@ -1,6 +1,5 @@
 import {
   encodeFunctionData,
-  formatEther,
   formatUnits,
   isAddress,
   parseUnits,
@@ -74,16 +73,6 @@ function required(environment: PaymentEnvironment, key: string): string {
   return value;
 }
 
-function positiveBigInt(value: string, key: string): bigint {
-  if (!/^\d+$/.test(value)) {
-    throw new PlanPaymentConfigurationError(`${key} must be a positive integer amount in wei.`);
-  }
-  const amount = BigInt(value);
-  if (amount <= 0n) {
-    throw new PlanPaymentConfigurationError(`${key} must be greater than zero.`);
-  }
-  return amount;
-}
 
 function validDecimals(value: unknown, label: string): number {
   const raw = typeof value === "number" ? String(value) : String(value ?? "").trim();
@@ -325,26 +314,8 @@ export function getPlanPaymentQuote(
     explorerBaseUrl,
   } as const;
 
-  if (definition.kind === "one_off") {
-    const key = definition.nativeAmountWeiEnvironmentKey;
-    if (!key) {
-      throw new PlanPaymentConfigurationError("The native payment amount is not configured.");
-    }
-    const amount = positiveBigInt(required(environment, key), key);
-    return {
-      ...common,
-      asset: "ETH",
-      paymentTokens: [],
-      amountAtomic: toHex(amount),
-      amountDisplay: formatEther(amount),
-      tokenAddress: null,
-      tokenDecimals: null,
-      transactionTo: treasuryAddress,
-      transactionValue: toHex(amount),
-      transactionData: "0x",
-    };
-  }
-
+  // Every plan — the one-off Bond + Pro Site included (owner decision, 6 Sep
+  // 2026) — is a stablecoin transfer priced from the USD catalog.
   const paymentTokens = getEnabledPaymentTokenOptions(environment);
   const token = selectedPaymentToken(paymentTokenInput, environment);
   const wholeTokens = (catalog.usdCents / 100).toString();

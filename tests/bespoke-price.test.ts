@@ -21,9 +21,9 @@ describe("Bond + Pro Site price", () => {
     expect(BESPOKE_SITE_UPSELL_MESSAGE).not.toContain("$10");
   });
 
-  it("tells the owner the wei amount must match the $15 catalog price", async () => {
+  it("is paid in the stablecoin catalog, with no native-ETH amount left to configure", async () => {
     const env = await readFile(path.join(process.cwd(), ".env.example"), "utf8");
-    expect(env).toContain("Catalog price is $15");
-    expect(env).toContain("HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI=");
+    expect(env).toContain("Bond + Pro Site ($15 one-off) is paid in the enabled stablecoin");
+    expect(env).not.toContain("HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI=");
   });
 });

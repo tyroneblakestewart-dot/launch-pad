@@ -2707,3 +2707,39 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   physical iPhone. Validated on the final commit: `npm run test:app` — 326
   test files / 3828 tests passing; `npm run lint` — 0 errors (10 pre-existing
   warnings); `npm run build` — succeeds.
+
+- Bond + Pro Site is paid in the stablecoin catalog, not native ETH (owner
+  decision, 6 Sep 2026: "all subs are Robinhood ETH USD … and Pro and Pro
+  Bundle" — every plan pays the same way). The one-off purchase now goes
+  through the same USDG transfer path as the subscriptions: `getPlanPaymentQuote`
+  (`lib/server/plan-payment-config.ts`) prices every plan from the USD catalog
+  (`usdCents / 100` whole tokens — 15 USDG), the native-ETH branch and the
+  `nativeAmountWeiEnvironmentKey` definition field are removed, and
+  `verifyPlanPaymentTransaction` verifies the one-off with the existing
+  token-transfer rules (zero native value, `transfer(treasury, exactAmount)`
+  calldata, matching `Transfer` log, decimals check). `HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI`
+  is no longer read anywhere — the `subscription-lifecycle` health stage no
+  longer requires it and its summary reads "USDG stablecoin payments (Bond +
+  Pro Site one-off and subscriptions)"; `.env.example` and
+  `docs/plan-payments.md` say so, and the owner can delete the variable from
+  Vercel. The checkout (`components/plan-checkout.tsx`) shows the "Pay with
+  USDG" token picker for every plan (previously subscriptions only), passes
+  the token on the quote request for the one-off too, and ignores a stored
+  recovery record carrying the old "ETH" asset rather than requesting a quote
+  for a token that does not exist. Historical ETH one-off rows in
+  `plan_payment_events` keep verifying entitlement unchanged (the access query
+  is asset-agnostic) and `PaymentAsset` still admits "ETH" for them. **Tests
+  changed, not only added (rule 8, stated plainly):** `tests/plan-payments.test.ts`'s
+  "keeps Bond + Pro Site as a server-priced one-off ETH payment" and "still
+  verifies the one-off ETH plan" now pin the 15-USDT quote and a verified
+  15-token transfer (and reject a native-value send); the unused `ethChain`
+  helper is removed; `tests/plan-payment-quote-route.test.ts`,
+  `tests/subscription-lifecycle-pipeline.test.ts`, `tests/plan-payment-wiring.test.ts`,
+  `tests/multi-stablecoin-payments.test.ts` and `tests/bespoke-price.test.ts`
+  drop their wei-variable fixtures and pins (the lifecycle "fails health when
+  the native amount is missing" case now asserts the opposite). No migration.
+  Validated on the final commit: `npm run test:app` — 326 test files / 3828
+  tests passing; `npm run lint` — 0 errors (10 pre-existing warnings);
+  `npm run build` — succeeds. Not exercised against a live checkout from this
+  session — the owner opens the Bond + Pro Site checkout after deploy and
+  confirms it quotes 15 USDG on Robinhood Chain.

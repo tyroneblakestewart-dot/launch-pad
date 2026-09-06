@@ -34,17 +34,18 @@ export type PlanPaymentDefinition = {
   kind: PaymentKind;
   subscriptionTier: PaymentSubscriptionTier;
   destination: PaymentDestination;
-  nativeAmountWeiEnvironmentKey?: "HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI";
 };
 
 export const PLAN_PAYMENT_DEFINITIONS: Record<PaidLaunchPath, PlanPaymentDefinition> = {
+  // Owner decision (6 Sep 2026): the one-off site purchase is paid in the same
+  // Robinhood Chain stablecoin catalog as the subscriptions, priced straight
+  // from the USD catalog (15 USDG) — there is no native-ETH amount to maintain.
   "bond-pro-site": {
     id: "bond-pro-site",
     label: "Bond + Pro Site",
     kind: "one_off",
     subscriptionTier: "bond_pro_site",
     destination: "builder",
-    nativeAmountWeiEnvironmentKey: "HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI",
   },
   pro: {
     id: "pro",
