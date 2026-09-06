@@ -85,6 +85,18 @@ export async function sendText(
   );
 }
 
+/** Member count of a channel the platform bot is in — free on the Bot API, used by the Queue tab's private "How it's going" panel. */
+export async function getChatMemberCount(botToken: string, chatId: string, fetchImpl: FetchLike = fetch): Promise<number> {
+  const count = await telegramRequest<number>(
+    botToken,
+    "getChatMemberCount",
+    JSON.stringify({ chat_id: chatId }),
+    { "Content-Type": "application/json" },
+    fetchImpl,
+  );
+  return Number(count);
+}
+
 export async function sendArtwork(
   botToken: string,
   chatId: string,
