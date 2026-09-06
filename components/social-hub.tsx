@@ -110,6 +110,28 @@ type DraftMap = Record<string, string>;
 // Per-panel status shown inline next to the control that triggered it, instead of one status bar far below the fold.
 type PanelStatus = { tone: "progress" | "success" | "error"; message: string } | null;
 
+/** Shown once X is connected — the same rule lib/server/social-x-client.ts's X_BIO_LINK_HINT states server-side (issue #342): posts never carry links, the bio does. */
+const X_BIO_LINK_NOTE =
+  "Put your project link in your X bio — posts sent through Hoodlums never include a link (that keeps posting free instead of 13x more expensive), so your bio is where people will find it.";
+
+/** Turns the callback route's ?xConnect=…&reason=… into one plain sentence. */
+function describeXConnectReturn(status: string, reason: string | null): PanelStatus {
+  if (status === "success") return { tone: "success", message: "X connected. Approved posts can now go out to your account." };
+  switch (reason) {
+    case "denied":
+      return { tone: "error", message: "X connection cancelled — you didn't approve Hoodlums on X. Nothing was connected." };
+    case "expired":
+      return { tone: "error", message: "That X connection took too long and expired. Tap Connect X again." };
+    case "paused":
+      return { tone: "error", message: "Social posting is paused on this deployment right now. Try again later." };
+    case "unknown":
+    case "not_found":
+      return { tone: "error", message: "That X connection could not be matched to a request. Tap Connect X again." };
+    default:
+      return { tone: "error", message: "X could not finish connecting. Tap Connect X to try again." };
+  }
+}
+
 type ExternalNetworkChoice = "robinhood" | "solana" | "other";
 type ExternalTokenForm = {
   name: string;
@@ -215,6 +237,8 @@ const SOCIAL_STUDIO_ACTION_PURPOSES = {
   buyBotUpdate: "social:buy-bot-update",
   buyBotDisable: "social:buy-bot-disable",
   approvalSession: SOCIAL_APPROVAL_SESSION_PURPOSE,
+  xConnect: "social:x-connect",
+  xDisconnect: "social:x-disconnect",
 } as const;
 
 function platformLabel(platform: SocialPlatform): string {
@@ -583,6 +607,13 @@ export function SocialHub() {
   // `telegramConnection` itself is derived from `connections` below (issue
   // #384) rather than kept as separate state.
   const [telegramConfigured, setTelegramConfigured] = useState<boolean | null>(null);
+  // Connect X (owner request, 6 Sep 2026): the Setup card runs the real
+  // 3-legged OAuth flow from issue #335 — wallet-signed start, X's own
+  // authorize page, then /api/social/x/connect/callback redirects back here
+  // with ?xConnect=success|error. `xConfigured` is null while loading.
+  const [xConfigured, setXConfigured] = useState<boolean | null>(null);
+  const [xConnectBusy, setXConnectBusy] = useState(false);
+  const [xStatus, setXStatus] = useState<PanelStatus>(null);
   const [telegramConnectInput, setTelegramConnectInput] = useState("");
   const [telegramConnectBusy, setTelegramConnectBusy] = useState(false);
   // The connect drawer under the Telegram row (design: the card is one slim row;
@@ -756,6 +787,28 @@ export function SocialHub() {
       }
     }
     void loadTelegramConfigured();
+    async function loadXConfigured() {
+      try {
+        const response = await fetch("/api/social/x/status", { cache: "no-store" });
+        const payload = await readJsonResponse<{ configured?: boolean }>(response, "Could not check X configuration.");
+        if (!cancelled) setXConfigured(Boolean(payload.configured));
+      } catch {
+        if (!cancelled) setXConfigured(false);
+      }
+    }
+    void loadXConfigured();
+    // Coming back from X's authorize page: the callback route lands on
+    // /social?xConnect=success|error&reason=…; read it once, tell the user,
+    // and clear it from the address bar so a reload does not repeat it.
+    const params = new URLSearchParams(window.location.search);
+    const xConnect = params.get("xConnect");
+    if (xConnect) {
+      setXStatus(describeXConnectReturn(xConnect, params.get("reason")));
+      params.delete("xConnect");
+      params.delete("reason");
+      const rest = params.toString();
+      window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
+    }
     return () => {
       cancelled = true;
     };
@@ -1064,6 +1117,14 @@ export function SocialHub() {
       : null;
   }, [connections]);
 
+  /** Same derivation for X (single source of truth: `connections`). */
+  const xConnection = useMemo<TelegramConnectionState | null>(() => {
+    const x = connections.find((connection) => connection.platform === "x");
+    return x && (x.status === "connected" || x.status === "reconnect_needed")
+      ? { status: x.status, displayName: x.displayName, externalId: x.externalId, reconnectReason: x.reconnectReason }
+      : null;
+  }, [connections]);
+
   /** The selected project's own Buy Bot, matched on its contract address — only Robinhood Chain Testnet launches have a curve to watch. */
   const selectedBuyBot = useMemo<BuyBotSummary | null>(() => {
     const contract = selectedProject?.contractAddress?.trim().toLowerCase();
@@ -1241,6 +1302,61 @@ export function SocialHub() {
     anchor.download = `${selectedProject.websiteSlug || selectedProject.ticker || "token"}-social-artwork.${extension}`;
     anchor.click();
     setStatus("Artwork downloaded. Attach it manually inside the X composer.");
+  }
+
+  async function connectX() {
+    if (!getInjectedEvmProvider()) {
+      setXStatus({ tone: "error", message: "Connect an EVM wallet before linking X." });
+      return;
+    }
+    setXConnectBusy(true);
+    setXStatus({ tone: "progress", message: "Sign once in your wallet, then approve Hoodlums on X…" });
+    try {
+      // The shared helper carries the issue #388 wallet-mismatch guard, so
+      // this is not a new direct check site.
+      const signed = await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.xConnect, { platform: "x" });
+      const startResponse = await fetch("/api/social/x/connect/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId: signed.challengeId, nonce: signed.nonce, signature: signed.signature }),
+      });
+      const payload = await readJsonResponse<{ authorizeUrl: string }>(startResponse, "X could not start the connection.");
+      if (!payload.authorizeUrl?.startsWith("https://")) throw new Error("X returned an unexpected authorize link.");
+      setXStatus({ tone: "progress", message: "Opening X. Approve Hoodlums there and you'll land back here." });
+      // Same tab: X redirects to /api/social/x/connect/callback, which sends
+      // the browser back to /social?xConnect=… (read on mount above).
+      window.location.assign(payload.authorizeUrl);
+    } catch (error) {
+      setXStatus({ tone: "error", message: error instanceof Error ? error.message : "X could not start the connection." });
+      setXConnectBusy(false);
+    }
+  }
+
+  async function disconnectX() {
+    if (!getInjectedEvmProvider()) {
+      setXStatus({ tone: "error", message: "Connect an EVM wallet before disconnecting X." });
+      return;
+    }
+    setXConnectBusy(true);
+    setXStatus({ tone: "progress", message: "Disconnecting X…" });
+    try {
+      const signed = await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.xDisconnect, { platform: "x" });
+      const disconnectResponse = await fetch("/api/social/x/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId: signed.challengeId, nonce: signed.nonce, signature: signed.signature }),
+      });
+      await readJsonResponse<{ ok?: boolean }>(disconnectResponse, "X could not be disconnected.");
+      // Immediate update, same as Telegram (issue #384): the Queue's
+      // destinations drop X in the same render as the Setup card does.
+      setConnections((current) => current.filter((connection) => connection.platform !== "x"));
+      setConnectionsStatus("loaded");
+      setXStatus({ tone: "success", message: "X disconnected. Hoodlums can no longer post to that account." });
+    } catch (error) {
+      setXStatus({ tone: "error", message: error instanceof Error ? error.message : "X could not be disconnected." });
+    } finally {
+      setXConnectBusy(false);
+    }
   }
 
   async function connectTelegramChannel() {
@@ -3086,17 +3202,51 @@ export function SocialHub() {
                           <span className={styles.xIcon}><XMark /></span>
                           <div>
                             <b>X</b>
-                            <span>{xHandle ? `${xHandle} · not connected yet` : "Not connected yet"}</span>
+                            <span>
+                              {xConfigured === false
+                                ? "Not configured on this deployment"
+                                : xConnection?.status === "connected"
+                                  ? xConnection.displayName
+                                  : xConnection?.status === "reconnect_needed"
+                                    ? "Needs reconnecting"
+                                    : xHandle
+                                      ? `${xHandle} · not connected yet`
+                                      : "Not connected yet"}
+                            </span>
                           </div>
-                          <button
-                            type="button"
-                            className={styles.connectionActionPrimary}
-                            disabled
-                            title="Connecting X isn't switched on yet. Until it is, use “Post to X” below — it opens X's own composer with your text filled in, so you tap send yourself."
-                          >
-                            Connect X
-                          </button>
+                          {xConnection?.status === "connected" ? (
+                            <button
+                              type="button"
+                              className={styles.connectionAction}
+                              onClick={disconnectX}
+                              disabled={xConnectBusy}
+                            >
+                              {xConnectBusy ? "Disconnecting…" : "Disconnect"}
+                            </button>
+                          ) : xConfigured ? (
+                            <button
+                              type="button"
+                              className={styles.connectionActionPrimary}
+                              onClick={connectX}
+                              disabled={xConnectBusy || !walletAddress}
+                              title={walletAddress ? "Sign once in your wallet, then approve Hoodlums on X." : "Connect your wallet first."}
+                            >
+                              {xConnectBusy ? "Opening X…" : xConnection?.status === "reconnect_needed" ? "Reconnect" : "Connect X"}
+                            </button>
+                          ) : (
+                            <span className={xConfigured === false ? styles.connectionStateError : styles.connectionState}>
+                              {xConfigured === null ? "Checking…" : "Not configured"}
+                            </span>
+                          )}
                         </div>
+                        {xConnection?.status === "reconnect_needed" && xConnection.reconnectReason ? (
+                          <p className={styles.connectionHelper}>{xConnection.reconnectReason}</p>
+                        ) : xConnection?.status === "connected" ? (
+                          <p className={styles.connectionHelper}>{X_BIO_LINK_NOTE}</p>
+                        ) : xConfigured === false ? (
+                          <p className={styles.connectionHelper}>Until X is switched on, “Post to X” below opens X&apos;s own composer with your text filled in, so you tap send yourself.</p>
+                        ) : null}
+                        <InlineStatus status={xStatus} />
                       </article>
                       <article className={styles.connectionCard}>
                         <div className={styles.connectionCardTop}>

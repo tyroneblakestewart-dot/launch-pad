@@ -2760,3 +2760,48 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   changed. Validated on the final commit: `npm run test:app` — 326 test files
   / 3829 tests passing; `npm run lint` — 0 errors (10 pre-existing warnings);
   `npm run build` — succeeds.
+
+- Connect X is live in Social Studio (owner request, 6 Sep 2026: "x social").
+  The Setup card's permanently disabled button now runs the real 3-legged
+  OAuth flow issue #335 built server-side: `connectX()` in
+  `components/social-hub.tsx` signs the `social:x-connect` challenge through
+  the shared, wallet-mismatch-guarded `signSocialStudioChallenge` helper (no
+  new direct `describeWalletMismatch` call site — the #388/#407 pins still
+  count three), POSTs it to `/api/social/x/connect/start`, and sends the
+  browser to the returned `authorizeUrl` in the same tab; X returns to
+  `/api/social/x/connect/callback`, which redirects to
+  `/social?xConnect=success|error&reason=…`, and the hub reads that once on
+  mount (`describeXConnectReturn` → one plain sentence per reason: denied,
+  expired, paused, not matched), then clears it from the address bar with
+  `history.replaceState`. `disconnectX()` signs `social:x-disconnect` and
+  drops the connection from `connections` in the same render, exactly like
+  Telegram. `xConnection` is derived from `connections` (single source of
+  truth, issue #384). A new read-only `GET /api/social/x/status`
+  (`{ configured }` from `isXSocialConnectConfigured`, mirroring
+  `telegram/status`; never the keys) drives the card's states: not
+  configured (state chip plus the honest "Post to X opens X's own composer"
+  note), ready (Connect X, disabled only while busy or without a wallet),
+  connected (`@handle` + Disconnect + the bio-link note that mirrors
+  `X_BIO_LINK_HINT`: posts never carry links, the bio does — issue #342),
+  and reconnect_needed (Reconnect + the stored reason). The two purposes were
+  added to the hub's `SOCIAL_STUDIO_ACTION_PURPOSES` map. **Rule 10:** the
+  route is a read behind the existing `social-posting` isolation switch and
+  is in the backend inventory; the `social-posting` health pipeline's
+  `destinations` stage already reports the X consumer keys, and the
+  `social-x-connected`/`-disconnected` Activity kinds already exist from
+  #335. **Tests changed, not only added (rule 8, stated plainly):**
+  `tests/social-studio-design-pass.test.ts` pinned the disabled Connect X
+  button, its "isn't switched on yet" title and the "it opens X's own
+  composer" note — rewritten to the live action, its busy/no-wallet
+  `disabled` expression and the unconfigured-only note; the backend
+  inventory gained the route. New `tests/social-x-status-route.test.ts`
+  (mirrors the Telegram status route test; configured only when both keys
+  are set). **Deploy note for the owner:** set `X_SOCIAL_CONSUMER_KEY` and
+  `X_SOCIAL_CONSUMER_SECRET` (server-only) in Vercel from an X developer app
+  whose callback URL is `${HOODLUMS_APP_ORIGIN}/api/social/x/connect/callback`;
+  until then the card honestly reads "Not configured". Validated on the
+  final commit: `npm run test:app` — 327 test files / 3832 tests passing;
+  `npm run lint` — 0 errors (10 pre-existing warnings); `npm run build` —
+  succeeds, `/api/social/x/status` in the route output. Checked in headless
+  Chromium only by source and unit tests at commit time — the mocked-state
+  screenshot pass was still running; not on a physical iPhone.
