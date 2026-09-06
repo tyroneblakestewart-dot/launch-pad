@@ -28,6 +28,10 @@ import {
   remainingAiImagesToday,
   selectPostImageCandidates,
 } from "@/lib/social-post-images";
+import {
+  SOCIAL_APPROVAL_SESSION_PAYLOAD,
+  SOCIAL_APPROVAL_SESSION_PURPOSE,
+} from "@/lib/social-approval-session-client";
 import { MASCOT_REFERENCE_TIPS, assessMascotReference, type MascotReferenceAssessment } from "@/lib/mascot-reference-guidance";
 import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
 import { getProjectBlob } from "@/lib/token-project-db";
@@ -64,6 +68,8 @@ import {
   isPendingSendStatus,
   isUneditedTemplateText,
   replenishShortfall,
+  approvalDestinations,
+  ensureFutureScheduledAt,
 } from "@/lib/social-studio-queue";
 import type {
   MascotVisualDNA,
@@ -208,6 +214,7 @@ const SOCIAL_STUDIO_ACTION_PURPOSES = {
   buyBotEnable: "social:buy-bot-enable",
   buyBotUpdate: "social:buy-bot-update",
   buyBotDisable: "social:buy-bot-disable",
+  approvalSession: SOCIAL_APPROVAL_SESSION_PURPOSE,
 } as const;
 
 function platformLabel(platform: SocialPlatform): string {
@@ -561,6 +568,8 @@ export function SocialHub() {
   const [postImageBusyId, setPostImageBusyId] = useState<string | null>(null);
   const [postImageErrors, setPostImageErrors] = useState<Record<string, string>>({});
   const postImageSkippedIdsRef = useRef<Set<string>>(new Set());
+  /** Resolvers for "Skip the image" while an approval is waiting on the image — resolving one lets the approval continue at once. */
+  const postImageSkipResolversRef = useRef<Map<string, () => void>>(new Map());
   // Best-results read-out for the last uploaded reference — advice only, the upload proceeds regardless.
   const [mascotReferenceAssessment, setMascotReferenceAssessment] = useState<MascotReferenceAssessment | null>(null);
   const [mascotSceneStatus, setMascotSceneStatus] = useState<PanelStatus>(null);
@@ -615,19 +624,20 @@ export function SocialHub() {
   const [replenishStatus, setReplenishStatus] = useState<PanelStatus>(null);
   const [approvingItemId, setApprovingItemId] = useState<string | null>(null);
   const [cancelingPostId, setCancelingPostId] = useState<string | null>(null);
-  const [itemDestinations, setItemDestinations] = useState<Record<string, SocialPlatform[]>>({});
   const [itemScheduledAt, setItemScheduledAt] = useState<Record<string, string>>({});
   // Compact draft cards (issue #358): collapsed by default, showing only the
   // X preview — this tracks which Ready-to-review cards the user has
   // expanded into their full editable X/Telegram fields. Ephemeral UI state,
   // never persisted.
   const [expandedQueueItemIds, setExpandedQueueItemIds] = useState<Record<string, boolean>>({});
-  // Approval confirmation (issue #380): Approve is a two-tap action — the
-  // first tap force-expands the card so both destination bodies are visible,
-  // the second (now labeled "Confirm & approve") actually signs and sends.
-  // Any edit to the item's text/destinations clears this so a stale
-  // confirmation can never survive a change to what will be sent.
-  const [pendingApprovalItemId, setPendingApprovalItemId] = useState<string | null>(null);
+  // One-tap approvals (owner direction, 6 Sep 2026, replacing issue #380's
+  // two-tap confirm for Approve — quick-send keeps its confirm since it
+  // publishes immediately). The first approval of the day asks for ONE wallet
+  // signature that unlocks approvals for 24h (POST /api/social/approval-session,
+  // httpOnly cookie); after that, Approve is a single tap with no signature.
+  // null = locked / unknown; the server is the source of truth for expiry.
+  const [approvalSession, setApprovalSession] = useState<{ expiresAt: string } | null>(null);
+  const [approvalSessionBusy, setApprovalSessionBusy] = useState(false);
   // Unedited canned template copy (issue #380) requires an extra explicit
   // acknowledgement checkbox before it can be approved — never silently
   // blocked, just never sent by accident.
@@ -899,6 +909,12 @@ export function SocialHub() {
   }, [walletAddress, selectedProjectId]);
 
   useEffect(() => {
+    void loadApprovalSession();
+    // loadApprovalSession closes over the latest walletAddress on every render already.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAddress]);
+
+  useEffect(() => {
     let cancelled = false;
     async function loadRecord() {
       setLoadedRecordProjectId(null);
@@ -915,7 +931,6 @@ export function SocialHub() {
         setDirectionBrief("");
         setPostingCadence(DEFAULT_POSTING_CADENCE);
         setScheduledPosts([]);
-        setItemDestinations({});
         setItemScheduledAt({});
         setExpandedQueueItemIds({});
         return;
@@ -940,7 +955,6 @@ export function SocialHub() {
       setWordToAvoidDraft("");
       setWordsToAvoidStatus(null);
       setScheduledPosts([]);
-      setItemDestinations({});
       setItemScheduledAt({});
       setExpandedQueueItemIds({});
       // Only now may the Queue tab replenish: the saved queue is in state, so
@@ -1946,126 +1960,152 @@ export function SocialHub() {
     }
   }
 
-  function toggleItemDestination(itemId: string, platform: SocialPlatform) {
-    setItemDestinations((current) => {
-      const selected = current[itemId] ?? [];
-      const next = selected.includes(platform) ? selected.filter((entry) => entry !== platform) : [...selected, platform];
-      return { ...current, [itemId]: next };
-    });
-    clearApprovalConfirmation(itemId);
-  }
-
   function setItemScheduledAtValue(itemId: string, value: string) {
     setItemScheduledAt((current) => ({ ...current, [itemId]: value }));
     setScheduleManuallySet((current) => ({ ...current, [itemId]: true }));
   }
 
   /**
-   * Approve is a two-tap action (issue #380): the first tap never signs
-   * anything. It force-expands the card (so both the X and Telegram bodies
-   * that are about to be sent are actually visible — previously a collapsed
-   * card could approve Telegram text the user had never seen) and, unless
-   * the user already picked their own time, refreshes the default schedule
-   * from what's pending *right now* rather than trusting a value computed
-   * whenever this draft first appeared. Only the second tap — now labeled
-   * "Confirm & approve" — actually calls approveQueueItem.
+   * Approve is ONE tap (owner direction, 6 Sep 2026), from the collapsed row
+   * or the expanded card — both buttons call this. Issue #380's two-tap
+   * confirm step is gone for Approve: an approved post is scheduled, visible
+   * in Coming up and cancellable there, so a second tap protected nothing a
+   * cancel doesn't. Quick send (Post to X / Send to Telegram) publishes
+   * immediately and keeps its confirm.
    */
   function handleApproveClick(item: QueueItem) {
-    if (pendingApprovalItemId !== item.id) {
-      if (!scheduleManuallySet[item.id]) {
-        const awaitingIso = scheduledPosts.filter((post) => isPendingSendStatus(post.status)).map((post) => post.scheduledAt);
-        setItemScheduledAt((current) => ({
-          ...current,
-          [item.id]: toDateTimeLocalValue(computeDefaultScheduledAt(awaitingIso, new Date(), cadenceSpreadHoursMs(postingCadence))),
-        }));
-      }
-      setExpandedQueueItemIds((current) => ({ ...current, [item.id]: true }));
-      setPendingApprovalItemId(item.id);
-      maybeStartPostImage(item);
-      return;
-    }
     void approveQueueItem(item);
   }
 
-  /**
-   * AI images on approved posts (owner decision, 6 Sep 2026). The image is
-   * made when the user approves — on the first Approve tap, so it is on
-   * screen in the confirm step before anything is signed — and only for a
-   * draft the AI picked (postImageCandidateIds), never one that already has
-   * artwork or that the user said "no image" to. The draft keeps the image
-   * even if the user backs out of confirming, so nothing is wasted by a
-   * second look; skipping or removing it is the one way to lose it, and the
-   * card says so before the tap.
-   */
-  function maybeStartPostImage(item: QueueItem) {
-    if (!postImageCandidateIds.has(item.id) || item.artwork || item.imageDeclined) return;
-    if (postImageBusyId === item.id) return;
-    void generatePostImage(item);
+  /** Today's approval session for this wallet, from the server — never assumed. */
+  async function loadApprovalSession() {
+    if (!walletAddress) {
+      setApprovalSession(null);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/social/approval-session?walletAddress=${encodeURIComponent(walletAddress)}`, { cache: "no-store" });
+      const payload = await readJsonResponse<{ active: boolean; expiresAt: string | null }>(response, "Could not read the approval session.");
+      setApprovalSession(payload.active && payload.expiresAt ? { expiresAt: payload.expiresAt } : null);
+    } catch {
+      setApprovalSession(null);
+    }
   }
 
-  async function generatePostImage(item: QueueItem) {
+  /**
+   * One wallet signature a day (owner direction, 6 Sep 2026: "it shouldn't
+   * need a signature every approval"). Returns how this approval will be
+   * authorised: "session" when the day's approval session is live (or was
+   * just unlocked with one signature), or "signature" — the old per-post
+   * signing path — when the server has no approval-session table yet, so
+   * approvals never break before migration 034 is applied. A refused
+   * signature throws and the approval stops.
+   */
+  async function ensureApprovalSession(): Promise<"session" | "signature"> {
+    if (approvalSession && new Date(approvalSession.expiresAt).getTime() > Date.now()) return "session";
+    setApprovalSessionBusy(true);
+    try {
+      const auth = await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.approvalSession, SOCIAL_APPROVAL_SESSION_PAYLOAD);
+      const response = await fetch("/api/social/approval-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId: auth.challengeId, nonce: auth.nonce, signature: auth.signature }),
+      });
+      if (response.status === 503) return "signature";
+      const payload = await readJsonResponse<{ active: boolean; expiresAt: string | null }>(response, "Approvals could not be unlocked.");
+      if (!payload.active || !payload.expiresAt) return "signature";
+      setApprovalSession({ expiresAt: payload.expiresAt });
+      return "session";
+    } finally {
+      setApprovalSessionBusy(false);
+    }
+  }
+
+  /** "Lock" — approvals ask for a signature again from the next tap. */
+  async function lockApprovals() {
+    setApprovalSessionBusy(true);
+    try {
+      await fetch("/api/social/approval-session", { method: "DELETE" });
+    } catch {
+      // The cookie is cleared server-side on the next request either way.
+    } finally {
+      setApprovalSession(null);
+      setApprovalSessionBusy(false);
+    }
+  }
+
+  /**
+   * AI image for a picked draft, made inside the approval (owner decision,
+   * 6 Sep 2026: images are made on approval). Resolves to the image, or null
+   * when it failed, the allowance was used up, or the user tapped "Skip the
+   * image" — the approval then goes ahead as text. A skipped in-flight image
+   * is discarded when it lands; the allowance was spent, per the no-remake
+   * rule the card states before the tap.
+   */
+  async function generatePostImageForApproval(item: QueueItem): Promise<string | null> {
     const project = draftProjectPayload();
-    if (!project || !selectedProject) return;
+    if (!project || !selectedProject) return null;
     postImageSkippedIdsRef.current.delete(item.id);
     setPostImageBusyId(item.id);
     setPostImageErrors((current) => (item.id in current ? { ...current, [item.id]: "" } : current));
+    const skipped = new Promise<null>((resolve) => {
+      postImageSkipResolversRef.current.set(item.id, () => resolve(null));
+    });
+    const generated = (async (): Promise<string | null> => {
+      try {
+        const response = await fetch("/api/social/post-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            walletAddress,
+            projectId: selectedProject.id,
+            displayName: selectedProject.name,
+            project: { name: project.name, ticker: project.ticker, description: project.description },
+            postText: item.xText.trim() || item.telegramText.trim(),
+            mascotVisualDNA,
+          }),
+        });
+        const payload = (await response.json()) as { imageDataUrl?: string; usage?: MascotImageUsage; error?: string };
+        if (payload.usage) setMascotImageUsage(payload.usage);
+        if (!response.ok || !payload.imageDataUrl) {
+          throw new Error(payload.error || "The image could not be made for this post.");
+        }
+        // Skipped while it was being made: the slot is spent, the result is not used.
+        if (postImageSkippedIdsRef.current.has(item.id)) {
+          postImageSkippedIdsRef.current.delete(item.id);
+          return null;
+        }
+        return payload.imageDataUrl;
+      } catch (error) {
+        setPostImageErrors((current) => ({
+          ...current,
+          [item.id]: error instanceof Error ? error.message : "The image could not be made for this post.",
+        }));
+        return null;
+      }
+    })();
     try {
-      const response = await fetch("/api/social/post-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          walletAddress,
-          projectId: selectedProject.id,
-          displayName: selectedProject.name,
-          project: { name: project.name, ticker: project.ticker, description: project.description },
-          postText: item.xText.trim() || item.telegramText.trim(),
-          mascotVisualDNA,
-        }),
-      });
-      const payload = (await response.json()) as { imageDataUrl?: string; usage?: MascotImageUsage; error?: string };
-      if (payload.usage) setMascotImageUsage(payload.usage);
-      if (!response.ok || !payload.imageDataUrl) {
-        throw new Error(payload.error || "The image could not be made for this post.");
-      }
-      // Skipped while it was being made: the slot is spent, the result is not used.
-      if (postImageSkippedIdsRef.current.has(item.id)) {
-        postImageSkippedIdsRef.current.delete(item.id);
-        return;
-      }
-      attachPostImage(item.id, payload.imageDataUrl);
-    } catch (error) {
-      setPostImageErrors((current) => ({
-        ...current,
-        [item.id]: error instanceof Error ? error.message : "The image could not be made for this post.",
-      }));
+      return await Promise.race([generated, skipped]);
     } finally {
+      postImageSkipResolversRef.current.delete(item.id);
       setPostImageBusyId((current) => (current === item.id ? null : current));
       void loadMascotImageUsage();
     }
   }
 
-  /** Puts the AI image on the draft. Deliberately not updateQueueItem: the confirm step stays armed — the user is looking at exactly what will be sent. */
-  function attachPostImage(id: string, imageDataUrl: string) {
+  /** "No image" on a picked draft before approving: nothing was made, so the pick simply moves to the next best draft. */
+  function declinePostImage(id: string) {
     setQueue((current) => {
-      const next = current.map((item) => (item.id === id ? { ...item, artwork: imageDataUrl, aiImage: true } : item));
+      const next = current.map((item) => (item.id === id ? { ...item, imageDeclined: true } : item));
       persistSocialStudio({ queue: next });
       return next;
     });
   }
 
-  /** "Remove image": the post goes out as text; the image is gone for today (the allowance was spent when it was made). */
-  function removePostImage(id: string) {
-    setQueue((current) => {
-      const next = current.map((item) => (item.id === id ? { ...item, artwork: null, aiImage: false, imageDeclined: true } : item));
-      persistSocialStudio({ queue: next });
-      return next;
-    });
-  }
-
-  /** "Skip the image" while it is still being made: confirm without waiting; the in-flight result is discarded when it lands. */
+  /** "Skip the image" while it is being made: the approval continues at once as text; the in-flight result is discarded (the allowance was spent). */
   function skipPostImage(id: string) {
     postImageSkippedIdsRef.current.add(id);
-    setPostImageBusyId((current) => (current === id ? null : current));
+    postImageSkipResolversRef.current.get(id)?.();
     setQueue((current) => {
       const next = current.map((item) => (item.id === id ? { ...item, imageDeclined: true } : item));
       persistSocialStudio({ queue: next });
@@ -2075,12 +2115,13 @@ export function SocialHub() {
 
   /**
    * Approves a Ready-to-review draft (issue #352 -> issue #335's
-   * approval-is-creation POST /api/social/posts). The backend stores one
-   * shared `body` per post, but xText and telegramText usually differ, so
-   * each selected destination becomes its own wallet-signed approval call
-   * with that platform's own text — one X-only post and/or one
-   * Telegram-only post, both carrying the same schedule time and artwork.
-   * Only reachable via handleApproveClick's second tap.
+   * approval-is-creation POST /api/social/posts), one tap. Destinations are
+   * derived, never toggled (owner direction, 6 Sep 2026): every connected
+   * platform whose field carries text. The backend stores one shared `body`
+   * per post but xText and telegramText usually differ, so each destination
+   * becomes its own approval call — under the day's approval session when
+   * one is live, else wallet-signed per post. A picked draft gets its AI
+   * image made first; the schedule is computed NOW and never in the past.
    */
   async function approveQueueItem(item: QueueItem) {
     if (!selectedProject) {
@@ -2088,13 +2129,24 @@ export function SocialHub() {
       promptForTokenDetails("Add your token details before approving a post.");
       return;
     }
-    const destinations = (itemDestinations[item.id] ?? []).filter((platform) => myConnectedPlatforms.includes(platform));
+    const destinations = approvalDestinations(item, myConnectedPlatforms);
     if (destinations.length === 0) {
-      setPostsStatus({ tone: "error", message: "Select at least one connected destination before approving." });
+      setPostsStatus({
+        tone: "error",
+        message: myConnectedPlatforms.length === 0 ? "Connect X or Telegram in Setup before approving a post." : "Give this post text for X or Telegram before approving it.",
+      });
       return;
     }
-    const scheduledAtInput = itemScheduledAt[item.id];
-    const scheduledAtIso = scheduledAtInput ? new Date(scheduledAtInput).toISOString() : new Date().toISOString();
+    if (destinations.includes("x") && item.xText.trim().length > 280) {
+      setPostsStatus({ tone: "error", message: `X posts must be 280 characters or fewer. Remove ${item.xText.trim().length - 280} characters.` });
+      return;
+    }
+    const sendingTemplate = destinations.some((platform) => isUneditedTemplateText(platform === "x" ? item.xText : item.telegramText, templateOutputs));
+    if (sendingTemplate && !templateAcknowledgedIds[item.id]) {
+      setExpandedQueueItemIds((current) => ({ ...current, [item.id]: true }));
+      setPostsStatus({ tone: "error", message: "This is unedited template text — tick the box on the draft to send it as-is, or edit it first." });
+      return;
+    }
 
     setApprovingItemId(item.id);
     setPostsStatus({ tone: "progress", message: "Approving…" });
@@ -2102,37 +2154,63 @@ export function SocialHub() {
     let replacedAny = false;
     let failureMessage = "";
     try {
+      let artwork = item.artwork;
+      if (postImageCandidateIds.has(item.id) && !artwork && !item.imageDeclined) {
+        setPostsStatus({ tone: "progress", message: "Making the AI image for this post — about 30 seconds…" });
+        artwork = await generatePostImageForApproval(item);
+        setPostsStatus({ tone: "progress", message: "Approving…" });
+      }
+
+      // The time is decided now, at approval, never when the card first
+      // appeared (owner report, 6 Sep 2026: "the time has passed"): the
+      // user's own pick if they made one, else the cadence spread from what
+      // is pending right now — and never earlier than two minutes from now.
+      const now = new Date();
+      const awaitingIso = scheduledPosts.filter((post) => isPendingSendStatus(post.status)).map((post) => post.scheduledAt);
+      const picked =
+        scheduleManuallySet[item.id] && itemScheduledAt[item.id]
+          ? new Date(itemScheduledAt[item.id])
+          : computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));
+      const scheduledAtIso = ensureFutureScheduledAt(picked, now).toISOString();
+
+      let authMode: "session" | "signature";
+      try {
+        authMode = await ensureApprovalSession();
+      } catch (error) {
+        failureMessage = error instanceof Error ? error.message : "Approvals could not be unlocked.";
+        return;
+      }
+
       for (const platform of destinations) {
         const body = (platform === "x" ? item.xText : item.telegramText).trim();
-        if (!body) {
-          failureMessage = `Add ${platformLabel(platform)} text before approving it.`;
-          break;
-        }
-        if (platform === "x" && body.length > 280) {
-          failureMessage = `X posts must be 280 characters or fewer. Remove ${body.length - 280} characters.`;
-          break;
-        }
         try {
-          const auth = await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.postCreate, {
-            body,
-            destinations: platform,
-            scheduledAt: scheduledAtIso,
-          });
+          const proof =
+            authMode === "signature"
+              ? await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.postCreate, {
+                  body,
+                  destinations: platform,
+                  scheduledAt: scheduledAtIso,
+                })
+              : null;
           const response = await fetch("/api/social/posts", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               body,
+              walletAddress,
               projectId: selectedProject.id,
               displayName: selectedProject.name,
-              artworkDataUrl: item.artwork || undefined,
+              artworkDataUrl: artwork || undefined,
               destinations: [platform],
               scheduledAt: scheduledAtIso,
-              challengeId: auth.challengeId,
-              nonce: auth.nonce,
-              signature: auth.signature,
+              ...(proof ? { challengeId: proof.challengeId, nonce: proof.nonce, signature: proof.signature } : {}),
             }),
           });
+          if (response.status === 401 && authMode === "session") {
+            // The day's session lapsed between the check and the call.
+            setApprovalSession(null);
+            throw new Error("Approvals locked again — tap Approve once more to unlock with one signature.");
+          }
           const payload = await readJsonResponse<{ post?: unknown; replacedPostId?: string | null }>(
             response,
             `${platformLabel(platform)} approval failed.`,
@@ -2248,23 +2326,12 @@ export function SocialHub() {
     clearApprovalConfirmation(id);
   }
 
-  // Fills in a default destination selection and schedule time for any
-  // Ready-to-review draft that doesn't have one yet (new drafts from
-  // Setup/Calendar/replenish, or connections that just finished loading) —
-  // never overwrites a selection the user already made.
+  // Fills in a shown default schedule time for any Ready-to-review draft that
+  // doesn't have one yet (new drafts from Setup/Calendar/replenish) — never
+  // overwrites a time the user picked. Display only: approveQueueItem
+  // recomputes the default at approval time unless the user picked their own.
   useEffect(() => {
     const awaitingIso = scheduledPosts.filter((post) => isPendingSendStatus(post.status)).map((post) => post.scheduledAt);
-    setItemDestinations((current) => {
-      let changed = false;
-      const next = { ...current };
-      for (const item of queue) {
-        if (next[item.id] === undefined) {
-          next[item.id] = [...myConnectedPlatforms];
-          changed = true;
-        }
-      }
-      return changed ? next : current;
-    });
     setItemScheduledAt((current) => {
       let changed = false;
       const next = { ...current };
@@ -2278,7 +2345,7 @@ export function SocialHub() {
       }
       return changed ? next : current;
     });
-  }, [queue, myConnectedPlatforms, scheduledPosts, postingCadence]);
+  }, [queue, scheduledPosts, postingCadence]);
 
   // Queue tab data is fetched client-side only (never in the background) on
   // tab open, on window/tab focus while the tab is active, and after
@@ -2468,7 +2535,6 @@ export function SocialHub() {
 
   /** Clears a stale approval or quick-send confirmation (issue #380, extended #382) — any edit to what will be sent must be re-reviewed before it can be approved or quick-sent. */
   function clearApprovalConfirmation(id: string) {
-    setPendingApprovalItemId((current) => (current === id ? null : current));
     setTemplateAcknowledgedIds((current) => (id in current ? { ...current, [id]: false } : current));
     setPendingQuickSendId((current) => (current?.itemId === id ? null : current));
   }
@@ -2486,12 +2552,6 @@ export function SocialHub() {
     setQueue((current) => {
       const next = current.filter((item) => item.id !== id);
       persistSocialStudio({ queue: next });
-      return next;
-    });
-    setItemDestinations((current) => {
-      if (!(id in current)) return current;
-      const next = { ...current };
-      delete next[id];
       return next;
     });
     setItemScheduledAt((current) => {
@@ -3851,7 +3911,19 @@ export function SocialHub() {
                       <h2>What&apos;s going out</h2>
                       <p>Nothing goes out until you say so.</p>
                     </div>
-                    <span className={styles.queueModeNote}>Approve first · every post</span>
+                    <div className={styles.queueHeaderAside}>
+                      <span className={styles.queueModeNote}>Approve first · every post</span>
+                      {approvalSession ? (
+                        <span className={styles.approvalUnlock}>
+                          Approvals unlocked until {formatScheduledAt(approvalSession.expiresAt)} · one tap, no signature
+                          <button type="button" onClick={() => void lockApprovals()} disabled={approvalSessionBusy}>
+                            Lock
+                          </button>
+                        </span>
+                      ) : (
+                        <span className={styles.approvalUnlock}>First approval today asks for one wallet signature · then one tap for 24h</span>
+                      )}
+                    </div>
                   </div>
                   <InlineStatus status={replenishStatus} />
 
@@ -3874,23 +3946,32 @@ export function SocialHub() {
                     {queue.length > 0 ? (
                       <div className={styles.queueList}>
                         {queue.map((item) => {
-                          const selectedDestinations = itemDestinations[item.id] ?? [];
+                          const destinations = approvalDestinations(item, myConnectedPlatforms);
                           const isExpanded = Boolean(expandedQueueItemIds[item.id]);
-                          const isPendingApproval = pendingApprovalItemId === item.id;
                           const isPendingQuickSendX = pendingQuickSendId?.itemId === item.id && pendingQuickSendId.platform === "x";
                           const isPendingQuickSendTelegram =
                             pendingQuickSendId?.itemId === item.id && pendingQuickSendId.platform === "telegram";
                           const xIsTemplate = isUneditedTemplateText(item.xText, templateOutputs);
                           const telegramIsTemplate = isUneditedTemplateText(item.telegramText, templateOutputs);
                           const isTemplateItem = xIsTemplate || telegramIsTemplate;
-                          const selectedTextIsTemplate = selectedDestinations.some(
-                            (platform) => (platform === "x" ? xIsTemplate : telegramIsTemplate),
-                          );
+                          const sendingTemplate = destinations.some((platform) => (platform === "x" ? xIsTemplate : telegramIsTemplate));
                           const templateAcknowledged = Boolean(templateAcknowledgedIds[item.id]);
-                          const requiresTemplateAck = isPendingApproval && selectedTextIsTemplate && !templateAcknowledged;
+                          const requiresTemplateAck = sendingTemplate && !templateAcknowledged;
                           const telegramSameAsX = item.telegramText.trim() === item.xText.trim();
                           const destinationTag =
-                            selectedDestinations.length === 2 ? "Both" : selectedDestinations.length === 1 ? platformLabel(selectedDestinations[0]) : "Pick where";
+                            destinations.length === 2 ? "Both" : destinations.length === 1 ? platformLabel(destinations[0]) : "Nowhere yet";
+                          const isPickedForImage = postImageCandidateIds.has(item.id);
+                          const isApproving = approvingItemId === item.id;
+                          const approveDisabled = isApproving || destinations.length === 0 || requiresTemplateAck;
+                          const approveTitle =
+                            destinations.length === 0
+                              ? myConnectedPlatforms.length === 0
+                                ? "Connect X or Telegram in Setup first."
+                                : "Give this post text for X or Telegram first."
+                              : requiresTemplateAck
+                                ? "Open the draft and tick 'send this template as-is' first."
+                                : undefined;
+                          const approveLabel = isApproving ? (postImageBusyId === item.id ? "Making the image…" : "Approving…") : "Approve";
                           return (
                             <article className={isExpanded ? styles.queueItemExpanded : styles.queueItem} key={item.id}>
                               <div className={styles.queueRow}>
@@ -3909,18 +3990,23 @@ export function SocialHub() {
                                             ? "Auto-generated"
                                             : "Manual"}
                                       {isTemplateItem ? <span className={styles.templateBadge}>Template</span> : null}
-                                      {postImageCandidateIds.has(item.id) ? (
-                                        <span
-                                          className={styles.imageComingBadge}
-                                          title="The AI picked this post for an image. It is made when you approve, from today's AI-image allowance."
-                                        >
-                                          Image coming
-                                        </span>
+                                      {isPickedForImage ? (
+                                        <>
+                                          <span
+                                            className={styles.imageComingBadge}
+                                            title={`The AI picked this post for an image, made when you approve from today's AI-image allowance. ${POST_IMAGE_REMOVE_NOTE}`}
+                                          >
+                                            Image coming
+                                          </span>
+                                          <button type="button" className={styles.imageDeclineLink} onClick={() => declinePostImage(item.id)}>
+                                            No image
+                                          </button>
+                                        </>
                                       ) : item.aiImage && item.artwork ? (
                                         <span className={styles.imageComingBadge}>AI image</span>
                                       ) : null}
                                     </span>
-                                    <span className={selectedDestinations.length === 2 ? styles.destTagBoth : selectedDestinations.length === 1 ? styles.destTag : styles.destTagEmpty}>
+                                    <span className={destinations.length === 2 ? styles.destTagBoth : destinations.length === 1 ? styles.destTag : styles.destTagEmpty}>
                                       {destinationTag}
                                     </span>
                                   </div>
@@ -3939,15 +4025,20 @@ export function SocialHub() {
                                   ) : null}
                                 </div>
                                 <div className={styles.queueRowActions}>
+                                  {postImageBusyId === item.id ? (
+                                    <button type="button" className={styles.queueExpandToggle} onClick={() => skipPostImage(item.id)}>
+                                      Skip the image
+                                    </button>
+                                  ) : null}
                                   {!isExpanded ? (
                                     <button
                                       type="button"
                                       className={styles.queueActionApprove}
                                       onClick={() => handleApproveClick(item)}
-                                      disabled={approvingItemId === item.id || selectedDestinations.length === 0}
-                                      title={selectedDestinations.length === 0 ? "Open the draft and pick X, Telegram or both first." : undefined}
+                                      disabled={approveDisabled}
+                                      title={approveTitle}
                                     >
-                                      {approvingItemId === item.id ? "Approving…" : "Approve"}
+                                      {approveLabel}
                                     </button>
                                   ) : null}
                                   <button
@@ -3963,103 +4054,52 @@ export function SocialHub() {
                               </div>
                               {isExpanded ? (
                               <div className={styles.queueItemBody}>
-                                {isExpanded ? (
-                                  <>
-                                    <label className={styles.connectionField}>
-                                      <span>X ({item.xText.length}/280){xIsTemplate ? " · unedited template" : ""}</span>
-                                      <textarea
-                                        value={item.xText}
-                                        onChange={(event) => updateQueueItem(item.id, { xText: event.target.value })}
-                                        rows={3}
-                                      />
-                                    </label>
-                                    <label className={styles.connectionField}>
-                                      <span>Telegram{telegramIsTemplate ? " · unedited template" : ""}</span>
-                                      <textarea
-                                        value={item.telegramText}
-                                        onChange={(event) => updateQueueItem(item.id, { telegramText: event.target.value })}
-                                        rows={3}
-                                      />
-                                    </label>
-                                  </>
-                                ) : null}
-                                {myConnectedPlatforms.length > 0 ? (
-                                  <div className={styles.destinationToggles}>
-                                    {myConnectedPlatforms.map((platform) => {
-                                      const selected = selectedDestinations.includes(platform);
-                                      return (
-                                        <button
-                                          type="button"
-                                          key={platform}
-                                          aria-pressed={selected}
-                                          className={selected ? styles.destinationToggleActive : styles.destinationToggle}
-                                          onClick={() => toggleItemDestination(item.id, platform)}
-                                        >
-                                          {platform === "x" ? <XMark /> : <TelegramMark />} {platformLabel(platform)}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                ) : connectionsStatus === "error" ? (
-                                  // Distinguishes "we could not load your connections" from
-                                  // "you have none" (issue #384) — showing the wrong one made a
-                                  // connected Telegram look permanently disconnected after a
-                                  // single transient fetch failure.
-                                  <p className={styles.connectionHelper}>
-                                    Could not load your connections.{" "}
-                                    <button type="button" onClick={() => void loadConnections()}>
-                                      Retry
-                                    </button>
-                                  </p>
-                                ) : connectionsStatus === "loading" ? (
-                                  <p className={styles.connectionHelper}>Checking your connections…</p>
-                                ) : (
-                                  <p className={styles.connectionHelper}>Connect X or Telegram in Setup before approving a post.</p>
-                                )}
-                                <label className={styles.scheduleCompact}>
-                                  <span>Scheduled</span>
-                                  <input
-                                    type="datetime-local"
-                                    className={styles.scheduleCompactInput}
-                                    value={itemScheduledAt[item.id] ?? ""}
-                                    onChange={(event) => setItemScheduledAtValue(item.id, event.target.value)}
+                                <label className={styles.connectionField}>
+                                  <span>X ({item.xText.length}/280){xIsTemplate ? " · unedited template" : ""}</span>
+                                  <textarea
+                                    value={item.xText}
+                                    onChange={(event) => updateQueueItem(item.id, { xText: event.target.value })}
+                                    rows={3}
                                   />
                                 </label>
-                                {isPendingApproval ? (
-                                  <div className={styles.confirmPanel}>
-                                    <p>
-                                      Sending: {selectedDestinations.length === 0 ? "nothing selected" : selectedDestinations.map((platform) => platformLabel(platform)).join(" + ")}. Review the text above — this is exactly what each destination will receive.
+                                <label className={styles.connectionField}>
+                                  <span>Telegram{telegramIsTemplate ? " · unedited template" : ""}</span>
+                                  <textarea
+                                    value={item.telegramText}
+                                    onChange={(event) => updateQueueItem(item.id, { telegramText: event.target.value })}
+                                    rows={3}
+                                  />
+                                </label>
+                                {myConnectedPlatforms.length === 0 ? (
+                                  connectionsStatus === "error" ? (
+                                    // Distinguishes "we could not load your connections" from
+                                    // "you have none" (issue #384) — showing the wrong one made a
+                                    // connected Telegram look permanently disconnected after a
+                                    // single transient fetch failure.
+                                    <p className={styles.connectionHelper}>
+                                      Could not load your connections.{" "}
+                                      <button type="button" onClick={() => void loadConnections()}>
+                                        Retry
+                                      </button>
                                     </p>
-                                    {postImageBusyId === item.id ? (
-                                      <div className={styles.postImageRow}>
-                                        <span>Making an AI image for this post — about 30 seconds. {POST_IMAGE_REMOVE_NOTE}</span>
-                                        <button type="button" onClick={() => skipPostImage(item.id)}>
-                                          Skip the image
-                                        </button>
-                                      </div>
-                                    ) : item.aiImage && item.artwork ? (
-                                      <div className={styles.postImageRow}>
-                                        <span>
-                                          AI image added — it goes out with the Telegram post and downloads for X. {POST_IMAGE_REMOVE_NOTE}
-                                        </span>
-                                        <button type="button" onClick={() => removePostImage(item.id)}>
-                                          Remove image
-                                        </button>
-                                      </div>
-                                    ) : postImageErrors[item.id] ? (
-                                      <p className={styles.postImageError}>{postImageErrors[item.id]} The post can still be approved without one.</p>
-                                    ) : null}
-                                    {selectedTextIsTemplate ? (
-                                      <label className={styles.confirmTemplateCheckbox}>
-                                        <input
-                                          type="checkbox"
-                                          checked={templateAcknowledged}
-                                          onChange={(event) => setTemplateAcknowledgedIds((current) => ({ ...current, [item.id]: event.target.checked }))}
-                                        />
-                                        This is unedited template text — I want to send it as-is.
-                                      </label>
-                                    ) : null}
-                                  </div>
+                                  ) : connectionsStatus === "loading" ? (
+                                    <p className={styles.connectionHelper}>Checking your connections…</p>
+                                  ) : (
+                                    <p className={styles.connectionHelper}>Connect X or Telegram in Setup before approving a post.</p>
+                                  )
+                                ) : null}
+                                {sendingTemplate ? (
+                                  <label className={styles.confirmTemplateCheckbox}>
+                                    <input
+                                      type="checkbox"
+                                      checked={templateAcknowledged}
+                                      onChange={(event) => setTemplateAcknowledgedIds((current) => ({ ...current, [item.id]: event.target.checked }))}
+                                    />
+                                    This is unedited template text — I want to send it as-is.
+                                  </label>
+                                ) : null}
+                                {postImageErrors[item.id] ? (
+                                  <p className={styles.postImageError}>{postImageErrors[item.id]} The post can still be approved without one.</p>
                                 ) : null}
                                 {isPendingQuickSendX || isPendingQuickSendTelegram ? (
                                   <div className={styles.confirmPanel}>
@@ -4074,9 +4114,10 @@ export function SocialHub() {
                                     type="button"
                                     className={styles.queueActionApprove}
                                     onClick={() => handleApproveClick(item)}
-                                    disabled={approvingItemId === item.id || selectedDestinations.length === 0 || requiresTemplateAck || postImageBusyId === item.id}
+                                    disabled={approveDisabled}
+                                    title={approveTitle}
                                   >
-                                    {approvingItemId === item.id ? "Approving…" : postImageBusyId === item.id ? "Making the image…" : isPendingApproval ? "Confirm & approve" : "Approve"}
+                                    {approveLabel}
                                   </button>
                                   <button
                                     type="button"
@@ -4096,6 +4137,15 @@ export function SocialHub() {
                                   <button type="button" className={styles.queueActionDelete} onClick={() => removeQueueItem(item.id)}>
                                     Delete
                                   </button>
+                                  <label className={styles.scheduleCompact}>
+                                    <span>Scheduled</span>
+                                    <input
+                                      type="datetime-local"
+                                      className={styles.scheduleCompactInput}
+                                      value={itemScheduledAt[item.id] ?? ""}
+                                      onChange={(event) => setItemScheduledAtValue(item.id, event.target.value)}
+                                    />
+                                  </label>
                                 </div>
                               </div>
                               ) : null}

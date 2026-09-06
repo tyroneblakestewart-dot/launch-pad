@@ -17,6 +17,7 @@ import {
   SocialScheduledPostsStoreUnavailableError,
   getSocialScheduledPostsStore,
 } from "@/lib/server/social-scheduled-posts-store";
+import { readSocialApprovalSession } from "@/lib/server/social-approval-session";
 import { authoriseSocialStudioAction, type AuthoriseSocialStudioActionResult } from "@/lib/server/social-studio-action-auth";
 import { authoriseSocialStudioRequest } from "@/lib/server/social-studio-entitlement";
 import { parseArtwork } from "@/lib/server/telegram";
@@ -120,18 +121,42 @@ export async function POST(request: Request) {
   if (Number.isNaN(scheduledAt.getTime())) {
     return NextResponse.json({ error: "The scheduled time is not a valid date." }, { status: 400, headers });
   }
-  if (!challengeId || !nonce || !signature) {
-    return NextResponse.json({ error: "A valid approval challenge and signature are required." }, { status: 400, headers });
+  // Two ways in (owner direction, 6 Sep 2026): the per-post wallet signature
+  // this route has always taken, or a live approval session — one signature
+  // that unlocked approvals for the day (app/api/social/approval-session). A
+  // session is accepted only for the wallet it was signed by, so the caller
+  // names its wallet and the two must match; a stale cookie for another
+  // wallet is refused, never silently used.
+  let authorisation: AuthoriseSocialStudioActionResult;
+  if (challengeId || nonce || signature) {
+    if (!challengeId || !nonce || !signature) {
+      return NextResponse.json({ error: "A valid approval challenge and signature are required." }, { status: 400, headers });
+    }
+    authorisation = await authoriseSocialStudioAction({
+      purpose: "social:post-create",
+      payload: { body: postBody, destinations: [...typedDestinations].sort().join(","), scheduledAt: scheduledAt.toISOString() },
+      challengeId,
+      nonce,
+      signature,
+    });
+    if (authorisation.status !== "ok") return authFailureResponse(authorisation, headers);
+  } else {
+    const sessionWallet = typeof requestBody?.walletAddress === "string" ? requestBody.walletAddress.trim() : "";
+    const session = await readSocialApprovalSession(request);
+    if (!session) {
+      return NextResponse.json(
+        { error: "Approve with a wallet signature, or unlock approvals for the day first.", code: "approval-session-required" },
+        { status: 401, headers },
+      );
+    }
+    if (!isAddress(sessionWallet) || sessionWallet.toLowerCase() !== session.walletAddress.toLowerCase()) {
+      return NextResponse.json(
+        { error: "Approvals are unlocked for a different wallet. Unlock them again with this wallet.", code: "approval-session-wallet-mismatch" },
+        { status: 403, headers },
+      );
+    }
+    authorisation = { status: "ok", walletAddress: session.walletAddress };
   }
-
-  const authorisation = await authoriseSocialStudioAction({
-    purpose: "social:post-create",
-    payload: { body: postBody, destinations: [...typedDestinations].sort().join(","), scheduledAt: scheduledAt.toISOString() },
-    challengeId,
-    nonce,
-    signature,
-  });
-  if (authorisation.status !== "ok") return authFailureResponse(authorisation, headers);
 
   // Project-slot billing enforcement (issue #407) — approving a post is a
   // paid Pro/Pro Bundle feature just like the AI generation routes, but

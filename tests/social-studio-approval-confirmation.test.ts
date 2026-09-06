@@ -8,38 +8,36 @@ async function source(...parts: string[]): Promise<string> {
   return readFile(path.join(ROOT, ...parts), "utf8");
 }
 
-describe("Approval integrity: confirm-before-sign, template badging, reschedule (issue #380)", () => {
-  it("Approve is a two-tap action gated through handleApproveClick, not an immediate sign", async () => {
+describe("Approval integrity: one tap, template badging, reschedule (issue #380, one-tap approvals 6 Sep 2026)", () => {
+  it("Approve is ONE tap through handleApproveClick — the two-tap confirm was removed on owner direction; quick-send keeps its confirm", async () => {
     const social = await source("components", "social-hub.tsx");
 
     expect(social).toContain("function handleApproveClick(item: QueueItem)");
-    expect(social).toContain("const [pendingApprovalItemId, setPendingApprovalItemId] = useState<string | null>(null);");
-    // The first tap force-expands the card and sets pending state, without calling approveQueueItem.
-    const handlerBlock = social.slice(social.indexOf("function handleApproveClick"), social.indexOf("function handleApproveClick") + 1200);
-    expect(handlerBlock).toContain("setExpandedQueueItemIds((current) => ({ ...current, [item.id]: true }));");
-    expect(handlerBlock).toContain("setPendingApprovalItemId(item.id);");
+    const handlerBlock = social.slice(social.indexOf("function handleApproveClick"), social.indexOf("function handleApproveClick") + 200);
     expect(handlerBlock).toContain("void approveQueueItem(item);");
+    expect(handlerBlock).not.toContain("setPendingApprovalItemId");
+    expect(social).not.toContain("pendingApprovalItemId");
+    // Approve is not blocked while an unrelated card is approving; only its own row shows the progress label.
+    expect(social).toContain("const isApproving = approvingItemId === item.id;");
   });
 
-  it("clears a stale confirmation whenever the item's text, destinations, or expand state changes", async () => {
+  it("clears a stale quick-send confirmation and template acknowledgement whenever the item's text or expand state changes", async () => {
     const social = await source("components", "social-hub.tsx");
 
     expect(social).toContain("function clearApprovalConfirmation(id: string)");
     const updateQueueItemBlock = social.slice(social.indexOf("function updateQueueItem"), social.indexOf("function updateQueueItem") + 400);
     expect(updateQueueItemBlock).toContain("clearApprovalConfirmation(id);");
-    const toggleDestinationBlock = social.slice(social.indexOf("function toggleItemDestination"), social.indexOf("function toggleItemDestination") + 400);
-    expect(toggleDestinationBlock).toContain("clearApprovalConfirmation(itemId);");
     const toggleExpandedBlock = social.slice(social.indexOf("function toggleQueueItemExpanded"), social.indexOf("function toggleQueueItemExpanded") + 200);
     expect(toggleExpandedBlock).toContain("clearApprovalConfirmation(id);");
   });
 
-  it("shows a confirm panel naming exactly which destinations will receive the visible text before signing", async () => {
+  it("the quick-send confirm panel still names the exact destination before an immediate publish", async () => {
     const social = await source("components", "social-hub.tsx");
     expect(social).toContain("className={styles.confirmPanel}");
-    expect(social).toContain("this is exactly what each destination will receive");
+    expect(social).toContain("this is exactly what will be sent");
   });
 
-  it("marks unedited canned template copy with a persistent badge and gates its approval on an explicit checkbox", async () => {
+  it("marks unedited canned template copy with a persistent badge and refuses to approve it without the explicit checkbox", async () => {
     const social = await source("components", "social-hub.tsx");
 
     expect(social).toContain("import {");
@@ -47,20 +45,23 @@ describe("Approval integrity: confirm-before-sign, template badging, reschedule 
     expect(social).toContain("const templateOutputs = useMemo(");
     expect(social).toContain("const xIsTemplate = isUneditedTemplateText(item.xText, templateOutputs);");
     expect(social).toContain("const telegramIsTemplate = isUneditedTemplateText(item.telegramText, templateOutputs);");
-    // Persistent badge, visible even collapsed — not only inside the confirm step.
+    // Persistent badge, visible even collapsed.
     expect(social).toContain('{isTemplateItem ? <span className={styles.templateBadge}>Template</span> : null}');
-    // Explicit, non-blocking acknowledgement checkbox.
+    // Explicit acknowledgement checkbox, inline on the expanded card, and enforced in approveQueueItem itself.
     expect(social).toContain("This is unedited template text — I want to send it as-is.");
-    expect(social).toContain("const requiresTemplateAck = isPendingApproval && selectedTextIsTemplate && !templateAcknowledged;");
+    expect(social).toContain("const requiresTemplateAck = sendingTemplate && !templateAcknowledged;");
+    const approveBlock = social.slice(social.indexOf("async function approveQueueItem"), social.indexOf("async function approveQueueItem") + 2000);
+    expect(approveBlock).toContain("if (sendingTemplate && !templateAcknowledgedIds[item.id]) {");
   });
 
-  it("recomputes the default schedule at approve time (not item-creation time) unless the user picked their own", async () => {
+  it("decides the schedule at approve time (not item-creation time) unless the user picked their own, and never in the past", async () => {
     const social = await source("components", "social-hub.tsx");
 
     expect(social).toContain("const [scheduleManuallySet, setScheduleManuallySet] = useState<Record<string, boolean>>({});");
-    const handlerBlock = social.slice(social.indexOf("function handleApproveClick"), social.indexOf("function handleApproveClick") + 1200);
-    expect(handlerBlock).toContain("if (!scheduleManuallySet[item.id]) {");
-    expect(handlerBlock).toContain("computeDefaultScheduledAt(awaitingIso, new Date(), cadenceSpreadHoursMs(postingCadence))");
+    const approveBlock = social.slice(social.indexOf("async function approveQueueItem"), social.indexOf("async function approveQueueItem") + 5200);
+    expect(approveBlock).toContain("scheduleManuallySet[item.id] && itemScheduledAt[item.id]");
+    expect(approveBlock).toContain("computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence))");
+    expect(approveBlock).toContain("ensureFutureScheduledAt(picked, now)");
 
     // needs_composer must not permanently anchor the spread (it never sends automatically).
     expect(social).toContain(

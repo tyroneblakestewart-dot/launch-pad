@@ -2243,3 +2243,48 @@
 @media (pointer: coarse) {
   .postImageRow button { min-height: 44px; }
 }
+
+/* One-tap approvals (owner direction, 6 Sep 2026): the schedule picker sits in
+   the action row, the "No image" opt-out sits beside the pick badge, and the
+   header carries the day's unlock state. */
+.queueItemActions .scheduleCompact { margin-left: auto; }
+.queueHeaderAside { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.approvalUnlock {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-label);
+  font: 600 11px var(--mono);
+  text-align: right;
+}
+.approvalUnlock button {
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+  font: 700 10px var(--mono);
+  cursor: pointer;
+}
+.imageDeclineLink {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  color: var(--text-faint);
+  background: transparent;
+  font: 600 9.5px var(--mono);
+  text-decoration: underline;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.imageDeclineLink:hover { color: var(--text-primary); }
+@media (max-width: 640px) {
+  .queueItemActions .scheduleCompact { margin-left: 0; width: 100%; }
+  .queueHeaderAside { align-items: flex-start; }
+  .approvalUnlock { text-align: left; }
+}
+@media (pointer: coarse) {
+  .approvalUnlock button,
+  .imageDeclineLink { min-height: 34px; }
+}

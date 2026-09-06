@@ -388,55 +388,51 @@ describe("Queue tab wiring for AI images on approved posts", () => {
     expect(types).toContain("aiImage?: boolean;");
   });
 
-  it("picks from the live queue and today's remaining allowance, and badges the picked rows", async () => {
+  it("picks from the live queue and today's remaining allowance, badges the picked rows and offers a no-cost opt-out", async () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("() => new Set(selectPostImageCandidates(queue, remainingAiImagesToday(mascotImageUsage))),");
-    expect(hub).toContain("{postImageCandidateIds.has(item.id) ? (");
+    expect(hub).toContain("const isPickedForImage = postImageCandidateIds.has(item.id);");
     expect(hub).toContain("Image coming");
+    expect(hub).toContain("onClick={() => declinePostImage(item.id)}");
     expect(hub).toContain("{mascotImageUsage ? ` · ${describePostImageSlot(mascotImageUsage)}` : \"\"}");
   });
 
-  it("makes the image on the first Approve tap, only for a picked draft with no artwork and no 'no image' decision", async () => {
+  it("makes the image inside the one-tap approval, only for a picked draft with no artwork and no 'no image' decision, then posts with it", async () => {
     const hub = await source("components", "social-hub.tsx");
-    const handler = block(hub, "function handleApproveClick(item: QueueItem)", 1200);
-    expect(handler).toContain("setPendingApprovalItemId(item.id);\n      maybeStartPostImage(item);");
-    const start = block(hub, "function maybeStartPostImage(item: QueueItem)", 400);
-    expect(start).toContain("if (!postImageCandidateIds.has(item.id) || item.artwork || item.imageDeclined) return;");
-    expect(start).toContain("void generatePostImage(item);");
-    const generate = block(hub, "async function generatePostImage(item: QueueItem)", 2200);
+    const approve = block(hub, "async function approveQueueItem(item: QueueItem)", 5200);
+    expect(approve).toContain("if (postImageCandidateIds.has(item.id) && !artwork && !item.imageDeclined) {");
+    expect(approve).toContain("artwork = await generatePostImageForApproval(item);");
+    expect(approve).toContain("artworkDataUrl: artwork || undefined,");
+    expect(approve.indexOf("generatePostImageForApproval(item)")).toBeLessThan(approve.indexOf('fetch("/api/social/posts"'));
+    const generate = block(hub, "async function generatePostImageForApproval(item: QueueItem)", 2600);
     expect(generate).toContain('fetch("/api/social/post-image"');
     expect(generate).toContain("postText: item.xText.trim() || item.telegramText.trim(),");
     expect(generate).toContain("if (payload.usage) setMascotImageUsage(payload.usage);");
-    expect(generate).toContain("attachPostImage(item.id, payload.imageDataUrl);");
     // A skipped image is discarded when it lands — the slot is spent, per the owner's rule.
     expect(generate).toContain("if (postImageSkippedIdsRef.current.has(item.id)) {");
+    expect(generate).toContain("return await Promise.race([generated, skipped]);");
   });
 
-  it("attaching the image keeps the confirm step armed; removing or skipping marks the draft declined for today", async () => {
+  it("declining before approval passes the pick on at no cost; skipping mid-generation lets the approval continue as text", async () => {
     const hub = await source("components", "social-hub.tsx");
-    const attach = block(hub, "function attachPostImage(id: string, imageDataUrl: string)", 400);
-    expect(attach).toContain("{ ...item, artwork: imageDataUrl, aiImage: true }");
-    expect(attach).not.toContain("clearApprovalConfirmation");
-    const remove = block(hub, "function removePostImage(id: string)", 400);
-    expect(remove).toContain("{ ...item, artwork: null, aiImage: false, imageDeclined: true }");
+    const decline = block(hub, "function declinePostImage(id: string)", 400);
+    expect(decline).toContain("{ ...item, imageDeclined: true }");
     const skip = block(hub, "function skipPostImage(id: string)", 500);
     expect(skip).toContain("postImageSkippedIdsRef.current.add(id);");
-    expect(skip).toContain("{ ...item, imageDeclined: true }");
+    expect(skip).toContain("postImageSkipResolversRef.current.get(id)?.();");
+    expect(hub).not.toContain("function removePostImage");
+    expect(hub).not.toContain("function attachPostImage");
   });
 
-  it("the confirm step shows making / added + Remove image / failed, states the no-remake rule, and cannot confirm mid-generation", async () => {
+  it("the row shows the making state with Skip, the failure line, and states the no-remake rule before the tap", async () => {
     const hub = await source("components", "social-hub.tsx");
-    expect(hub).toContain("Making an AI image for this post — about 30 seconds. {POST_IMAGE_REMOVE_NOTE}");
     expect(hub).toContain("Skip the image");
-    expect(hub).toContain("Remove image");
-    expect(hub).toContain("AI image added — it goes out with the Telegram post and downloads for X. {POST_IMAGE_REMOVE_NOTE}");
     expect(hub).toContain("The post can still be approved without one.");
-    expect(hub).toContain("requiresTemplateAck || postImageBusyId === item.id}");
-    expect(hub).toContain('postImageBusyId === item.id ? "Making the image…"');
+    expect(hub).toContain("made when you approve from today's AI-image allowance. ${POST_IMAGE_REMOVE_NOTE}");
+    expect(hub).toContain('const approveLabel = isApproving ? (postImageBusyId === item.id ? "Making the image…" : "Approving…") : "Approve";');
     const css = await source("components", "social-hub.module.css");
     expect(css).toContain(".imageComingBadge {");
-    expect(css).toContain(".postImageRow {");
-    expect(css).toMatch(/@media \(pointer: coarse\) \{\n  \.postImageRow button \{ min-height: 44px; \}/);
+    expect(css).toContain(".imageDeclineLink {");
   });
 
   it("is registered with the auth bridge, the admin service definition and the shared allowance's health stage", async () => {
