@@ -174,8 +174,8 @@ function isStoredIndexEntry(value: unknown): value is SavedProjectIndexEntry {
 }
 
 export function toIndexEntry(project: TokenProject): SavedProjectIndexEntry {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructured only to drop the two heavy fields
-  const { heroImage, generatedSiteHtml, ...entry } = project;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructured only to drop the heavy fields
+  const { heroImage, generatedSiteHtml, generatedSiteCandidates, ...entry } = project;
   return entry;
 }
 

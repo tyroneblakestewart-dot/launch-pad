@@ -44,6 +44,8 @@ export async function saveProjectToStorage(
     await putProjectBlob(project.id, {
       heroImage: project.heroImage,
       generatedSiteHtml: project.generatedSiteHtml ?? null,
+      // Only when present, so blobs (and the tests pinning their exact shape) from before pick-from-three are unchanged.
+      ...(project.generatedSiteCandidates?.length ? { generatedSiteCandidates: project.generatedSiteCandidates } : {}),
     });
   } catch (error) {
     return {
@@ -83,6 +85,7 @@ export async function loadProjectFromStorage(
         ...entry,
         heroImage: blob?.heroImage ?? "",
         generatedSiteHtml: blob?.generatedSiteHtml ?? null,
+        ...(blob?.generatedSiteCandidates?.length ? { generatedSiteCandidates: blob.generatedSiteCandidates } : {}),
       },
     };
   } catch (error) {

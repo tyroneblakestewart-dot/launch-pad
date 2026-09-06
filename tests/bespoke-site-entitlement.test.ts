@@ -277,10 +277,13 @@ describe("server subscriber source of truth", () => {
     });
   });
 
+  // Owner decision (6 Sep 2026): Pro / Pro Bundle are Social Studio
+  // subscriptions and buy no website. Tests changed, not only added (rule 8):
+  // this case used to pin "allows active %s access" for both tiers.
   it.each([
     ["pro", "2026-12-01T00:00:00.000Z"],
     ["pro_bundle", "2026-12-01T00:00:00.000Z"],
-  ] as const)("allows active %s access", async (tier, paidUntil) => {
+  ] as const)("refuses an active %s subscription — a bespoke site is a one-off purchase only", async (tier, paidUntil) => {
     const access = await getBespokeSiteAccess(WALLET, {
       now: NOW,
       query: accessQuery(
@@ -289,10 +292,27 @@ describe("server subscriber source of truth", () => {
     });
     expect(access).toMatchObject({
       status: "ready",
-      allowed: true,
-      tier,
+      allowed: false,
+      tier: null,
       permanent: false,
+      purchaseCount: 0,
     });
+  });
+
+  it("counts recorded Bond + Pro Site purchases (never below one for a permanent wallet)", async () => {
+    const two = await getBespokeSiteAccess(WALLET, {
+      now: NOW,
+      query: accessQuery(
+        accessRow({ tier: "bond_pro_site", has_bond_pro_site_payment: true, bond_pro_site_payment_count: 2 }),
+      ),
+    });
+    expect(two).toMatchObject({ allowed: true, tier: "bond_pro_site", purchaseCount: 2 });
+
+    const legacy = await getBespokeSiteAccess(WALLET, {
+      now: NOW,
+      query: accessQuery(accessRow({ tier: "bond_pro_site", has_bond_pro_site_payment: true })),
+    });
+    expect(legacy).toMatchObject({ allowed: true, purchaseCount: 1 });
   });
 
   it("refuses unpaid and expired recurring-only wallets and fails closed when the challenge store is missing", async () => {
@@ -331,7 +351,10 @@ describe("server subscriber source of truth", () => {
 });
 
 describe("single-use wallet challenge", () => {
-  it.each(["bond_pro_site", "pro", "pro_bundle"] as const)(
+  // Rule 8, stated plainly: this case used to run for "pro" and "pro_bundle"
+  // too; since 6 Sep 2026 getBespokeSiteAccess never grants those tiers, so
+  // the only real allowed tier is the one-off purchase.
+  it.each(["bond_pro_site"] as const)(
     "allows a valid one-time signature for %s",
     async (tier) => {
       const store = createMemoryBespokeSiteChallengeStore();

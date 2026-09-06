@@ -140,7 +140,12 @@ async function withBespokeWalletProof(input: {
         : typeof payload.error === "string"
           ? payload.error
           : "Bespoke plan access could not be checked. Your free site generator remains available.";
-    if (challengeResponse.status === 403 && payload.code === "bespoke-plan-required") {
+    if (
+      challengeResponse.status === 403 &&
+      (payload.code === "bespoke-plan-required" || payload.code === "bespoke-attempts-used")
+    ) {
+      // Both open the Bond + Pro Site checkout: no purchase yet, or the three
+      // designs of the last purchase are used (owner decision, 6 Sep 2026).
       throw showUpgrade(message || FALLBACK_UPSELL);
     }
     throw generationAbort(message);
@@ -207,7 +212,7 @@ export function GenerateSiteStyleAuthBridge() {
       const response = await originalFetch(input, { ...nextInit, headers });
       if (path === BESPOKE_GENERATION_ROUTE && response.status === 403) {
         const payload = await responsePayload(response);
-        if (payload.code === "bespoke-plan-required") {
+        if (payload.code === "bespoke-plan-required" || payload.code === "bespoke-attempts-used") {
           throw showUpgrade(
             typeof payload.message === "string"
               ? payload.message

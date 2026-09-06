@@ -6,6 +6,8 @@ import {
   getClientIp,
   isGenerateSiteStyleRequestAuthorised,
 } from "@/lib/server/api-protection";
+import { BESPOKE_ATTEMPTS_USED_CODE } from "@/lib/bespoke-site-access";
+import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
 import { issueBespokeSiteGenerationChallenge } from "@/lib/server/bespoke-site-entitlement";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 
@@ -111,6 +113,25 @@ export async function POST(request: Request) {
         code: "bespoke-plan-required",
         upgradeRequired: true,
         checkoutPlan: "bond-pro-site",
+        message: result.message,
+      },
+      { status: 403, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+  if (result.status === "attempts-used") {
+    // Three designs per purchase are used (owner decision, 6 Sep 2026): the
+    // buyer keeps one of the three saved in the studio or pays again.
+    void recordAdminActivityBestEffort({
+      kind: "bespoke-attempts-used",
+      serviceKey: "website-generation",
+      message: `Bespoke generation allowance used up for wallet ${result.walletAddress} (${result.attempts.used}/${result.attempts.allowance}).`,
+    });
+    return NextResponse.json(
+      {
+        code: BESPOKE_ATTEMPTS_USED_CODE,
+        upgradeRequired: true,
+        checkoutPlan: "bond-pro-site",
+        attempts: result.attempts,
         message: result.message,
       },
       { status: 403, headers: noStoreHeaders(rateHeaders) },

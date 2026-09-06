@@ -1,3 +1,4 @@
+import { isBespokeAttempts, type BespokeAttempts } from "@/lib/bespoke-site-access";
 export const GENERATE_SITE_PAGE_PROGRESS_STAGES = [
   "analysing-artwork",
   "preparing-design",
@@ -9,7 +10,7 @@ export type GenerateSitePageProgressStage = (typeof GENERATE_SITE_PAGE_PROGRESS_
 
 export type GenerateSitePageStreamEvent =
   | { type: "progress"; stage: GenerateSitePageProgressStage }
-  | { type: "complete"; html: string; source: string; inspirationUsed: boolean }
+  | { type: "complete"; html: string; source: string; inspirationUsed: boolean; attempts?: BespokeAttempts }
   | { type: "error"; error: string; providerError?: unknown };
 
 function isProgressStage(value: unknown): value is GenerateSitePageProgressStage {
@@ -52,6 +53,7 @@ export function parseGenerateSitePageStreamLine(line: string): GenerateSitePageS
       html: event.html,
       source: typeof event.source === "string" ? event.source : "",
       inspirationUsed: event.inspirationUsed === true,
+      ...(isBespokeAttempts(event.attempts) ? { attempts: event.attempts } : {}),
     };
   }
   if (event.type === "error" && typeof event.error === "string") {

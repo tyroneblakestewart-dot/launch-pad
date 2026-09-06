@@ -38,6 +38,14 @@ import { calculateTextCostUsd, readAiPricingRatesForModel, readBespokeSiteCostCa
 import { extractOpenAIUsage } from "@/lib/server/ai-usage";
 import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
 import { authoriseBespokeSiteGeneration } from "@/lib/server/bespoke-site-entitlement";
+import { getBespokeSiteGenerationsStore } from "@/lib/server/bespoke-site-generations-store";
+import {
+  BESPOKE_ATTEMPTS_USED_CODE,
+  BESPOKE_GENERATIONS_PER_PURCHASE,
+  bespokeAttempts,
+  hashBespokeSiteProject,
+  type BespokeAttempts,
+} from "@/lib/bespoke-site-access";
 import { contentFilterRejectionMessage, runContentFilterFailOpen } from "@/lib/server/content-filter";
 import { sanitiseProviderDetail } from "@/lib/server/sanitise-provider-detail";
 import { requestArtworkIdentity } from "@/lib/server/artwork-identity-request";
@@ -278,6 +286,17 @@ export async function POST(request: Request) {
       {
         code: "bespoke-plan-required",
         upsell: true,
+        message: authorisation.message,
+      },
+      { status: 403, headers: noStoreHeaders(rateHeaders) },
+    );
+  }
+  if (authorisation.status === "attempts-used") {
+    return NextResponse.json(
+      {
+        code: BESPOKE_ATTEMPTS_USED_CODE,
+        upsell: true,
+        attempts: authorisation.attempts,
         message: authorisation.message,
       },
       { status: 403, headers: noStoreHeaders(rateHeaders) },
@@ -538,11 +557,34 @@ export async function POST(request: Request) {
           return;
         }
 
+        // Three per purchase (owner decision, 6 Sep 2026): count the page only
+        // now that it is genuinely being delivered — a failed or rejected
+        // attempt never costs the buyer a design. Counting failure never
+        // withholds a paid page; it is logged and the count catches up next time.
+        let attemptsAfter: BespokeAttempts | undefined;
+        if (authorisation.attempts) {
+          try {
+            await getBespokeSiteGenerationsStore().record({
+              walletAddress,
+              projectHash: hashBespokeSiteProject(input),
+              model: pageModel,
+            });
+            attemptsAfter = bespokeAttempts(
+              authorisation.attempts.allowance / BESPOKE_GENERATIONS_PER_PURCHASE,
+              authorisation.attempts.used + 1,
+            );
+          } catch (error) {
+            console.error("Bespoke generation could not be counted", error instanceof Error ? error.message : error);
+            attemptsAfter = authorisation.attempts;
+          }
+        }
+
         send({
           type: "complete",
           html: page.html,
           source: ai.source,
           inspirationUsed: Boolean(input.inspirationUrl),
+          ...(attemptsAfter ? { attempts: attemptsAfter } : {}),
         });
         close();
       } catch (error) {

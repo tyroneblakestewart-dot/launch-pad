@@ -151,7 +151,8 @@ export type AdminActivityKind =
   | "social-post-image-generated"
   | "social-approvals-unlocked"
   | "social-approvals-locked"
-  | "bespoke-cost-cap-held";
+  | "bespoke-cost-cap-held"
+  | "bespoke-attempts-used";
 
 export type AdminActivityItem = {
   id: string;

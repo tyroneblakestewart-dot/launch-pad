@@ -1,5 +1,6 @@
 import { beforeEach } from "vitest";
 import { setBespokeSiteAuthoriserForTests } from "@/lib/server/bespoke-site-entitlement";
+import { createMemoryBespokeSiteGenerationsStore, setBespokeSiteGenerationsStoreForTests } from "@/lib/server/bespoke-site-generations-store";
 import { setSocialStudioAuthoriserForTests } from "@/lib/server/social-studio-entitlement";
 import { setContractsClientForTests, type ContractsClientLike } from "@/lib/server/system-health";
 
@@ -12,6 +13,10 @@ const TEST_PAID_WALLET = "0x1111111111111111111111111111111111111111";
  * subscriber-store decision.
  */
 beforeEach(() => {
+  // Three generations per purchase (6 Sep 2026): the entitlement layer counts
+  // delivered pages; give every test a fresh in-memory count so focused
+  // entitlement tests never need Postgres for it.
+  setBespokeSiteGenerationsStoreForTests(createMemoryBespokeSiteGenerationsStore());
   setBespokeSiteAuthoriserForTests(async () => ({
     status: "allowed",
     walletAddress: TEST_PAID_WALLET,

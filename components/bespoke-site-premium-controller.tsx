@@ -10,7 +10,7 @@ import { requestWorkspaceOpen } from "@/lib/workspace-open-request";
 
 const PREMIUM_BUTTON_LABEL = "PREMIUM · GENERATE BESPOKE AI SITE";
 const PREMIUM_HINT =
-  "A one-off original AI page built to the paid responsive design standard. Requires Bond + Pro Site, Pro, or Pro Bundle.";
+  "A one-off original AI page built to the paid responsive design standard. Bond + Pro Site buys three AI designs; keep the one you like.";
 
 function syncPremiumLabel(): void {
   const button = document.querySelector<HTMLButtonElement>(
@@ -45,7 +45,7 @@ export function BespokeSitePremiumController() {
     function onUpsell(event: Event) {
       const detail = (event as CustomEvent<BespokeSiteUpsellEventDetail>).detail;
       const message = detail?.message ||
-        "Bespoke AI design requires Bond + Pro Site, Pro, or Pro Bundle. Your free site generator remains available.";
+        "Bespoke AI design is a one-off Bond + Pro Site purchase: three designs, keep the one you like. Your free site generator remains available.";
       const hint = document.querySelector<HTMLElement>(
         ".build-site-secondary-hint",
       );

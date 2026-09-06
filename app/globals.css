@@ -440,3 +440,33 @@ label small { display: block; margin-top: 5px; color: #5f6a61; font: 10px var(--
   .readiness-card ul { grid-template-columns: 1fr; }
   .action-grid { grid-template-columns: 1fr; }
 }
+
+/* Pick-from-three (owner decisions, 6 Sep 2026): a bespoke purchase buys three
+   designs; the studio keeps the last three and the buyer chooses which one is
+   the site. One preview iframe only — choosing swaps its document. */
+.site-design-picker { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.site-design-picker-label { color: var(--text-label, #8d918c); font: 700 9.5px "IBM Plex Mono", monospace; letter-spacing: 0.12em; text-transform: uppercase; }
+.site-design-picker-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.site-design-option {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: var(--text-primary, #f4f7f1);
+  background: rgba(255, 255, 255, 0.04);
+  font: 700 11px "IBM Plex Mono", monospace;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.site-design-option:hover,
+.site-design-option:focus-visible { border-color: rgba(198, 245, 62, 0.5); }
+.site-design-option-active {
+  border-color: rgba(198, 245, 62, 0.5);
+  color: #c6f53e;
+  background: rgba(198, 245, 62, 0.1);
+  box-shadow: 0 0 14px rgba(198, 245, 62, 0.25);
+}
+.site-design-attempts { margin: 0; color: var(--text-label, #8d918c); font: 600 11px "IBM Plex Mono", monospace; }
+@media (pointer: coarse) {
+  .site-design-option { min-height: 44px; }
+}

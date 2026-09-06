@@ -91,7 +91,9 @@ describe("POST /api/generate-site-page/challenge", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each(["bond_pro_site", "pro", "pro_bundle"] as const)(
+  // Rule 8, stated plainly: this case used to cover "pro" and "pro_bundle";
+  // since 6 Sep 2026 only the one-off Bond + Pro Site purchase is eligible.
+  it.each(["bond_pro_site"] as const)(
     "issues a one-time wallet challenge for eligible tier %s",
     async (tier) => {
       setBespokeSiteChallengeIssuerForTests(async () => ({

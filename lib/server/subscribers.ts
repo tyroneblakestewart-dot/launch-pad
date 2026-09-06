@@ -82,6 +82,8 @@ export type BespokeSiteAccess = {
   accessSource?: BespokeSiteAccessSource;
   permanent: boolean;
   paidUntil: string | null;
+  /** Recorded Bond + Pro Site purchases — each buys BESPOKE_GENERATIONS_PER_PURCHASE generations. 0 for test access (uncapped) and for refused wallets. Optional keeps older typed fixtures compatible. */
+  purchaseCount?: number;
   message: string;
 };
 
@@ -90,6 +92,8 @@ export type BespokeSiteAccessQueryRow = {
   paid_until: Date | string | null;
   expires_at: Date | string | null;
   has_bond_pro_site_payment: boolean | string | number | null;
+  /** COUNT of recorded bond-pro-site one-off payments; optional keeps older fixtures compatible (a recorded payment with no count reads as 1). */
+  bond_pro_site_payment_count?: number | string | null;
   challenge_store_ready?: boolean | string | number | null;
 };
 
@@ -196,7 +200,15 @@ const BESPOKE_SITE_ACCESS_QUERY = `
          AND payment.plan_id = 'bond-pro-site'
          AND COALESCE(payment.billing_period, 'one_off') = 'one_off'
          AND COALESCE(payment.payment_kind, 'one_off') = 'one_off'
-    ) AS has_bond_pro_site_payment
+    ) AS has_bond_pro_site_payment,
+    (
+      SELECT COUNT(*)::int
+        FROM plan_payment_events payment
+       WHERE payment.wallet_address = wallet.wallet_address
+         AND payment.plan_id = 'bond-pro-site'
+         AND COALESCE(payment.billing_period, 'one_off') = 'one_off'
+         AND COALESCE(payment.payment_kind, 'one_off') = 'one_off'
+    ) AS bond_pro_site_payment_count
     FROM (SELECT $1::varchar AS wallet_address) wallet
     LEFT JOIN subscriptions subscription
       ON subscription.wallet_address = wallet.wallet_address
@@ -265,10 +277,10 @@ function rowFromQueryRow(row: SubscribersQueryRow, now: Date): AdminSubscriberRo
   const paidUntil = asIso(row.paid_until ?? row.expires_at);
   const tier = (hasSubscription ? row.tier : "free") as AdminSubscriberTier;
   const status = subscriberStatus(tier, paidUntil, now);
+  // A bespoke website is a one-off purchase only (owner decision, 6 Sep
+  // 2026): Pro / Pro Bundle are Social Studio subscriptions and grant none.
   const permanentBespokeAccess =
     tier === "bond_pro_site" || recordedOneOff(row.has_bond_pro_site_payment);
-  const recurringBespokeAccess =
-    (tier === "pro" || tier === "pro_bundle") && status !== "expired";
   const slugs = [...new Set((row.slugs || []).filter((slug): slug is string => Boolean(slug)))].sort((a, b) =>
     a.localeCompare(b),
   );
@@ -280,7 +292,7 @@ function rowFromQueryRow(row: SubscribersQueryRow, now: Date): AdminSubscriberRo
     walletAddress: row.wallet_address,
     tier,
     status,
-    bespokeSiteAccess: permanentBespokeAccess || recurringBespokeAccess,
+    bespokeSiteAccess: permanentBespokeAccess,
     slugs,
     xHandle: firstNonEmpty(row.x_handles),
     telegram: linkedTelegram || firstNonEmpty(row.telegrams),
@@ -307,6 +319,7 @@ function unavailableAccess(walletAddress: string, message: string): BespokeSiteA
     accessSource: "none",
     permanent: false,
     paidUntil: null,
+    purchaseCount: 0,
     message,
   };
 }
@@ -358,6 +371,7 @@ export async function getBespokeSiteAccess(
         accessSource: "test-allowlist",
         permanent: true,
         paidUntil: null,
+        purchaseCount: 0,
         message: "Admin test access is active. No payment was recorded.",
       };
     }
@@ -385,23 +399,15 @@ export async function getBespokeSiteAccess(
       currentTier === "bond_pro_site" ||
       recordedOneOff(row?.has_bond_pro_site_payment ?? null);
 
-    if (currentTier === "pro" || currentTier === "pro_bundle") {
-      const status = subscriptionStatusAt(paidUntil, deps.now ?? new Date());
-      if (status !== "expired") {
-        return {
-          status: "ready",
-          walletAddress: normalised,
-          allowed: true,
-          tier: currentTier,
-          accessSource: "paid",
-          permanent,
-          paidUntil,
-          message: "An active higher-tier subscription includes bespoke site access.",
-        };
-      }
-    }
-
+    // Owner decision (6 Sep 2026): a bespoke website is bought with the
+    // one-off Bond + Pro Site payment and nothing else. Pro / Pro Bundle are
+    // Social Studio subscriptions — they used to be granted bespoke access
+    // here ("An active higher-tier subscription includes bespoke site
+    // access") and no longer are. Each recorded purchase buys three
+    // generations; the count rides along for the entitlement layer.
     if (permanent) {
+      const counted = Number(row?.bond_pro_site_payment_count ?? 0);
+      const purchaseCount = Math.max(Number.isFinite(counted) ? counted : 0, 1);
       return {
         status: "ready",
         walletAddress: normalised,
@@ -410,6 +416,7 @@ export async function getBespokeSiteAccess(
         accessSource: "paid",
         permanent: true,
         paidUntil: null,
+        purchaseCount,
         message: "Permanent Bond + Pro Site access is active.",
       };
     }
@@ -422,6 +429,7 @@ export async function getBespokeSiteAccess(
       accessSource: "none",
       permanent: false,
       paidUntil,
+      purchaseCount: 0,
       message: "No eligible bespoke-site entitlement was found.",
     };
   } catch {
