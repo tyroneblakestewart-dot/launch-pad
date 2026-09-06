@@ -2075,3 +2075,46 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   iPhone; the owner confirms on device. Validated on the final commit:
   `npm run test:app` — 306 test files / 3571 tests passing; `npm run lint` —
   0 errors (11 pre-existing warnings); `npm run build` — succeeds.
+
+- Queue tab to the design (owner direction, 6 Sep 2026: "no Autopilot — the
+  user approves every post ahead of time, but keep the slim row design with
+  Approve in the row and expand for the details; honest numbers only; token
+  page toggles later"). `components/social-hub.tsx`'s Queue tab is rebuilt on
+  `design/app-pages/` Queue spec: a header row ("What's going out — Nothing
+  goes out until you say so", an inset "Approve first · every post" note in
+  place of the design's Autopilot/Approve-first control, which is
+  deliberately not built), then **Waiting for you** (count badge; one slim
+  row per draft — source label, a Both/X/Telegram/"Pick where" destination
+  tag, the clamped preview, a row-level Approve that reuses
+  `handleApproveClick` and so auto-expands into the existing confirm step,
+  and a More/Less toggle; expanding reveals the unchanged editors, artwork
+  at 112px, destination toggles, schedule picker, confirm panels and the
+  #356 action row with Post to X / Send to Telegram / Delete), **Coming up**
+  (approved & scheduled rows — when in lime mono, destination status pills,
+  clamped text, More reveals the composer hand-off, reschedule and Cancel),
+  **Already published** (the design's table: when, text, per-destination
+  outcome pill with the Reconnect tap; canceled rows say so) and a nested
+  **How it's going** panel with the "ONLY YOU CAN SEE THIS" badge. That
+  panel shows only figures that can be read truthfully today, both free:
+  the token's holder count (the same cached Blockscout read the token page
+  uses) and the connected Telegram channel's member count (Bot API
+  `getChatMemberCount`, new helper in `lib/server/telegram.ts`), via a new
+  read-only `GET /api/social/stats?walletAddress&tokenAddress`
+  (`lib/server/social-stats.ts`, per-figure degradation to null, never a
+  zero or a made-up delta); X followers and per-post views/reactions/replies
+  render as "not tracked yet" because they need paid X reads and the
+  Telegram Bot API cannot return post views. Every wired control survives —
+  nothing was removed, only re-laid. The `expandedQueueItemIds` map is
+  reused for approved rows too. **Tests changed rather than only added
+  (rule 8, stated plainly):** none — the existing pins on
+  `queuePreview`/`scheduleCompact`/`confirmPanel`/`queueItemActions`, the
+  #356 action-row CSS block and `toggleQueueItemExpanded` all still hold;
+  the route/module inventory gained the new route and module. Rule 10
+  needs nothing new: the stats route is a read behind the existing
+  `social-posting` isolation switch. Checked in headless Chromium at
+  1400px (collapsed and expanded) and 390px with mocked drafts, posts and
+  stats — not on a physical iPhone; the owner confirms on device. Named
+  follow-ups: "Show on my token page" toggles (separate PR), quiet hours.
+  Validated on the final commit: `npm run test:app` — 307 test files / 3584
+  tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
+  `npm run build` — succeeds, `/api/social/stats` listed in the route output.

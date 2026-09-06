@@ -1965,3 +1965,165 @@
 @media (pointer: coarse) {
   .bannedPanel .wordChipRemove { min-height: 34px; min-width: 34px; }
 }
+
+/* Queue tab redesign (owner direction, 6 Sep 2026): the design's slim rows —
+   approve from the row, expand for the editors, artwork, destinations and
+   delete — plus the "Coming up" list, "Already published" table and the
+   private "How it's going" panel. No Autopilot: approve-first is the only mode. */
+.queueStack { display: flex; flex-direction: column; gap: 22px; }
+.queueHeader { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.queueHeader h2 { margin: 0; font: 400 19px var(--display); letter-spacing: -0.01em; color: var(--text-primary); }
+.queueHeader p { margin: 5px 0 0; color: var(--text-secondary); font-size: 13.5px; }
+.queueModeNote,
+.privateBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: var(--text-value);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;
+  font: 700 10px/1 var(--mono);
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+.queueSection { display: flex; flex-direction: column; gap: 12px; }
+.queueEyebrowRow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.queueCountBadge {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent-lime);
+  color: var(--cta-color);
+  font: 900 11px var(--sans);
+  box-shadow: 0 0 18px rgba(198, 245, 62, 0.5);
+}
+.queueEyebrowNote { color: var(--text-label); font-size: 12px; }
+
+.queueItem,
+.queueItemExpanded {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.02) 38%, rgba(255, 255, 255, 0.012) 100%);
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.05) inset, 0 8px 20px -12px rgba(0, 0, 0, 0.7);
+}
+.queueItemExpanded {
+  border-color: rgba(198, 245, 62, 0.34);
+  background: linear-gradient(180deg, rgba(198, 245, 62, 0.11) 0%, rgba(198, 245, 62, 0.035) 40%, rgba(255, 255, 255, 0.012) 100%);
+  box-shadow: 0 1px 0 0 rgba(198, 245, 62, 0.2) inset, 0 14px 32px -20px rgba(0, 0, 0, 0.75);
+  padding: 18px;
+}
+.queueRow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.queueRowMain { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 7px; }
+.queueRowActions { display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
+.queueRowActions .queueActionApprove {
+  min-height: 34px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--cta-color);
+  background: var(--cta-bg);
+  font: 800 12px var(--sans);
+  white-space: nowrap;
+}
+.queueRowActions .queueActionApprove:disabled { background: rgba(255, 255, 255, 0.06); color: var(--text-faint); box-shadow: none; }
+.queueItemExpanded .queueThumb { width: 112px; height: 112px; border-radius: 16px; }
+.queueWhen { flex: none; width: 118px; color: var(--accent-lime); font: 700 11.5px/1 var(--mono); }
+.queueRowText,
+.queueRowTextFull { flex: 1; min-width: 200px; margin: 0; color: var(--text-value); font-size: 13px; line-height: 1.5; }
+.queueRowText { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.queueRowTextFull { white-space: pre-wrap; }
+
+.destTag,
+.destTagBoth,
+.destTagEmpty {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-value);
+  font: 700 10.5px/1 var(--mono);
+  letter-spacing: 0.06em;
+}
+.destTagBoth { border-color: rgba(198, 245, 62, 0.4); background: rgba(198, 245, 62, 0.1); color: var(--accent-lime); }
+.destTagEmpty { border-style: dashed; color: var(--text-label); }
+
+.historyTable {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.012));
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.05) inset;
+}
+.historyRow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 13px 16px; }
+.historyRow + .historyRow { border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.historyWhen { flex: none; width: 110px; color: var(--text-label); font: 600 11.5px/1 var(--mono); }
+.historyText {
+  flex: 1;
+  min-width: 180px;
+  margin: 0;
+  color: var(--text-value);
+  font-size: 13px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.historyOutcomeMuted { color: var(--text-label); font: 600 11px/1 var(--mono); }
+
+.howPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 22px;
+  background: var(--studio-card-bg);
+  box-shadow: var(--studio-card-shadow);
+}
+.howStats,
+.howAverages { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.howStat {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.02) 38%, rgba(255, 255, 255, 0.012) 100%);
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.05) inset, 0 8px 20px -12px rgba(0, 0, 0, 0.7);
+}
+.howStat b { font: 400 26px var(--display); color: var(--text-primary); }
+.howStat small { color: var(--text-label); font: 600 11px var(--mono); }
+.howAverage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.38), rgba(255, 255, 255, 0.022)), #0a0f0c;
+  box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.5) inset;
+  color: var(--text-value);
+  font-size: 13px;
+}
+.howAverage b { color: var(--text-primary); font: 800 15px var(--mono); }
+.howNote { margin: 0; color: var(--text-label); font-size: 12px; line-height: 1.5; }
+
+@media (max-width: 640px) {
+  .queueRowActions { width: 100%; margin-left: 0; justify-content: flex-end; }
+  .queueWhen { width: auto; }
+  .queueItemExpanded .queueThumb { width: 72px; height: 72px; }
+}

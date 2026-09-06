@@ -101,6 +101,9 @@ type TelegramConnectionState = {
   reconnectReason: string | null;
 };
 
+/** Shape returned by GET /api/social/stats — null means "not tracked yet", never zero. */
+type SocialStatsSummary = { holders: number | null; telegramMembers: number | null; xFollowers: null };
+
 /** Shape returned by GET /api/social/connections for one platform row. */
 type SocialConnectionSummary = {
   platform: SocialPlatform;
@@ -501,6 +504,11 @@ export function SocialHub() {
   const [buyBotThresholdWei, setBuyBotThresholdWei] = useState(DEFAULT_BUY_BOT_THRESHOLD_WEI);
   const [buyBotBusy, setBuyBotBusy] = useState(false);
   const [buyBotStatus, setBuyBotStatus] = useState<PanelStatus>(null);
+  // Queue tab "How it's going" (owner decision, 6 Sep 2026: honest numbers only)
+  // — holders and Telegram members are real reads; X and per-post figures come
+  // back null and render as "not tracked yet".
+  const [howItsGoing, setHowItsGoing] = useState<SocialStatsSummary | null>(null);
+  const [howItsGoingStatus, setHowItsGoingStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [queueTarget, setQueueTarget] = useState(DEFAULT_QUEUE_TARGET);
   const [scheduledPosts, setScheduledPosts] = useState<ScheduledPostSummary[]>([]);
   const [postsStatus, setPostsStatus] = useState<PanelStatus>(null);
@@ -667,6 +675,32 @@ export function SocialHub() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletAddress]);
+
+  async function loadHowItsGoing() {
+    if (!walletAddress) {
+      setHowItsGoing(null);
+      setHowItsGoingStatus("idle");
+      return;
+    }
+    setHowItsGoingStatus("loading");
+    try {
+      const params = new URLSearchParams({ walletAddress });
+      if (selectedProject?.chain === "robinhood" && selectedProject.contractAddress?.trim()) params.set("tokenAddress", selectedProject.contractAddress.trim());
+      const response = await fetch(`/api/social/stats?${params.toString()}`, { cache: "no-store" });
+      const payload = await readJsonResponse<SocialStatsSummary>(response, "Could not load your numbers.");
+      setHowItsGoing(payload);
+      setHowItsGoingStatus("loaded");
+    } catch {
+      setHowItsGoingStatus("error");
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab !== "queue" || !walletAddress) return;
+    void loadHowItsGoing();
+    // loadHowItsGoing closes over the latest wallet/project on every render already.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, walletAddress, selectedProjectId]);
 
   async function loadBuyBots() {
     if (!walletAddress) {
@@ -3189,21 +3223,28 @@ export function SocialHub() {
               ) : null}
 
               {activeTab === "queue" ? (
-                <div className={styles.sectionStack}>
-                  <section className={styles.block}>
-                    <div className={styles.sectionHeading}>
-                      <div>
-                        <h2>What&apos;s going out</h2>
-                        <p>
-                          Ready to review: {queue.length} of {queueTarget} draft{queueTarget === 1 ? "" : "s"} ready
-                          {readyToReviewShortfall > 0 ? " — refilling now" : ""}. Adjust the cadence in Settings &amp; Rules.
-                        </p>
-                      </div>
+                <div className={styles.queueStack}>
+                  <div className={styles.queueHeader}>
+                    <div>
+                      <h2>What&apos;s going out</h2>
+                      <p>Nothing goes out until you say so.</p>
                     </div>
-                    <InlineStatus status={replenishStatus} />
+                    <span className={styles.queueModeNote}>Approve first · every post</span>
+                  </div>
+                  <InlineStatus status={replenishStatus} />
+
+                  <section className={styles.queueSection}>
+                    <div className={styles.queueEyebrowRow}>
+                      <span className={styles.eyebrow}>WAITING FOR YOU</span>
+                      <span className={styles.queueCountBadge}>{queue.length}</span>
+                      <span className={styles.queueEyebrowNote}>
+                        {readyToReviewShortfall > 0 ? "Refilling now" : `${queue.length} draft${queue.length === 1 ? "" : "s"} · target ${queueTarget}`}
+                        {" · cadence in Settings & Rules"}
+                      </span>
+                    </div>
                     {queue.length === 0 ? (
                       <div className={styles.queueEmpty}>
-                        <b>Ready to review is empty.</b>
+                        <b>Nothing waiting.</b>
                         <p>Use &quot;Draft with AI&quot; in Setup, &quot;AI makes it&quot; in Calendar, or wait a moment — new drafts generate automatically.</p>
                       </div>
                     ) : null}
@@ -3225,33 +3266,70 @@ export function SocialHub() {
                           const templateAcknowledged = Boolean(templateAcknowledgedIds[item.id]);
                           const requiresTemplateAck = isPendingApproval && selectedTextIsTemplate && !templateAcknowledged;
                           const telegramSameAsX = item.telegramText.trim() === item.xText.trim();
+                          const destinationTag =
+                            selectedDestinations.length === 2 ? "Both" : selectedDestinations.length === 1 ? platformLabel(selectedDestinations[0]) : "Pick where";
                           return (
-                            <article className={styles.queueItem} key={item.id}>
-                              {item.artwork ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img className={styles.queueThumb} src={item.artwork} alt="Queued post artwork" />
-                              ) : null}
-                              <div className={styles.queueItemBody}>
-                                <div className={styles.queueItemHead}>
-                                  <span className={styles.exampleLabel}>
-                                    {item.source === "calendar-ai"
-                                      ? `Calendar AI · ${item.dayLabel}`
-                                      : item.source === "setup-ai"
-                                        ? "Setup AI"
-                                        : item.source === "auto-replenish"
-                                          ? "Auto-generated"
-                                          : "Manual"}
-                                    {isTemplateItem ? <span className={styles.templateBadge}>Template</span> : null}
-                                  </span>
+                            <article className={isExpanded ? styles.queueItemExpanded : styles.queueItem} key={item.id}>
+                              <div className={styles.queueRow}>
+                                {item.artwork ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img className={styles.queueThumb} src={item.artwork} alt="Queued post artwork" />
+                                ) : null}
+                                <div className={styles.queueRowMain}>
+                                  <div className={styles.queueItemHead}>
+                                    <span className={styles.exampleLabel}>
+                                      {item.source === "calendar-ai"
+                                        ? `Calendar AI · ${item.dayLabel}`
+                                        : item.source === "setup-ai"
+                                          ? "Setup AI"
+                                          : item.source === "auto-replenish"
+                                            ? "Auto-generated"
+                                            : "Manual"}
+                                      {isTemplateItem ? <span className={styles.templateBadge}>Template</span> : null}
+                                    </span>
+                                    <span className={selectedDestinations.length === 2 ? styles.destTagBoth : selectedDestinations.length === 1 ? styles.destTag : styles.destTagEmpty}>
+                                      {destinationTag}
+                                    </span>
+                                  </div>
+                                  {!isExpanded ? (
+                                  <button
+                                    type="button"
+                                    className={styles.queuePreview}
+                                    onClick={() => toggleQueueItemExpanded(item.id)}
+                                  >
+                                    <span className={styles.queuePreviewText}>{item.xText || "No X text yet — tap to write one."}</span>
+                                    <span className={styles.queuePreviewMeta}>
+                                      X {item.xText.length}/280 · Telegram {item.telegramText.length} chars
+                                      {item.telegramText ? (telegramSameAsX ? " (same as X)" : " (different)") : " (empty)"} — tap to edit both
+                                    </span>
+                                  </button>
+                                  ) : null}
+                                </div>
+                                <div className={styles.queueRowActions}>
+                                  {!isExpanded ? (
+                                    <button
+                                      type="button"
+                                      className={styles.queueActionApprove}
+                                      onClick={() => handleApproveClick(item)}
+                                      disabled={approvingItemId === item.id || selectedDestinations.length === 0}
+                                      title={selectedDestinations.length === 0 ? "Open the draft and pick X, Telegram or both first." : undefined}
+                                    >
+                                      {approvingItemId === item.id ? "Approving…" : "Approve"}
+                                    </button>
+                                  ) : null}
                                   <button
                                     type="button"
                                     className={styles.queueExpandToggle}
                                     aria-expanded={isExpanded}
+                                    aria-label={isExpanded ? "Hide details" : "Show details"}
                                     onClick={() => toggleQueueItemExpanded(item.id)}
                                   >
-                                    {isExpanded ? "Collapse" : "Edit"}
+                                    {isExpanded ? "Less ▴" : "More ▾"}
                                   </button>
                                 </div>
+                              </div>
+                              {isExpanded ? (
+                              <div className={styles.queueItemBody}>
                                 {isExpanded ? (
                                   <>
                                     <label className={styles.connectionField}>
@@ -3271,19 +3349,7 @@ export function SocialHub() {
                                       />
                                     </label>
                                   </>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className={styles.queuePreview}
-                                    onClick={() => toggleQueueItemExpanded(item.id)}
-                                  >
-                                    <span className={styles.queuePreviewText}>{item.xText || "No X text yet — tap to write one."}</span>
-                                    <span className={styles.queuePreviewMeta}>
-                                      X {item.xText.length}/280 · Telegram {item.telegramText.length} chars
-                                      {item.telegramText ? (telegramSameAsX ? " (same as X)" : " (different)") : " (empty)"} — tap to edit both
-                                    </span>
-                                  </button>
-                                )}
+                                ) : null}
                                 {myConnectedPlatforms.length > 0 ? (
                                   <div className={styles.destinationToggles}>
                                     {myConnectedPlatforms.map((platform) => {
@@ -3380,6 +3446,7 @@ export function SocialHub() {
                                   </button>
                                 </div>
                               </div>
+                              ) : null}
                             </article>
                           );
                         })}
@@ -3387,12 +3454,10 @@ export function SocialHub() {
                     ) : null}
                   </section>
 
-                  <section className={styles.block}>
-                    <div className={styles.sectionHeading}>
-                      <div>
-                        <h2>Approved &amp; scheduled</h2>
-                        <p>Waiting to send. Cancel any time before it goes out.</p>
-                      </div>
+                  <section className={styles.queueSection}>
+                    <div className={styles.queueEyebrowRow}>
+                      <span className={styles.eyebrow}>COMING UP</span>
+                      <span className={styles.queueEyebrowNote}>Approved &amp; scheduled — waiting to send. Cancel any time before it goes out.</span>
                     </div>
                     <InlineStatus status={postsStatus} />
                     {awaitingSendPosts.length === 0 ? (
@@ -3402,124 +3467,178 @@ export function SocialHub() {
                       </div>
                     ) : (
                       <div className={styles.queueList}>
-                        {awaitingSendPosts.map((post) => (
-                          <article className={styles.queueItem} key={post.id}>
-                            {post.artworkDataUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img className={styles.queueThumb} src={post.artworkDataUrl} alt="Approved post artwork" />
-                            ) : null}
-                            <div className={styles.queueItemBody}>
-                              <span className={styles.exampleLabel}>Scheduled for {formatScheduledAt(post.scheduledAt)}</span>
-                              <p>{post.body}</p>
-                              <div className={styles.destinationToggles}>
-                                {post.destinations.map((destination) => (
-                                  <span
-                                    key={destination.id}
-                                    className={[
-                                      styles.statusPill,
-                                      destination.status === "needs_composer" ? styles.statusPillNeedsComposer : styles.statusPillPending,
-                                    ].join(" ")}
+                        {awaitingSendPosts.map((post) => {
+                          const postExpanded = Boolean(expandedQueueItemIds[post.id]);
+                          const needsComposer = post.destinations.some((destination) => destination.status === "needs_composer");
+                          return (
+                            <article className={postExpanded ? styles.queueItemExpanded : styles.queueItem} key={post.id}>
+                              <div className={styles.queueRow}>
+                                {post.artworkDataUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img className={styles.queueThumb} src={post.artworkDataUrl} alt="Approved post artwork" />
+                                ) : null}
+                                <span className={styles.queueWhen}>{formatScheduledAt(post.scheduledAt)}</span>
+                                <div className={styles.destinationToggles}>
+                                  {post.destinations.map((destination) => (
+                                    <span
+                                      key={destination.id}
+                                      className={[
+                                        styles.statusPill,
+                                        destination.status === "needs_composer" ? styles.statusPillNeedsComposer : styles.statusPillPending,
+                                      ].join(" ")}
+                                    >
+                                      {destination.platform === "x" ? <XMark /> : <TelegramMark />} {platformLabel(destination.platform)} ·{" "}
+                                      {destination.status === "needs_composer" ? "Needs composer" : destination.status === "sending" ? "Sending…" : "Pending"}
+                                    </span>
+                                  ))}
+                                </div>
+                                <p className={postExpanded ? styles.queueRowTextFull : styles.queueRowText}>{post.body}</p>
+                                <div className={styles.queueRowActions}>
+                                  <button
+                                    type="button"
+                                    className={styles.queueExpandToggle}
+                                    aria-expanded={postExpanded}
+                                    aria-label={postExpanded ? "Hide options" : "Show options"}
+                                    onClick={() => toggleQueueItemExpanded(post.id)}
                                   >
-                                    {destination.platform === "x" ? <XMark /> : <TelegramMark />} {platformLabel(destination.platform)} ·{" "}
-                                    {destination.status === "needs_composer" ? "Needs composer" : destination.status === "sending" ? "Sending…" : "Pending"}
-                                  </span>
-                                ))}
-                              </div>
-                              {post.destinations.some((destination) => destination.status === "needs_composer") ? (
-                                <div className={styles.composerActions}>
-                                  <button type="button" onClick={() => openComposerForPost(post)}>
-                                    <XMark /> Link posts publish from your own X account — tap to post
+                                    {postExpanded ? "Less ▴" : "More ▾"}
                                   </button>
                                 </div>
+                              </div>
+                              {postExpanded ? (
+                                <div className={styles.queueItemBody}>
+                                  {needsComposer ? (
+                                    <div className={styles.composerActions}>
+                                      <button type="button" onClick={() => openComposerForPost(post)}>
+                                        <XMark /> Link posts publish from your own X account — tap to post
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                  {post.status === "scheduled" ? (
+                                    <>
+                                      <label className={styles.scheduleCompact}>
+                                        <span>Reschedule</span>
+                                        <input
+                                          type="datetime-local"
+                                          className={styles.scheduleCompactInput}
+                                          value={rescheduleValues[post.id] ?? toDateTimeLocalValue(new Date(post.scheduledAt))}
+                                          onChange={(event) => setReschedulePostValue(post.id, event.target.value)}
+                                        />
+                                      </label>
+                                      <div className={styles.composerActions}>
+                                        <button type="button" onClick={() => reschedulePost(post)} disabled={reschedulingPostId === post.id}>
+                                          {reschedulingPostId === post.id ? "Rescheduling…" : "Save new time"}
+                                        </button>
+                                        <button type="button" onClick={() => cancelScheduledPost(post.id)} disabled={cancelingPostId === post.id}>
+                                          {cancelingPostId === post.id ? "Canceling…" : "Cancel"}
+                                        </button>
+                                      </div>
+                                    </>
+                                  ) : null}
+                                </div>
                               ) : null}
-                              {post.status === "scheduled" ? (
-                                <>
-                                  <label className={styles.scheduleCompact}>
-                                    <span>Reschedule</span>
-                                    <input
-                                      type="datetime-local"
-                                      className={styles.scheduleCompactInput}
-                                      value={rescheduleValues[post.id] ?? toDateTimeLocalValue(new Date(post.scheduledAt))}
-                                      onChange={(event) => setReschedulePostValue(post.id, event.target.value)}
-                                    />
-                                  </label>
-                                  <div className={styles.composerActions}>
-                                    <button type="button" onClick={() => reschedulePost(post)} disabled={reschedulingPostId === post.id}>
-                                      {reschedulingPostId === post.id ? "Rescheduling…" : "Save new time"}
-                                    </button>
-                                    <button type="button" onClick={() => cancelScheduledPost(post.id)} disabled={cancelingPostId === post.id}>
-                                      {cancelingPostId === post.id ? "Canceling…" : "Cancel"}
-                                    </button>
-                                  </div>
-                                </>
-                              ) : null}
-                            </div>
-                          </article>
-                        ))}
+                            </article>
+                          );
+                        })}
                       </div>
                     )}
                   </section>
 
-                  <section className={styles.block}>
-                    <div className={styles.sectionHeading}>
-                      <div>
-                        <span className={styles.eyebrow}>HISTORY</span>
-                        <p>Sent, failed and canceled posts, with the outcome per destination.</p>
-                      </div>
+                  <section className={styles.queueSection}>
+                    <div className={styles.queueEyebrowRow}>
+                      <span className={styles.eyebrow}>ALREADY PUBLISHED</span>
+                      <span className={styles.queueEyebrowNote}>Sent, failed and canceled posts, with the outcome per destination.</span>
                     </div>
                     {historyPosts.length === 0 ? (
                       <div className={styles.historyPlaceholder}>
                         <span>No publish history yet.</span>
                       </div>
                     ) : (
-                      <div className={styles.queueList}>
+                      <div className={styles.historyTable}>
                         {historyPosts.map((post) => (
-                          <article className={styles.queueItem} key={post.id}>
-                            <div className={styles.queueItemBody}>
-                              <span className={styles.exampleLabel}>
-                                {post.status === "canceled" ? "Canceled" : formatScheduledAt(post.scheduledAt)}
-                              </span>
-                              <p>{post.body}</p>
-                              {post.status === "canceled" ? (
-                                <p className={styles.connectionHelper}>Canceled before it was sent.</p>
-                              ) : (
-                                <div className={styles.destinationToggles}>
-                                  {post.destinations.map((destination) => {
-                                    const connection = connections.find((entry) => entry.platform === destination.platform);
-                                    const needsReconnect = destination.status === "failed" && connection?.status === "reconnect_needed";
-                                    return (
-                                      <span
-                                        key={destination.id}
-                                        className={[
-                                          styles.statusPill,
-                                          destination.status === "sent"
-                                            ? styles.statusPillSent
-                                            : destination.status === "needs_composer"
-                                              ? styles.statusPillNeedsComposer
-                                              : styles.statusPillFailed,
-                                        ].join(" ")}
-                                      >
-                                        {destination.platform === "x" ? <XMark /> : <TelegramMark />} {platformLabel(destination.platform)} ·{" "}
-                                        {destination.status === "sent"
-                                          ? "Sent"
+                          <div className={styles.historyRow} key={post.id}>
+                            <span className={styles.historyWhen}>{post.status === "canceled" ? "Canceled" : formatScheduledAt(post.scheduledAt)}</span>
+                            <p className={styles.historyText}>{post.body}</p>
+                            {post.status === "canceled" ? (
+                              <span className={styles.historyOutcomeMuted}>Canceled before it was sent.</span>
+                            ) : (
+                              <div className={styles.destinationToggles}>
+                                {post.destinations.map((destination) => {
+                                  const connection = connections.find((entry) => entry.platform === destination.platform);
+                                  const needsReconnect = destination.status === "failed" && connection?.status === "reconnect_needed";
+                                  return (
+                                    <span
+                                      key={destination.id}
+                                      className={[
+                                        styles.statusPill,
+                                        destination.status === "sent"
+                                          ? styles.statusPillSent
                                           : destination.status === "needs_composer"
-                                            ? "Needs composer"
-                                            : destination.errorMessage || "Failed"}
-                                        {needsReconnect ? (
-                                          <button type="button" onClick={() => setActiveTab("setup")}>
-                                            Reconnect
-                                          </button>
-                                        ) : null}
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          </article>
+                                            ? styles.statusPillNeedsComposer
+                                            : styles.statusPillFailed,
+                                      ].join(" ")}
+                                    >
+                                      {destination.platform === "x" ? <XMark /> : <TelegramMark />} {platformLabel(destination.platform)} ·{" "}
+                                      {destination.status === "sent"
+                                        ? "Sent"
+                                        : destination.status === "needs_composer"
+                                          ? "Needs composer"
+                                          : destination.errorMessage || "Failed"}
+                                      {needsReconnect ? (
+                                        <button type="button" onClick={() => setActiveTab("setup")}>
+                                          Reconnect
+                                        </button>
+                                      ) : null}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
                         ))}
                       </div>
                     )}
+                  </section>
+
+                  <section className={styles.howPanel}>
+                    <div className={styles.queueHeader}>
+                      <div>
+                        <h2>How it&apos;s going</h2>
+                        <p>Your numbers, updated as they move.</p>
+                      </div>
+                      <span className={styles.privateBadge}>🔒 ONLY YOU CAN SEE THIS</span>
+                    </div>
+                    <div className={styles.howStats}>
+                      <div className={styles.howStat}>
+                        <span className={styles.eyebrow}>HOLDERS</span>
+                        <b>{howItsGoing?.holders !== null && howItsGoing?.holders !== undefined ? howItsGoing.holders.toLocaleString("en-US") : "—"}</b>
+                        <small>{howItsGoing?.holders !== null && howItsGoing?.holders !== undefined ? "live on-chain count" : selectedProject?.chain === "robinhood" && selectedProject.contractAddress ? "not available right now" : "launch the token first"}</small>
+                      </div>
+                      <div className={styles.howStat}>
+                        <span className={styles.eyebrow}>X FOLLOWERS</span>
+                        <b>—</b>
+                        <small>not tracked yet</small>
+                      </div>
+                      <div className={styles.howStat}>
+                        <span className={styles.eyebrow}>TELEGRAM MEMBERS</span>
+                        <b>{howItsGoing?.telegramMembers !== null && howItsGoing?.telegramMembers !== undefined ? howItsGoing.telegramMembers.toLocaleString("en-US") : "—"}</b>
+                        <small>{howItsGoing?.telegramMembers !== null && howItsGoing?.telegramMembers !== undefined ? "live channel count" : telegramConnection?.status === "connected" ? "not available right now" : "connect Telegram in Setup"}</small>
+                      </div>
+                    </div>
+                    <span className={styles.eyebrow}>AVERAGE PER POST</span>
+                    <div className={styles.howAverages}>
+                      {["Views", "Reactions", "Replies"].map((label) => (
+                        <div className={styles.howAverage} key={label}>
+                          <span>{label}</span>
+                          <b title="Needs paid X reads and Telegram post analytics — not tracked yet.">—</b>
+                        </div>
+                      ))}
+                    </div>
+                    <p className={styles.howNote}>
+                      {howItsGoingStatus === "error"
+                        ? "Your numbers could not be loaded just now — they will refresh next time you open this tab."
+                        : "Only real numbers are shown. X followers and per-post views, reactions and replies need paid X reads, so they stay blank until that is switched on."}
+                    </p>
                   </section>
                 </div>
               ) : null}
