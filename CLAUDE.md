@@ -2463,3 +2463,56 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   schedule in the future) — not on a physical iPhone. Owner: run migration
   034 in Supabase before merging; without it approvals still work, one
   signature per post.
+
+- Bespoke generator, free rein on gpt-5 (owner decisions, 6 Sep 2026: "go
+  with $0.50" a site; keep the restraints, give creativity free rein; require
+  only hero, how to buy and community). **Model:** the paid full-page stage
+  runs on the flagship gpt-5 at medium reasoning with a 32,000-token output
+  budget (`OPENAI_BESPOKE_PAGE_MODEL`, default `gpt-5`,
+  `resolveBespokePageModel` in `lib/server/ai-responses-runtime.ts`); artwork
+  analysis, inspiration inspection and every Social Studio call stay on
+  `OPENAI_VISION_MODEL` (gpt-5-mini). **Metering:** gpt-5 is billed at
+  different rates, so `lib/server/ai-pricing.ts` gains
+  `readAiPricingRatesForModel` — flagship gpt-5 (dated or Gateway-prefixed,
+  never -mini/-nano/-pro) at its own env-overridable text rates
+  (`OPENAI_GPT5_*_COST_USD_PER_MILLION`, defaults $1.25 / $0.125 / $10.00 per
+  million), everything else on the shared defaults — and the cost ledger
+  prices each row for the model that actually answered. **Free rein:** the
+  prompt drops the prescriptive recipes (the retail "six cards and a search
+  pattern" rule, the "no terminal look unless the artwork is cyber" rule, the
+  mandatory click easter egg, the required-patterns list) for a "creative
+  direction is yours" block; the aesthetic acceptance profile that
+  mechanically rejected pages on those grounds is gone
+  (`FREE_REIN_ACCEPTANCE_PROFILE = {}`; `buildGeneratedPageAcceptanceProfile`
+  deleted — `lib/generated-site-page.ts` still honours the flags for its own
+  tests). **Restraints kept, in code:** the responsive/layout gate, HTML
+  sanitisation, the content filter, the overflow seatbelt, size caps
+  (the prompt now states the 85,000-character target against the 90,000-byte
+  publish limit), originality rules, brief-ID evidence, payment/entitlement/
+  Origin/rate limits. `REQUIRED_PAGE_SECTIONS` is now hero / how-to-buy /
+  community, with `OPTIONAL_PAGE_SECTIONS` offered to the model. **Cost cap:**
+  `BESPOKE_SITE_COST_CAP_USD` (default $1.50) — the automatic layout retry is
+  the only multiplier on one sale, so the route computes the first attempt's
+  cost from the provider's own usage at the page model's rates and skips the
+  retry when two such attempts would pass the cap, logging a
+  `bespoke-cost-cap-held` Activity entry; the user sees the ordinary layout
+  failure and decides. **Rule 10:** the `website-generation` pipeline gains a
+  `bespoke-page-model` stage (model, reasoning, budget, rates, cap; amber
+  when the configured model has no dedicated rate table). **Tests changed
+  rather than only added (rule 8, stated plainly):** the #303 request-body
+  pins on `max_output_tokens: 20_000`, `effort: "minimal"`, the retail
+  "bright, spacious discovery experience" line and "concise enough to finish"
+  were rewritten to the gpt-5 budget, medium reasoning, the creative-direction
+  block and the size line; the route test's "rejects a retail-inspired result
+  that falls back to terminal styling" case now asserts that page completes
+  (aesthetic rejection is gone by decision); and the Gateway OIDC test's
+  "every call uses openai/gpt-5-mini" loop now expects the page call on
+  openai/gpt-5. New `tests/bespoke-free-rein.test.ts` covers the
+  model matcher and rates, the cap parser, the model resolver, the prompt
+  (loosened lines gone, hard rules present), a three-section page passing the
+  gate, the health stage, and env/admin pins; the route test gains the
+  cap-skips-retry and cheap-attempt-still-retries cases. **Not in this PR
+  (next, by owner decision):** bespoke access is a one-off purchase only —
+  Pro/Pro Bundle must stop granting it — with three generations per purchase
+  and a pick-from-three version picker; the $15 price is the owner's call.
+  Estimated cost per site at these settings: about $0.50, against $10.

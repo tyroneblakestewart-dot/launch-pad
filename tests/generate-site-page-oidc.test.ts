@@ -74,7 +74,10 @@ describe("POST /api/generate-site-page Vercel runtime authentication", () => {
       expect(call[0]).toBe(VERCEL_AI_GATEWAY_RESPONSES_URL);
       const init = call[1] as RequestInit;
       expect(new Headers(init.headers).get("Authorization")).toBe("Bearer runtime-oidc-token");
-      expect(JSON.parse(String(init.body)).model).toBe("openai/gpt-5-mini");
     }
+    // Artwork analysis stays on the runtime's model; the paid full page runs on
+    // gpt-5 (owner decision, 6 Sep 2026), Gateway-prefixed on this transport.
+    expect(JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)).model).toBe("openai/gpt-5-mini");
+    expect(JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body)).model).toBe("openai/gpt-5");
   });
 });

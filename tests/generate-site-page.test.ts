@@ -169,11 +169,15 @@ describe("POST /api/generate-site-page", () => {
     expect(artworkRequest.max_output_tokens).toBe(1_500);
     expect(artworkRequest.reasoning).toEqual({ effort: "minimal" });
     expect(finalRequest.stream).toBe(true);
-    expect(finalRequest.max_output_tokens).toBe(20_000);
-    expect(finalRequest.reasoning).toEqual({ effort: "minimal" });
+    // Free-rein bespoke generator (owner decision, 6 Sep 2026): gpt-5 at
+    // medium reasoning with a 32k output budget, and no prescriptive design
+    // recipe — the retail "six cards and a search pattern" rule is gone.
+    expect(finalRequest.max_output_tokens).toBe(32_000);
+    expect(finalRequest.reasoning).toEqual({ effort: "medium" });
     expect(finalRequest.input[0].content[0].text).toContain("Artwork owns the page identity");
-    expect(finalRequest.input[0].content[0].text).toContain("bright, spacious discovery experience");
-    expect(finalRequest.input[0].content[0].text).toContain("concise enough to finish");
+    expect(finalRequest.input[0].content[0].text).toContain("CREATIVE DIRECTION IS YOURS");
+    expect(finalRequest.input[0].content[0].text).not.toContain("bright, spacious discovery experience");
+    expect(finalRequest.input[0].content[0].text).toContain("must stay under 85,000 characters");
     // Desktop + mobile responsiveness, smooth scroll and layout-quality
     // requirements are non-negotiable in the developer prompt (issue #303).
     expect(finalRequest.input[0].content[0].text).toContain(
@@ -324,7 +328,10 @@ describe("POST /api/generate-site-page", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects, before completion, a retail-inspired result that falls back to terminal and heist styling", async () => {
+  it("no longer rejects a page on aesthetic grounds — a terminal-styled result for retail inspiration completes (free rein, owner decision 6 Sep 2026)", async () => {
+    // This case used to assert a "legacy terminal fallback" rejection. The
+    // creative direction is now the model's; safety, responsiveness,
+    // required sections and originality are what still gate the page.
     const ids = getFusionBriefIds(ARTWORK, INSPIRATION);
     const fetchMock = vi
       .fn()
@@ -339,10 +346,7 @@ describe("POST /api/generate-site-page", () => {
     const events = await readNdjsonEvents(response);
 
     expect(events.some((event) => event.type === "progress" && event.stage === "checking-safety")).toBe(true);
-    expect(events.some((event) => event.type === "complete")).toBe(false);
-    const errorEvent = events.at(-1) as { type: string; error: string };
-    expect(errorEvent.type).toBe("error");
-    expect(errorEvent.error).toContain("legacy terminal fallback");
+    expect(events.at(-1)).toMatchObject({ type: "complete", source: "openai", inspirationUsed: true });
   });
 
   it("rejects a full page that echoes the wrong collaboration evidence", async () => {
@@ -479,6 +483,78 @@ describe("POST /api/generate-site-page", () => {
 
       expect(completeEvent.type).toBe("complete");
       expect(completeEvent.html).toBe(html());
+    });
+
+    it("skips the retry when two attempts would pass the per-site cost cap, and says so — never a silent second spend", async () => {
+      const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
+      // At gpt-5 rates ($10/M output) 100k output tokens is $1.00; doubled it passes the $1.50 default cap.
+      const expensiveSquished = sseResponse([
+        sseEventChunk({ type: "response.output_text.delta", delta: "" }),
+        sseEventChunk({
+          type: "response.completed",
+          response: {
+            model: "gpt-5",
+            usage: { input_tokens: 4_000, output_tokens: 100_000 },
+            output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ html: squishedHtml(), ...ids }) }] }],
+          },
+        }),
+      ]);
+      const fetchMock = vi.fn().mockResolvedValueOnce(outputText(ARTWORK)).mockResolvedValueOnce(expensiveSquished);
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(
+        request({
+          name: "Journey",
+          ticker: "RIDE",
+          description: "A community token inspired by finding your route through London.",
+          imageDataUrl: VALID_IMAGE,
+          inspirationUrl: "",
+        }),
+      );
+      const events = await readNdjsonEvents(response);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(events.at(-1)?.type).toBe("error");
+      expect(console.warn).toHaveBeenCalledWith(
+        "Bespoke layout retry skipped: two attempts would pass the per-site cost cap",
+        expect.stringContaining('"pageModel":"gpt-5"'),
+      );
+    });
+
+    it("still retries when the first attempt was cheap enough to afford a second", async () => {
+      const ids = getFusionBriefIds(ARTWORK, NO_URL_PRESENTATION_BRIEF);
+      const cheapSquished = sseResponse([
+        sseEventChunk({
+          type: "response.completed",
+          response: {
+            model: "gpt-5",
+            usage: { input_tokens: 4_000, output_tokens: 20_000 },
+            output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ html: squishedHtml(), ...ids }) }] }],
+          },
+        }),
+      ]);
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(outputText(ARTWORK))
+        .mockResolvedValueOnce(cheapSquished)
+        .mockResolvedValueOnce(streamedPage({ html: html(), ...ids }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const response = await POST(
+        request({
+          name: "Journey",
+          ticker: "RIDE",
+          description: "A community token inspired by finding your route through London.",
+          imageDataUrl: VALID_IMAGE,
+          inspirationUrl: "",
+        }),
+      );
+      const events = await readNdjsonEvents(response);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(events.at(-1)).toMatchObject({ type: "complete" });
+      // The page stage is on gpt-5; the artwork analysis stays on the runtime's model.
+      expect(JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body)).model).toBe("gpt-5");
+      expect(JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)).model).toBe("gpt-5-mini");
     });
 
     it("does not retry, and fails immediately, when the rejection reason is not layout", async () => {

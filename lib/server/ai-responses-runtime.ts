@@ -15,6 +15,7 @@ type AIEnvironment = {
   OPENAI_VISION_MODEL?: string;
   AI_GATEWAY_API_KEY?: string;
   AI_GATEWAY_MODEL?: string;
+  OPENAI_BESPOKE_PAGE_MODEL?: string;
   VERCEL_OIDC_TOKEN?: string;
 };
 
@@ -28,6 +29,21 @@ function directOpenAIModel(model: string): string {
 
 function gatewayModel(model: string): string {
   return model.includes("/") ? model : `openai/${model}`;
+}
+
+/**
+ * The model for the bespoke full-page stage only (owner decision, 6 Sep 2026:
+ * full gpt-5 for the paid site, gpt-5-mini everywhere else). Artwork analysis,
+ * inspiration inspection and every Social Studio call keep the runtime's model.
+ */
+export const DEFAULT_BESPOKE_PAGE_MODEL = "gpt-5";
+
+export function resolveBespokePageModel(
+  environment: AIEnvironment = process.env,
+  runtime: Pick<AIResponsesRuntime, "source">,
+): string {
+  const configured = value(environment.OPENAI_BESPOKE_PAGE_MODEL) || DEFAULT_BESPOKE_PAGE_MODEL;
+  return runtime.source === "openai" ? directOpenAIModel(configured) : gatewayModel(configured);
 }
 
 export function getVercelOidcToken(request: Request): string {

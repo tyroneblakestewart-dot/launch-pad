@@ -1,5 +1,7 @@
 import {
   ARTWORK_PLACEHOLDER,
+  OPTIONAL_PAGE_SECTIONS,
+  REQUIRED_PAGE_SECTIONS,
   describeGeneratedPageRejection,
   parseGeneratedPagePayload,
   type GeneratedPageAcceptanceProfile,
@@ -56,13 +58,6 @@ export const GENERATED_PAGE_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-const TERMINAL_IDENTITY_PATTERN =
-  /\b(?:terminal|hacker|cyber|matrix|code[- ]?rain|command centre|heist|console|shell)\b/i;
-const TERMINAL_NEGATION_PATTERN =
-  /\b(?:do not|don't|never|avoid|without|not|rather than|instead of)\b[^.!?]{0,120}\b(?:terminal|hacker|cyber|matrix|code[- ]?rain|command centre|heist|console|shell)\b/i;
-const RETAIL_PRESENTATION_PATTERN =
-  /\b(?:retail|marketplace|e-?commerce|shopping|shop|product discovery|category navigation|campaign cards?|commercial homepage|supermarket|grocer)\b/i;
-
 function artworkBriefLines(identity: ArtworkIdentity): string[] {
   return [
     `Dominant colours: ${identity.dominantColours}`,
@@ -75,21 +70,18 @@ function artworkBriefLines(identity: ArtworkIdentity): string[] {
   ];
 }
 
-function artworkUsesTerminalAesthetic(identityText: string): boolean {
-  if (TERMINAL_NEGATION_PATTERN.test(identityText)) return false;
-  return TERMINAL_IDENTITY_PATTERN.test(identityText);
-}
+/**
+ * Free-rein bespoke generation (owner decision, 6 Sep 2026): the page is no
+ * longer rejected on aesthetic grounds (the old "no terminal look unless the
+ * artwork is cyber" and "retail inspiration needs six cards and a search
+ * pattern" rules). The creative direction is the model's; what stays enforced
+ * is safety, the responsive baseline, the required sections and originality.
+ */
+export const FREE_REIN_ACCEPTANCE_PROFILE: GeneratedPageAcceptanceProfile = {};
 
-export function buildGeneratedPageAcceptanceProfile(
-  artworkIdentity: ArtworkIdentity,
-  inspirationAnalysis: string,
-): GeneratedPageAcceptanceProfile {
-  const identityText = Object.values(artworkIdentity).join(" ");
-  return {
-    forbidTerminalAesthetic: !artworkUsesTerminalAesthetic(identityText),
-    requireRetailMarketplacePresentation: RETAIL_PRESENTATION_PATTERN.test(inspirationAnalysis),
-  };
-}
+/** The bespoke full-page stage's fixed reasoning effort and output budget on gpt-5 (owner decision, 6 Sep 2026). */
+export const BESPOKE_PAGE_REASONING_EFFORT = "medium" as const;
+export const BESPOKE_PAGE_MAX_OUTPUT_TOKENS = 32_000;
 
 export function buildPageArtworkIdentityRequestBody(
   request: NormalisedGenerateSiteStyleRequest,
@@ -154,15 +146,6 @@ export function buildGeneratedSitePageRequestBody(
   correctiveFeedback?: string,
 ) {
   const ids = getFusionBriefIds(artworkIdentity, inspirationAnalysis);
-  const acceptance = buildGeneratedPageAcceptanceProfile(artworkIdentity, inspirationAnalysis);
-  const presentationRules = [
-    acceptance.forbidTerminalAesthetic
-      ? "- The artwork is not cyber or terminal themed. Do not use black hacker UI, green-on-black dashboards, shell commands, code rain, monospace console labels, heist language or military display type."
-      : "",
-    acceptance.requireRetailMarketplacePresentation
-      ? "- The inspiration is retail or marketplace-led. Use a bright, spacious discovery experience with a useful utility header, clear navigation, a search/discovery pattern, a large campaign hero, at least six original content cards across multiple grids, category-style browsing and friendly promotional pacing."
-      : "",
-  ].filter(Boolean);
 
   const developerPrompt = [
     TOKEN_LANDING_PAGE_GENERATOR_PREFIX,
@@ -179,10 +162,14 @@ export function buildGeneratedSitePageRequestBody(
     "- Google Fonts are allowed. All other visuals must be CSS or the uploaded artwork placeholder.",
     `- Use ${ARTWORK_PLACEHOLDER} as the src for the main uploaded image and any intentionally repeated artwork elements. Do not output the image data itself.`,
     "- Include responsive, genuinely different desktop and mobile layouts.",
-    "- Required section IDs: hero, about, tokenomics, roadmap, how-to-buy, community.",
-    "- Include a useful header/navigation, a strong hero, multiple presentation patterns, clear CTA hierarchy, animated but readable interactions and at least one artwork click easter egg.",
-    "- The tokenomics section must be styled from the same palette variables (colours, surfaces, borders) as the rest of the page. Never render it as a fixed white/paper card that ignores the page's own theme — a stylised receipt or ledger presentation is fine as long as its surface and ink colours come from the page's own palette with readable contrast, not a hardcoded white background.",
-    "- Keep the document focused and concise enough to finish within the structured response budget; do not repeat large blocks of CSS or copy.",
+    `- Required section IDs: ${REQUIRED_PAGE_SECTIONS.join(", ")}. Add any of ${OPTIONAL_PAGE_SECTIONS.join(", ")} (with those exact IDs) only when the project's story earns them — a page with three strong sections beats one with six thin ones.`,
+    "- Include a useful header/navigation, a strong hero and a clear call-to-action hierarchy.",
+    "",
+    "CREATIVE DIRECTION IS YOURS:",
+    "- Choose the composition, rhythm, motion and personality of this page yourself — there is no house style to follow beyond the rules on this list. Editorial, playful, brutalist, luxurious, retro, minimal, maximal: pick whatever the artwork and the inspiration brief genuinely call for, and commit to it fully rather than hedging toward a generic crypto landing page.",
+    "- Let the artwork's palette, subject and mood drive the whole page; let the inspiration brief shape how content is organised and paced. Surprise is welcome where it serves the reader; every section still has to be usable and readable.",
+    "- If a section is styled as a card, ticket, receipt, ledger or panel, its surface and ink colours must come from the page's own palette with readable contrast — never a hardcoded white card that ignores the theme.",
+    "- Use the output budget for design and copy that matter; do not repeat large blocks of CSS or copy. The finished HTML document must stay under 85,000 characters — published sites are stored with a hard 90,000-byte limit.",
     "",
     "RESPONSIVE & LAYOUT QUALITY REQUIREMENTS (NON-NEGOTIABLE):",
     '- Include exactly one <meta name="viewport" content="width=device-width, initial-scale=1"> tag in <head>.',
@@ -193,7 +180,6 @@ export function buildGeneratedSitePageRequestBody(
     "- The hero section's heading, artwork and primary call-to-action must all be visible within the very first viewport at 390px, in normal document flow. Do not build a hero as a fixed- or viewport-height block with its heading or artwork positioned absolutely off-canvas, clipped by overflow, or hidden behind another layer — a phone visitor must see real content immediately, never an empty solid-colour block.",
     "- Add `scroll-behavior: smooth;` to the page (and respect `prefers-reduced-motion` by turning it off there). Any sticky, fixed or absolutely positioned element must never cover page content on small screens.",
     "- Use a consistent spacing scale and sensible section rhythm. Images must use `object-fit` so they never distort, and must never overflow their container.",
-    ...presentationRules,
     ...(correctiveFeedback
       ? ["", "CORRECTIVE FEEDBACK FROM THE REJECTED PREVIOUS ATTEMPT (fix this specifically, everything else above still applies):", correctiveFeedback]
       : []),
@@ -224,11 +210,13 @@ export function buildGeneratedSitePageRequestBody(
   return {
     model,
     store: false,
-    // The identity has already been analysed in the previous stage. Minimal
-    // reasoning and a low-detail reference reduce Gateway latency while the
-    // verified brief remains the authoritative design source.
-    reasoning: { effort: "minimal" },
-    max_output_tokens: 20_000,
+    // Free-rein bespoke generation (owner decision, 6 Sep 2026): medium
+    // reasoning on gpt-5 so the model designs before it writes, and a larger
+    // output budget so a rich page is never cut short. The verified artwork
+    // brief remains the authoritative identity source; the image is a
+    // low-detail reference only.
+    reasoning: { effort: BESPOKE_PAGE_REASONING_EFFORT },
+    max_output_tokens: BESPOKE_PAGE_MAX_OUTPUT_TOKENS,
     input: [
       {
         role: "developer",

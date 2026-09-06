@@ -13,8 +13,16 @@ import {
   resolveCurveLaunchParams,
 } from "@/lib/curve-launch-pipeline-config";
 import { getFactoryAddress, HOODLUMS_TOKEN_FACTORY_ABI } from "@/lib/factory-config";
-import { readAiPricingRates, readOperationsCostThresholds, validateAiPricingConfig } from "@/lib/server/ai-pricing";
-import { resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
+import {
+  isGpt5FlagshipModel,
+  readAiPricingRates,
+  readAiPricingRatesForModel,
+  readBespokeSiteCostCapUsd,
+  readOperationsCostThresholds,
+  validateAiPricingConfig,
+} from "@/lib/server/ai-pricing";
+import { resolveAIResponsesRuntime, resolveBespokePageModel } from "@/lib/server/ai-responses-runtime";
+import { BESPOKE_PAGE_MAX_OUTPUT_TOKENS, BESPOKE_PAGE_REASONING_EFFORT } from "@/lib/site-page-openai-pipeline";
 import { getOperationsCostSnapshot, type OperationsCostSnapshotDeps } from "@/lib/server/admin-operations-costs";
 import { CONTENT_FILTER_CATEGORY_COUNT, CONTENT_FILTER_TERM_COUNT } from "@/lib/server/content-filter";
 import {
@@ -264,10 +272,31 @@ export async function buildWebsiteGenerationPipeline(
       originCheckStage(env),
       rateLimiterStage(env),
       providerReachable,
+      bespokePageModelStage(env, requestOidcToken),
       lastGenerationOutcomeStage(),
       responseValidationStage(),
     ],
   };
+}
+
+// Free-rein bespoke generator (owner decision, 6 Sep 2026): which model the
+// paid full page runs on, what it is metered at, and the per-site cost cap.
+// Amber when the configured page model has no dedicated rate table, since
+// its cost would then be metered at gpt-5-mini prices and under-reported.
+function bespokePageModelStage(env: Record<string, string | undefined>, requestOidcToken: string): AdminPipelineStage {
+  const id = "bespoke-page-model";
+  const label = "Bespoke page model & per-site cost cap";
+  const runtime = resolveAIResponsesRuntime(env, requestOidcToken);
+  if (!runtime) return stage(id, label, "amber", "No AI generation provider is configured.");
+  const pageModel = resolveBespokePageModel(env, runtime);
+  const rates = readAiPricingRatesForModel(pageModel, env);
+  const cap = readBespokeSiteCostCapUsd(env);
+  const flagship = isGpt5FlagshipModel(pageModel);
+  const summary = `Full page on ${pageModel} (${BESPOKE_PAGE_REASONING_EFFORT} reasoning, ${BESPOKE_PAGE_MAX_OUTPUT_TOKENS.toLocaleString("en-GB")}-token output budget), metered at $${rates.inputCostUsdPerMillion}/M in, $${rates.outputCostUsdPerMillion}/M out; per-site cost cap $${cap.toFixed(2)} (the layout retry is skipped past it).`;
+  if (!flagship && pageModel.replace(/^openai\//, "") !== ((env.OPENAI_VISION_MODEL || "").trim() || "gpt-5-mini")) {
+    return stage(id, label, "amber", `${summary} This model has no dedicated rate table, so its cost is metered at the shared gpt-5-mini rates and may be under-reported.`);
+  }
+  return stage(id, label, "green", summary);
 }
 
 // ---------------------------------------------------------------------------

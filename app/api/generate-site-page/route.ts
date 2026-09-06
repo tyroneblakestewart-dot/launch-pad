@@ -15,7 +15,7 @@ import {
 } from "@/lib/site-style-openai-pipeline";
 import {
   NO_URL_PRESENTATION_BRIEF,
-  buildGeneratedPageAcceptanceProfile,
+  FREE_REIN_ACCEPTANCE_PROFILE,
   buildGeneratedSitePageRequestBody,
   buildPageArtworkIdentityRequestBody,
   describeGeneratedSitePageRejection,
@@ -30,9 +30,12 @@ import {
 import {
   getVercelOidcToken,
   resolveAIResponsesRuntime,
+  resolveBespokePageModel,
   type AIResponsesRuntime,
 } from "@/lib/server/ai-responses-runtime";
 import { recordTextOperationCostBestEffort, runAfterResponse, type AiOperationAccessSource } from "@/lib/server/ai-operation-cost-store";
+import { calculateTextCostUsd, readAiPricingRatesForModel, readBespokeSiteCostCapUsd } from "@/lib/server/ai-pricing";
+import { extractOpenAIUsage } from "@/lib/server/ai-usage";
 import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-store";
 import { authoriseBespokeSiteGeneration } from "@/lib/server/bespoke-site-entitlement";
 import { contentFilterRejectionMessage, runContentFilterFailOpen } from "@/lib/server/content-filter";
@@ -296,6 +299,10 @@ export async function POST(request: Request) {
   }
 
   const model = ai.model;
+  // The paid full page runs on gpt-5 (owner decision, 6 Sep 2026); the two
+  // analysis stages stay on the runtime's cheaper model.
+  const pageModel = resolveBespokePageModel(process.env, ai);
+  const bespokeCostCapUsd = readBespokeSiteCostCapUsd(process.env);
   const encoder = new TextEncoder();
   const walletAddress = authorisation.walletAddress;
   const accessSource: AiOperationAccessSource = authorisation.accessSource ?? "unknown";
@@ -303,7 +310,7 @@ export async function POST(request: Request) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false;
-      const recordBespokeCost = (featureKey: string, response: OpenAIResponse | undefined) => {
+      const recordBespokeCost = (featureKey: string, response: OpenAIResponse | undefined, stageModel = model) => {
         runAfterResponse(() =>
           recordTextOperationCostBestEffort({
             featureKey,
@@ -311,9 +318,15 @@ export async function POST(request: Request) {
             accessSource,
             provider: ai.source,
             response,
-            fallbackModel: model,
+            fallbackModel: stageModel,
           }),
         );
+      };
+      /** What one full-page attempt cost, from the provider's own usage — the same maths the cost ledger records. */
+      const fullPageAttemptCostUsd = (response: OpenAIResponse | undefined): number | null => {
+        const usage = extractOpenAIUsage(response);
+        if (!usage) return null;
+        return calculateTextCostUsd({ ...usage, webSearchCallCount: 0 }, readAiPricingRatesForModel(pageModel));
       };
       const send = (event: GenerateSitePageStreamEvent) => {
         if (closed) return;
@@ -421,7 +434,7 @@ export async function POST(request: Request) {
         send({ type: "progress", stage: "preparing-design" });
 
         const briefIds = getFusionBriefIds(artworkIdentity, inspirationAnalysis);
-        const acceptance = buildGeneratedPageAcceptanceProfile(artworkIdentity, inspirationAnalysis);
+        const acceptance = FREE_REIN_ACCEPTANCE_PROFILE;
 
         send({ type: "progress", stage: "building-page" });
 
@@ -436,30 +449,48 @@ export async function POST(request: Request) {
 
         let generation = await requestStreamedFullPageGeneration(
           ai,
-          buildGeneratedSitePageRequestBody(input, model, artworkIdentity, inspirationAnalysis),
+          buildGeneratedSitePageRequestBody(input, pageModel, artworkIdentity, inspirationAnalysis),
           request.signal,
           onBuildingPageProgress,
         );
-        recordBespokeCost(AI_FEATURE_KEYS.BESPOKE_FULL_PAGE, generation.ok ? generation.payload : generation.usageMetadata);
+        recordBespokeCost(AI_FEATURE_KEYS.BESPOKE_FULL_PAGE, generation.ok ? generation.payload : generation.usageMetadata, pageModel);
 
         // One automatic retry with corrective feedback when the only problem
         // was the responsive-layout baseline (issue #323) — every other
         // rejection reason (missing section, unsafe embed, wrong evidence
-        // id) still fails on the first attempt.
+        // id) still fails on the first attempt. The retry is the only
+        // multiplier on a single sale, so it is skipped when this attempt plus
+        // a like-sized second one would pass the per-site cost cap (owner
+        // decision, 6 Sep 2026) — the user sees the same layout failure and
+        // decides whether to try again.
         if (generation.ok && describeGeneratedSitePageRejection(generation.payload, briefIds, acceptance) === "layout") {
-          generation = await requestStreamedFullPageGeneration(
-            ai,
-            buildGeneratedSitePageRequestBody(
-              input,
-              model,
-              artworkIdentity,
-              inspirationAnalysis,
-              LAYOUT_RETRY_CORRECTIVE_FEEDBACK,
-            ),
-            request.signal,
-            onBuildingPageProgress,
-          );
-          recordBespokeCost(AI_FEATURE_KEYS.BESPOKE_FULL_PAGE_LAYOUT_RETRY, generation.ok ? generation.payload : generation.usageMetadata);
+          const firstAttemptCost = fullPageAttemptCostUsd(generation.payload);
+          const retryWouldPassCap = firstAttemptCost !== null && firstAttemptCost * 2 > bespokeCostCapUsd;
+          if (retryWouldPassCap) {
+            console.warn(
+              "Bespoke layout retry skipped: two attempts would pass the per-site cost cap",
+              JSON.stringify({ firstAttemptCost, bespokeCostCapUsd, pageModel }),
+            );
+            void recordAdminActivityBestEffort({
+              kind: "bespoke-cost-cap-held",
+              serviceKey: "website-generation",
+              message: `Bespoke layout retry skipped for wallet ${walletAddress}: first attempt ~$${firstAttemptCost.toFixed(3)}, cap $${bespokeCostCapUsd.toFixed(2)}.`,
+            });
+          } else {
+            generation = await requestStreamedFullPageGeneration(
+              ai,
+              buildGeneratedSitePageRequestBody(
+                input,
+                pageModel,
+                artworkIdentity,
+                inspirationAnalysis,
+                LAYOUT_RETRY_CORRECTIVE_FEEDBACK,
+              ),
+              request.signal,
+              onBuildingPageProgress,
+            );
+            recordBespokeCost(AI_FEATURE_KEYS.BESPOKE_FULL_PAGE_LAYOUT_RETRY, generation.ok ? generation.payload : generation.usageMetadata, pageModel);
+          }
         }
 
         if (!generation.ok) {
