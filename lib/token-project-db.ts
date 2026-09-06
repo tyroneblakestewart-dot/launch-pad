@@ -1,3 +1,4 @@
+import type { GeneratedSiteCandidate } from "@/lib/generated-site-candidates";
 // Per-project heavy blob storage (artwork + generated site HTML). These
 // fields routinely exceed the ~5MB localStorage quota, so they never touch
 // localStorage — only this IndexedDB store does (issue #307).
@@ -9,6 +10,8 @@ const STORE_NAME = "project-blobs";
 export type ProjectBlob = {
   heroImage: string;
   generatedSiteHtml: string | null;
+  /** Pick-from-three (6 Sep 2026): the last three generated pages; optional so pre-existing blobs load unchanged. */
+  generatedSiteCandidates?: GeneratedSiteCandidate[] | null;
 };
 
 function openDatabase(): Promise<IDBDatabase> {

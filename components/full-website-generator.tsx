@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import type { BespokeAttempts } from "@/lib/bespoke-site-access";
 import { createWalletClient, custom } from "viem";
 import type { FreeSiteSections } from "@/lib/free-site-sections";
 import { isFreeSiteTemplateHtml, substituteFreeSitePlatformFacts } from "@/lib/free-site-platform-facts";
@@ -260,7 +261,7 @@ async function makePublishedSiteLive(site: PublishableSitePayload): Promise<GoLi
 export async function requestGeneratedWebsite(
   detail: GenerateDetail,
   options: RequestGeneratedWebsiteOptions = {},
-): Promise<{ html: string; inspirationUsed: boolean }> {
+): Promise<{ html: string; inspirationUsed: boolean; attempts?: BespokeAttempts }> {
   if (!detail.imageDataUrl?.startsWith("data:image/")) {
     throw new Error("Upload artwork before generating the website.");
   }
@@ -283,7 +284,7 @@ export async function requestGeneratedWebsite(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let result: { html: string; inspirationUsed: boolean } | null = null;
+  let result: { html: string; inspirationUsed: boolean; attempts?: BespokeAttempts } | null = null;
 
   const processLine = (line: string) => {
     if (result) return;
@@ -292,7 +293,7 @@ export async function requestGeneratedWebsite(
     if (event.type === "progress") {
       options.onProgress?.(event.stage);
     } else if (event.type === "complete") {
-      result = { html: event.html, inspirationUsed: event.inspirationUsed };
+      result = { html: event.html, inspirationUsed: event.inspirationUsed, ...(event.attempts ? { attempts: event.attempts } : {}) };
     } else if (event.type === "error") {
       throw new Error(event.error);
     }
@@ -882,6 +883,8 @@ export function FullWebsiteGenerator() {
               style: { source: mode === "bespoke" ? "openai" : "free", inspirationUsed: page.inspirationUsed },
               fullPage: true,
               html: page.html,
+              // Three per purchase (6 Sep 2026): the server's count after this page, for the studio's "designs left" line.
+              ...("attempts" in page && page.attempts ? { attempts: page.attempts } : {}),
             },
           }),
         );

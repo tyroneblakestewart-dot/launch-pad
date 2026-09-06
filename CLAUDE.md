@@ -2516,3 +2516,69 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Pro/Pro Bundle must stop granting it — with three generations per purchase
   and a pick-from-three version picker; the $15 price is the owner's call.
   Estimated cost per site at these settings: about $0.50, against $10.
+
+- Bespoke money rules (owner decisions, 6 Sep 2026: "subscription bundle is
+  separate, it's nothing to do with website"; "retry is 3 and after that they
+  either choose out of the 3 or pay again"). **One-off only:**
+  `getBespokeSiteAccess` (`lib/server/subscribers.ts`) grants bespoke access
+  for a recorded Bond + Pro Site payment and nothing else — the "an active
+  higher-tier subscription includes bespoke site access" branch is removed,
+  so Pro / Pro Bundle (Social Studio subscriptions) buy no website; the admin
+  Subscribers row's `bespokeSiteAccess` follows the same rule. A wallet can
+  launch just a token, a token + free site, a token + paid site, and
+  separately subscribe to connect those projects to Social Studio. **Three
+  per purchase:** the access query now also counts the wallet's one-off
+  Bond + Pro Site payments (`purchaseCount`), and a new
+  `bespoke_site_generations` table (`db/migrations/035_bespoke_site_generations.sql`,
+  `lib/server/bespoke-site-generations-store.ts`) records one row per
+  bespoke page the route actually streamed as complete — a failed, rejected
+  or incomplete attempt never counts, and the automatic layout retry is part
+  of one attempt. `lib/server/bespoke-site-entitlement.ts` checks
+  `allowance = 3 × purchaseCount` against that count at challenge issue AND
+  again at generation (`checkBespokeAttempts`); the fourth request returns a
+  new `attempts-used` status → 403 `bespoke-attempts-used` (with the
+  `{allowance, used, remaining}` figures and `checkoutPlan: "bond-pro-site"`)
+  from both the challenge and generation routes, which the auth bridge
+  treats exactly like `bespoke-plan-required` (opens the Bond + Pro Site
+  checkout); paying again reopens three more. Test-allowlist wallets are
+  uncapped and never consult the count; a count that cannot be read fails
+  closed (503, naming migration 035 or the missing `DATABASE_URL`) rather
+  than granting a free generation. The `complete` stream event carries the
+  allowance after this page (`attempts`), passed through
+  `parseGenerateSitePageStreamLine` only when well-formed. **Pick from
+  three:** the studio keeps the last three generated pages per project
+  (`TokenProject.generatedSiteCandidates`, pure `lib/generated-site-candidates.ts`
+  — newest first, identical HTML de-duplicated, capped at 3) in the
+  IndexedDB blob alongside `generatedSiteHtml` (never in the localStorage
+  index; the blob key is written only when candidates exist, so older blobs
+  keep their exact shape), and the saved-site panel behind the preview
+  window shows a "Your designs · pick one" row (`Design 1/2/3 · this one`)
+  plus the server's "N of 3 designs left for this purchase" line;
+  choosing a design makes it the site (preview, publish payload, saved
+  draft) via the existing `reopenGeneratedSite` path. Candidates clear with
+  the project identity like `generatedSiteHtml` does. **Rule 10:** the
+  `website-generation` pipeline gained a `bespoke-generations` stage (red
+  without `DATABASE_URL` or migration 035, green with the 24h delivered
+  count) and a `bespoke-attempts-used` Activity kind. **Tests changed, not
+  only added (rule 8, stated plainly):** `tests/subscribers.test.ts` pinned
+  `bespokeSiteAccess: true` for active Pro / Pro Bundle rows (four
+  assertions, one test renamed) and now pins `false`;
+  `tests/bespoke-site-entitlement.test.ts`'s "allows active %s access" for
+  pro/pro_bundle now asserts refusal, and its and
+  `tests/bespoke-site-challenge-route.test.ts`'s `it.each` tier lists drop
+  the two subscription tiers (only the one-off purchase is a real allowed
+  tier now). New `tests/bespoke-purchase-rules.test.ts` (26 tests) covers
+  the attempts maths and wording, issue/authorise at 1–3 delivered pages
+  and after a second purchase, test-access uncapped, both fail-closed
+  messages, both routes' 403 shape, the route recording exactly one row per
+  complete stream (none for test access or an incomplete generation), the
+  store contract, candidates maths, IndexedDB/index persistence, protocol
+  passthrough, the health stage, and studio/bridge/CSS pins. **Deploy note
+  for the owner:** run migration 035 in Supabase before merging; no new env
+  vars. Bespoke price stays `$10 · one-off` in `lib/launch-paths.ts` — the
+  "$15" the owner mentioned is his call and is not changed here. Checked in
+  headless Chromium at 1400px and 390px (saved state, all-three-used state,
+  picking Design 1) — not on a physical iPhone; the owner confirms on
+  device. Validated on the final commit: `npm run test:app` — 323 test
+  files / 3801 tests passing; `npm run lint` — 0 errors (10 pre-existing
+  warnings); `npm run build` — succeeds.

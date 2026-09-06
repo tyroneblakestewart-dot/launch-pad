@@ -22,6 +22,8 @@ import {
   validateAiPricingConfig,
 } from "@/lib/server/ai-pricing";
 import { resolveAIResponsesRuntime, resolveBespokePageModel } from "@/lib/server/ai-responses-runtime";
+import { BESPOKE_GENERATIONS_PER_PURCHASE } from "@/lib/bespoke-site-access";
+import { getBespokeSiteGenerationsStore, type BespokeSiteGenerationsStore } from "@/lib/server/bespoke-site-generations-store";
 import { BESPOKE_PAGE_MAX_OUTPUT_TOKENS, BESPOKE_PAGE_REASONING_EFFORT } from "@/lib/site-page-openai-pipeline";
 import { getOperationsCostSnapshot, type OperationsCostSnapshotDeps } from "@/lib/server/admin-operations-costs";
 import { CONTENT_FILTER_CATEGORY_COUNT, CONTENT_FILTER_TERM_COUNT } from "@/lib/server/content-filter";
@@ -80,6 +82,7 @@ function stage(
 // ---------------------------------------------------------------------------
 
 export type WebsiteGenerationPipelineDeps = {
+  getBespokeGenerationsStore?: () => BespokeSiteGenerationsStore;
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
   getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
@@ -273,10 +276,36 @@ export async function buildWebsiteGenerationPipeline(
       rateLimiterStage(env),
       providerReachable,
       bespokePageModelStage(env, requestOidcToken),
+      await bespokeGenerationsStage(env, deps.getBespokeGenerationsStore),
       lastGenerationOutcomeStage(),
       responseValidationStage(),
     ],
   };
+}
+
+// Three generations per purchase (owner decision, 6 Sep 2026): paid bespoke
+// requests fail closed without the count table, so its absence is red.
+async function bespokeGenerationsStage(
+  env: Record<string, string | undefined>,
+  getStore: (() => BespokeSiteGenerationsStore) | undefined,
+): Promise<AdminPipelineStage> {
+  const id = "bespoke-generations";
+  const label = "Bespoke generation count (bespoke_site_generations)";
+  const rule = `${BESPOKE_GENERATIONS_PER_PURCHASE} designs per Bond + Pro Site purchase; Pro / Pro Bundle grant no website.`;
+  if (!(env.DATABASE_URL || "").trim()) {
+    return stage(id, label, "red", `DATABASE_URL is not configured; every paid bespoke request fails closed rather than skip the ${rule}`);
+  }
+  const store = (getStore ?? getBespokeSiteGenerationsStore)();
+  try {
+    const exists = await withTimeout(store.tableExists(), HEALTH_CHECK_TIMEOUT_MS, "timed out");
+    if (!exists) {
+      return stage(id, label, "red", "Migration 035_bespoke_site_generations.sql has not been applied. Every paid bespoke request fails closed with a 503.");
+    }
+    const last24h = await withTimeout(store.countSince(new Date(Date.now() - 24 * 60 * 60 * 1000)), HEALTH_CHECK_TIMEOUT_MS, "timed out");
+    return stage(id, label, "green", `${rule} ${last24h} bespoke page(s) delivered in the last 24h.`);
+  } catch {
+    return stage(id, label, "red", "The bespoke generation count table could not be queried.");
+  }
 }
 
 // Free-rein bespoke generator (owner decision, 6 Sep 2026): which model the

@@ -1,3 +1,4 @@
+import type { GeneratedSiteCandidate } from "@/lib/generated-site-candidates";
 import type { FreeSiteSections } from "@/lib/free-site-sections";
 
 export type SupportedChain = "solana" | "robinhood";
@@ -48,6 +49,13 @@ export interface TokenProject {
   generatedSiteHtml?: string | null;
   /** Increments each time `generatedSiteHtml` is captured. */
   generatedSiteVersion?: number | null;
+  /**
+   * The last three generated pages for this token identity (owner decisions,
+   * 6 Sep 2026: a bespoke purchase buys three designs, the buyer keeps one).
+   * Heavy — lives in IndexedDB with `generatedSiteHtml`, never in the
+   * localStorage index. Cleared with `generatedSiteHtml`.
+   */
+  generatedSiteCandidates?: GeneratedSiteCandidate[] | null;
   /**
    * The path chosen in the path-chooser overlay (Bond / Bond + Site /
    * Bond + Pro Site / Pro / Pro Bundle). Paid paths are only confirmed by

@@ -1,6 +1,13 @@
 "use client";
 
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { isBespokeAttempts, type BespokeAttempts } from "@/lib/bespoke-site-access";
+import {
+  addGeneratedSiteCandidate,
+  describeBespokeAttempts,
+  orderGeneratedSiteCandidates,
+  type GeneratedSiteCandidate,
+} from "@/lib/generated-site-candidates";
 import {
   REOPEN_GENERATED_SITE_EVENT,
   type PublishableSitePayload,
@@ -293,23 +300,51 @@ export function TokenStudio() {
     };
   }, [owner]);
 
+  // "N of 3 designs left for this purchase" — only ever what the server said
+  // after the last generation; null until then (never a guessed count).
+  const [bespokeAttempts, setBespokeAttempts] = useState<BespokeAttempts | null>(null);
+
   useEffect(() => {
     function onSiteGenerated(event: Event) {
-      const detail = (event as CustomEvent<{ fullPage?: boolean; html?: unknown }>).detail;
+      const detail = (event as CustomEvent<{ fullPage?: boolean; html?: unknown; attempts?: unknown }>).detail;
       if (!detail?.fullPage || typeof detail.html !== "string") return;
       if (!isCompleteGeneratedPageHtml(detail.html)) return;
       const html = detail.html;
+      // Pick-from-three (owner decisions, 6 Sep 2026): every generation joins
+      // the project's last three designs; the newest becomes the site until
+      // the buyer picks another from the picker below the preview.
       setProject((current) => ({
         ...current,
         generatedSiteHtml: html,
         generatedSiteVersion: (current.generatedSiteVersion || 0) + 1,
+        generatedSiteCandidates: addGeneratedSiteCandidate(current.generatedSiteCandidates, html),
         updatedAt: new Date().toISOString(),
       }));
+      setBespokeAttempts(isBespokeAttempts(detail.attempts) ? detail.attempts : null);
     }
 
     window.addEventListener("launchpad:site-generated", onSiteGenerated);
     return () => window.removeEventListener("launchpad:site-generated", onSiteGenerated);
   }, []);
+
+  const designCandidates = useMemo(
+    () => orderGeneratedSiteCandidates(project.generatedSiteCandidates ?? []),
+    [project.generatedSiteCandidates],
+  );
+  const bespokeAttemptsNote = describeBespokeAttempts(bespokeAttempts);
+
+  /** Pick-from-three: the chosen design becomes the site (preview, publish payload, saved draft) — the other two stay available. */
+  function chooseGeneratedDesign(candidate: GeneratedSiteCandidate) {
+    if (candidate.html === project.generatedSiteHtml) return;
+    const next: TokenProject = {
+      ...project,
+      generatedSiteHtml: candidate.html,
+      generatedSiteVersion: (project.generatedSiteVersion || 0) + 1,
+      updatedAt: new Date().toISOString(),
+    };
+    setProject(next);
+    reopenGeneratedSite(next);
+  }
 
   const chain = CHAIN_CONFIG[project.chain];
   // Projects saved before this field existed have none; fall back to the
@@ -344,6 +379,7 @@ export function TokenStudio() {
         [key]: value,
         generatedSiteHtml: identityChanged ? null : current.generatedSiteHtml,
         generatedSiteVersion: identityChanged ? null : current.generatedSiteVersion,
+        generatedSiteCandidates: identityChanged ? null : current.generatedSiteCandidates,
         updatedAt: new Date().toISOString(),
       };
     });
@@ -359,6 +395,7 @@ export function TokenStudio() {
           : current.websiteSlug,
       generatedSiteHtml: current.name !== value ? null : current.generatedSiteHtml,
       generatedSiteVersion: current.name !== value ? null : current.generatedSiteVersion,
+      generatedSiteCandidates: current.name !== value ? null : current.generatedSiteCandidates,
       updatedAt: new Date().toISOString(),
     }));
   }
@@ -895,6 +932,29 @@ export function TokenStudio() {
                 <span className="site-preview-placeholder-eyebrow">GENERATED SITE SAVED</span>
                 <strong>Your generated site is saved</strong>
                 <p>It opens in a branded preview window — this panel never shows a stand-in.</p>
+                {designCandidates.length > 1 ? (
+                  <div className="site-design-picker" role="group" aria-label="Choose which generated design is your site">
+                    <span className="site-design-picker-label">Your designs · pick one</span>
+                    <div className="site-design-picker-options">
+                      {designCandidates.map((candidate, index) => {
+                        const active = candidate.html === project.generatedSiteHtml;
+                        return (
+                          <button
+                            key={candidate.id}
+                            type="button"
+                            className={active ? "site-design-option site-design-option-active" : "site-design-option"}
+                            aria-pressed={active}
+                            onClick={() => chooseGeneratedDesign(candidate)}
+                          >
+                            Design {index + 1}
+                            {active ? " · this one" : ""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+                {bespokeAttemptsNote ? <p className="site-design-attempts">{bespokeAttemptsNote}</p> : null}
                 <button
                   type="button"
                   className="reopen-generated-site-button"

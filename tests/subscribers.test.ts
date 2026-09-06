@@ -121,7 +121,11 @@ describe("listSubscribers", () => {
     });
   });
 
-  it("derives active and expiring states from paid_until and grants both higher tiers bespoke access", async () => {
+  // Owner decision (6 Sep 2026): Pro / Pro Bundle are Social Studio subscriptions
+// and grant no website — bespoke access comes only from a Bond + Pro Site
+// purchase. Tests changed, not only added (rule 8): these rows used to pin
+// `bespokeSiteAccess: true` for active Pro tiers.
+it("derives active and expiring states from paid_until; Pro tiers grant no bespoke access", async () => {
     const now = new Date("2026-06-01T00:00:00.000Z");
     const active = await listSubscribers({
       databaseUrl: "postgres://example",
@@ -144,7 +148,7 @@ describe("listSubscribers", () => {
     expect(active.rows[0]).toMatchObject({
       tier: "pro",
       status: "active",
-      bespokeSiteAccess: true,
+      bespokeSiteAccess: false,
       paidFrom: "2026-05-20T00:00:00.000Z",
       paidUntil: "2026-07-01T00:00:00.000Z",
       lastPaymentAsset: "USDT",
@@ -161,7 +165,7 @@ describe("listSubscribers", () => {
     expect(expiring.rows[0]).toMatchObject({
       tier: "pro_bundle",
       status: "expiring",
-      bespokeSiteAccess: true,
+      bespokeSiteAccess: false,
     });
   });
 
@@ -233,7 +237,7 @@ describe("listSubscribers", () => {
       }),
     });
     expect(snapshot.rows[0]).toMatchObject({
-      bespokeSiteAccess: true,
+      bespokeSiteAccess: false,
       telegramLinked: true,
       telegram: "@hoodlum_user",
     });
@@ -255,7 +259,7 @@ describe("listSubscribers", () => {
     });
     expect(paid.rows[0]).toMatchObject({
       tier: "pro",
-      bespokeSiteAccess: true,
+      bespokeSiteAccess: false,
       slugs: [],
     });
 

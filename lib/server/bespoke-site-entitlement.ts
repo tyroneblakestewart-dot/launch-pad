@@ -2,13 +2,21 @@ import { createHash, randomBytes } from "node:crypto";
 import { getAddress, verifyMessage } from "viem";
 import {
   BESPOKE_SITE_CHALLENGE_TTL_MS,
+  bespokeAttempts,
+  bespokeAttemptsUsedMessage,
   buildBespokeSiteChallengeMessage,
   hashBespokeSiteProject,
   normaliseBespokeSiteOrigin,
+  type BespokeAttempts,
   type BespokeSiteAccessProof,
   type BespokeSiteChallengeResponse,
   type BespokeSiteProjectIdentity,
 } from "@/lib/bespoke-site-access";
+import {
+  BespokeSiteGenerationsStoreUnavailableError,
+  getBespokeSiteGenerationsStore,
+  type BespokeSiteGenerationsStore,
+} from "@/lib/server/bespoke-site-generations-store";
 import {
   BespokeSiteChallengeStoreUnavailableError,
   getBespokeSiteChallengeStore,
@@ -20,11 +28,12 @@ import {
 } from "@/lib/server/subscribers";
 
 export const BESPOKE_SITE_UPSELL_MESSAGE =
-  "Bespoke AI design is included with Bond + Pro Site ($10 one-off), Pro, and Pro Bundle. Your free artwork-matched site remains available, or continue to the Bond + Pro Site checkout to unlock the premium responsive design pipeline.";
+  "Bespoke AI design is a one-off Bond + Pro Site purchase ($10): three AI designs per purchase, keep the one you like. Your free artwork-matched site remains available, or continue to the Bond + Pro Site checkout.";
 
 export type BespokeSiteChallengeIssue =
   | { status: "issued"; challenge: BespokeSiteChallengeResponse }
   | { status: "upsell"; walletAddress: string; message: string }
+  | { status: "attempts-used"; walletAddress: string; attempts: BespokeAttempts; message: string }
   | { status: "invalid-request"; message: string }
   | { status: "unavailable"; message: string };
 
@@ -36,10 +45,47 @@ export type BespokeSiteGenerationAuthorisation =
       /** Real server authorisations include this; optional keeps older injected test fixtures compatible. */
       accessSource?: "paid" | "test-allowlist";
       permanent: boolean;
+      /** Present for paid wallets: the generation allowance BEFORE this generation is counted. Absent for test access (uncapped) and older fixtures. */
+      attempts?: BespokeAttempts;
     }
   | { status: "upsell"; walletAddress: string; message: string }
+  | { status: "attempts-used"; walletAddress: string; attempts: BespokeAttempts; message: string }
   | { status: "invalid-proof"; message: string }
   | { status: "unavailable"; message: string };
+
+type AttemptsCheck =
+  | { status: "ok"; attempts: BespokeAttempts | undefined }
+  | { status: "attempts-used"; attempts: BespokeAttempts }
+  | { status: "unavailable"; message: string };
+
+/**
+ * Three generations per one-off purchase (owner decisions, 6 Sep 2026).
+ * Test-allowlist wallets are uncapped — cost is the owner's own. Fails
+ * closed when the count cannot be read: an uncounted generation is a free
+ * one, and the migration is applied before this ships.
+ */
+async function checkBespokeAttempts(
+  walletAddress: string,
+  access: { accessSource?: "none" | "paid" | "test-allowlist"; purchaseCount?: number },
+  store: BespokeSiteGenerationsStore,
+): Promise<AttemptsCheck> {
+  if (access.accessSource === "test-allowlist") return { status: "ok", attempts: undefined };
+  let used: number;
+  try {
+    used = await store.countForWallet(walletAddress);
+  } catch (error) {
+    return {
+      status: "unavailable",
+      message:
+        error instanceof BespokeSiteGenerationsStoreUnavailableError
+          ? "Bespoke generation counting is not configured on this deployment."
+          : "The bespoke generation count could not be read. Apply migration 035_bespoke_site_generations.sql.",
+    };
+  }
+  const attempts = bespokeAttempts(access.purchaseCount ?? 1, used);
+  if (attempts.remaining <= 0) return { status: "attempts-used", attempts };
+  return { status: "ok", attempts };
+}
 
 export type BespokeSiteChallengeIssuer = (input: {
   walletAddress: unknown;
@@ -127,6 +173,7 @@ export async function issueBespokeSiteGenerationChallenge(
     now?: Date;
     accessLookup?: AccessLookup;
     store?: BespokeSiteChallengeStore;
+    generationsStore?: BespokeSiteGenerationsStore;
   } = {},
 ): Promise<BespokeSiteChallengeIssue> {
   if (process.env.NODE_ENV === "test" && testIssuer) {
@@ -170,6 +217,14 @@ export async function issueBespokeSiteGenerationChallenge(
     };
   }
 
+  const attemptsCheck = await checkBespokeAttempts(walletAddress, access, options.generationsStore ?? getBespokeSiteGenerationsStore());
+  if (attemptsCheck.status === "unavailable") {
+    return { status: "unavailable", message: attemptsCheck.message };
+  }
+  if (attemptsCheck.status === "attempts-used") {
+    return { status: "attempts-used", walletAddress, attempts: attemptsCheck.attempts, message: bespokeAttemptsUsedMessage(attemptsCheck.attempts) };
+  }
+
   const nonce = randomBytes(24).toString("base64url");
   const issuedAt = now;
   const expiresAt = new Date(now.getTime() + BESPOKE_SITE_CHALLENGE_TTL_MS);
@@ -200,6 +255,7 @@ export async function issueBespokeSiteGenerationChallenge(
         message: buildBespokeSiteChallengeMessage(challengeInput),
         tier: access.tier,
         accessSource: allowedSource(access.accessSource),
+        ...(attemptsCheck.attempts ? { attempts: attemptsCheck.attempts } : {}),
       },
     };
   } catch (error) {
@@ -224,6 +280,7 @@ export async function authoriseBespokeSiteGeneration(
     verify?: VerifyMessage;
     accessLookup?: AccessLookup;
     store?: BespokeSiteChallengeStore;
+    generationsStore?: BespokeSiteGenerationsStore;
   } = {},
 ): Promise<BespokeSiteGenerationAuthorisation> {
   if (process.env.NODE_ENV === "test" && testAuthoriser) {
@@ -317,11 +374,30 @@ export async function authoriseBespokeSiteGeneration(
     };
   }
 
+  // Defence in depth: the allowance was checked when the challenge was issued,
+  // but two challenges signed in quick succession must not both spend the
+  // last generation.
+  const attemptsCheck = await checkBespokeAttempts(
+    challenge.walletAddress,
+    access,
+    options.generationsStore ?? getBespokeSiteGenerationsStore(),
+  );
+  if (attemptsCheck.status === "unavailable") return accessUnavailable(attemptsCheck.message);
+  if (attemptsCheck.status === "attempts-used") {
+    return {
+      status: "attempts-used",
+      walletAddress: challenge.walletAddress,
+      attempts: attemptsCheck.attempts,
+      message: bespokeAttemptsUsedMessage(attemptsCheck.attempts),
+    };
+  }
+
   return {
     status: "allowed",
     walletAddress: challenge.walletAddress,
     tier: access.tier,
     accessSource: allowedSource(access.accessSource),
     permanent: access.permanent,
+    ...(attemptsCheck.attempts ? { attempts: attemptsCheck.attempts } : {}),
   };
 }

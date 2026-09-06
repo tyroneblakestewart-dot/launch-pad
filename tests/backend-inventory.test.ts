@@ -259,6 +259,7 @@ describe("backend test inventory", () => {
       "lib/server/artwork-identity-request.ts",
       "lib/server/bespoke-site-challenge-store.ts",
       "lib/server/bespoke-site-entitlement.ts",
+      "lib/server/bespoke-site-generations-store.ts",
       "lib/server/buy-bot-alerts.ts",
       "lib/server/buy-bot-cron.ts",
       "lib/server/buy-bot-store.ts",

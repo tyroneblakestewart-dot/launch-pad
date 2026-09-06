@@ -25,6 +25,8 @@ export type BespokeSiteChallengeResponse = BespokeSiteChallengeMessageInput & {
   message: string;
   tier: "test_access" | "bond_pro_site" | "pro" | "pro_bundle";
   accessSource: "paid" | "test-allowlist";
+  /** Paid wallets: the generation allowance before this generation. Absent for test access. */
+  attempts?: BespokeAttempts;
 };
 
 export type BespokeSiteAccessProof = {
@@ -37,6 +39,37 @@ export type BespokeSiteUpsellEventDetail = {
   message: string;
   checkoutPlan: "bond-pro-site";
 };
+
+// Three generations per one-off purchase (owner decisions, 6 Sep 2026). The
+// allowance is 3 × the wallet's recorded Bond + Pro Site payments; `used` is
+// the number of pages the server actually delivered. Pro / Pro Bundle are
+// Social Studio subscriptions and grant no website at all.
+export const BESPOKE_GENERATIONS_PER_PURCHASE = 3;
+export const BESPOKE_ATTEMPTS_USED_CODE = "bespoke-attempts-used";
+
+export type BespokeAttempts = {
+  allowance: number;
+  used: number;
+  remaining: number;
+};
+
+export function bespokeAttempts(purchaseCount: number, used: number): BespokeAttempts {
+  const allowance = Math.max(0, Math.floor(purchaseCount)) * BESPOKE_GENERATIONS_PER_PURCHASE;
+  const spent = Math.max(0, Math.floor(used));
+  return { allowance, used: spent, remaining: Math.max(0, allowance - spent) };
+}
+
+export function isBespokeAttempts(value: unknown): value is BespokeAttempts {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.allowance === "number" && typeof candidate.used === "number" && typeof candidate.remaining === "number"
+  );
+}
+
+export function bespokeAttemptsUsedMessage(attempts: BespokeAttempts): string {
+  return `You've used all ${attempts.allowance} bespoke designs for this purchase. Keep one of the designs saved in your studio, or buy Bond + Pro Site again for 3 more.`;
+}
 
 function text(value: unknown): string {
   return typeof value === "string" ? value : "";
