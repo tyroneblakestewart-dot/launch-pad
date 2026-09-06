@@ -22,6 +22,12 @@ import {
   isMascotImageAllowanceUsed,
   type MascotImageUsage,
 } from "@/lib/mascot-image-allowance";
+import {
+  POST_IMAGE_REMOVE_NOTE,
+  describePostImageSlot,
+  remainingAiImagesToday,
+  selectPostImageCandidates,
+} from "@/lib/social-post-images";
 import { MASCOT_REFERENCE_TIPS, assessMascotReference, type MascotReferenceAssessment } from "@/lib/mascot-reference-guidance";
 import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
 import { getProjectBlob } from "@/lib/token-project-db";
@@ -548,6 +554,13 @@ export function SocialHub() {
   const [mascotUploadStatus, setMascotUploadStatus] = useState<PanelStatus>(null);
   // Today's mascot-image allowance for this token, read from the server (null until known — never a guessed count).
   const [mascotImageUsage, setMascotImageUsage] = useState<MascotImageUsage | null>(null);
+  // AI images on approved posts (owner decision, 6 Sep 2026): which draft an
+  // image is being made for right now, a per-draft failure line, and the
+  // drafts whose image the user skipped mid-generation (the result is
+  // discarded when it lands — the slot is spent, per the no-remake rule).
+  const [postImageBusyId, setPostImageBusyId] = useState<string | null>(null);
+  const [postImageErrors, setPostImageErrors] = useState<Record<string, string>>({});
+  const postImageSkippedIdsRef = useRef<Set<string>>(new Set());
   // Best-results read-out for the last uploaded reference — advice only, the upload proceeds regardless.
   const [mascotReferenceAssessment, setMascotReferenceAssessment] = useState<MascotReferenceAssessment | null>(null);
   const [mascotSceneStatus, setMascotSceneStatus] = useState<PanelStatus>(null);
@@ -874,10 +887,16 @@ export function SocialHub() {
 
   useEffect(() => {
     void loadSlotUsage();
-    void loadMascotImageUsage();
     // loadSlotUsage closes over the latest walletAddress on every render already.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletAddress]);
+
+  // The allowance is per token, so it is re-read when the project changes too.
+  useEffect(() => {
+    void loadMascotImageUsage();
+    // loadMascotImageUsage closes over the latest walletAddress/selectedProjectId on every render already.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAddress, selectedProjectId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1104,6 +1123,13 @@ export function SocialHub() {
     [scheduledPosts],
   );
   const readyToReviewShortfall = replenishShortfall(queue.length, queueTarget);
+  // The drafts the AI has picked for an image today (owner decision, 6 Sep
+  // 2026) — as many as the shared daily allowance still has, best angles
+  // first. A pick spends nothing until the user approves that draft.
+  const postImageCandidateIds = useMemo(
+    () => new Set(selectPostImageCandidates(queue, remainingAiImagesToday(mascotImageUsage))),
+    [queue, mascotImageUsage],
+  );
 
   function selectProject(id: string) {
     const project = projects.find((item) => item.id === id);
@@ -1616,6 +1642,7 @@ export function SocialHub() {
       });
       const payload = (await response.json()) as {
         draft?: { xText: string; telegramText: string };
+        angleKey?: string | null;
         error?: string;
       };
       if (!response.ok || !payload.draft) {
@@ -1632,6 +1659,7 @@ export function SocialHub() {
           source: options.dayLabel ? "calendar-ai" : "auto-replenish",
           dayLabel: options.dayLabel ?? null,
           createdAt: new Date().toISOString(),
+          angleKey: payload.angleKey ?? null,
         };
         setQueue((current) => {
           const next = [item, ...current];
@@ -1953,9 +1981,96 @@ export function SocialHub() {
       }
       setExpandedQueueItemIds((current) => ({ ...current, [item.id]: true }));
       setPendingApprovalItemId(item.id);
+      maybeStartPostImage(item);
       return;
     }
     void approveQueueItem(item);
+  }
+
+  /**
+   * AI images on approved posts (owner decision, 6 Sep 2026). The image is
+   * made when the user approves — on the first Approve tap, so it is on
+   * screen in the confirm step before anything is signed — and only for a
+   * draft the AI picked (postImageCandidateIds), never one that already has
+   * artwork or that the user said "no image" to. The draft keeps the image
+   * even if the user backs out of confirming, so nothing is wasted by a
+   * second look; skipping or removing it is the one way to lose it, and the
+   * card says so before the tap.
+   */
+  function maybeStartPostImage(item: QueueItem) {
+    if (!postImageCandidateIds.has(item.id) || item.artwork || item.imageDeclined) return;
+    if (postImageBusyId === item.id) return;
+    void generatePostImage(item);
+  }
+
+  async function generatePostImage(item: QueueItem) {
+    const project = draftProjectPayload();
+    if (!project || !selectedProject) return;
+    postImageSkippedIdsRef.current.delete(item.id);
+    setPostImageBusyId(item.id);
+    setPostImageErrors((current) => (item.id in current ? { ...current, [item.id]: "" } : current));
+    try {
+      const response = await fetch("/api/social/post-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          walletAddress,
+          projectId: selectedProject.id,
+          displayName: selectedProject.name,
+          project: { name: project.name, ticker: project.ticker, description: project.description },
+          postText: item.xText.trim() || item.telegramText.trim(),
+          mascotVisualDNA,
+        }),
+      });
+      const payload = (await response.json()) as { imageDataUrl?: string; usage?: MascotImageUsage; error?: string };
+      if (payload.usage) setMascotImageUsage(payload.usage);
+      if (!response.ok || !payload.imageDataUrl) {
+        throw new Error(payload.error || "The image could not be made for this post.");
+      }
+      // Skipped while it was being made: the slot is spent, the result is not used.
+      if (postImageSkippedIdsRef.current.has(item.id)) {
+        postImageSkippedIdsRef.current.delete(item.id);
+        return;
+      }
+      attachPostImage(item.id, payload.imageDataUrl);
+    } catch (error) {
+      setPostImageErrors((current) => ({
+        ...current,
+        [item.id]: error instanceof Error ? error.message : "The image could not be made for this post.",
+      }));
+    } finally {
+      setPostImageBusyId((current) => (current === item.id ? null : current));
+      void loadMascotImageUsage();
+    }
+  }
+
+  /** Puts the AI image on the draft. Deliberately not updateQueueItem: the confirm step stays armed — the user is looking at exactly what will be sent. */
+  function attachPostImage(id: string, imageDataUrl: string) {
+    setQueue((current) => {
+      const next = current.map((item) => (item.id === id ? { ...item, artwork: imageDataUrl, aiImage: true } : item));
+      persistSocialStudio({ queue: next });
+      return next;
+    });
+  }
+
+  /** "Remove image": the post goes out as text; the image is gone for today (the allowance was spent when it was made). */
+  function removePostImage(id: string) {
+    setQueue((current) => {
+      const next = current.map((item) => (item.id === id ? { ...item, artwork: null, aiImage: false, imageDeclined: true } : item));
+      persistSocialStudio({ queue: next });
+      return next;
+    });
+  }
+
+  /** "Skip the image" while it is still being made: confirm without waiting; the in-flight result is discarded when it lands. */
+  function skipPostImage(id: string) {
+    postImageSkippedIdsRef.current.add(id);
+    setPostImageBusyId((current) => (current === id ? null : current));
+    setQueue((current) => {
+      const next = current.map((item) => (item.id === id ? { ...item, imageDeclined: true } : item));
+      persistSocialStudio({ queue: next });
+      return next;
+    });
   }
 
   /**
@@ -3747,6 +3862,7 @@ export function SocialHub() {
                       <span className={styles.queueEyebrowNote}>
                         {readyToReviewShortfall > 0 ? "Refilling now" : `${queue.length} draft${queue.length === 1 ? "" : "s"} · target ${queueTarget}`}
                         {" · cadence in Settings & Rules"}
+                        {mascotImageUsage ? ` · ${describePostImageSlot(mascotImageUsage)}` : ""}
                       </span>
                     </div>
                     {queue.length === 0 ? (
@@ -3793,6 +3909,16 @@ export function SocialHub() {
                                             ? "Auto-generated"
                                             : "Manual"}
                                       {isTemplateItem ? <span className={styles.templateBadge}>Template</span> : null}
+                                      {postImageCandidateIds.has(item.id) ? (
+                                        <span
+                                          className={styles.imageComingBadge}
+                                          title="The AI picked this post for an image. It is made when you approve, from today's AI-image allowance."
+                                        >
+                                          Image coming
+                                        </span>
+                                      ) : item.aiImage && item.artwork ? (
+                                        <span className={styles.imageComingBadge}>AI image</span>
+                                      ) : null}
                                     </span>
                                     <span className={selectedDestinations.length === 2 ? styles.destTagBoth : selectedDestinations.length === 1 ? styles.destTag : styles.destTagEmpty}>
                                       {destinationTag}
@@ -3904,6 +4030,25 @@ export function SocialHub() {
                                     <p>
                                       Sending: {selectedDestinations.length === 0 ? "nothing selected" : selectedDestinations.map((platform) => platformLabel(platform)).join(" + ")}. Review the text above — this is exactly what each destination will receive.
                                     </p>
+                                    {postImageBusyId === item.id ? (
+                                      <div className={styles.postImageRow}>
+                                        <span>Making an AI image for this post — about 30 seconds. {POST_IMAGE_REMOVE_NOTE}</span>
+                                        <button type="button" onClick={() => skipPostImage(item.id)}>
+                                          Skip the image
+                                        </button>
+                                      </div>
+                                    ) : item.aiImage && item.artwork ? (
+                                      <div className={styles.postImageRow}>
+                                        <span>
+                                          AI image added — it goes out with the Telegram post and downloads for X. {POST_IMAGE_REMOVE_NOTE}
+                                        </span>
+                                        <button type="button" onClick={() => removePostImage(item.id)}>
+                                          Remove image
+                                        </button>
+                                      </div>
+                                    ) : postImageErrors[item.id] ? (
+                                      <p className={styles.postImageError}>{postImageErrors[item.id]} The post can still be approved without one.</p>
+                                    ) : null}
                                     {selectedTextIsTemplate ? (
                                       <label className={styles.confirmTemplateCheckbox}>
                                         <input
@@ -3929,9 +4074,9 @@ export function SocialHub() {
                                     type="button"
                                     className={styles.queueActionApprove}
                                     onClick={() => handleApproveClick(item)}
-                                    disabled={approvingItemId === item.id || selectedDestinations.length === 0 || requiresTemplateAck}
+                                    disabled={approvingItemId === item.id || selectedDestinations.length === 0 || requiresTemplateAck || postImageBusyId === item.id}
                                   >
-                                    {approvingItemId === item.id ? "Approving…" : isPendingApproval ? "Confirm & approve" : "Approve"}
+                                    {approvingItemId === item.id ? "Approving…" : postImageBusyId === item.id ? "Making the image…" : isPendingApproval ? "Confirm & approve" : "Approve"}
                                   </button>
                                   <button
                                     type="button"

@@ -2352,3 +2352,52 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   extra drafts already generated stay in Waiting for you until deleted.
   Owner check: open the Queue tab with more drafts than the target, switch
   tabs and click back into the window — no "Generating draft…" line appears.
+
+- AI images on approved posts (owner decision, 6 Sep 2026: "the AI chooses 2
+  posts and adds an image made in line with the post; the user can disable
+  the image at their own loss — we don't regenerate until the next day"),
+  built on PR #500's daily allowance (merged just before it; no new
+  migration — both features count against `social_mascot_image_usage`,
+  two AI images per token per UTC day, mascot scenes and post images sharing
+  it). **Not random, by agreement:** `lib/social-post-images.ts`
+  (`selectPostImageCandidates`) ranks the Waiting-for-you drafts by the
+  angle the draft route wrote them to (`POST_IMAGE_VISUAL_RANK`: culture /
+  milestone / behind-the-scenes 3, question / holder shout-out 2, one-liner
+  and manual 1), oldest first on a tie, and picks as many as the day has
+  images left — 0 until the server has answered, so nothing is promised on a
+  guess. `POST /api/social/draft` now returns `angleKey` alongside the
+  draft (null when a theme overrode the rotation) and `QueueItem` gains
+  optional `angleKey` / `imageDeclined` / `aiImage`. **Made at approval:**
+  the first Approve tap (`handleApproveClick` → `maybeStartPostImage`) calls
+  the new `POST /api/social/post-image` for a picked draft — same protection
+  stack as the mascot-image route (secret + Origin, own per-IP limiter
+  `SOCIAL_POST_IMAGE_LIMIT`, `social-studio-ai` isolation, Pro entitlement,
+  project slot, content filter on the post text), the allowance reserved
+  before any paid call and released if the provider fails, cost metered
+  under `social.post-image` ("Post image" in Operations). The prompt
+  (`lib/server/post-image-prompt.ts`) reduces the post to a scene (links,
+  handles, hashtags, emoji dropped, cut at 200 chars) and, with a locked
+  mascot, runs it through the existing mascot formula; without one it builds
+  an on-brand flat-vector illustration with a hard no-text rule and the
+  token's own facts only. The image lands on the draft's `artwork`
+  (`attachPostImage`, deliberately not `updateQueueItem`, so the armed
+  confirm step stays armed) and is on screen in the confirm step before
+  anything is signed; "Confirm & approve" is disabled while it is being
+  made. The rule is said before the tap: "Remove it and it's gone for today
+  — AI images aren't remade until tomorrow." Remove image / Skip the image
+  mark the draft `imageDeclined` (a skipped in-flight result is discarded;
+  the slot is spent); a draft that never got its image made passes the pick
+  to the next best draft at no cost. Backing out of confirming keeps the
+  image on the draft. **Rule 10:** the route is in the `social-studio-ai`
+  service definition and auth bridge; the `image-allowance` health stage's
+  rule names both consumers; the rate-limiter stage lists the new limit; a
+  `social-post-image-generated` Activity kind logs mode, wallet and project
+  key only (never the post or the image). X sends still never attach images
+  (issue #342's cost note stands) — the image goes out with Telegram and is
+  downloadable for the X composer, and the confirm line says so. **Tests
+  changed rather than only added (rule 8, stated plainly):** the #356
+  action-row pin on the Confirm button's exact `disabled` expression and
+  label now includes the `postImageBusyId === item.id` guard and the
+  "Making the image…" label; nothing else was re-pinned. Checked in
+  headless Chromium at 1400px and 390px with mocked draft/image routes —
+  not on a physical iPhone; the owner confirms on device.

@@ -39,6 +39,8 @@ export const SOCIAL_DRAFT_LIMIT = 30;
 export const SOCIAL_VOICE_SAMPLE_LIMIT = 120;
 export const SOCIAL_MASCOT_DNA_LIMIT = 10;
 export const SOCIAL_MASCOT_IMAGE_LIMIT = 20;
+/** AI images made for approved posts share the mascot image's per-IP ceiling; the per-token daily allowance is the real cap. */
+export const SOCIAL_POST_IMAGE_LIMIT = 20;
 export const SOCIAL_STUDIO_WINDOW_MS = 60 * 60 * 1000;
 
 type RateRecord = { count: number; resetAt: number };
@@ -384,8 +386,12 @@ export function consumeSocialMascotImageRateLimit(ip: string, now = Date.now()) 
   return consumeRateLimit(namedRateStore("social-mascot-image"), ip, SOCIAL_MASCOT_IMAGE_LIMIT, SOCIAL_STUDIO_WINDOW_MS, now);
 }
 
+export function consumeSocialPostImageRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("social-post-image"), ip, SOCIAL_POST_IMAGE_LIMIT, SOCIAL_STUDIO_WINDOW_MS, now);
+}
+
 export function resetSocialStudioRateLimitsForTests() {
-  ["social-voice-profile", "social-voice-sample", "social-draft", "social-mascot-dna", "social-mascot-image"].forEach((name) =>
+  ["social-voice-profile", "social-voice-sample", "social-draft", "social-mascot-dna", "social-mascot-image", "social-post-image"].forEach((name) =>
     namedRateStore(name).clear(),
   );
 }

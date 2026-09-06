@@ -48,13 +48,14 @@ describe("Queue tab draft-card action row (issue #356)", () => {
     expect(actionsBlock).toContain("className={styles.queueActionSecondary}");
     expect(actionsBlock).toContain("className={styles.queueActionDelete}");
 
-    // Approve is still primary and still disabled with no destination selected, mid-request, or
-    // (issue #380) pending an unedited-template acknowledgement.
+    // Approve is still primary and still disabled with no destination selected, mid-request,
+    // (issue #380) pending an unedited-template acknowledgement, or (6 Sep 2026) while the AI
+    // image for this post is still being made — confirming then would send without it.
     expect(actionsBlock).toContain(
-      "disabled={approvingItemId === item.id || selectedDestinations.length === 0 || requiresTemplateAck}",
+      "disabled={approvingItemId === item.id || selectedDestinations.length === 0 || requiresTemplateAck || postImageBusyId === item.id}",
     );
     expect(actionsBlock).toContain(
-      '{approvingItemId === item.id ? "Approving…" : isPendingApproval ? "Confirm & approve" : "Approve"}',
+      '{approvingItemId === item.id ? "Approving…" : postImageBusyId === item.id ? "Making the image…" : isPendingApproval ? "Confirm & approve" : "Approve"}',
     );
 
     // Post to X / Send to Telegram keep their brand marks inline beside the label, but are now a

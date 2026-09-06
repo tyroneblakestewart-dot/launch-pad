@@ -23,6 +23,7 @@ import {
   SOCIAL_DRAFT_LIMIT,
   SOCIAL_MASCOT_DNA_LIMIT,
   SOCIAL_MASCOT_IMAGE_LIMIT,
+  SOCIAL_POST_IMAGE_LIMIT,
   SOCIAL_STUDIO_WINDOW_MS,
   SOCIAL_VOICE_PROFILE_LIMIT,
   SOCIAL_VOICE_SAMPLE_LIMIT,
@@ -308,7 +309,7 @@ function socialStudioRateLimiterStage(env: Record<string, string | undefined>): 
     "rate-limiter",
     "Rate limiter",
     "green",
-    `Configured per IP per ${windowMinutes} minutes: voice-profile ${SOCIAL_VOICE_PROFILE_LIMIT}, voice-sample ${SOCIAL_VOICE_SAMPLE_LIMIT}, draft ${SOCIAL_DRAFT_LIMIT}, mascot analysis ${SOCIAL_MASCOT_DNA_LIMIT}, mascot image ${SOCIAL_MASCOT_IMAGE_LIMIT}.`,
+    `Configured per IP per ${windowMinutes} minutes: voice-profile ${SOCIAL_VOICE_PROFILE_LIMIT}, voice-sample ${SOCIAL_VOICE_SAMPLE_LIMIT}, draft ${SOCIAL_DRAFT_LIMIT}, mascot analysis ${SOCIAL_MASCOT_DNA_LIMIT}, mascot image ${SOCIAL_MASCOT_IMAGE_LIMIT}, post image ${SOCIAL_POST_IMAGE_LIMIT}.`,
   );
 }
 
@@ -338,7 +339,7 @@ async function mascotImageAllowanceStage(
   getPool: (databaseUrl: string) => PoolLike,
 ): Promise<AdminPipelineStage> {
   const label = "Daily image allowance (social_mascot_image_usage)";
-  const rule = `${MAX_MASCOT_IMAGES_PER_DAY} mascot images per token per UTC day, hard-blocked at the cap.`;
+  const rule = `${MAX_MASCOT_IMAGES_PER_DAY} AI images per token per UTC day (mascot scenes and approved-post images share it), hard-blocked at the cap.`;
   if (!databaseUrl) {
     return stage("image-allowance", label, "red", `DATABASE_URL is not configured; every mascot-image request fails closed with a 503 rather than skip the ${rule}`);
   }
