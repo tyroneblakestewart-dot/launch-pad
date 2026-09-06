@@ -43,12 +43,15 @@ export const LAUNCH_PATH_OPTIONS: readonly LaunchPathOption[] = [
     id: "bond",
     name: "Bond",
     price: "Free",
-    tagline: "Simple token launch on-chain.",
+    tagline: "Simple token launch on-chain. No website.",
+    // Owner decision (6 Sep 2026): Bond is the token only — no site of any
+    // kind. The studio shows just the token fields for this plan
+    // (lib/launch-path-fields.ts); the card must not promise a site.
     bullets: [
       "Token launch on-chain",
       "Bonding curve",
       "Graduation → locked liquidity",
-      "Basic site at hoodlums.dev/slug",
+      "Token page with live chart and chat",
     ],
   },
   {

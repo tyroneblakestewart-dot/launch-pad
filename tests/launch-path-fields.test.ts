@@ -5,6 +5,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { LAUNCH_PATH_OPTIONS } from "@/lib/launch-paths";
 import {
   STUDIO_FIELD_PLAN_ATTRIBUTE,
   offersWebsiteBuild,
@@ -14,6 +15,16 @@ import {
 async function source(relative: string): Promise<string> {
   return readFile(path.join(process.cwd(), relative), "utf8");
 }
+
+describe("Bond plan card", () => {
+  it("promises no website of any kind, matching the token-only field set (owner decision, 6 Sep 2026)", () => {
+    const bond = LAUNCH_PATH_OPTIONS.find((option) => option.id === "bond");
+    expect(bond?.tagline).toBe("Simple token launch on-chain. No website.");
+    expect(bond?.bullets.join(" ").toLowerCase()).not.toMatch(/\bsite\b|website|hoodlums\.dev\//);
+    expect(bond?.bullets).toContain("Token page with live chart and chat");
+    expect(studioFieldsForLaunchPath("bond").websitePath).toBe(false);
+  });
+});
 
 describe("studioFieldsForLaunchPath", () => {
   it("bond is the token only — no website fields, no generator", () => {

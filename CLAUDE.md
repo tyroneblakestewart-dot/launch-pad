@@ -2743,3 +2743,20 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   `npm run build` — succeeds. Not exercised against a live checkout from this
   session — the owner opens the Bond + Pro Site checkout after deploy and
   confirms it quotes 15 USDG on Robinhood Chain.
+
+- Bond card promises no website (owner direction, 6 Sep 2026: "remove site
+  from bonding card — a user that just wants to launch a token doesn't have
+  to make a site"). The token-only field set for the `bond` plan already
+  shipped with the plan-aware studio (`lib/launch-path-fields.ts` →
+  `TOKEN_ONLY`: no website path, sections, generator or preview lock); this
+  change fixes the marketing copy that still sold a site: the Bond card's
+  "Basic site at hoodlums.dev/slug" bullet (`lib/launch-paths.ts`) becomes
+  "Token page with live chart and chat" (true for every launch — the
+  `/token/[chain]/[address]` page) and the tagline reads "Simple token launch
+  on-chain. No website." A new `Bond plan card` case in
+  `tests/launch-path-fields.test.ts` pins that no Bond bullet mentions a
+  site/website/`hoodlums.dev/` and that the plan's `websitePath` is false, so
+  the card and the form cannot drift apart again. No test assertion was
+  changed. Validated on the final commit: `npm run test:app` — 326 test files
+  / 3829 tests passing; `npm run lint` — 0 errors (10 pre-existing warnings);
+  `npm run build` — succeeds.
