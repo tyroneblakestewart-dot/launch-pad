@@ -392,7 +392,10 @@ describe("Queue tab wiring for AI images on approved posts", () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("() => new Set(selectPostImageCandidates(queue, remainingAiImagesToday(mascotImageUsage))),");
     expect(hub).toContain("const isPickedForImage = postImageCandidateIds.has(item.id);");
-    expect(hub).toContain("Image coming");
+    // The badge says when the image happens (owner check, 6 Sep 2026: "Image coming" read as already underway).
+    expect(hub).toContain("AI image on approve");
+    expect(hub).toContain("Nothing is made yet: if you approve it, an image is made");
+    expect(hub).not.toContain(">\n                                            Image coming");
     expect(hub).toContain("onClick={() => declinePostImage(item.id)}");
     expect(hub).toContain("{mascotImageUsage ? ` · ${describePostImageSlot(mascotImageUsage)}` : \"\"}");
   });
@@ -428,7 +431,7 @@ describe("Queue tab wiring for AI images on approved posts", () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("Skip the image");
     expect(hub).toContain("The post can still be approved without one.");
-    expect(hub).toContain("made when you approve from today's AI-image allowance. ${POST_IMAGE_REMOVE_NOTE}");
+    expect(hub).toContain("Delete it or tap No image and nothing is made. ${POST_IMAGE_REMOVE_NOTE}");
     expect(hub).toContain('const approveLabel = isApproving ? (postImageBusyId === item.id ? "Making the image…" : "Approving…") : "Approve";');
     const css = await source("components", "social-hub.module.css");
     expect(css).toContain(".imageComingBadge {");

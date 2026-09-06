@@ -3994,9 +3994,9 @@ export function SocialHub() {
                                         <>
                                           <span
                                             className={styles.imageComingBadge}
-                                            title={`The AI picked this post for an image, made when you approve from today's AI-image allowance. ${POST_IMAGE_REMOVE_NOTE}`}
+                                            title={`The AI picked this post. Nothing is made yet: if you approve it, an image is made from today's AI-image allowance and posted with it. Delete it or tap No image and nothing is made. ${POST_IMAGE_REMOVE_NOTE}`}
                                           >
-                                            Image coming
+                                            AI image on approve
                                           </span>
                                           <button type="button" className={styles.imageDeclineLink} onClick={() => declinePostImage(item.id)}>
                                             No image

@@ -2440,7 +2440,10 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   posted with the post; a "No image" link on a picked row declines before
   anything is made, so the pick moves on at no cost; the made image is
   visible in Coming up, and removing it after approval means cancelling the
-  post. **Rule 10:** `social-posting` gains an `approval-sessions` health
+  post. The pick badge reads "AI image on approve" (owner check after
+  deploy: "Image coming" read as already underway; nothing is made or spent
+  until the tap, and deleting the draft costs nothing). **Rule 10:**
+  `social-posting` gains an `approval-sessions` health
   stage (amber until 034 is applied, since approvals still work by
   signature) and two Activity kinds (`social-approvals-unlocked`/`-locked`,
   wallet only); the route is in the service definition and inventory.
