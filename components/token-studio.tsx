@@ -20,11 +20,14 @@ import {
   saveProjectToStorage,
 } from "@/lib/token-project-persistence";
 import {
+  ATTACH_UNASSIGNED_INTENT_TTL_MS,
+  armAttachUnassignedIntent,
+  clearAttachUnassignedIntent,
+  hasAttachUnassignedIntent,
   migrateLegacySavedProjects,
   moveUnassignedProjects,
   projectIndexStorageKey,
   readProjectIndex,
-  readUnassignedProjectIndex,
   writeProjectIndex,
   type SavedProjectIndexEntry,
 } from "@/lib/token-project-storage";
@@ -183,10 +186,11 @@ export function TokenStudio() {
   // Per-wallet project scoping (6 Sep 2026): `projects` is always the index
   // for `owner` — the confirmed wallet's address, or null for drafts saved
   // with no wallet confirmed. A wallet change swaps the whole list (see the
-  // effect below); unassigned drafts only ever move by an explicit act.
+  // effect below). A wallet's vault is a true clean slate: unassigned drafts
+  // are only ever shown, and only ever attached, from the no-wallet vault.
   const owner = useProjectOwner();
   const previousOwnerRef = useRef<string | null | undefined>(undefined);
-  const [unassignedCount, setUnassignedCount] = useState(0);
+  const [attachArmed, setAttachArmed] = useState(false);
   const [wallet, setWallet] = useState<WalletState | null>(null);
   // Empty until something happens; the notice bar only renders with a message.
   const [notice, setNotice] = useState("");
@@ -207,11 +211,25 @@ export function TokenStudio() {
 
     // A wallet switch while the studio is open must never carry the previous
     // owner's project across to the new wallet — the open project is closed.
-    // The one exception is a draft saved with NO wallet: confirming a wallet
-    // while that very draft is open is an explicit act, so that single draft
-    // moves to the new wallet and stays open.
+    // Two explicit exceptions, both started from the no-wallet state: an armed
+    // "Attach to a wallet" intent moves every unassigned draft to the wallet
+    // being confirmed; otherwise a no-wallet draft that is open right now
+    // moves with the person confirming a wallet while editing it.
     function applyWalletSwitch() {
       if (previous === undefined || previous === owner) return;
+      if (previous === null && owner && hasAttachUnassignedIntent()) {
+        const { moved } = moveUnassignedProjects(owner);
+        clearAttachUnassignedIntent();
+        setAttachArmed(false);
+        setNotice(
+          moved === 0
+            ? `Nothing to attach — ${truncateAccountAddress(owner)} starts with a clean slate.`
+            : `${moved} draft${moved === 1 ? "" : "s"} attached to ${truncateAccountAddress(owner)}. Only this wallet sees them now.`,
+        );
+        return;
+      }
+      clearAttachUnassignedIntent();
+      setAttachArmed(false);
       const open = projectRef.current;
       if (!open.id || !readProjectIndex(previous).some((entry) => entry.id === open.id)) return;
       const openName = open.name || "The open project";
@@ -234,7 +252,7 @@ export function TokenStudio() {
       const { index, droppedCount } = await loadOwnerProjectIndex(owner);
       if (cancelled) return;
       setProjects(index);
-      setUnassignedCount(owner ? readUnassignedProjectIndex().length : 0);
+      setAttachArmed(owner === null && hasAttachUnassignedIntent());
       if (droppedCount > 0) {
         setNotice(
           `${droppedCount} saved launch${droppedCount === 1 ? "" : "es"} could not be recovered and ${droppedCount === 1 ? "was" : "were"} removed.`,
@@ -415,24 +433,27 @@ export function TokenStudio() {
     setNotice("Project removed from local storage.");
   }
 
-  // Explicit, one-tap adoption of drafts saved with no wallet confirmed
-  // (which includes every draft saved before per-wallet scoping existed).
-  // Nothing moves until the user taps this.
-  async function moveUnassignedIntoWallet() {
-    if (!owner) return;
-    try {
-      const { moved } = moveUnassignedProjects(owner);
-      const { index } = await loadOwnerProjectIndex(owner);
-      setProjects(index);
-      setUnassignedCount(readUnassignedProjectIndex().length);
-      setNotice(
-        moved === 0
-          ? "No unassigned drafts to move."
-          : `${moved} draft${moved === 1 ? "" : "s"} moved to ${truncateAccountAddress(owner)}. Only this wallet sees them now.`,
-      );
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "The drafts could not be moved to this wallet.");
-    }
+  // Attaching the unassigned drafts (which include every draft saved before
+  // per-wallet scoping existed) is started HERE, in the no-wallet vault where
+  // they are visible, and completes only when a wallet is confirmed within
+  // the window — see applyWalletSwitch. Nothing is attached until then, and a
+  // wallet confirmed without this step never sees them.
+  function attachDraftsToNextWallet() {
+    if (owner) return;
+    const count = projects.length;
+    armAttachUnassignedIntent();
+    setAttachArmed(true);
+    setShowProjects(false);
+    setNotice(
+      `Confirm a wallet in Account within ${Math.round(ATTACH_UNASSIGNED_INTENT_TTL_MS / 60_000)} minutes to attach ${count} draft${count === 1 ? "" : "s"} to it. Nothing is attached until you confirm.`,
+    );
+    document.querySelector<HTMLButtonElement>('button[aria-label="Open account"]')?.click();
+  }
+
+  function cancelAttachDrafts() {
+    clearAttachUnassignedIntent();
+    setAttachArmed(false);
+    setNotice("Attach cancelled. The drafts stay unassigned.");
   }
 
   async function loadProject(entry: SavedProjectIndexEntry) {
@@ -890,18 +911,30 @@ export function TokenStudio() {
                 <small className="vault-owner">
                   {owner
                     ? `Wallet ${truncateAccountAddress(owner)} · only this wallet sees these`
-                    : "No wallet confirmed · drafts saved now stay unassigned until you confirm a wallet"}
+                    : "No wallet confirmed · these drafts are not attached to any wallet"}
                 </small>
               </div>
               <button onClick={() => setShowProjects(false)}>×</button>
             </div>
-            {owner && unassignedCount > 0 ? (
+            {!owner && projects.length > 0 ? (
               <div className="vault-unassigned">
                 <span>
-                  <b>{unassignedCount} draft{unassignedCount === 1 ? "" : "s"} saved before a wallet was confirmed.</b>
-                  <small>No wallet can see them until you move them. Moving is one way.</small>
+                  <b>
+                    {attachArmed
+                      ? `Confirm a wallet in Account to attach ${projects.length} draft${projects.length === 1 ? "" : "s"} to it.`
+                      : `${projects.length} draft${projects.length === 1 ? "" : "s"} not attached to a wallet.`}
+                  </b>
+                  <small>
+                    {attachArmed
+                      ? "Nothing moves until you confirm. The offer expires in 10 minutes, or cancel here."
+                      : "Only the wallet you attach them to will ever see them. A wallet confirmed without this step sees none of them."}
+                  </small>
                 </span>
-                <button type="button" onClick={moveUnassignedIntoWallet}>Move to this wallet</button>
+                {attachArmed ? (
+                  <button type="button" onClick={cancelAttachDrafts}>Cancel</button>
+                ) : (
+                  <button type="button" onClick={attachDraftsToNextWallet}>Attach to a wallet</button>
+                )}
               </div>
             ) : null}
             {projects.length === 0 ? (

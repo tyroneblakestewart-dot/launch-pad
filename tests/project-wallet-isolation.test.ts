@@ -4,8 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ACCOUNT_WALLET_STORAGE_KEY } from "@/lib/account-wallet-state";
 import { deleteProjectFromStorage, saveProjectToStorage } from "@/lib/token-project-persistence";
 import {
+  ATTACH_UNASSIGNED_INTENT_KEY,
+  ATTACH_UNASSIGNED_INTENT_TTL_MS,
   TOKEN_STUDIO_PROJECTS_STORAGE_KEY,
+  armAttachUnassignedIntent,
+  clearAttachUnassignedIntent,
   currentProjectOwner,
+  hasAttachUnassignedIntent,
   moveUnassignedProjects,
   parseSavedTokenProjects,
   projectIndexStorageKey,
@@ -58,12 +63,15 @@ function confirmWallet(storage: FakeLocalStorage, account: string | null) {
 }
 
 let storage: FakeLocalStorage;
+let session: FakeLocalStorage;
 let fakeIndexedDB: FakeIndexedDBFactory;
 
 beforeEach(() => {
   storage = createFakeLocalStorage();
+  session = createFakeLocalStorage();
   fakeIndexedDB = createFakeIndexedDB();
   vi.stubGlobal("localStorage", storage);
+  vi.stubGlobal("sessionStorage", session);
   vi.stubGlobal("indexedDB", fakeIndexedDB);
 });
 
@@ -173,6 +181,36 @@ describe("moveUnassignedProjects", () => {
   });
 });
 
+describe("attach intent (armed from the no-wallet vault, consumed on confirm)", () => {
+  it("is not armed by default, arms for ten minutes in this tab only, and clears", () => {
+    expect(hasAttachUnassignedIntent()).toBe(false);
+    armAttachUnassignedIntent(1_000_000);
+    expect(session.getItem(ATTACH_UNASSIGNED_INTENT_KEY)).toContain("1000000");
+    expect(storage.getItem(ATTACH_UNASSIGNED_INTENT_KEY)).toBeNull();
+    expect(hasAttachUnassignedIntent(1_000_000 + 5_000)).toBe(true);
+    expect(hasAttachUnassignedIntent(1_000_000 + ATTACH_UNASSIGNED_INTENT_TTL_MS)).toBe(true);
+    clearAttachUnassignedIntent();
+    expect(hasAttachUnassignedIntent(1_000_000 + 5_000)).toBe(false);
+  });
+
+  it("expires after the window, rejects a future or malformed value, and clears it on the way out", () => {
+    armAttachUnassignedIntent(1_000_000);
+    expect(hasAttachUnassignedIntent(1_000_000 + ATTACH_UNASSIGNED_INTENT_TTL_MS + 1)).toBe(false);
+    expect(session.getItem(ATTACH_UNASSIGNED_INTENT_KEY)).toBeNull();
+    session.setItem(ATTACH_UNASSIGNED_INTENT_KEY, JSON.stringify({ armedAt: 5_000_000 }));
+    expect(hasAttachUnassignedIntent(1_000_000)).toBe(false);
+    session.setItem(ATTACH_UNASSIGNED_INTENT_KEY, "garbage");
+    expect(hasAttachUnassignedIntent(1_000_000)).toBe(false);
+  });
+
+  it("never throws without session storage", () => {
+    vi.stubGlobal("sessionStorage", undefined);
+    expect(() => armAttachUnassignedIntent()).not.toThrow();
+    expect(hasAttachUnassignedIntent()).toBe(false);
+    expect(() => clearAttachUnassignedIntent()).not.toThrow();
+  });
+});
+
 describe("persistence writes land in the owner's partition", () => {
   function project(id: string): TokenProject {
     return { ...entry(id), heroImage: "", generatedSiteHtml: null };
@@ -272,26 +310,38 @@ describe("the studio's wallet-switch contract", () => {
     expect(studio).toContain("}, [owner]);");
   });
 
-  it("closes an open project that belongs to another wallet, and moves only an open no-wallet draft to the newly confirmed wallet", async () => {
+  it("closes an open project that belongs to another wallet, attaches every unassigned draft only under an armed intent, and otherwise moves only an open no-wallet draft", async () => {
     const studio = await source("components", "token-studio.tsx");
     const block = studio.slice(studio.indexOf("function applyWalletSwitch()"), studio.indexOf("async function loadIndex()"));
     expect(block).toContain("if (previous === undefined || previous === owner) return;");
+    expect(block).toContain("if (previous === null && owner && hasAttachUnassignedIntent()) {");
+    expect(block).toContain("const { moved } = moveUnassignedProjects(owner);");
+    expect(block).toContain("clearAttachUnassignedIntent();");
     expect(block).toContain("readProjectIndex(previous).some((entry) => entry.id === open.id)");
     expect(block).toContain("if (previous === null && owner) {");
     expect(block).toContain("moveUnassignedProjects(owner, [open.id]);");
     expect(block).toContain("setProject(makeProject());");
     expect(block).toContain("stays with ${truncateAccountAddress(previous ?? \"\")} and was closed.");
+    // The all-drafts move exists in exactly one place, and it is gated on the armed intent above.
+    expect(studio.match(/moveUnassignedProjects\(owner\)/g)?.length).toBe(1);
   });
 
-  it("offers a one-tap, explicit move for unassigned drafts and labels whose vault is open", async () => {
+  it("a wallet's vault is a clean slate — the attach row renders only in the no-wallet vault and only arms an intent", async () => {
     const studio = await source("components", "token-studio.tsx");
-    expect(studio).toContain("owner && unassignedCount > 0 ? (");
-    expect(studio).toContain('<button type="button" onClick={moveUnassignedIntoWallet}>Move to this wallet</button>');
-    expect(studio).toContain("const { moved } = moveUnassignedProjects(owner);");
+    expect(studio).toContain("{!owner && projects.length > 0 ? (");
+    expect(studio).not.toContain("owner && unassignedCount > 0");
+    expect(studio).not.toContain("Move to this wallet");
+    expect(studio).toContain('<button type="button" onClick={attachDraftsToNextWallet}>Attach to a wallet</button>');
+    expect(studio).toContain('<button type="button" onClick={cancelAttachDrafts}>Cancel</button>');
+    const arm = studio.slice(studio.indexOf("function attachDraftsToNextWallet()"), studio.indexOf("function cancelAttachDrafts()"));
+    expect(arm).toContain("if (owner) return;");
+    expect(arm).toContain("armAttachUnassignedIntent();");
+    expect(arm).not.toContain("moveUnassignedProjects");
     expect(studio).toContain("Wallet ${truncateAccountAddress(owner)} · only this wallet sees these");
+    expect(studio).toContain('"No wallet confirmed · these drafts are not attached to any wallet"');
     expect(studio).toContain('"No saved projects for this wallet yet."');
-    // No silent adoption anywhere: the only unconditional (all-drafts) move is the tap handler.
-    expect(studio.match(/moveUnassignedProjects\(owner\)/g)?.length).toBe(1);
+    // The wallet view never reads the unassigned bucket at all.
+    expect(studio).not.toContain("readUnassignedProjectIndex");
     const css = await source("app", "globals.css");
     expect(css).toContain(".vault-unassigned");
     expect(css).toMatch(/@media \(max-width: 640px\) \{\s*\.vault-unassigned \{ flex-direction: column;[\s\S]*?\.vault-unassigned button \{ min-height: 44px; \}/);
@@ -301,9 +351,9 @@ describe("the studio's wallet-switch contract", () => {
     const workspace = await source("components", "token-studio-workspace.tsx");
     const block = workspace.slice(workspace.indexOf("function openSavedLaunches"), workspace.indexOf("function saveAndClose"));
     expect(block).toContain("const savedLaunches = readProjectIndex();");
-    // A wallet with no projects of its own must still reach the vault when unassigned drafts exist — that is where "Move to this wallet" lives.
-    expect(block).toContain("const hasUnassignedToOffer = currentProjectOwner() !== null && readUnassignedProjectIndex().length > 0;");
-    expect(block).toContain("if (savedLaunches.length === 0 && !hasUnassignedToOffer) {");
+    // A wallet with nothing of its own gets the plain empty state — never a hint that unassigned drafts exist.
+    expect(block).toContain("if (savedLaunches.length === 0) {");
+    expect(block).not.toContain("readUnassignedProjectIndex");
     const controller = await source("components", "robinhood-testnet-deployment-controller.tsx");
     expect(controller).toContain("const projects = readProjectIndex() as TokenProject[];");
     expect(controller).toContain("writeProjectIndex([");

@@ -65,6 +65,51 @@ export function readUnassignedProjectIndex(): SavedProjectIndexEntry[] {
   return readProjectIndex(null);
 }
 
+// Attaching unassigned drafts to a wallet is a two-step, explicit act that
+// starts in the NO-wallet vault, where the drafts are actually visible: the
+// user taps "Attach to a wallet", then confirms a wallet in Account within
+// the window below, and only then do the drafts move — to that wallet. A
+// wallet confirmed without this step never sees the drafts, nor any hint that
+// they exist. The intent lives in sessionStorage (this tab only) so it
+// survives the studio remounting while the Account panel is used, and dies
+// with the tab. Never throws — storage failures read as "not armed".
+
+export const ATTACH_UNASSIGNED_INTENT_KEY = "hoodlums.studio.attachUnassignedOnConfirm.v1";
+export const ATTACH_UNASSIGNED_INTENT_TTL_MS = 10 * 60 * 1000;
+
+export function armAttachUnassignedIntent(now = Date.now()): void {
+  try {
+    sessionStorage.setItem(ATTACH_UNASSIGNED_INTENT_KEY, JSON.stringify({ armedAt: now }));
+  } catch {
+    // Without session storage the intent simply cannot be armed.
+  }
+}
+
+export function clearAttachUnassignedIntent(): void {
+  try {
+    sessionStorage.removeItem(ATTACH_UNASSIGNED_INTENT_KEY);
+  } catch {
+    // Nothing to clear.
+  }
+}
+
+/** True while an attach intent is armed and inside its window; an expired or malformed intent is cleared and reads false. */
+export function hasAttachUnassignedIntent(now = Date.now()): boolean {
+  try {
+    const raw = sessionStorage.getItem(ATTACH_UNASSIGNED_INTENT_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { armedAt?: unknown };
+    const armedAt = typeof parsed.armedAt === "number" ? parsed.armedAt : Number.NaN;
+    if (!Number.isFinite(armedAt) || now - armedAt > ATTACH_UNASSIGNED_INTENT_TTL_MS || armedAt > now + 60_000) {
+      sessionStorage.removeItem(ATTACH_UNASSIGNED_INTENT_KEY);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export type MoveUnassignedProjectsResult = {
   moved: number;
   /** The owner's partition after the move, moved entries first. */
@@ -74,12 +119,13 @@ export type MoveUnassignedProjectsResult = {
 /**
  * Moves unassigned drafts into a wallet's partition — all of them, or only
  * the given ids. This is the ONLY way a draft ever changes owner, and it is
- * always an explicit act (a tap on "Move to this wallet", or confirming a
- * wallet while that very draft is open); nothing is ever attributed
- * silently. Entries already present in the wallet's partition (same id) are
- * replaced by the moved copy. Throws on a storage failure; the unassigned
- * bucket is only rewritten after the wallet partition write succeeded, so a
- * failure never loses a draft.
+ * always an explicit act started from the no-wallet vault (arming "Attach to
+ * a wallet" and then confirming one, or confirming a wallet while that very
+ * draft is open); nothing is ever attributed silently, and nothing is ever
+ * offered to a wallet from inside its own vault. Entries already present in
+ * the wallet's partition (same id) are replaced by the moved copy. Throws on
+ * a storage failure; the unassigned bucket is only rewritten after the wallet
+ * partition write succeeded, so a failure never loses a draft.
  */
 export function moveUnassignedProjects(owner: string, ids?: readonly string[]): MoveUnassignedProjectsResult {
   const normalisedOwner = owner.trim().toLowerCase();
