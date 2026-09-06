@@ -17,8 +17,10 @@ import { resetSocialStudioActionRateLimitsForTests } from "@/lib/server/api-prot
 import { resetChatChallengesForTests } from "@/lib/server/chat-auth";
 import { resetTelegramBotUserIdCacheForTests } from "@/lib/server/social-telegram-connect";
 import { resetSocialStudioAuthoriserForTests, setSocialStudioAuthoriserForTests } from "@/lib/server/social-studio-entitlement";
+import { resetSocialProjectSlotsStoreForTests, setSocialProjectSlotsStoreForTests } from "@/lib/server/social-project-slots-store";
 import { resetTokenLaunchesStoreForTests, setTokenLaunchesStoreForTests, type TokenLaunch, type TokenLaunchesStore } from "@/lib/server/token-launches-store";
 import { BUY_BOT_TEST_CURVE, BUY_BOT_TEST_TOKEN, createMemoryBuyBotStore, makeBuyTrade } from "./buy-bot-test-helpers";
+import { createMemorySocialProjectSlotsStore } from "./social-project-slots-test-helpers";
 
 const ACCOUNT = privateKeyToAccount("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as `0x${string}`);
 const OTHER_ACCOUNT = privateKeyToAccount("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as `0x${string}`);
@@ -81,11 +83,22 @@ function stubTelegram(overrides: Record<string, () => { ok: boolean; result?: un
   return calls;
 }
 
-const ENABLE_PAYLOAD = { chainId: CHAIN_ID, tokenAddress: BUY_BOT_TEST_TOKEN, chatId: "@hoodsbuys", thresholdWei: "10000000000000000" };
+const ENABLE_PAYLOAD = { chainId: CHAIN_ID, tokenAddress: BUY_BOT_TEST_TOKEN, chatId: "@hoodsbuys", thresholdWei: "10000000000000000", projectId: "proj-1" };
+const PROJECT_DISPLAY_NAME = "Hoodlums Test";
 
-async function enable(payload = ENABLE_PAYLOAD, account = ACCOUNT) {
+async function enable(payload = ENABLE_PAYLOAD, account = ACCOUNT, displayName = PROJECT_DISPLAY_NAME) {
   const auth = await signedAction("social:buy-bot-enable", payload, account);
-  return enableBuyBot(postRequest("/api/social/buy-bot", { ...payload, ...auth }));
+  return enableBuyBot(postRequest("/api/social/buy-bot", { ...payload, displayName, ...auth }));
+}
+
+/** A real paid Pro / Pro Bundle authorisation (not the test-allowlist default), so the project-slot limit actually applies. */
+function paidAuthoriser(plan: "pro" | "pro-bundle" = "pro") {
+  setSocialStudioAuthoriserForTests(async (walletAddress) => ({
+    status: "allowed",
+    walletAddress: typeof walletAddress === "string" ? walletAddress : ACCOUNT.address,
+    accessSource: "paid",
+    plan,
+  }));
 }
 
 let store: ReturnType<typeof createMemoryBuyBotStore>;
@@ -117,6 +130,7 @@ afterEach(() => {
   resetAdminOperationsStoreForTests();
   resetTokenLaunchesStoreForTests();
   resetSocialStudioAuthoriserForTests();
+  resetSocialProjectSlotsStoreForTests();
   setBuyBotTradesReaderForTests(null);
   delete process.env.SOCIAL_STUDIO_ALLOWED_ORIGIN;
   delete process.env.SOCIAL_CREDENTIALS_ENCRYPTION_KEY;
@@ -154,7 +168,7 @@ describe("POST /api/social/buy-bot (enable)", () => {
   it("401s a signature over a different payload — the challenge is bound to this exact token/channel/threshold", async () => {
     stubTelegram();
     const auth = await signedAction("social:buy-bot-enable", { ...ENABLE_PAYLOAD, thresholdWei: "50000000000000000" });
-    const response = await enableBuyBot(postRequest("/api/social/buy-bot", { ...ENABLE_PAYLOAD, ...auth }));
+    const response = await enableBuyBot(postRequest("/api/social/buy-bot", { ...ENABLE_PAYLOAD, displayName: PROJECT_DISPLAY_NAME, ...auth }));
     expect(response.status).toBe(401);
   });
 
@@ -221,11 +235,54 @@ describe("POST /api/social/buy-bot (enable)", () => {
     expect(activity.find((item) => item.kind === "buy-bot-enabled")?.message).not.toContain("@hoodsbuys-secret");
   });
 
+  it("400s without a project id/name — a bot always belongs to a studio project, which is how the plan's slots are counted", async () => {
+    stubTelegram();
+    const auth = await signedAction("social:buy-bot-enable", { ...ENABLE_PAYLOAD, projectId: "" });
+    const response = await enableBuyBot(postRequest("/api/social/buy-bot", { ...ENABLE_PAYLOAD, projectId: "", displayName: "", ...auth }));
+    expect(response.status).toBe(400);
+    expect(await store.listForWallet(ACCOUNT.address)).toEqual([]);
+  });
+
+  it("counts the bot's project against the plan's slots: a second project on Pro (limit 1) is refused before any Telegram call, a third on Pro Bundle is allowed", async () => {
+    const calls = stubTelegram();
+    paidAuthoriser("pro");
+    const slots = createMemorySocialProjectSlotsStore();
+    await slots.ensureSlot({ walletAddress: ACCOUNT.address, projectId: "proj-0", displayName: "First Coin", limit: 1 });
+    setSocialProjectSlotsStoreForTests(slots);
+
+    const refused = await enable();
+    expect(refused.status).toBe(403);
+    const payload = (await refused.json()) as { code?: string; limit?: number; activeCount?: number; error?: string };
+    expect(payload.code).toBe("social-studio-project-slot-limit");
+    expect(payload).toMatchObject({ limit: 1, activeCount: 1 });
+    expect(payload.error).toContain("Pro");
+    expect(calls).toEqual([]);
+    expect(await store.listForWallet(ACCOUNT.address)).toEqual([]);
+
+    paidAuthoriser("pro-bundle");
+    const bundleSlots = createMemorySocialProjectSlotsStore();
+    await bundleSlots.ensureSlot({ walletAddress: ACCOUNT.address, projectId: "proj-a", displayName: "A", limit: 3 });
+    await bundleSlots.ensureSlot({ walletAddress: ACCOUNT.address, projectId: "proj-b", displayName: "B", limit: 3 });
+    setSocialProjectSlotsStoreForTests(bundleSlots);
+    const allowed = await enable();
+    expect(allowed.status).toBe(200);
+  });
+
+  it("re-using the project that already holds the slot never counts twice — same project, second token on Pro Bundle still passes", async () => {
+    stubTelegram();
+    paidAuthoriser("pro");
+    const slots = createMemorySocialProjectSlotsStore();
+    await slots.ensureSlot({ walletAddress: ACCOUNT.address, projectId: "proj-1", displayName: PROJECT_DISPLAY_NAME, limit: 1 });
+    setSocialProjectSlotsStoreForTests(slots);
+    const response = await enable();
+    expect(response.status).toBe(200);
+  });
+
   it("defaults the threshold to 0.01 ETH when none is sent", async () => {
     stubTelegram();
-    const payload = { chainId: CHAIN_ID, tokenAddress: BUY_BOT_TEST_TOKEN, chatId: "@hoodsbuys", thresholdWei: "10000000000000000" };
+    const payload = { chainId: CHAIN_ID, tokenAddress: BUY_BOT_TEST_TOKEN, chatId: "@hoodsbuys", thresholdWei: "10000000000000000", projectId: "proj-1" };
     const auth = await signedAction("social:buy-bot-enable", payload);
-    const response = await enableBuyBot(postRequest("/api/social/buy-bot", { chainId: CHAIN_ID, tokenAddress: BUY_BOT_TEST_TOKEN, chatId: "@hoodsbuys", ...auth }));
+    const response = await enableBuyBot(postRequest("/api/social/buy-bot", { chainId: CHAIN_ID, tokenAddress: BUY_BOT_TEST_TOKEN, chatId: "@hoodsbuys", projectId: "proj-1", displayName: PROJECT_DISPLAY_NAME, ...auth }));
     expect(response.status).toBe(200);
     expect(((await response.json()) as { bot: { thresholdWei: string } }).bot.thresholdWei).toBe("10000000000000000");
   });

@@ -1473,11 +1473,13 @@ export function SocialHub() {
     setBuyBotStatus({ tone: "progress", message: "Checking that the Hoodlums bot is an admin in that channel…" });
     try {
       const chainId = String(ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL);
+      const projectId = selectedProject?.id ?? "";
       const auth = await signSocialStudioChallenge(SOCIAL_STUDIO_ACTION_PURPOSES.buyBotEnable, {
         chainId,
         tokenAddress: buyBotTokenAddress,
         chatId,
         thresholdWei: buyBotThresholdWei,
+        projectId,
       });
       const response = await fetch("/api/social/buy-bot", {
         method: "POST",
@@ -1487,6 +1489,8 @@ export function SocialHub() {
           tokenAddress: buyBotTokenAddress,
           chatId,
           thresholdWei: buyBotThresholdWei,
+          projectId,
+          displayName: selectedProject?.name ?? "",
           challengeId: auth.challengeId,
           nonce: auth.nonce,
           signature: auth.signature,
