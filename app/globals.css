@@ -383,6 +383,7 @@ label small { display: block; margin-top: 5px; color: #5f6a61; font: 10px var(--
 .project-list { display: grid; gap: 8px; margin-bottom: 15px; }
 /* Per-wallet project scoping (6 Sep 2026): which wallet's vault this is, and the one-tap adoption row for drafts saved with no wallet. */
 .vault-owner { display: block; margin-top: 4px; color: #68736a; font: 9px var(--mono); letter-spacing: .04em; }
+.vault-hint { display: block; max-width: 420px; margin: 10px auto 0; color: #8d9990; font: 10px/1.5 var(--mono); text-transform: none; }
 .vault-unassigned { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; padding: 11px 13px; border: 1px dashed rgba(198, 245, 62, .35); border-radius: 7px; background: rgba(198, 245, 62, .05); }
 .vault-unassigned > span { flex: 1; min-width: 0; }
 .vault-unassigned b, .vault-unassigned small { display: block; }

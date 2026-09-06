@@ -225,3 +225,11 @@
     border-radius: 14px;
   }
 }
+
+/* Generic pointer under the empty vault for a confirmed wallet (per-wallet project scoping, 6 Sep 2026). */
+.savedLaunchHint {
+  margin: -6px 0 14px;
+  color: #8d9990;
+  font-size: 11.5px;
+  line-height: 1.5;
+}

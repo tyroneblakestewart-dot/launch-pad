@@ -8,7 +8,10 @@ import {
   shouldCloseWorkspaceAfterSave,
   type ProjectSaveResultDetail,
 } from "@/lib/project-save-result";
+import { truncateAccountAddress } from "@/lib/account-wallet-state";
 import {
+  currentProjectOwner,
+  hasAttachUnassignedIntent,
   isExternalProject,
   readProjectIndex,
   readUnassignedProjectIndex,
@@ -82,6 +85,11 @@ export function TokenStudioWorkspace() {
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [studioInstanceKey, setStudioInstanceKey] = useState(0);
   const [showEmptySavedLaunches, setShowEmptySavedLaunches] = useState(false);
+  // Which wallet the empty vault belongs to, so the empty state can say where
+  // drafts saved before wallets were required live — generic guidance, shown
+  // to every confirmed wallet with nothing of its own; it never reveals
+  // whether such drafts exist in this browser.
+  const [emptyVaultOwner, setEmptyVaultOwner] = useState<string | null>(null);
   const awaitingSaveAndClose = useRef(false);
 
   useEffect(() => {
@@ -166,9 +174,14 @@ export function TokenStudioWorkspace() {
     const savedLaunches = readProjectIndex();
     // Tokens added from Hoodlums Social (launched elsewhere) never open here.
     const launchProjects = savedLaunches.filter((entry) => !isExternalProject(entry));
+    // An "Attach to a wallet" intent this user armed (this tab, last 10 min)
+    // is consumed by the studio's own effect, so the studio must mount even
+    // though the wallet's partition is still empty at this instant.
+    const attachPending = currentProjectOwner() !== null && hasAttachUnassignedIntent();
 
-    if (launchProjects.length === 0) {
+    if (launchProjects.length === 0 && !attachPending) {
       setPendingAction(null);
+      setEmptyVaultOwner(currentProjectOwner());
       setShowEmptySavedLaunches(true);
       setIsOpen(true);
       return;
@@ -226,6 +239,11 @@ export function TokenStudioWorkspace() {
               </button>
             </div>
             <p className={styles.savedLaunchEmpty}>No saved launches</p>
+            {emptyVaultOwner ? (
+              <p className={styles.savedLaunchHint}>
+                Only wallet {truncateAccountAddress(emptyVaultOwner)}&rsquo;s launches show here. Drafts saved before a wallet was confirmed live under &ldquo;no wallet&rdquo;: Account → Change wallet or address, then open Saved launches again to attach them.
+              </p>
+            ) : null}
             <button
               type="button"
               className={styles.createLaunchButton}

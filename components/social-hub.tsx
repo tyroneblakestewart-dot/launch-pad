@@ -347,6 +347,28 @@ function cleanTelegram(value: string): string {
   return `https://t.me/${trimmed.replace(/^@/, "")}`;
 }
 
+/** A bare X username: strips "@", "x.com/" and "twitter.com/" prefixes a user may paste. */
+export function bareXHandle(value: string): string {
+  return value
+    .trim()
+    .replace(/^https?:\/\/(?:www\.)?(?:x|twitter)\.com\//i, "")
+    .replace(/^(?:www\.)?(?:x|twitter)\.com\//i, "")
+    .replace(/^@+/, "")
+    .replace(/[/?#].*$/, "")
+    .trim();
+}
+
+/** A bare Telegram username: strips "https://t.me/", "t.me/" and "@" prefixes a user may paste. */
+export function bareTelegramHandle(value: string): string {
+  return value
+    .trim()
+    .replace(/^https?:\/\/(?:www\.)?(?:t\.me|telegram\.me)\//i, "")
+    .replace(/^(?:www\.)?(?:t\.me|telegram\.me)\//i, "")
+    .replace(/^@+/, "")
+    .replace(/[/?#].*$/, "")
+    .trim();
+}
+
 function websiteFor(project: TokenProject): string {
   if (!project.websiteSlug) return "";
   return `https://hoodlums.dev/${project.websiteSlug}`;
@@ -2350,7 +2372,8 @@ export function SocialHub() {
   // Saves a token launched anywhere into the confirmed wallet's own vault as
   // an external project (Social-only: the launch tooling filters it out) and
   // selects it. Requires a confirmed wallet — the project must land in that
-  // wallet's partition and nowhere else.
+  // wallet's partition and nowhere else. Handles are stored bare (no "@", no
+  // "t.me/"): cleanHandle/cleanTelegram add the prefix when a post needs it.
   async function addExternalProject() {
     if (!projectOwner) {
       setExternalStatus({ tone: "error", message: "Confirm your wallet in Account first — the token is saved to that wallet." });
@@ -2361,6 +2384,8 @@ export function SocialHub() {
     const description = externalForm.description.trim();
     const networkOther = externalForm.networkOther.replace(/\s+/g, " ").trim();
     const contractAddress = externalForm.contractAddress.trim();
+    const xHandle = bareXHandle(externalForm.xHandle);
+    const telegram = bareTelegramHandle(externalForm.telegram);
     if (!name) {
       setExternalStatus({ tone: "error", message: "Give the token a name." });
       return;
@@ -2401,8 +2426,8 @@ export function SocialHub() {
       decimals: chain === "solana" ? 9 : 18,
       websiteSlug: "",
       contractAddress,
-      xHandle: externalForm.xHandle.trim(),
-      telegram: externalForm.telegram.trim(),
+      xHandle,
+      telegram,
       heroImage: externalForm.artworkDataUrl,
       theme: "hoodlums",
     };
@@ -2469,12 +2494,12 @@ export function SocialHub() {
             <input value={externalForm.contractAddress} maxLength={120} placeholder="0x…" onChange={(event) => setExternalForm((current) => ({ ...current, contractAddress: event.target.value }))} />
           </label>
           <label className={styles.connectionField}>
-            <span>X handle <em>optional</em></span>
-            <input value={externalForm.xHandle} maxLength={60} placeholder="@hoodlums" onChange={(event) => setExternalForm((current) => ({ ...current, xHandle: event.target.value }))} />
+            <span>X handle <em>optional · no @</em></span>
+            <input value={externalForm.xHandle} maxLength={60} placeholder="hoodlums" onChange={(event) => setExternalForm((current) => ({ ...current, xHandle: event.target.value }))} />
           </label>
           <label className={styles.connectionField}>
-            <span>Telegram <em>optional</em></span>
-            <input value={externalForm.telegram} maxLength={60} placeholder="t.me/hoodlums" onChange={(event) => setExternalForm((current) => ({ ...current, telegram: event.target.value }))} />
+            <span>Telegram <em>optional · username only</em></span>
+            <input value={externalForm.telegram} maxLength={60} placeholder="hoodlums" onChange={(event) => setExternalForm((current) => ({ ...current, telegram: event.target.value }))} />
           </label>
           <label className={`${styles.connectionField} ${styles.addTokenWide}`}>
             <span>What is the token about?</span>

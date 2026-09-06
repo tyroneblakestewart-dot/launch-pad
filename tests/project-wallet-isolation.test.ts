@@ -308,13 +308,19 @@ describe("the studio's wallet-switch contract", () => {
     expect(studio).toContain("saveProjectToStorage(saved, projects, owner)");
     expect(studio).toContain("deleteProjectFromStorage(id, projects, owner)");
     expect(studio).toContain("}, [owner]);");
+    // The "previous owner" ref is restored when a run is cancelled before its microtask, so StrictMode's double mount
+    // (and a hydration re-render) cannot make the real run see previous === owner and skip the switch/attach logic.
+    expect(studio).toContain("if (!settled) previousOwnerRef.current = previous;");
   });
 
   it("closes an open project that belongs to another wallet, attaches every unassigned draft only under an armed intent, and otherwise moves only an open no-wallet draft", async () => {
     const studio = await source("components", "token-studio.tsx");
     const block = studio.slice(studio.indexOf("function applyWalletSwitch()"), studio.indexOf("async function loadIndex()"));
-    expect(block).toContain("if (previous === undefined || previous === owner) return;");
-    expect(block).toContain("if (previous === null && owner && hasAttachUnassignedIntent()) {");
+    expect(block).toContain("if (previous === owner) return;");
+    // An armed intent is consumed on a wallet switch AND on the studio's first run, so the attach survives a reload or remount.
+    expect(block).toContain("if (owner && (previous === null || previous === undefined) && hasAttachUnassignedIntent()) {");
+    // With no intent, the first run reconciles nothing — it only loads the partition.
+    expect(block).toContain("if (previous === undefined) return;");
     expect(block).toContain("const { moved } = moveUnassignedProjects(owner);");
     expect(block).toContain("clearAttachUnassignedIntent();");
     expect(block).toContain("readProjectIndex(previous).some((entry) => entry.id === open.id)");
@@ -340,6 +346,9 @@ describe("the studio's wallet-switch contract", () => {
     expect(studio).toContain("Wallet ${truncateAccountAddress(owner)} · only this wallet sees these");
     expect(studio).toContain('"No wallet confirmed · these drafts are not attached to any wallet"');
     expect(studio).toContain('"No saved projects for this wallet yet."');
+    // A confirmed wallet's empty vault points to where pre-wallet drafts live — generic copy, no count, no existence claim.
+    expect(studio).toContain('<small className="vault-hint">');
+    expect(studio).toContain("Account → Change wallet or address, then reopen Saved launches to attach them.");
     // The wallet view never reads the unassigned bucket at all.
     expect(studio).not.toContain("readUnassignedProjectIndex");
     const css = await source("app", "globals.css");
@@ -352,8 +361,17 @@ describe("the studio's wallet-switch contract", () => {
     const block = workspace.slice(workspace.indexOf("function openSavedLaunches"), workspace.indexOf("function saveAndClose"));
     expect(block).toContain("const savedLaunches = readProjectIndex();");
     // A wallet with nothing of its own gets the plain empty state — never a hint that unassigned drafts exist.
-    expect(block).toContain("if (launchProjects.length === 0) {");
+    // A pending attach (armed by this user, this tab) must reach the studio, which is the only place the move happens.
+    expect(block).toContain("const attachPending = currentProjectOwner() !== null && hasAttachUnassignedIntent();");
+    expect(block).toContain("if (launchProjects.length === 0 && !attachPending) {");
+    expect(block).not.toContain("moveUnassignedProjects");
     expect(block).not.toContain("readUnassignedProjectIndex");
+    expect(block).toContain("setEmptyVaultOwner(currentProjectOwner());");
+    expect(workspace).toContain("{emptyVaultOwner ? (");
+    expect(workspace).toContain("Drafts saved before a wallet was confirmed live under &ldquo;no wallet&rdquo;");
+    expect(workspace).not.toContain("readUnassignedProjectIndex().length");
+    const workspaceCss = await source("components", "token-studio-workspace.module.css");
+    expect(workspaceCss).toContain(".savedLaunchHint {");
     const controller = await source("components", "robinhood-testnet-deployment-controller.tsx");
     expect(controller).toContain("const projects = readProjectIndex() as TokenProject[];");
     expect(controller).toContain("writeProjectIndex([");
