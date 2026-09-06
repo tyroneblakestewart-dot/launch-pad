@@ -626,6 +626,28 @@ export function SocialHub() {
   // time, so it reflects what's actually pending right now.
   const [scheduleManuallySet, setScheduleManuallySet] = useState<Record<string, boolean>>({});
   const replenishInFlightRef = useRef(false);
+  // Replenish guard (owner report, 6 Sep 2026: "this keeps regenerating
+  // posts" — 13 drafts waiting against a target of 5, and still generating).
+  // Two leaks, both closure staleness. (1) The Queue tab's window-focus
+  // listener is registered once per effect run, so it kept calling the
+  // replenishQueue() of THAT render — whose `queue` was whatever it was back
+  // then (often empty, before the saved queue had loaded) — and every focus
+  // topped the pool up again from that stale count. (2) Tab activation ran
+  // replenish before the project's saved queue had loaded from IndexedDB, so
+  // an empty in-memory queue looked like a shortfall of five. The listener
+  // now goes through `queueTabActionsRef` (the latest render's functions),
+  // the loop re-reads the live queue length from `queueRef` before every
+  // paid request, and nothing replenishes until `loadedRecordProjectId`
+  // says this project's saved queue is actually in state.
+  const queueRef = useRef<QueueItem[]>([]);
+  const queueTargetRef = useRef(DEFAULT_QUEUE_TARGET);
+  const selectedProjectIdRef = useRef<string | null>(null);
+  const queueTabActionsRef = useRef({
+    loadScheduledPosts: async () => {},
+    loadConnections: async () => {},
+    replenishQueue: async () => {},
+  });
+  const [loadedRecordProjectId, setLoadedRecordProjectId] = useState<string | null>(null);
   /** Rotates the example-post window and fallback angle across successive draft requests (issue #360) — never reset, so repeated Setup/Calendar clicks vary too, not just a batch loop. */
   const draftAngleCounterRef = useRef(0);
 
@@ -834,6 +856,7 @@ export function SocialHub() {
   useEffect(() => {
     let cancelled = false;
     async function loadRecord() {
+      setLoadedRecordProjectId(null);
       if (!selectedProjectId) {
         setVoiceProfile(null);
         setVoiceExamples([]); setVoiceDraftText("");
@@ -875,6 +898,9 @@ export function SocialHub() {
       setItemDestinations({});
       setItemScheduledAt({});
       setExpandedQueueItemIds({});
+      // Only now may the Queue tab replenish: the saved queue is in state, so
+      // its length is the real count (same batch of updates as setQueue above).
+      setLoadedRecordProjectId(selectedProjectId);
     }
     void loadRecord();
     return () => {
@@ -1636,15 +1662,25 @@ export function SocialHub() {
    */
   async function replenishQueue() {
     if (!selectedProjectId || replenishInFlightRef.current) return;
-    const shortfall = replenishShortfall(queue.length, queueTarget);
+    // Never before this project's saved queue is in state — an unloaded queue
+    // reads as empty and would be "refilled" with five paid drafts it already has.
+    if (loadedRecordProjectId !== selectedProjectId) return;
+    const liveQueue = queueRef.current;
+    const shortfall = replenishShortfall(liveQueue.length, queueTargetRef.current);
     if (shortfall <= 0) return;
 
     replenishInFlightRef.current = true;
+    const projectIdAtStart = selectedProjectId;
     let generated = 0;
-    let rollingRecentDrafts = queue.map((item) => item.xText);
-    let rollingRecentTelegramDrafts = queue.map((item) => item.telegramText);
+    let rollingRecentDrafts = liveQueue.map((item) => item.xText);
+    let rollingRecentTelegramDrafts = liveQueue.map((item) => item.telegramText);
     try {
       for (let index = 0; index < shortfall; index += 1) {
+        // Re-check the live pool before every paid request: drafts added from
+        // elsewhere (Setup, Calendar, another loop) count, and a project
+        // switch mid-loop must not keep writing into the old project.
+        if (selectedProjectIdRef.current !== projectIdAtStart) break;
+        if (queueRef.current.length >= queueTargetRef.current) break;
         setReplenishStatus({ tone: "progress", message: `Generating draft ${index + 1} of ${shortfall} for Ready to review…` });
         const draft = await generateDraft({
           replenish: true,
@@ -2107,6 +2143,16 @@ export function SocialHub() {
   // tab open, on window/tab focus while the tab is active, and after
   // approve/cancel actions elsewhere — issue #352's explicit "replenish on
   // app open / tab focus" boundary, not a poller or a server cron.
+  // Every render publishes the live queue, target, project and the latest
+  // Queue-tab functions into refs, so long-lived listeners and the replenish
+  // loop read what is true now rather than what was true when they were created.
+  useEffect(() => {
+    queueRef.current = queue;
+    queueTargetRef.current = queueTarget;
+    selectedProjectIdRef.current = selectedProjectId;
+    queueTabActionsRef.current = { loadScheduledPosts, loadConnections, replenishQueue };
+  });
+
   useEffect(() => {
     if (activeTab !== "queue") return;
     void loadScheduledPosts();
@@ -2118,9 +2164,12 @@ export function SocialHub() {
 
     function handleFocusOrVisible() {
       if (document.visibilityState === "hidden") return;
-      void loadScheduledPosts();
-      void loadConnections();
-      void replenishQueue();
+      // Through the ref, never the closure: this listener outlives many
+      // renders, and a replenish frozen at an earlier (emptier) queue kept
+      // generating paid drafts on every focus.
+      void queueTabActionsRef.current.loadScheduledPosts();
+      void queueTabActionsRef.current.loadConnections();
+      void queueTabActionsRef.current.replenishQueue();
     }
     window.addEventListener("focus", handleFocusOrVisible);
     document.addEventListener("visibilitychange", handleFocusOrVisible);
@@ -2128,9 +2177,9 @@ export function SocialHub() {
       window.removeEventListener("focus", handleFocusOrVisible);
       document.removeEventListener("visibilitychange", handleFocusOrVisible);
     };
-    // Re-runs only when the Queue tab is opened or the active project/wallet changes — loadScheduledPosts/loadConnections/replenishQueue close over the latest state on every render already.
+    // Re-runs when the Queue tab is opened, the active project/wallet changes, or the project's saved queue finishes loading (so the first replenish sees the real count); the activation calls close over that render's fresh state, and the focus handler reads the latest functions through queueTabActionsRef.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, selectedProjectId, walletAddress]);
+  }, [activeTab, selectedProjectId, walletAddress, loadedRecordProjectId]);
 
   function toggleMascotAction(label: string) {
     setCustomActionEntry(null);

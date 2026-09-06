@@ -2326,3 +2326,29 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   needs nothing (no route, page or integration). Checked in headless Chromium
   at 1400px and 390px (arrival box, Fill out later + reminder, a tool prompt
   reopening the box) — not on a physical iPhone; the owner confirms on device.
+
+- Ready-to-review replenish leak fixed (owner report, 6 Sep 2026: "this keeps
+  regenerating posts" — the Queue tab showed 13 drafts against a target of 5
+  and was still generating "draft 3 of 4"; every draft is a paid AI call, and
+  the owner isolated `social-studio-ai` from `/admin` until this landed). Two
+  closure-staleness leaks in `components/social-hub.tsx`, both fixed. (1) The
+  Queue tab's window-focus/visibility listener was registered once per effect
+  run and kept calling the `replenishQueue()` of THAT render, whose `queue`
+  was whatever it was back then — often empty, before the saved queue had
+  loaded — so every focus topped the pool up again from that stale count.
+  The listener now goes through `queueTabActionsRef`, refreshed on every
+  render, so it always runs the latest functions. (2) Tab activation ran
+  replenish before the project's saved queue had loaded from IndexedDB, so an
+  empty in-memory queue read as a shortfall of five. A new
+  `loadedRecordProjectId` state is cleared when a record (re)load starts and
+  set in the same batch as `setQueue(record.queue)`; `replenishQueue` returns
+  until it matches the selected project, and the Queue-tab effect re-runs on
+  it so the first replenish sees the real count. The loop also sizes itself
+  from `queueRef` (the live queue) and re-checks the live length and the
+  selected project before every paid request, so drafts added elsewhere
+  count and a project switch mid-loop stops the loop instead of writing into
+  the old project. Pinned in `tests/social-studio-replenish-guard.test.ts`;
+  the #384 activation pins are untouched. No new assertion was changed. The
+  extra drafts already generated stay in Waiting for you until deleted.
+  Owner check: open the Queue tab with more drafts than the target, switch
+  tabs and click back into the window — no "Generating draft…" line appears.
