@@ -2194,19 +2194,28 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   confirmed, changed or disconnected. `saveProjectToStorage`/
   `deleteProjectFromStorage` take the owner explicitly from the studio, so
   the in-memory index and the partition it is written to can never
-  disagree. **Ownership never changes silently:** unassigned drafts move only
-  by an explicit one-tap "Move to this wallet" row in the Saved projects
-  modal (shown when a wallet is confirmed and the bucket is non-empty, with
-  the count and a note that moving is one way), or when the single draft
-  being edited was saved with no wallet and the user confirms a wallet while
-  it is open — an explicit act on that one draft. Switching to a different
-  wallet while another wallet's project is open closes it with a notice
-  naming both wallets; unsaved edits to it are lost, which is the price of
-  never carrying a project across. The modal's heading states whose vault it
-  is ("Wallet 0x1234…abcd · only this wallet sees these" or "No wallet
-  confirmed · drafts saved now stay unassigned…"). Side stores keyed by
-  project id (IndexedDB artwork/HTML blobs, Social Studio records, social
-  drafts, allocation plans) need no change — they are only reachable through
+  disagree. **A wallet's vault is a true clean slate and ownership never
+  changes silently:** the wallet view shows that wallet's projects and
+  nothing else — no count of, offer for, or hint about unassigned drafts
+  (an earlier draft of this change offered a "Move to this wallet" row inside
+  a wallet's vault; the owner rejected it on sight, since any wallet could
+  then learn of and grab drafts that were not its own). Unassigned drafts are
+  shown only in the no-wallet vault, and attaching them is a two-step,
+  explicit act started there: "Attach to a wallet" arms a ten-minute intent
+  in sessionStorage (`armAttachUnassignedIntent`, this tab only), opens the
+  Account panel, and the drafts move to the wallet the user then confirms —
+  and to no other; a wallet confirmed without that step never sees them, and
+  Cancel or the window expiring leaves them unassigned. The single other
+  exception is the draft being edited when it was saved with no wallet: the
+  user confirming a wallet while it is open moves that one draft. Switching
+  to a different wallet while another wallet's project is open closes it with
+  a notice naming both wallets; unsaved edits to it are lost, which is the
+  price of never carrying a project across. The modal's heading states whose
+  vault it is ("Wallet 0x1234…abcd · only this wallet sees these" or "No
+  wallet confirmed · these drafts are not attached to any wallet"). Side
+  stores keyed by project id (IndexedDB artwork/HTML blobs, Social Studio
+  records, social drafts, allocation plans) need no change — they are only
+  reachable through
   a project id the wallet can see. **Tests changed rather than only added
   (rule 8, stated plainly):** `tests/saved-launch-resume.test.ts`,
   `tests/token-studio-slug-flow.test.ts`, `tests/social-studio-ui.test.ts`
@@ -2216,5 +2225,6 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   and now pin the accessor/owner-carrying forms. Rule 10 needs nothing (no
   page, route or integration; nothing leaves the browser). Checked in
   headless Chromium at 1400px and 390px with seeded legacy and per-wallet
-  drafts — not on a physical iPhone; the owner confirms on device by
-  switching wallets in the Account panel and opening Saved launches.
+  drafts, including the arm → confirm → attached round trip — not on a
+  physical iPhone; the owner confirms on device by switching wallets in the
+  Account panel and opening Saved launches.

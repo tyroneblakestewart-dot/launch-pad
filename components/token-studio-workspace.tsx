@@ -9,7 +9,6 @@ import {
   type ProjectSaveResultDetail,
 } from "@/lib/project-save-result";
 import {
-  currentProjectOwner,
   readProjectIndex,
   readUnassignedProjectIndex,
   writeProjectIndex,
@@ -161,14 +160,11 @@ export function TokenStudioWorkspace() {
 
   function openSavedLaunches() {
     // The confirmed wallet's own partition only (per-wallet project scoping).
-    // A confirmed wallet with nothing of its own still gets the studio's
-    // vault when unassigned drafts exist, since that is where the explicit
-    // "Move to this wallet" row lives — otherwise the empty state would hide
-    // the only way to adopt them.
+    // A wallet with nothing of its own sees the empty state — never a hint
+    // that unassigned drafts exist; those are attached from the no-wallet vault.
     const savedLaunches = readProjectIndex();
-    const hasUnassignedToOffer = currentProjectOwner() !== null && readUnassignedProjectIndex().length > 0;
 
-    if (savedLaunches.length === 0 && !hasUnassignedToOffer) {
+    if (savedLaunches.length === 0) {
       setPendingAction(null);
       setShowEmptySavedLaunches(true);
       setIsOpen(true);
