@@ -45,12 +45,16 @@ describe("generate-site-style server functions", () => {
     expect(result.description).toHaveLength(500);
     expect(result.imageDataUrl).toBe(VALID_IMAGE);
 
+    // Rule 8, stated plainly: the normalised request gained xHandle / telegram
+    // (6 Sep 2026, real links on the bespoke site); both default to "".
     expect(normaliseGenerateSiteStyleRequest({})).toEqual({
       name: "Untitled token",
       ticker: "TOKEN",
       description: "Community token project",
       imageDataUrl: "",
       inspirationUrl: "",
+      xHandle: "",
+      telegram: "",
     });
   });
 

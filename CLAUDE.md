@@ -2655,3 +2655,55 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   iPhone; the owner confirms on device. Validated on the final commit:
   `npm run test:app` — 325 test files / 3816 tests passing; `npm run lint` —
   0 errors (10 pre-existing warnings); `npm run build` — succeeds.
+
+- Bespoke site real links, and the inspiration URL removed (owner direction,
+  6 Sep 2026: "add that to bespoke and remove website inspiration"). **Links**
+  — new pure, client-safe `lib/bespoke-site-links.ts`. The bespoke prompt
+  (`buildGeneratedSitePageRequestBody`) now carries a "LINKS (NON-NEGOTIABLE)"
+  block (`buildBespokeLinkRules`): every buy/trade CTA is `href="{{BUY_HREF}}"`,
+  the contract is printed as `{{CONTRACT_ADDRESS}}` linked to
+  `{{EXPLORER_URL}}`, X is `{{X_HREF}}` shown as `@{{X_HANDLE}}` and Telegram
+  `{{TELEGRAM_HREF}}` shown as `t.me/{{TELEGRAM}}` — each social only when the
+  project supplied a handle, otherwise the model is told to leave that social
+  out — and no other outbound link of any kind. The request normaliser
+  (`normaliseGenerateSiteStyleRequest`) gains optional `xHandle`/`telegram`,
+  cleaned by the shared `normaliseSocialHandle` (strips `@`, `https://`,
+  `www.`, `x.com/`, `twitter.com/`, `t.me/`, any trailing path/query; anything
+  not a plain `[A-Za-z0-9_]{1,32}` handle becomes "" and can never reach an
+  href) — the free-site template's own `normaliseHandle` now delegates to it,
+  which closes the pasted-`https://` gap the owner asked about. After the page
+  passes every existing gate, the route runs `enforceBespokeLinks`: fills the
+  X/Telegram placeholders with the real handles (an invented social link with
+  no real handle behind it goes to `#`, never to a stranger's account),
+  re-aims any x.com/twitter.com, t.me, DEX/aggregator (Dexscreener, Uniswap,
+  pump.fun, Raydium, Jupiter, …) or explorer URL the model invented onto the
+  same placeholders, and stamps `<!--HOODLUMS_BESPOKE_LINKS-->` after `<body>`.
+  The served `/[slug]` page and the studio preview (`previewHtmlFor`) then
+  substitute `{{BUY_HREF}}`/`{{TRADE_URL}}` (the token's Hoodlums trade page),
+  `{{EXPLORER_URL}}` and `{{CONTRACT_ADDRESS}}` at render time from the launch
+  facts known then (`substituteBespokePlatformFacts`; `#` and "Contract address
+  published at launch" before a contract exists) — the same serve-time model
+  the free site uses, so already-published bespoke pages that predate the
+  marker are untouched. **Inspiration removed** — the "Inspiration website
+  URL" field, its client validator (`isValidInspirationWebsiteUrl`), the
+  "Valid inspiration website URL" check and every inspiration hint/copy branch
+  are gone from `components/build-site-gate.tsx`, and `inspirationUrl` is gone
+  from `lib/launch-path-fields.ts`; the gate always sends `inspirationUrl: ""`.
+  Stated plainly: the server still accepts an optional `inspirationUrl` and
+  keeps its inspection/fusion stage (unreachable from the studio now) — that
+  code and `tests/inspiration-url.test.ts`'s route cases are a named
+  follow-up to strip, not done here to keep this PR reviewable. **Tests
+  changed, not only added (rule 8, stated plainly):** `tests/generate-site-page.test.ts`'s
+  two exact-HTML pins on the delivered page now go through
+  `enforceBespokeLinks` (the page carries the marker);
+  `tests/generate-site-style.test.ts`'s normalised-request `toEqual` gains the
+  two new fields; `tests/inspiration-url.test.ts` drops the client-validator
+  cases and its "Inspiration website URL" gate pin now asserts absence;
+  `tests/launch-path-fields.test.ts` drops the inspiration flag and pins. New
+  `tests/bespoke-site-links.test.ts` (normaliser, prompt rules with and
+  without handles, enforcement incl. invented links and escaping, serve-time
+  substitution before/after launch, wiring and the removal). Checked in
+  headless Chromium that the field is absent under all three plans — not on a
+  physical iPhone. Validated on the final commit: `npm run test:app` — 326
+  test files / 3828 tests passing; `npm run lint` — 0 errors (10 pre-existing
+  warnings); `npm run build` — succeeds.

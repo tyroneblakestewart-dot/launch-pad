@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/generate-site-style/route";
-import { isValidInspirationWebsiteUrl } from "@/components/build-site-gate";
 import { requestGeneratedSiteStyle } from "@/components/artwork-site-generator";
 import {
   buildArtworkIdentityRequestBody,
@@ -172,7 +171,6 @@ describe("optional inspiration website URL", () => {
 
     for (const value of ["", "https://example.com", "http://design.example/page"]) {
       expect(isValidInspirationUrl(value)).toBe(true);
-      expect(isValidInspirationWebsiteUrl(value)).toBe(true);
     }
     for (const value of [
       "ftp://example.com",
@@ -183,7 +181,6 @@ describe("optional inspiration website URL", () => {
       "http://internal.local/page",
     ]) {
       expect(isValidInspirationUrl(value)).toBe(false);
-      expect(isValidInspirationWebsiteUrl(value)).toBe(false);
     }
     expect(getInspirationDomain(INSPIRATION_URL)).toBe("example.com");
   });
@@ -380,7 +377,11 @@ describe("optional inspiration website URL", () => {
       "utf8",
     );
 
-    expect(gate).toContain("Inspiration website URL");
+    // Rule 8, stated plainly: this pinned the gate's "Inspiration website URL"
+    // field and its client validator; both were removed at the owner's
+    // direction (6 Sep 2026). The server still accepts an optional
+    // inspirationUrl (the cases above), but no studio control sends one.
+    expect(gate).not.toContain("Inspiration website URL");
     expect(gate).toContain('label: "Uploaded artwork/content"');
     expect(generator).toContain("style.inspirationUsed");
     expect(generator).toContain("data-generated-font");

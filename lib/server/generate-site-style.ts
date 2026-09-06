@@ -1,9 +1,13 @@
+import { normaliseTelegramHandle, normaliseXHandle } from "@/lib/bespoke-site-links";
+
 export type GenerateSiteStyleRequest = {
   name?: unknown;
   ticker?: unknown;
   description?: unknown;
   imageDataUrl?: unknown;
   inspirationUrl?: unknown;
+  xHandle?: unknown;
+  telegram?: unknown;
 };
 
 export type NormalisedGenerateSiteStyleRequest = {
@@ -12,6 +16,9 @@ export type NormalisedGenerateSiteStyleRequest = {
   description: string;
   imageDataUrl: string;
   inspirationUrl: string;
+  /** Plain handles (no "@", no domain) or "" — the bespoke page links to these and nothing else. Optional so older typed fixtures still compile. */
+  xHandle?: string;
+  telegram?: string;
 };
 
 // Responses API usage shape (issue #368) — used to meter every paid provider
@@ -236,6 +243,8 @@ export function normaliseGenerateSiteStyleRequest(
     inspirationUrl: stringValue(value.inspirationUrl)
       .trim()
       .slice(0, MAX_INSPIRATION_URL_LENGTH + 1),
+    xHandle: normaliseXHandle(stringValue(value.xHandle).slice(0, 200)),
+    telegram: normaliseTelegramHandle(stringValue(value.telegram).slice(0, 200)),
   };
 }
 

@@ -3,12 +3,13 @@
 // launch, or free launch and site, or paid — so it's less confusing").
 //
 //   bond           → the token only: no website path, no site sections, no
-//                    generator of either kind, no inspiration URL.
+//                    generator of either kind.
 //   bond-site      → the free artwork-matched site: website path, the free
 //                    site sections picker and the free generator.
-//   bond-pro-site  → the paid bespoke site: website path, the optional
-//                    inspiration URL and the bespoke generator; the free
-//                    sections picker and free generator are hidden.
+//   bond-pro-site  → the paid bespoke site: website path and the bespoke
+//                    generator; the free sections picker and free generator
+//                    are hidden. (The inspiration website URL was removed by
+//                    owner decision, 6 Sep 2026.)
 //   pro/pro-bundle → Social Studio subscriptions buy no website (6 Sep
 //                    decision), so a token created under them gets the free
 //                    site set, exactly like bond-site.
@@ -24,8 +25,6 @@ export type StudioFieldPlan = {
   websitePath: boolean;
   /** The "Free site sections" checkboxes. */
   freeSiteSections: boolean;
-  /** The optional inspiration website URL (bespoke pipeline only). */
-  inspirationUrl: boolean;
   /** GENERATE SITE FROM ARTWORK (the free template). */
   freeGenerator: boolean;
   /** Generate a bespoke AI site (paid). */
@@ -37,7 +36,6 @@ export const STUDIO_FIELD_PLAN_ATTRIBUTE = "data-launch-path";
 const EVERYTHING: StudioFieldPlan = {
   websitePath: true,
   freeSiteSections: true,
-  inspirationUrl: true,
   freeGenerator: true,
   bespokeGenerator: true,
 };
@@ -45,7 +43,6 @@ const EVERYTHING: StudioFieldPlan = {
 const TOKEN_ONLY: StudioFieldPlan = {
   websitePath: false,
   freeSiteSections: false,
-  inspirationUrl: false,
   freeGenerator: false,
   bespokeGenerator: false,
 };
@@ -53,7 +50,6 @@ const TOKEN_ONLY: StudioFieldPlan = {
 const FREE_SITE: StudioFieldPlan = {
   websitePath: true,
   freeSiteSections: true,
-  inspirationUrl: false,
   freeGenerator: true,
   bespokeGenerator: false,
 };
@@ -61,7 +57,6 @@ const FREE_SITE: StudioFieldPlan = {
 const PAID_SITE: StudioFieldPlan = {
   websitePath: true,
   freeSiteSections: false,
-  inspirationUrl: true,
   freeGenerator: false,
   bespokeGenerator: true,
 };
