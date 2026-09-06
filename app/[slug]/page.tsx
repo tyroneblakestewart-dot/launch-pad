@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { isBespokeLinksHtml, substituteBespokePlatformFacts } from "@/lib/bespoke-site-links";
 import { PublicDexscreenerSection } from "@/components/public-dexscreener-section";
 import { PublicSiteFrame } from "@/components/public-site-frame";
 import { PublicTokenFallback } from "@/components/public-token-fallback";
@@ -124,6 +125,13 @@ export default async function PublicGeneratedSitePage({ params, searchParams }: 
   const isFreeSiteTemplate = hasGeneratedHtml && isFreeSiteTemplateHtml(site.generatedSiteHtml as string);
 
   let html = site.generatedSiteHtml;
+  if (hasGeneratedHtml && !isFreeSiteTemplate && isBespokeLinksHtml(site.generatedSiteHtml as string)) {
+    // Bespoke pages carry Buy / explorer / contract placeholders (lib/bespoke-site-links.ts).
+    html = substituteBespokePlatformFacts(site.generatedSiteHtml as string, {
+      contractAddress: site.contractAddress,
+      chain: site.chain,
+    });
+  }
   if (isFreeSiteTemplate) {
     const chart = await resolveChartFact(site.contractAddress);
     html = substituteFreeSitePlatformFacts(site.generatedSiteHtml as string, {

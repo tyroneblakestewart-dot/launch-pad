@@ -21,7 +21,6 @@ describe("studioFieldsForLaunchPath", () => {
     expect(fields).toEqual({
       websitePath: false,
       freeSiteSections: false,
-      inspirationUrl: false,
       freeGenerator: false,
       bespokeGenerator: false,
     });
@@ -33,19 +32,17 @@ describe("studioFieldsForLaunchPath", () => {
     expect(fields).toEqual({
       websitePath: true,
       freeSiteSections: true,
-      inspirationUrl: false,
       freeGenerator: true,
       bespokeGenerator: false,
     });
     expect(offersWebsiteBuild(fields)).toBe(true);
   });
 
-  it("bond-pro-site is the paid site: path, inspiration URL and the bespoke generator, no free picker", () => {
+  it("bond-pro-site is the paid site: path and the bespoke generator, no free picker", () => {
     const fields = studioFieldsForLaunchPath("bond-pro-site");
     expect(fields).toEqual({
       websitePath: true,
       freeSiteSections: false,
-      inspirationUrl: true,
       freeGenerator: false,
       bespokeGenerator: true,
     });
@@ -61,8 +58,7 @@ describe("studioFieldsForLaunchPath", () => {
       expect(studioFieldsForLaunchPath(value)).toEqual({
         websitePath: true,
         freeSiteSections: true,
-        inspirationUrl: true,
-        freeGenerator: true,
+          freeGenerator: true,
         bespokeGenerator: true,
       });
     }
@@ -83,12 +79,9 @@ describe("the studio form and the Build 02 gate read the same plan", () => {
     expect(STUDIO_FIELD_PLAN_ATTRIBUTE).toBe("data-launch-path");
   });
 
-  it("hides the inspiration field, each generator and the whole gate per plan, and never locks a token-only preview", async () => {
+  it("hides each generator and the whole gate per plan, and never locks a token-only preview", async () => {
     const gate = await source("components/build-site-gate.tsx");
     expect(gate).toContain("return studioFieldsForLaunchPath(panel.getAttribute(STUDIO_FIELD_PLAN_ATTRIBUTE));");
-    // `hidden` must beat the field's own `display: block`, or the plan toggle does nothing.
-    expect(gate).toContain(".build-site-inspiration-field[hidden] { display: none; }");
-    expect(gate).toContain("if (inspiration) inspiration.hidden = !fields.inspirationUrl;");
     expect(gate).toContain("gate.hidden = !showBuild;");
     expect(gate).toContain('gate.classList.toggle("bespoke-only", fields.bespokeGenerator && !fields.freeGenerator);');
     expect(gate).toContain("if (button) button.hidden = !fields.freeGenerator;");
@@ -96,7 +89,6 @@ describe("the studio form and the Build 02 gate read the same plan", () => {
     expect(gate).toContain('elements.previewPanel.classList.toggle("site-builder-locked", !unlocked && showBuild);');
     expect(gate).toContain("overlay.hidden = unlocked || !showBuild;");
     // A URL typed under a paid plan never reaches the free generator once the plan changes.
-    expect(gate).toContain("inspirationUrl: fields.inspirationUrl\n          ?");
     // Hidden controls must actually disappear, and the lone bespoke button takes the CTA recipe.
     expect(gate).toContain(".build-site-gate[hidden] { display: none; }");
     expect(gate).toContain(".build-site-button[hidden], .build-site-hint[hidden],\n      .build-site-secondary-button[hidden], .build-site-secondary-hint[hidden] { display: none; }");

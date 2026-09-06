@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST, maxDuration } from "@/app/api/generate-site-page/route";
 import { ARTWORK_PLACEHOLDER } from "@/lib/generated-site-page";
+import { enforceBespokeLinks } from "@/lib/bespoke-site-links";
 import { NO_URL_PRESENTATION_BRIEF } from "@/lib/site-page-openai-pipeline";
 import {
   getFusionBriefIds,
@@ -151,7 +152,16 @@ describe("POST /api/generate-site-page", () => {
       { type: "progress", stage: "building-page" },
       { type: "progress", stage: "checking-safety" },
     ]);
-    expect(events.at(-1)).toEqual({ type: "complete", html: html(), source: "openai", inspirationUsed: true });
+    // Rule 8, stated plainly: this pinned the delivered HTML as exactly the
+    // provider's output; since 6 Sep 2026 the route runs enforceBespokeLinks on
+    // it (real X / Telegram handles, re-aimed invented links, a marker after
+    // <body>) before delivery, so the expectation goes through the same function.
+    expect(events.at(-1)).toEqual({
+      type: "complete",
+      html: enforceBespokeLinks(html(), { xHandle: "", telegram: "" }),
+      source: "openai",
+      inspirationUsed: true,
+    });
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
     const artworkRequest = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)) as {
@@ -482,7 +492,7 @@ describe("POST /api/generate-site-page", () => {
       expect(developerText).toContain("responsive-layout check");
 
       expect(completeEvent.type).toBe("complete");
-      expect(completeEvent.html).toBe(html());
+      expect(completeEvent.html).toBe(enforceBespokeLinks(html(), { xHandle: "", telegram: "" }));
     });
 
     it("skips the retry when two attempts would pass the per-site cost cap, and says so — never a silent second spend", async () => {

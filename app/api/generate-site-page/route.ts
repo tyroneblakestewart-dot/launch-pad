@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { AI_FEATURE_KEYS } from "@/lib/ai-feature-keys";
+import { enforceBespokeLinks } from "@/lib/bespoke-site-links";
 import {
   getInspirationDomain,
   isValidImageDataUrl,
@@ -557,6 +558,11 @@ export async function POST(request: Request) {
           return;
         }
 
+        // Real links (owner direction, 6 Sep 2026): the real X / Telegram handles
+        // go in now; any social / venue / explorer URL the model invented is
+        // re-aimed; Buy / explorer / contract placeholders wait for serve time.
+        const deliveredHtml = enforceBespokeLinks(page.html, { xHandle: input.xHandle ?? "", telegram: input.telegram ?? "" });
+
         // Three per purchase (owner decision, 6 Sep 2026): count the page only
         // now that it is genuinely being delivered — a failed or rejected
         // attempt never costs the buyer a design. Counting failure never
@@ -581,7 +587,7 @@ export async function POST(request: Request) {
 
         send({
           type: "complete",
-          html: page.html,
+          html: deliveredHtml,
           source: ai.source,
           inspirationUsed: Boolean(input.inspirationUrl),
           ...(attemptsAfter ? { attempts: attemptsAfter } : {}),

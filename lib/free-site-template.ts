@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ARTWORK_PLACEHOLDER } from "@/lib/generated-site-page";
+import { normaliseSocialHandle } from "@/lib/bespoke-site-links";
 import {
   FREE_SITE_SECTION_KEYS,
   isFreeSiteCopyKeyRequired,
@@ -297,17 +298,11 @@ function validateSections(sections: FreeSiteSections): FreeSiteSections {
 // Strips a leading "@" and, when present, a leading domain prefix such as
 // "x.com/" or "t.me/" (case-insensitively) so "@BLTKK", "BLTKK" and
 // "x.com/BLTKK" all normalise to the same bare handle "BLTKK".
+// Shared with the bespoke pipeline (lib/bespoke-site-links.ts): also strips a
+// pasted "https://" / "www." prefix and refuses anything that is not a plain
+// handle, so a pasted full address can never become a broken link.
 function normaliseHandle(raw: string, domainPrefixes: readonly string[]): string {
-  let value = raw.trim();
-  if (value.startsWith("@")) value = value.slice(1);
-  for (const prefix of domainPrefixes) {
-    if (value.toLowerCase().startsWith(prefix)) {
-      value = value.slice(prefix.length);
-      break;
-    }
-  }
-  if (value.startsWith("@")) value = value.slice(1);
-  return value.trim();
+  return normaliseSocialHandle(raw, domainPrefixes);
 }
 
 export function renderFreeSiteTemplate({

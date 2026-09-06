@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { isBespokeLinksHtml, substituteBespokePlatformFacts } from "@/lib/bespoke-site-links";
 import type { BespokeAttempts } from "@/lib/bespoke-site-access";
 import { createWalletClient, custom } from "viem";
 import type { FreeSiteSections } from "@/lib/free-site-sections";
@@ -444,14 +445,17 @@ function isMobilePreviewViewport(): boolean {
 // to avoid an extra network dependency; /[slug] always does the
 // authoritative live lookup.
 function previewHtmlFor(rawHtml: string, contractAddress: string, chain: "robinhood" | "solana"): string {
-  return isFreeSiteTemplateHtml(rawHtml)
-    ? substituteFreeSitePlatformFacts(rawHtml, {
-        contractAddress,
-        chain,
-        chart: { found: false },
-        lpLockedAt: null,
-      })
-    : rawHtml;
+  if (isFreeSiteTemplateHtml(rawHtml)) {
+    return substituteFreeSitePlatformFacts(rawHtml, {
+      contractAddress,
+      chain,
+      chart: { found: false },
+      lpLockedAt: null,
+    });
+  }
+  // Bespoke pages carry Buy / explorer / contract placeholders the same way.
+  if (isBespokeLinksHtml(rawHtml)) return substituteBespokePlatformFacts(rawHtml, { contractAddress, chain });
+  return rawHtml;
 }
 
 function renderGeneratedWebsite(

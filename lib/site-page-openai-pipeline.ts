@@ -7,6 +7,7 @@ import {
   type GeneratedPageAcceptanceProfile,
   type GeneratedPageRejectionReason,
 } from "@/lib/generated-site-page";
+import { buildBespokeLinkRules } from "@/lib/bespoke-site-links";
 import {
   TOKEN_LANDING_PAGE_GENERATOR_PREFIX,
   extractOutputText,
@@ -180,6 +181,8 @@ export function buildGeneratedSitePageRequestBody(
     "- The hero section's heading, artwork and primary call-to-action must all be visible within the very first viewport at 390px, in normal document flow. Do not build a hero as a fixed- or viewport-height block with its heading or artwork positioned absolutely off-canvas, clipped by overflow, or hidden behind another layer — a phone visitor must see real content immediately, never an empty solid-colour block.",
     "- Add `scroll-behavior: smooth;` to the page (and respect `prefers-reduced-motion` by turning it off there). Any sticky, fixed or absolutely positioned element must never cover page content on small screens.",
     "- Use a consistent spacing scale and sensible section rhythm. Images must use `object-fit` so they never distort, and must never overflow their container.",
+    "",
+    ...buildBespokeLinkRules({ xHandle: request.xHandle ?? "", telegram: request.telegram ?? "" }),
     ...(correctiveFeedback
       ? ["", "CORRECTIVE FEEDBACK FROM THE REJECTED PREVIOUS ATTEMPT (fix this specifically, everything else above still applies):", correctiveFeedback]
       : []),
