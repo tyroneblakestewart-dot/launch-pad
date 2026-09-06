@@ -32,6 +32,14 @@ describe("account session primitives", () => {
     expect(parseAccountSessionCookie(`x=1;${ACCOUNT_SESSION_COOKIE}=abc`)).toBe("abc");
   });
 
+  it("decodes the percent-encoding Next applies when it sets a cookie, and leaves undecodable values alone", () => {
+    // Regression: the first live Google sign-in failed with reason=state because the sealed
+    // OAuth state (`iv:tag:ciphertext`, base64) came back as `%3A`/`%2B`/`%2F`/`%3D`.
+    const sealed = "AbC+d/E=:fGh=:iJk+L/M==";
+    expect(parseCookieValue(`hoodlums_google_oauth=${encodeURIComponent(sealed)}`, "hoodlums_google_oauth")).toBe(sealed);
+    expect(parseCookieValue("k=%E0%A4%A", "k")).toBe("%E0%A4%A");
+  });
+
   it("issues an httpOnly, SameSite=Lax cookie for thirty days that is Secure in production only", () => {
     const expiresAt = new Date("2026-10-06T00:00:00Z");
     expect(ACCOUNT_SESSION_TTL_MS).toBe(30 * 24 * 60 * 60 * 1000);
