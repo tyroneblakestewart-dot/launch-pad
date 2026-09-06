@@ -76,7 +76,7 @@ describe("launch path options", () => {
     const [bond, bondSite, bondProSite, pro] = LAUNCH_PATH_OPTIONS;
     expect(bond.price).toBe("Free");
     expect(bondSite.price).toBe("Free");
-    expect(bondProSite.price).toBe("$10 · one-off");
+    expect(bondProSite.price).toBe("$15 · one-off");
     expect(pro.price).toBe("$50/month · per token");
     expect(pro.tagline).toBe(
       "Your token's marketing, on autopilot. Whatever chain you're on.",

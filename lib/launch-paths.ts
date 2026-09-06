@@ -68,7 +68,7 @@ export const LAUNCH_PATH_OPTIONS: readonly LaunchPathOption[] = [
   {
     id: "bond-pro-site",
     name: "Bond + Pro Site",
-    price: "$10 · one-off",
+    price: "$15 · one-off",
     badge: "Recommended",
     recommended: true,
     tagline: "Your token. Your premium design. Your brand.",

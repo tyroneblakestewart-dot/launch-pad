@@ -28,7 +28,7 @@ import {
 } from "@/lib/server/subscribers";
 
 export const BESPOKE_SITE_UPSELL_MESSAGE =
-  "Bespoke AI design is a one-off Bond + Pro Site purchase ($10): three AI designs per purchase, keep the one you like. Your free artwork-matched site remains available, or continue to the Bond + Pro Site checkout.";
+  "Bespoke AI design is a one-off Bond + Pro Site purchase ($15): three AI designs per purchase, keep the one you like. Your free artwork-matched site remains available, or continue to the Bond + Pro Site checkout.";
 
 export type BespokeSiteChallengeIssue =
   | { status: "issued"; challenge: BespokeSiteChallengeResponse }

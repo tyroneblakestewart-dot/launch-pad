@@ -126,7 +126,7 @@ export function paymentCatalogPrice(
   plan: PaidLaunchPath,
   billingPeriod: PaymentBillingPeriod,
 ): { usdCents: number; subscriptionDays: number | null } {
-  if (plan === "bond-pro-site") return { usdCents: 1_000, subscriptionDays: null };
+  if (plan === "bond-pro-site") return { usdCents: 1_500, subscriptionDays: null };
   const period = billingPeriod === "upfront" ? "upfront" : "monthly";
   const purchase = subscriptionPurchaseDefinition(plan, period);
   return { usdCents: purchase.usdCents, subscriptionDays: purchase.windowDays };

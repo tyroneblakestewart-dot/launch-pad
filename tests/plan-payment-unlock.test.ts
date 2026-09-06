@@ -17,7 +17,7 @@ const VERIFIED_PAYMENT: PlanPaymentVerification = {
   asset: "ETH",
   amountDisplay: "0.01",
   amountEth: "0.01",
-  usdCents: 1_000,
+  usdCents: 1_500,
   paidFrom: null,
   paidUntil: null,
   subscriptionStatus: "active",

@@ -195,7 +195,7 @@ describe("server subscriber source of truth", () => {
       amountAtomic: 1n,
       amountDisplay: "0.000000000000000001",
       amountEth: "0.000000000000000001",
-      usdCents: 1_000,
+      usdCents: 1_500,
       subscriptionDays: null,
       chainId: 4663,
       blockNumber: 123n,

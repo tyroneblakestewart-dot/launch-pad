@@ -19,7 +19,7 @@ describe("Bond + Pro Site promise audit", () => {
     );
 
     expect(plan).toMatchObject({
-      price: "$10 · one-off",
+      price: "$15 · one-off",
       tagline: "Your token. Your premium design. Your brand.",
     });
     expect(plan?.tagline.toLowerCase()).not.toContain("domain");

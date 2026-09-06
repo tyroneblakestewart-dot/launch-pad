@@ -285,7 +285,7 @@ describe("server-side USDT verification", () => {
     ).resolves.toMatchObject({
       asset: "ETH",
       amountDisplay: "0.001",
-      usdCents: 1_000,
+      usdCents: 1_500,
       subscriptionDays: null,
     });
   });

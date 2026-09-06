@@ -76,7 +76,7 @@ export function readAiPricingRatesForModel(model: string | null | undefined, env
  * Per-site cost cap for a bespoke generation (owner decision, 6 Sep 2026).
  * The automatic layout retry is the only multiplier on a single sale, so the
  * route skips that retry when first attempt + a like-sized second one would
- * pass this cap. Default $1.50 against a $10 sale.
+ * pass this cap. Default $1.50 against a $15 sale.
  */
 export const DEFAULT_BESPOKE_SITE_COST_CAP_USD = 1.5;
 
