@@ -16,6 +16,12 @@ import {
   type BuyBotSummary,
 } from "@/lib/buy-bot-presets";
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
+import {
+  describeMascotImageAllowance,
+  describeMascotImageAllowanceDetail,
+  isMascotImageAllowanceUsed,
+  type MascotImageUsage,
+} from "@/lib/mascot-image-allowance";
 import { MASCOT_REFERENCE_TIPS, assessMascotReference, type MascotReferenceAssessment } from "@/lib/mascot-reference-guidance";
 import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
 import { getProjectBlob } from "@/lib/token-project-db";
@@ -540,6 +546,8 @@ export function SocialHub() {
   // control that triggered them instead of only in the far-below statusBar.
   const [voiceStatus, setVoiceStatus] = useState<PanelStatus>(null);
   const [mascotUploadStatus, setMascotUploadStatus] = useState<PanelStatus>(null);
+  // Today's mascot-image allowance for this token, read from the server (null until known — never a guessed count).
+  const [mascotImageUsage, setMascotImageUsage] = useState<MascotImageUsage | null>(null);
   // Best-results read-out for the last uploaded reference — advice only, the upload proceeds regardless.
   const [mascotReferenceAssessment, setMascotReferenceAssessment] = useState<MascotReferenceAssessment | null>(null);
   const [mascotSceneStatus, setMascotSceneStatus] = useState<PanelStatus>(null);
@@ -830,6 +838,23 @@ export function SocialHub() {
   }, [walletAddress]);
 
   /** Refreshes the "Project X of Y" usage summary — called on wallet change and after any claim/release (issue #407). */
+  async function loadMascotImageUsage() {
+    if (!walletAddress || !selectedProjectId) {
+      setMascotImageUsage(null);
+      return;
+    }
+    try {
+      const response = await fetch(
+        `/api/social/mascot/image?walletAddress=${encodeURIComponent(walletAddress)}&projectId=${encodeURIComponent(selectedProjectId)}`,
+        { cache: "no-store" },
+      );
+      const payload = await readJsonResponse<{ usage: MascotImageUsage }>(response, "Could not read today's image allowance.");
+      setMascotImageUsage(payload.usage);
+    } catch {
+      setMascotImageUsage(null);
+    }
+  }
+
   async function loadSlotUsage() {
     if (!walletAddress) {
       setSlotUsage(null);
@@ -849,6 +874,7 @@ export function SocialHub() {
 
   useEffect(() => {
     void loadSlotUsage();
+    void loadMascotImageUsage();
     // loadSlotUsage closes over the latest walletAddress on every render already.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletAddress]);
@@ -2272,7 +2298,8 @@ export function SocialHub() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ walletAddress, projectId: selectedProject?.id, displayName: selectedProject?.name, project, mascotVisualDNA, sceneInput }),
       });
-      const payload = (await response.json()) as { imageDataUrl?: string; error?: string };
+      const payload = (await response.json()) as { imageDataUrl?: string; error?: string; usage?: MascotImageUsage };
+      if (payload.usage) setMascotImageUsage(payload.usage);
       if (!response.ok || !payload.imageDataUrl) {
         throw new Error(payload.error || "The mascot scene image could not be generated.");
       }
@@ -2858,6 +2885,12 @@ export function SocialHub() {
                     {postsScheduledToday}/{cadencePostsPerDay}
                   </b>{" "}
                   posts
+                  {mascotImageUsage ? (
+                    <>
+                      <i className={styles.metaPillDivider} aria-hidden="true" />
+                      <b>{describeMascotImageAllowance(mascotImageUsage).split(" ")[0]}</b> AI images
+                    </>
+                  ) : null}
                 </span>
               </div>
             </div>
@@ -3490,10 +3523,16 @@ export function SocialHub() {
                           type="button"
                           className={styles.aiMakeButton}
                           onClick={generateMascotScene}
-                          disabled={mascotImageBusy || !mascotVisualDNA || !composeSceneInput()}
+                          disabled={mascotImageBusy || !mascotVisualDNA || !composeSceneInput() || isMascotImageAllowanceUsed(mascotImageUsage)}
                         >
-                          <b>{mascotImageBusy ? "Generating…" : "Generate mascot image"}</b>
-                          <span>Uses the locked mascot identity and the scene chosen above.</span>
+                          <b>
+                            {mascotImageBusy
+                              ? "Generating…"
+                              : isMascotImageAllowanceUsed(mascotImageUsage)
+                                ? "Daily image allowance used"
+                                : "Generate mascot image"}
+                          </b>
+                          <span>{describeMascotImageAllowanceDetail(mascotImageUsage)}</span>
                         </button>
                         {generatedMascotImage ? (
                           <div className={styles.insetPanel}>
