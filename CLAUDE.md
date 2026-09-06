@@ -2289,3 +2289,40 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   device. Not built: editing or removing an external token from Social
   Studio (it can be removed from nowhere else either, since the studio vault
   hides it) — a named follow-up.
+
+- Hoodlums Social token-details box, "Fill out later", tool-time prompts and
+  in-place editing of added tokens (owner direction, 6 Sep 2026, after the
+  Manager → "Open AI Social Studio" pass: "there should be a box that asks the
+  user to add its token details … not mandatory right now, add a fill out
+  later tab, unless there's a saved project … when trying to use a tool that
+  needs a value the user didn't enter, prompt for it then"). `/social` no
+  longer gates on a project at all: the studio panel always renders, and
+  when the confirmed wallet has no project the token-details form (the same
+  one as "Add an existing token", retitled "Tell us about your token") opens
+  automatically above the tabs with **Save token details** and **Fill out
+  later**. Later is remembered per wallet for this tab only
+  (`hoodlums.social.tokenDetailsLater.v1` in sessionStorage); while it holds,
+  a slim reminder row ("No token details yet. Tools that need them will ask",
+  with an Add token details button and a launch-studio link) sits above the
+  tabs. Every tool that needs a project — save draft, Telegram publish, teach
+  voice, generate draft (Setup, Calendar and replenish all route through it),
+  Buy Bot add, approve a queue item, mascot upload, mascot scene, queue →
+  Telegram — calls `promptForTokenDetails(reason)`, which clears Later, opens
+  the box with the reason and scrolls to it, instead of dead-ending on a
+  "Choose a project" status line (those strings are gone). A missing value
+  on an existing project is asked for at use time too: `generateDraft` with
+  an empty description opens the box in edit mode for an added token, or
+  tells a studio project's owner to add its story in the launch studio (the
+  studio owns that field because changing it resets the generated site).
+  **Edit mode** (`editingProjectId`, "Edit token details" in the picker menu,
+  offered for added/external tokens only) prefills the same form and rewrites
+  the project in place — same id, createdAt and `origin: "external"` — via
+  `saveProjectToStorage` into the wallet's partition; studio projects are not
+  edited from Social. The picker no longer disables itself with no projects
+  (its menu now carries the add/edit entries), and a selected project with no
+  name and no ticker reads UNTITLED rather than the "PROJECT" placeholder that
+  means nothing is selected — the owner's recording showed exactly that
+  placeholder for a blank studio draft and read it as "no projects". Rule 10
+  needs nothing (no route, page or integration). Checked in headless Chromium
+  at 1400px and 390px (arrival box, Fill out later + reminder, a tool prompt
+  reopening the box) — not on a physical iPhone; the owner confirms on device.

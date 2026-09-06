@@ -81,17 +81,26 @@ describe("TokenProject carries the external marker", () => {
 });
 
 describe("Social Studio: add an existing token", () => {
-  it("offers the form from the empty state and from the project picker, keeping the studio link", async () => {
+  it("opens the token-details box on arrival with no project, never blocks the studio, and offers Fill out later (owner direction, 6 Sep 2026)", async () => {
     const hub = await source("components", "social-hub.tsx");
-    expect(hub).toContain("<h1>Pick the token Hoodlums Social should run.</h1>");
-    expect(hub).toContain('<Link href="/">Return to launch studio</Link>');
-    expect(hub).toContain('{addTokenOpen ? "Close" : "Add an existing token"}');
-    expect(hub).toContain("{addTokenOpen ? renderAddTokenForm() : null}");
-    expect(hub).toContain("{addTokenOpen ? <div className={styles.addTokenPanel}>{renderAddTokenForm()}</div> : null}");
+    // No gate any more: the studio panel always renders; the box opens automatically until dismissed.
+    expect(hub).not.toContain("Pick the token Hoodlums Social should run.");
+    expect(hub).toContain("const showDetailsBox = addTokenOpen || (projects.length === 0 && !detailsLater);");
+    expect(hub).toContain("{showDetailsBox ? <div className={styles.addTokenPanel}>{renderAddTokenForm()}</div> : null}");
+    expect(hub).toContain('{projects.length === 0 && !editingProjectId ? "Fill out later" : "Cancel"}');
+    expect(hub).toContain('{editingProjectId ? "Save changes" : projects.length === 0 ? "Save token details" : "Add to Hoodlums Social"}');
+    expect(hub).toContain('"TELL US ABOUT YOUR TOKEN"');
+    // Fill out later is remembered per wallet for this tab only, and the reminder row keeps a way back plus the studio link.
+    expect(hub).toContain('const TOKEN_DETAILS_LATER_KEY = "hoodlums.social.tokenDetailsLater.v1";');
+    expect(hub).toContain("sessionStorage.setItem(TOKEN_DETAILS_LATER_KEY, owner)");
+    expect(hub).toContain("{projects.length === 0 && !showDetailsBox ? (");
+    expect(hub).toContain("<b>No token details yet.</b> Tools that need them will ask.");
+    expect(hub).toContain('<Link href="/">Open the launch studio</Link>');
     expect(hub).toContain("<b>Add an existing token</b>");
-    // The premium-theme test pins `.noProject a`; the studio link stays an anchor.
+    expect(hub).not.toContain("disabled={projects.length === 0}");
     const css = await source("components", "social-hub.module.css");
-    expect(css).toContain(".noProject a {");
+    expect(css).toContain(".detailsReminder {");
+    expect(css).toMatch(/@media \(max-width: 860px\) \{\s*\.detailsReminder \{ flex-direction: column;/);
     expect(css).toContain(".addTokenGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));");
     expect(css).toMatch(/@media \(max-width: 860px\) \{\s*\.addTokenGrid \{ grid-template-columns: 1fr; \}/);
   });
@@ -137,6 +146,35 @@ describe("Social Studio: add an existing token", () => {
     // The stored bare values are what the existing post builders expect: cleanHandle adds "@", cleanTelegram adds "https://t.me/".
     expect(hub).toContain('return trimmed.startsWith("@") ? trimmed : `@${trimmed.replace(/^https?:\\/\\/x\\.com\\//i, "")}`;');
     expect(hub).toContain("return `https://t.me/${trimmed.replace(/^@/, \"\")}`;");
+  });
+
+  it("every tool that needs a project prompts for token details instead of dead-ending, and a missing description is asked for at draft time", async () => {
+    const hub = await source("components", "social-hub.tsx");
+    expect(hub).toContain("function promptForTokenDetails(reason: string) {");
+    const prompts = hub.match(/promptForTokenDetails\("Add your token details before /g) ?? [];
+    // saveDraft, postTelegram, buildVoiceProfile, generateDraft, enableBuyBot, approveQueueItem, mascot upload, mascot scene, queue → Telegram
+    // …plus the Buy Bot card's own button, which stays tappable with no project so it can ask instead of sitting disabled.
+    expect(prompts.length).toBe(10);
+    expect(hub).toContain("disabled={(Boolean(buyBotUnavailableReason) && Boolean(selectedProject)) || telegramConfigured === false}");
+    expect(hub).not.toContain('"Choose a project before');
+    const draft = hub.slice(hub.indexOf("async function generateDraft("), hub.indexOf("async function generateDraftFromSetup()"));
+    expect(draft).toContain("if (!project.description.trim()) {");
+    expect(draft).toContain('openEditTokenDetails(selectedProject, "Add a sentence about the token — the AI only ever states facts from here.");');
+    expect(draft).toContain("Add its story in the launch studio (Saved launches → open it), then draft again.");
+  });
+
+  it("an added token can be edited in place from the picker, keeping its id and external marker", async () => {
+    const hub = await source("components", "social-hub.tsx");
+    expect(hub).toContain("function openEditTokenDetails(project: TokenProject, reason?: string) {");
+    expect(hub).toContain("{selectedProject && isExternalProject(selectedProject) ? (");
+    expect(hub).toContain("<b>Edit token details</b>");
+    const block = hub.slice(hub.indexOf("async function addExternalProject()"), hub.indexOf("function renderAddTokenForm()"));
+    expect(block).toContain("const editing = editingProjectId ? projects.find((item) => item.id === editingProjectId && isExternalProject(item)) ?? null : null;");
+    expect(block).toContain("id: editing?.id ?? crypto.randomUUID(),");
+    expect(block).toContain("createdAt: editing?.createdAt ?? now,");
+    // A blank draft reads UNTITLED, never the "PROJECT" placeholder that means nothing is selected.
+    expect(hub).toContain('|| "UNTITLED"');
+    expect(hub).toContain(': "PROJECT";');
   });
 
   it("states the token's own network everywhere it names a chain, and sends it with AI drafts", async () => {

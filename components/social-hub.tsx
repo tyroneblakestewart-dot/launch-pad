@@ -104,6 +104,25 @@ type ExternalTokenForm = {
   telegram: string;
   artworkDataUrl: string;
 };
+/** "Fill out later" on the token-details box, remembered per wallet for this tab only. Never throws. */
+const TOKEN_DETAILS_LATER_KEY = "hoodlums.social.tokenDetailsLater.v1";
+function readTokenDetailsLater(owner: string | null): boolean {
+  if (!owner) return false;
+  try {
+    return sessionStorage.getItem(TOKEN_DETAILS_LATER_KEY) === owner;
+  } catch {
+    return false;
+  }
+}
+function writeTokenDetailsLater(owner: string | null, later: boolean): void {
+  try {
+    if (later && owner) sessionStorage.setItem(TOKEN_DETAILS_LATER_KEY, owner);
+    else sessionStorage.removeItem(TOKEN_DETAILS_LATER_KEY);
+  } catch {
+    // Without session storage the box simply shows again next time.
+  }
+}
+
 const EMPTY_EXTERNAL_FORM: ExternalTokenForm = {
   name: "",
   ticker: "",
@@ -448,6 +467,12 @@ export function SocialHub() {
   // Add an existing token (owner direction, 6 Sep 2026): Hoodlums Social runs
   // socials for a token launched anywhere, not only ones made in the studio.
   const [addTokenOpen, setAddTokenOpen] = useState(false);
+  // "Fill out later" (owner direction, 6 Sep 2026): the token-details box
+  // shows on arrival when this wallet has no project, but is never mandatory
+  // — tools that need details ask for them at the moment they are used.
+  const [detailsLater, setDetailsLater] = useState(false);
+  // Editing an added (external) token's details reuses the same form.
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [externalForm, setExternalForm] = useState<ExternalTokenForm>(EMPTY_EXTERNAL_FORM);
   const [externalStatus, setExternalStatus] = useState<PanelStatus>(null);
   const [externalSaving, setExternalSaving] = useState(false);
@@ -634,6 +659,8 @@ export function SocialHub() {
     const drafts = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
     setProjects(loadedProjects);
     setWalletAddress(storedWalletAddress());
+    setDetailsLater(readTokenDetailsLater(projectOwner));
+    setEditingProjectId(null);
 
     const first = loadedProjects[0];
     setSelectedProjectId(first ? first.id : "");
@@ -962,7 +989,7 @@ export function SocialHub() {
   const buyBotUnavailableReason = !walletAddress
     ? "Connect your wallet first."
     : !selectedProject
-      ? "Pick a project first."
+      ? "Add your token details first."
       : isExternalSelected
         ? "This token was not launched on Hoodlums — the Buy Bot only watches Hoodlums curves."
         : !buyBotTokenAddress
@@ -977,8 +1004,12 @@ export function SocialHub() {
   const voiceExampleFilter = useMemo(() => filterUsableVoiceExamples(voiceExamplesText), [voiceExamplesText]);
   const voiceExampleCount = voiceExampleFilter.usable.length;
   const voiceProgressPercent = Math.min(100, Math.round((voiceExampleCount / VOICE_EXAMPLE_TARGET) * 100));
-  const projectInitial = (selectedProject?.name || "H").slice(0, 1).toUpperCase();
-  const projectTicker = selectedProject?.ticker?.trim().toUpperCase() || "PROJECT";
+  // A selected project with no name and no ticker (a blank studio draft) reads
+  // UNTITLED, never the "PROJECT" placeholder that means nothing is selected.
+  const projectInitial = (selectedProject?.name?.trim() || selectedProject?.ticker?.trim() || (selectedProject ? "U" : "H")).slice(0, 1).toUpperCase();
+  const projectTicker = selectedProject
+    ? selectedProject.ticker?.trim().toUpperCase() || selectedProject.name?.trim().toUpperCase().slice(0, 14) || "UNTITLED"
+    : "PROJECT";
   const xHandle = selectedProject?.xHandle ? cleanHandle(selectedProject.xHandle) : "";
   const now = new Date();
   const isCurrentMonthView = calendarView.year === now.getFullYear() && calendarView.month === now.getMonth();
@@ -1054,9 +1085,23 @@ export function SocialHub() {
     setStatus(`${TEMPLATES.find((item) => item.id === id)?.label || "Template"} loaded.`);
   }
 
+  // Opens the token-details box with a reason — every tool that needs a
+  // project calls this instead of dead-ending on a status line.
+  function promptForTokenDetails(reason: string) {
+    writeTokenDetailsLater(projectOwner, false);
+    setDetailsLater(false);
+    setEditingProjectId(null);
+    setAddTokenOpen(true);
+    setExternalStatus({ tone: "progress", message: reason });
+    setStatus(reason);
+    window.requestAnimationFrame(() => {
+      document.querySelector("[data-add-token-form]")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   function saveDraft() {
     if (!selectedProject) {
-      setStatus("Choose a project before saving a draft.");
+      promptForTokenDetails("Add your token details before saving a draft.");
       return;
     }
     const drafts: DraftMap = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
@@ -1222,7 +1267,7 @@ export function SocialHub() {
 
   async function postTelegram() {
     if (!selectedProject) {
-      setStatus("Choose a project before publishing.");
+      promptForTokenDetails("Add your token details before publishing.");
       return false;
     }
     if (!telegramReady || !telegramConnection || telegramConnection.status !== "connected") {
@@ -1409,7 +1454,8 @@ export function SocialHub() {
   async function buildVoiceProfile() {
     const project = draftProjectPayload();
     if (!project) {
-      setVoiceStatus({ tone: "error", message: "Choose a project before teaching the AI your voice." });
+      setVoiceStatus({ tone: "error", message: "Add your token details before teaching the AI your voice." });
+      promptForTokenDetails("Add your token details before teaching the AI your voice.");
       return;
     }
     const { usable: examples, pastedLineCount, rejectedCount } = voiceExampleFilter;
@@ -1476,7 +1522,18 @@ export function SocialHub() {
   ): Promise<{ xText: string; telegramText: string } | null> {
     const project = draftProjectPayload();
     if (!project) {
-      report({ tone: "error", message: "Choose a project before generating a draft." });
+      report({ tone: "error", message: "Add your token details before generating a draft." });
+      promptForTokenDetails("Add your token details before generating a draft.");
+      return null;
+    }
+    if (!project.description.trim()) {
+      // The AI only ever states facts from the description — with none, it has nothing to write from.
+      if (selectedProject && isExternalProject(selectedProject)) {
+        report({ tone: "error", message: "Add a sentence about the token first — the AI drafts from it." });
+        openEditTokenDetails(selectedProject, "Add a sentence about the token — the AI only ever states facts from here.");
+      } else {
+        report({ tone: "error", message: "This project has no description yet. Add its story in the launch studio (Saved launches → open it), then draft again." });
+      }
       return null;
     }
 
@@ -1628,6 +1685,10 @@ export function SocialHub() {
   /** Switches the Buy Bot on for the selected token (or re-binds a bot that needs re-adding): one wallet signature, then the server verifies the platform bot is an admin in the channel before storing anything. */
   async function enableBuyBot() {
     const chatId = buyBotChannelInput.trim();
+    if (!selectedProject) {
+      promptForTokenDetails("Add your token details before adding the Buy Bot.");
+      return;
+    }
     if (!buyBotTokenAddress) {
       setBuyBotStatus({ tone: "error", message: buyBotUnavailableReason ?? "Pick a launched token first." });
       return;
@@ -1846,7 +1907,8 @@ export function SocialHub() {
    */
   async function approveQueueItem(item: QueueItem) {
     if (!selectedProject) {
-      setPostsStatus({ tone: "error", message: "Choose a project before approving a post." });
+      setPostsStatus({ tone: "error", message: "Add your token details before approving a post." });
+      promptForTokenDetails("Add your token details before approving a post.");
       return;
     }
     const destinations = (itemDestinations[item.id] ?? []).filter((platform) => myConnectedPlatforms.includes(platform));
@@ -2093,7 +2155,8 @@ export function SocialHub() {
     if (!file) return;
     const project = draftProjectPayload();
     if (!project) {
-      setMascotUploadStatus({ tone: "error", message: "Choose a project before uploading mascot artwork." });
+      setMascotUploadStatus({ tone: "error", message: "Add your token details before uploading mascot artwork." });
+      promptForTokenDetails("Add your token details before uploading mascot artwork.");
       return;
     }
     if (file.size > MAX_MASCOT_IMAGE_BYTES) {
@@ -2139,7 +2202,8 @@ export function SocialHub() {
     const project = draftProjectPayload();
     const sceneInput = composeSceneInput();
     if (!project) {
-      setMascotSceneStatus({ tone: "error", message: "Choose a project before generating a mascot scene." });
+      setMascotSceneStatus({ tone: "error", message: "Add your token details before generating a mascot scene." });
+      promptForTokenDetails("Add your token details before generating a mascot scene.");
       return;
     }
     if (!mascotVisualDNA) {
@@ -2267,7 +2331,7 @@ export function SocialHub() {
 
   async function sendQueueItemToTelegram(item: QueueItem) {
     if (!selectedProject) {
-      setStatus("Choose a project before publishing.");
+      promptForTokenDetails("Add your token details before publishing.");
       return;
     }
     if (!telegramConnection || telegramConnection.status !== "connected" || !item.telegramText.trim()) {
@@ -2369,10 +2433,53 @@ export function SocialHub() {
     }
   }
 
+  function fillOutTokenDetailsLater() {
+    writeTokenDetailsLater(projectOwner, true);
+    setDetailsLater(true);
+    setAddTokenOpen(false);
+    setEditingProjectId(null);
+    setExternalStatus(null);
+    setStatus("No problem — any tool that needs your token details will ask for them when you use it.");
+  }
+
+  function closeTokenDetails() {
+    if (projects.length === 0) {
+      fillOutTokenDetailsLater();
+      return;
+    }
+    setAddTokenOpen(false);
+    setEditingProjectId(null);
+    setExternalForm(EMPTY_EXTERNAL_FORM);
+    setExternalStatus(null);
+  }
+
+  /** Prefills the details box with an added (external) token so its details can be changed in place. */
+  function openEditTokenDetails(project: TokenProject, reason?: string) {
+    setEditingProjectId(project.id);
+    setExternalForm({
+      name: project.name,
+      ticker: project.ticker,
+      networkChoice: project.network ? "other" : project.chain,
+      networkOther: project.network ?? "",
+      contractAddress: project.contractAddress,
+      description: project.description,
+      xHandle: project.xHandle,
+      telegram: project.telegram,
+      artworkDataUrl: project.id === selectedProjectId ? projectArtwork : "",
+    });
+    setProjectMenuOpen(false);
+    setAddTokenOpen(true);
+    setExternalStatus(reason ? { tone: "progress", message: reason } : null);
+    window.requestAnimationFrame(() => {
+      document.querySelector("[data-add-token-form]")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   // Saves a token launched anywhere into the confirmed wallet's own vault as
   // an external project (Social-only: the launch tooling filters it out) and
-  // selects it. Requires a confirmed wallet — the project must land in that
-  // wallet's partition and nowhere else. Handles are stored bare (no "@", no
+  // selects it — or, when editing, rewrites that added token in place.
+  // Requires a confirmed wallet — the project must land in that wallet's
+  // partition and nowhere else. Handles are stored bare (no "@", no
   // "t.me/"): cleanHandle/cleanTelegram add the prefix when a post needs it.
   async function addExternalProject() {
     if (!projectOwner) {
@@ -2411,9 +2518,10 @@ export function SocialHub() {
     const looksEvm = /^0x[0-9a-fA-F]{40}$/.test(contractAddress);
     const chain: TokenProject["chain"] =
       externalForm.networkChoice === "solana" ? "solana" : externalForm.networkChoice === "robinhood" ? "robinhood" : looksEvm ? "robinhood" : "solana";
+    const editing = editingProjectId ? projects.find((item) => item.id === editingProjectId && isExternalProject(item)) ?? null : null;
     const project: TokenProject = {
-      id: crypto.randomUUID(),
-      createdAt: now,
+      id: editing?.id ?? crypto.randomUUID(),
+      createdAt: editing?.createdAt ?? now,
       updatedAt: now,
       status: contractAddress ? "launched" : "draft",
       chain,
@@ -2442,14 +2550,19 @@ export function SocialHub() {
       }
       setProjects(safeProjects(readProjectIndex(projectOwner)));
       setSelectedProjectId(project.id);
-      setTemplateId("launch");
-      setMessage(buildTemplate(project, "launch"));
-      setTelegramMessage("");
-      setAttachedArtwork(null);
+      if (!editing) {
+        setTemplateId("launch");
+        setMessage(buildTemplate(project, "launch"));
+        setTelegramMessage("");
+        setAttachedArtwork(null);
+      }
       setExternalForm(EMPTY_EXTERNAL_FORM);
+      setEditingProjectId(null);
       setAddTokenOpen(false);
       setExternalStatus(null);
-      setStatus(`${name} added to Hoodlums Social. Only wallet ${shortAddress(projectOwner)} sees it.`);
+      writeTokenDetailsLater(projectOwner, false);
+      setDetailsLater(false);
+      setStatus(editing ? `${name} updated.` : `${name} added to Hoodlums Social. Only wallet ${shortAddress(projectOwner)} sees it.`);
     } finally {
       setExternalSaving(false);
     }
@@ -2459,9 +2572,13 @@ export function SocialHub() {
     const isOther = externalForm.networkChoice === "other";
     return (
       <div className={styles.connectionDrawer} data-add-token-form>
-        <span className={styles.eyebrow}>ADD AN EXISTING TOKEN</span>
+        <span className={styles.eyebrow}>{editingProjectId ? "EDIT TOKEN DETAILS" : projects.length === 0 ? "TELL US ABOUT YOUR TOKEN" : "ADD AN EXISTING TOKEN"}</span>
         <p className={styles.connectionHelper}>
-          For a token launched anywhere else. It is saved to your confirmed wallet and appears only in Hoodlums Social — never in the launch tools.
+          {editingProjectId
+            ? "Changes apply to this token everywhere in Hoodlums Social."
+            : projects.length === 0
+              ? "Everything our tools work from. Nothing here is required right now — fill it out later and any tool that needs a detail will ask for it. Saved to your confirmed wallet only."
+              : "For a token launched anywhere else. It is saved to your confirmed wallet and appears only in Hoodlums Social — never in the launch tools."}
         </p>
         {!projectOwner ? (
           <p className={styles.connectionStateWarning}>Confirm your wallet in Account first — the token is saved to that wallet.</p>
@@ -2516,9 +2633,11 @@ export function SocialHub() {
         </div>
         <div className={styles.composerActions}>
           <button type="button" className={styles.connectionActionPrimary} onClick={addExternalProject} disabled={externalSaving || !projectOwner}>
-            Add to Hoodlums Social
+            {editingProjectId ? "Save changes" : projects.length === 0 ? "Save token details" : "Add to Hoodlums Social"}
           </button>
-          <button type="button" className={styles.connectionAction} onClick={() => setAddTokenOpen(false)}>Cancel</button>
+          <button type="button" className={styles.connectionAction} onClick={closeTokenDetails}>
+            {projects.length === 0 && !editingProjectId ? "Fill out later" : "Cancel"}
+          </button>
         </div>
         <InlineStatus status={externalStatus} />
       </div>
@@ -2546,7 +2665,6 @@ export function SocialHub() {
                 type="button"
                 className={styles.projectPickerButton}
                 onClick={() => setProjectMenuOpen((current) => !current)}
-                disabled={projects.length === 0}
                 aria-expanded={projectMenuOpen}
                 aria-haspopup="listbox"
               >
@@ -2579,11 +2697,22 @@ export function SocialHub() {
                       </span>
                     </button>
                   ))}
+                  {selectedProject && isExternalProject(selectedProject) ? (
+                    <button type="button" className={styles.projectMenuItem} onClick={() => openEditTokenDetails(selectedProject)} role="option" aria-selected={false}>
+                      <span className={styles.projectMenuMark}>✎</span>
+                      <span>
+                        <b>Edit token details</b>
+                        <small>{selectedProject.name || "This token"} · name, network, description, handles, artwork</small>
+                      </span>
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className={styles.projectMenuItem}
                     onClick={() => {
                       setProjectMenuOpen(false);
+                      setEditingProjectId(null);
+                      setExternalForm(EMPTY_EXTERNAL_FORM);
                       setAddTokenOpen(true);
                     }}
                     role="option"
@@ -2639,22 +2768,24 @@ export function SocialHub() {
           </div>
         ) : null}
 
-        {projects.length === 0 ? (
-          <section className={styles.noProject}>
-            <span>NO SAVED PROJECT</span>
-            <h1>Pick the token Hoodlums Social should run.</h1>
-            <p>Launch one in the studio, or add a token that already exists anywhere — Hoodlums Social works for any project, not only ones launched here.</p>
-            <div className={styles.noProjectActions}>
-              <Link href="/">Return to launch studio</Link>
-              <button type="button" className={styles.noProjectSecondary} onClick={() => setAddTokenOpen((current) => !current)}>
-                {addTokenOpen ? "Close" : "Add an existing token"}
-              </button>
-            </div>
-            {addTokenOpen ? renderAddTokenForm() : null}
-          </section>
-        ) : (
+        {(() => {
+          // The studio is always usable. With no project for this wallet the
+          // token-details box opens on arrival (never mandatory — "Fill out
+          // later" hides it and tools ask at the moment they need details).
+          const showDetailsBox = addTokenOpen || (projects.length === 0 && !detailsLater);
+          return (
           <section className={styles.studioPanel}>
-            {addTokenOpen ? <div className={styles.addTokenPanel}>{renderAddTokenForm()}</div> : null}
+            {showDetailsBox ? <div className={styles.addTokenPanel}>{renderAddTokenForm()}</div> : null}
+            {projects.length === 0 && !showDetailsBox ? (
+              <div className={styles.detailsReminder}>
+                <span>
+                  <b>No token details yet.</b> Tools that need them will ask. Launched on Hoodlums? <Link href="/">Open the launch studio</Link>.
+                </span>
+                <button type="button" className={styles.connectionAction} onClick={() => promptForTokenDetails("Tell us about your token.")}>
+                  Add token details
+                </button>
+              </div>
+            ) : null}
             <div className={styles.tabBar}>
               <div className={styles.tabs} role="tablist" aria-label="Hoodlums Social sections">
                 {TABS.map((tab) => (
@@ -2864,9 +2995,15 @@ export function SocialHub() {
                                 type="button"
                                 className={styles.botActionPrimary}
                                 aria-expanded={buyBotDrawerOpen}
-                                disabled={Boolean(buyBotUnavailableReason) || telegramConfigured === false}
+                                disabled={(Boolean(buyBotUnavailableReason) && Boolean(selectedProject)) || telegramConfigured === false}
                                 title={buyBotUnavailableReason ?? undefined}
-                                onClick={() => setBuyBotDrawerOpen((current) => !current)}
+                                onClick={() => {
+                                  if (!selectedProject) {
+                                    promptForTokenDetails("Add your token details before adding the Buy Bot.");
+                                    return;
+                                  }
+                                  setBuyBotDrawerOpen((current) => !current);
+                                }}
                               >
                                 {selectedBuyBot?.status === "reconnect_needed" ? "Add again" : "Add to your channel"}
                               </button>
@@ -4068,7 +4205,8 @@ export function SocialHub() {
               ) : null}
             </div>
           </section>
-        )}
+          );
+        })()}
       </div>
     </main>
   );

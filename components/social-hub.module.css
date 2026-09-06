@@ -2174,3 +2174,27 @@
   .noProjectActions a,
   .noProjectSecondary { width: 100%; justify-content: center; text-align: center; }
 }
+
+/* "Fill out later" reminder above the tabs while this wallet has no token details (6 Sep 2026). */
+.detailsReminder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: var(--well-border);
+  border-radius: var(--well-radius);
+  background: var(--well-bg);
+  box-shadow: var(--well-shadow);
+  color: var(--text-sub);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.detailsReminder b { color: var(--text-value); }
+.detailsReminder a { color: var(--accent-lime); text-decoration: underline; }
+@media (max-width: 860px) {
+  .detailsReminder { flex-direction: column; align-items: stretch; }
+  .detailsReminder .connectionAction { min-height: 44px; }
+}
