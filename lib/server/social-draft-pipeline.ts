@@ -1,3 +1,13 @@
+import {
+  DEFAULT_TONE_DIALS,
+  DEFAULT_WORDS_TO_AVOID,
+  containsEmoji,
+  containsHashtag,
+  findAvoidedWords,
+  toneDialInstructions,
+  wordsToAvoidInstruction,
+  type ToneDials,
+} from "@/lib/social-tone-rules";
 import { runContentFilterFailOpen } from "@/lib/server/content-filter";
 import { extractOutputText, type OpenAIResponse } from "@/lib/server/generate-site-style";
 import { MAX_REINFORCEMENT_SAMPLE_LINES } from "@/lib/social-voice-feedback";
@@ -281,8 +291,11 @@ const ANTI_FORMULA_RULES = [
   "Never use the \"isn't just X, it's Y\" / \"not X, it's Y\" construction anywhere in either draft, not only as an opening line.",
   "Vary post length meaningfully rather than always landing near the same length.",
   "Do not reuse the same signature phrase (a specific catchphrase, slogan or metaphor) in consecutive posts.",
-  "Do not append hashtags to every post — only include them when they genuinely add value, never as a reflexive sign-off.",
 ].join("\n");
+
+/** The reflexive-hashtag rule is only right when the user hasn't asked for lots of hashtags (Settings & Rules dial, 6 Sep 2026). */
+const REFLEXIVE_HASHTAG_RULE =
+  "Do not append hashtags to every post — only include them when they genuinely add value, never as a reflexive sign-off.";
 
 function normaliseForPhraseMatch(text: string): string {
   return text
@@ -564,10 +577,16 @@ export function buildDraftRequestBody(
     angleIndex?: number;
     /** Named violation feedback for the single automatic retry (issue #362). */
     correctiveFeedback?: string | null;
+    /** Settings & Rules "Words to avoid" (6 Sep 2026) — a hard ban in the prompt, backed by checkDraftWordsToAvoid. Defaults to the design's five words when omitted. */
+    wordsToAvoid?: readonly string[];
+    /** Settings & Rules "How it should sound" dials (6 Sep 2026). Defaults to the middle of every dial when omitted. */
+    toneDials?: ToneDials | null;
   },
   model: string,
 ) {
   const likedSampleLines = input.likedSampleLines ?? [];
+  const wordsToAvoid = input.wordsToAvoid ?? DEFAULT_WORDS_TO_AVOID;
+  const toneDials = input.toneDials ?? DEFAULT_TONE_DIALS;
   const voiceExamples = rotatingSample(
     (input.voiceExamples ?? []).map((example) => truncate(example, VOICE_EXAMPLE_TRUNCATE_LENGTH)),
     VOICE_EXAMPLES_PER_DRAFT,
@@ -606,7 +625,9 @@ export function buildDraftRequestBody(
               `The X post MUST be ${X_DRAFT_CHARACTER_LIMIT} characters or fewer, counting every character including spaces and emoji.`,
               "The Telegram post may be longer and more conversational.",
               "Never include a link or URL of any kind (no http/https, no www., no bare domain like example.com, no shortener) in either draft. Assume the project's link already lives in the X profile bio and Telegram channel description — write copy that stands on its own without one. A link-bearing X post costs far more to publish through the API, so this is a hard rule, not a style preference.",
-              "Never invent price predictions, guaranteed returns or financial advice. Never use the words: guaranteed, financial advice, to the moon, rug, 100x.",
+              "Never invent price predictions, guaranteed returns or financial advice.",
+              wordsToAvoidInstruction(wordsToAvoid),
+              ...toneDialInstructions(toneDials),
               "Both drafts are shown to the user for review and editing before they choose to post — do not claim they have already been posted.",
               voiceInstruction(input.voiceProfile),
               voiceExamplesInstruction(voiceExamples),
@@ -624,6 +645,7 @@ export function buildDraftRequestBody(
               ),
               watchedFillerTermsInstruction(recentDrafts),
               ANTI_FORMULA_RULES,
+              toneDials.hashtags === "lots" ? "" : REFLEXIVE_HASHTAG_RULE,
               input.correctiveFeedback?.trim() ? `IMPORTANT CORRECTION (this is a regenerated attempt): ${input.correctiveFeedback.trim()}` : "",
               "Return only the strict draft JSON object.",
             ]
@@ -961,7 +983,40 @@ export type DraftComplianceCheckInput = {
   recentDrafts?: string[];
   /** Telegram-history counterpart of recentDrafts above (issue #382) — feeds the Telegram-specific identity-opener and phrase-overlap checks below. */
   recentTelegramDrafts?: string[];
+  /** Settings & Rules (6 Sep 2026): the user's banned words — any occurrence in either draft is a violation. */
+  wordsToAvoid?: readonly string[];
+  /** Settings & Rules (6 Sep 2026): the deterministic half of the dials — "no emoji" and "no hashtags" are checked, not just requested. */
+  toneDials?: ToneDials | null;
 };
+
+/**
+ * Settings & Rules "Words to avoid" (6 Sep 2026): boundary-aware,
+ * case-insensitive, across both drafts. Runs before the softer style checks
+ * because a banned word is the one thing the user explicitly told us never
+ * to say.
+ */
+export function checkDraftWordsToAvoid(draft: SocialDraft, wordsToAvoid: readonly string[] | undefined): DraftAngleComplianceResult {
+  if (!wordsToAvoid || wordsToAvoid.length === 0) return { violated: false };
+  const found = findAvoidedWords(`${draft.xText}\n${draft.telegramText}`, wordsToAvoid);
+  if (found.length === 0) return { violated: false };
+  return {
+    violated: true,
+    feedback: `The draft used banned word(s) the user told us never to say: ${found.map((word) => `"${word}"`).join(", ")}. Rewrite both drafts without them or any variant of them.`,
+  };
+}
+
+/** The two dial settings that can be checked mechanically: "Emoji: none" and "Hashtags: never". The other levels are instructions the model follows by degree. */
+export function checkDraftToneRules(draft: SocialDraft, toneDials: ToneDials | null | undefined): DraftAngleComplianceResult {
+  if (!toneDials) return { violated: false };
+  const combined = `${draft.xText}\n${draft.telegramText}`;
+  if (toneDials.emoji === "none" && containsEmoji(combined)) {
+    return { violated: true, feedback: "The user's emoji setting is \"none\" but the draft contains emoji. Rewrite both drafts with no emoji at all." };
+  }
+  if (toneDials.hashtags === "never" && containsHashtag(combined)) {
+    return { violated: true, feedback: "The user's hashtag setting is \"never\" but the draft contains a hashtag. Rewrite both drafts with no hashtags at all." };
+  }
+  return { violated: false };
+}
 
 /**
  * Content-filter floor (issue #392): hateful slurs (race/ethnicity/national
@@ -998,6 +1053,10 @@ export function checkDraftCompliance(draft: SocialDraft, input: DraftComplianceC
   if (angleResult.violated) return angleResult;
   const factualResult = checkDraftFactualRisk(draft);
   if (factualResult.violated) return factualResult;
+  const wordsResult = checkDraftWordsToAvoid(draft, input.wordsToAvoid);
+  if (wordsResult.violated) return wordsResult;
+  const toneResult = checkDraftToneRules(draft, input.toneDials);
+  if (toneResult.violated) return toneResult;
   const recentDrafts = input.recentDrafts ?? [];
   const recentTelegramDrafts = input.recentTelegramDrafts ?? [];
   if (input.project) {

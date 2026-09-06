@@ -1,3 +1,4 @@
+import { DEFAULT_TONE_DIALS, DEFAULT_WORDS_TO_AVOID, type ToneDials } from "./social-tone-rules";
 // Client-safe types shared between components/social-hub.tsx and the new
 // AI Social Studio server routes. Kept separate from lib/server/* so the
 // client bundle never pulls in server-only modules.
@@ -91,6 +92,10 @@ export type SocialStudioProjectRecord = {
   directionBrief: string;
   /** Lower-cased pasted posts already reshaped and sorted in the station, so a source is never served twice. */
   sortedVoiceSourceKeys: string[];
+  /** Settings & Rules "Words to avoid" (owner direction, 6 Sep 2026) — every AI draft is forbidden these and mechanically rejected if one slips through. */
+  wordsToAvoid: string[];
+  /** Settings & Rules "How it should sound" dials (owner direction, 6 Sep 2026) — fed into every AI draft as tone instructions. */
+  toneDials: ToneDials;
 };
 
 export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
@@ -104,4 +109,6 @@ export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
   postingCadence: DEFAULT_POSTING_CADENCE,
   directionBrief: "",
   sortedVoiceSourceKeys: [],
+  wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+  toneDials: { ...DEFAULT_TONE_DIALS },
 };

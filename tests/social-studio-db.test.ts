@@ -1,3 +1,4 @@
+import { DEFAULT_TONE_DIALS, DEFAULT_WORDS_TO_AVOID } from "@/lib/social-tone-rules";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteSocialStudioRecord, getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
 import {
@@ -54,6 +55,8 @@ const RECORD: SocialStudioProjectRecord = {
   postingCadence: "conservative",
   directionBrief: "Push the community angle, big announcement coming Friday",
   sortedVoiceSourceKeys: [],
+  wordsToAvoid: ["rug", "guaranteed"],
+  toneDials: { humour: "dry", emoji: "none", hashtags: "never", postLength: "short" },
 };
 
 describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
@@ -104,6 +107,8 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         postingCadence: DEFAULT_POSTING_CADENCE,
         directionBrief: "",
         sortedVoiceSourceKeys: [],
+        wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+        toneDials: DEFAULT_TONE_DIALS,
       });
     });
 
@@ -124,6 +129,8 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         postingCadence: DEFAULT_POSTING_CADENCE,
         directionBrief: "",
         sortedVoiceSourceKeys: [],
+        wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+        toneDials: DEFAULT_TONE_DIALS,
       });
     });
 
@@ -144,6 +151,8 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         postingCadence: DEFAULT_POSTING_CADENCE,
         directionBrief: "",
         sortedVoiceSourceKeys: [],
+        wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+        toneDials: DEFAULT_TONE_DIALS,
       });
     });
 
@@ -180,6 +189,28 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
       };
       await putSocialStudioRecord("legacy-project-2", legacy as unknown as SocialStudioProjectRecord);
       await expect(getSocialStudioRecord("legacy-project-2")).resolves.toEqual(EMPTY_SOCIAL_STUDIO_RECORD);
+    });
+
+    it("fills in wordsToAvoid (the design's five words) and the middle tone dials when a pre-Rules-wiring record has neither key, and repairs a corrupt dial", async () => {
+      const legacy = { ...RECORD } as Record<string, unknown>;
+      delete legacy.wordsToAvoid;
+      delete legacy.toneDials;
+      await putSocialStudioRecord("legacy-project-rules", legacy as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("legacy-project-rules")).resolves.toEqual({
+        ...RECORD,
+        wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+        toneDials: DEFAULT_TONE_DIALS,
+      });
+
+      await putSocialStudioRecord("corrupt-dials", {
+        ...RECORD,
+        wordsToAvoid: ["ok", 7, "", "ok", "  spaced   out  "],
+        toneDials: { humour: "loud", emoji: "plenty" },
+      } as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("corrupt-dials")).resolves.toMatchObject({
+        wordsToAvoid: ["ok", "spaced out"],
+        toneDials: { ...DEFAULT_TONE_DIALS, emoji: "plenty" },
+      });
     });
 
     it("coerces non-array sampleLineFeedback, voiceExamples and queue to empty arrays instead of throwing", async () => {

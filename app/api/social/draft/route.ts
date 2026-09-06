@@ -1,3 +1,4 @@
+import { normaliseToneDials, normaliseWordsToAvoid } from "@/lib/social-tone-rules";
 import { NextResponse } from "next/server";
 import { AI_FEATURE_KEYS } from "@/lib/ai-feature-keys";
 import {
@@ -49,6 +50,8 @@ type DraftRequestBody = {
   recentDrafts?: unknown;
   recentTelegramDrafts?: unknown;
   angleIndex?: unknown;
+  wordsToAvoid?: unknown;
+  toneDials?: unknown;
 };
 
 const MAX_VOICE_EXAMPLES_ACCEPTED = 20;
@@ -181,6 +184,10 @@ export async function POST(request: Request) {
   const recentDrafts = stringArray(body.recentDrafts, MAX_RECENT_DRAFTS_ACCEPTED, 2_000);
   const recentTelegramDrafts = stringArray(body.recentTelegramDrafts, MAX_RECENT_DRAFTS_ACCEPTED, 2_000);
   const angleIndex = typeof body.angleIndex === "number" && Number.isFinite(body.angleIndex) ? body.angleIndex : 0;
+  // Settings & Rules (6 Sep 2026). A request without these (an older client)
+  // gets the design's defaults, which is exactly what generation did before.
+  const wordsToAvoid = normaliseWordsToAvoid(body.wordsToAvoid);
+  const toneDials = normaliseToneDials(body.toneDials);
 
   const inputContentFilter = runContentFilterFailOpen({
     name: project.name,
@@ -238,6 +245,8 @@ export async function POST(request: Request) {
               recentTelegramDrafts,
               angleIndex,
               correctiveFeedback,
+              wordsToAvoid,
+              toneDials,
             },
             resolvedAi.model,
           ),
@@ -319,6 +328,8 @@ export async function POST(request: Request) {
     chainLabel: resolveChainLabel(project.chain),
     recentDrafts,
     recentTelegramDrafts,
+    wordsToAvoid,
+    toneDials,
   };
   const compliance = checkDraftCompliance(result.draft, complianceInput);
   const contentFilterResult = checkDraftContentFilter(result.draft);

@@ -1927,3 +1927,41 @@
 .botRow .botWarning { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--text-label); }
 .botRow .botWarning { color: #f0c66a; }
 .botRow .connectionDrawer .buyAlertThreshold { justify-content: space-between; }
+
+
+/* Settings & Rules wiring (6 Sep 2026): real chips with a remove button, and an inline add form. */
+.bannedPanel .wordChip { padding-right: 4px; }
+.bannedPanel .wordChipRemove {
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--text-faint);
+  background: transparent;
+  font-size: 15px;
+  line-height: 1;
+}
+.bannedPanel .wordChipRemove:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.08); }
+.wordAddForm { display: inline-flex; align-items: center; gap: 6px; }
+.bannedPanel .wordAddForm input {
+  min-height: 34px;
+  width: 180px;
+  max-width: 100%;
+  padding: 0 13px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  color: var(--text-primary);
+  background: transparent;
+  font-size: 12.5px;
+}
+.bannedPanel .wordAddForm input::placeholder { color: var(--text-faint); }
+.bannedPanel .wordAddForm button {
+  border-style: solid;
+  border-color: rgba(198, 245, 62, 0.35);
+  color: var(--accent-lime);
+}
+.bannedPanel .wordAddForm button:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (pointer: coarse) {
+  .bannedPanel .wordChipRemove { min-height: 34px; min-width: 34px; }
+}

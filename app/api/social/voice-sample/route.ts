@@ -1,3 +1,4 @@
+import { normaliseWordsToAvoid } from "@/lib/social-tone-rules";
 import { NextResponse } from "next/server";
 import { AI_FEATURE_KEYS } from "@/lib/ai-feature-keys";
 import {
@@ -12,7 +13,7 @@ import { recordAdminActivityBestEffort } from "@/lib/server/admin-operations-sto
 import { contentFilterRejectionMessage, runContentFilterFailOpen } from "@/lib/server/content-filter";
 import type { OpenAIResponse } from "@/lib/server/generate-site-style";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
-import { checkDraftFactualRisk } from "@/lib/server/social-draft-pipeline";
+import { checkDraftFactualRisk, checkDraftWordsToAvoid } from "@/lib/server/social-draft-pipeline";
 import { authoriseSocialProjectSlot } from "@/lib/server/social-project-slot-entitlement";
 import { authoriseSocialStudioRequest } from "@/lib/server/social-studio-entitlement";
 import {
@@ -32,6 +33,7 @@ type VoiceSampleRequestBody = {
   project?: { name?: unknown; ticker?: unknown; description?: unknown };
   sourcePost?: unknown;
   personaLines?: unknown;
+  wordsToAvoid?: unknown;
 };
 
 function noStoreHeaders(extra: Record<string, string> = {}) {
@@ -133,6 +135,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: source.error }, { status: 400, headers: noStoreHeaders(rateHeaders) });
   }
   const personaLines = normalisePersonaLines(body.personaLines);
+  // Settings & Rules (6 Sep 2026): a reshaped sample lands in the persona bank, so it must obey the same banned words a draft does.
+  const wordsToAvoid = Array.isArray(body.wordsToAvoid) ? normaliseWordsToAvoid(body.wordsToAvoid) : [];
 
   const inputContentFilter = runContentFilterFailOpen({ name, ticker, description, sourcePost: source.sourcePost });
   if (inputContentFilter.blocked) {
@@ -161,7 +165,7 @@ export async function POST(request: Request) {
       method: "POST",
       headers: { Authorization: `Bearer ${ai.apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify(
-        buildVoiceSampleRequestBody({ project: { name, ticker, description }, sourcePost: source.sourcePost, personaLines }, ai.model),
+        buildVoiceSampleRequestBody({ project: { name, ticker, description }, sourcePost: source.sourcePost, personaLines, wordsToAvoid }, ai.model),
       ),
       signal: AbortSignal.timeout(25_000),
     });
@@ -212,6 +216,10 @@ export async function POST(request: Request) {
   // invented holder count or listing claim here would be worse than in a
   // single draft. Fail closed, never return an unsafe sample.
   const factualRisk = checkDraftFactualRisk({ xText: parsed.sample, telegramText: parsed.sample });
+  const avoided = checkDraftWordsToAvoid({ xText: parsed.sample, telegramText: parsed.sample }, wordsToAvoid);
+  if (avoided.violated) {
+    return NextResponse.json({ error: "The reshaped sample used one of your banned words — try that post again." }, { status: 422, headers: noStoreHeaders(rateHeaders) });
+  }
   if (factualRisk.violated) {
     return NextResponse.json(
       { error: "The reshaped sample invented a fact that isn't in your project details. Try again." },

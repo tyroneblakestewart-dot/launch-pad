@@ -56,9 +56,12 @@ describe("Social Studio design pass", () => {
     expect(card).toContain("border-radius: 16px;");
   });
 
-  it("makes each tone dial a single inset-well select rather than a segmented row", async () => {
+  it("makes each tone dial a single inset-well select rather than a segmented row — now live, bound to the project's saved dials", async () => {
     const hub = await source("components", "social-hub.tsx");
-    expect(hub).toContain("<select disabled defaultValue={options[1]}>");
+    // Wired 6 Sep 2026: the select reads the saved dial and saves on change; it is no longer disabled.
+    expect(hub).toContain("value={toneDials[dial.key]}");
+    expect(hub).toContain("onChange={(event) => updateToneDial(dial.key, event.target.value as ToneDials[typeof dial.key])}");
+    expect(hub).not.toContain("<select disabled defaultValue={options[1]}>");
     expect(hub).not.toContain("className={index === 1 ? styles.dialSelected : undefined}");
 
     const css = await source("components", "social-hub.module.css");

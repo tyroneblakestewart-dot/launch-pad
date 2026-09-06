@@ -26,6 +26,14 @@ import {
 } from "@/lib/social-voice-examples";
 import { getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
 import {
+  MAX_WORDS_TO_AVOID,
+  TONE_DIAL_OPTIONS,
+  DEFAULT_TONE_DIALS,
+  DEFAULT_WORDS_TO_AVOID,
+  addWordToAvoid,
+  type ToneDials,
+} from "@/lib/social-tone-rules";
+import {
   advanceRollingRecentDrafts,
   buildXIntentUrl,
   cadenceQueueTarget,
@@ -232,13 +240,6 @@ const BOTS = [
 
 const MASCOT_ACTIONS = ["trading", "celebrating", "chilling", "building", "gym", "gaming", "cooking"];
 const MASCOT_PLACES = ["city streets", "beach", "space", "office", "casino", "nature"];
-const BANNED_WORDS = ["guaranteed", "financial advice", "to the moon", "rug", "100x"];
-const TONE_DIALS = [
-  ["Humour", "Dry", "Playful", "Full degen"],
-  ["Emoji", "None", "A little", "Plenty"],
-  ["Hashtags", "Never", "One or two", "Lots"],
-  ["Post length", "Short", "Medium", "Long"],
-] as const;
 const BUY_ALERT_THRESHOLDS = ["0.01 ETH", "0.05 ETH", "0.1 ETH"] as const;
 const CALENDAR_DAY_NAMES = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const MONTH_NAMES = [
@@ -545,6 +546,12 @@ export function SocialHub() {
   // alongside the rest of the Social Studio record.
   const [directionBrief, setDirectionBrief] = useState("");
   const [postingCadence, setPostingCadence] = useState<PostingCadence>(DEFAULT_POSTING_CADENCE);
+  // Settings & Rules wiring (owner direction, 6 Sep 2026): both persist per
+  // project alongside the Direction brief and ride into every AI draft.
+  const [wordsToAvoid, setWordsToAvoid] = useState<string[]>([...DEFAULT_WORDS_TO_AVOID]);
+  const [toneDials, setToneDials] = useState<ToneDials>({ ...DEFAULT_TONE_DIALS });
+  const [wordToAvoidDraft, setWordToAvoidDraft] = useState("");
+  const [wordsToAvoidStatus, setWordsToAvoidStatus] = useState<PanelStatus>(null);
 
   // Server-side project-slot usage (issue #407) — "Project X of Y (Plan)".
   // Read-only summary from GET /api/social/project-slots; the server, not
@@ -741,6 +748,10 @@ export function SocialHub() {
       setQueueTarget(record.queueTarget);
       setDirectionBrief(record.directionBrief);
       setPostingCadence(record.postingCadence);
+      setWordsToAvoid(record.wordsToAvoid);
+      setToneDials(record.toneDials);
+      setWordToAvoidDraft("");
+      setWordsToAvoidStatus(null);
       setScheduledPosts([]);
       setItemDestinations({});
       setItemScheduledAt({});
@@ -763,6 +774,8 @@ export function SocialHub() {
       postingCadence,
       directionBrief,
       sampleLineFeedback,
+      wordsToAvoid,
+      toneDials,
       sortedVoiceSourceKeys,
       ...overrides,
     };
@@ -771,6 +784,41 @@ export function SocialHub() {
   function persistSocialStudio(overrides: Partial<SocialStudioProjectRecord> = {}) {
     if (!selectedProjectId) return;
     void putSocialStudioRecord(selectedProjectId, currentSocialStudioRecord(overrides));
+  }
+
+  /** Settings & Rules: adds the typed word/phrase to the banned list (trimmed, de-duplicated, capped) and saves at once. */
+  function addWordToAvoidFromBox() {
+    const result = addWordToAvoid(wordsToAvoid, wordToAvoidDraft);
+    if (result.status === "empty") {
+      setWordsToAvoidStatus({ tone: "error", message: "Type a word or phrase first." });
+      return;
+    }
+    if (result.status === "duplicate") {
+      setWordsToAvoidStatus({ tone: "error", message: "That one is already on the list." });
+      return;
+    }
+    if (result.status === "limit") {
+      setWordsToAvoidStatus({ tone: "error", message: `The list holds ${MAX_WORDS_TO_AVOID} words at most — remove one to add another.` });
+      return;
+    }
+    setWordsToAvoid(result.words);
+    setWordToAvoidDraft("");
+    setWordsToAvoidStatus(null);
+    persistSocialStudio({ wordsToAvoid: result.words });
+  }
+
+  function removeWordToAvoid(word: string) {
+    const next = wordsToAvoid.filter((item) => item !== word);
+    setWordsToAvoid(next);
+    setWordsToAvoidStatus(null);
+    persistSocialStudio({ wordsToAvoid: next });
+  }
+
+  /** Settings & Rules: one dial changes, the whole set saves — no separate save step, like the cadence tiles. */
+  function updateToneDial<K extends keyof ToneDials>(key: K, value: ToneDials[K]) {
+    const next = { ...toneDials, [key]: value };
+    setToneDials(next);
+    persistSocialStudio({ toneDials: next });
   }
 
   const selectedProject = useMemo(
@@ -1149,6 +1197,7 @@ export function SocialHub() {
           project: { name: project.name, ticker: project.ticker, description: project.description },
           sourcePost,
           personaLines: likedReinforcementLines(sampleLineFeedback),
+          wordsToAvoid,
         }),
       });
       const payload = (await response.json()) as { sample?: string; error?: string };
@@ -1336,6 +1385,8 @@ export function SocialHub() {
           recentDrafts: options.recentDraftsOverride ?? queue.map((item) => item.xText),
           recentTelegramDrafts: options.recentTelegramDraftsOverride ?? queue.map((item) => item.telegramText),
           angleIndex,
+          wordsToAvoid,
+          toneDials,
         }),
       });
       const payload = (await response.json()) as {
@@ -3480,32 +3531,58 @@ export function SocialHub() {
                       <div className={styles.sectionHeading}>
                         <div>
                           <h2>Words to avoid</h2>
-                          <p>The AI will never use these once rule storage is connected.</p>
+                          <p>The AI will never use these in a draft — and a draft that slips one in is thrown out and redone.</p>
                         </div>
-                        <ComingSoon compact />
                       </div>
                       <div className={styles.bannedPanel}>
-                        {BANNED_WORDS.map((word) => <span key={word}>{word}<i>×</i></span>)}
-                        <button type="button" disabled>+ add a word</button>
+                        {wordsToAvoid.map((word) => (
+                          <span key={word} className={styles.wordChip}>
+                            {word}
+                            <button type="button" className={styles.wordChipRemove} aria-label={`Remove ${word}`} onClick={() => removeWordToAvoid(word)}>
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                        <form
+                          className={styles.wordAddForm}
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            addWordToAvoidFromBox();
+                          }}
+                        >
+                          <input
+                            value={wordToAvoidDraft}
+                            onChange={(event) => setWordToAvoidDraft(event.target.value)}
+                            placeholder="+ add a word or phrase"
+                            aria-label="Word or phrase to avoid"
+                            maxLength={40}
+                          />
+                          <button type="submit" disabled={!wordToAvoidDraft.trim()}>Add</button>
+                        </form>
                       </div>
-                      <p className={styles.exampleLabel}>Example rules from the approved design — not active yet.</p>
+                      <InlineStatus status={wordsToAvoidStatus} />
+                      <p className={styles.exampleLabel}>
+                        {wordsToAvoid.length === 0 ? "No banned words — the AI's own safety rules still apply." : `${wordsToAvoid.length} / ${MAX_WORDS_TO_AVOID} words banned across X and Telegram.`}
+                      </p>
                     </div>
 
                     <div className={styles.blockInner}>
                       <div className={styles.sectionHeading}>
                         <div>
                           <h2>How it should sound</h2>
-                          <p>Nudge the tone whenever you like.</p>
+                          <p>Nudge the tone whenever you like — every new draft follows the dials as they stand.</p>
                         </div>
-                        <ComingSoon compact />
                       </div>
                       <div className={styles.dialList}>
-                        {TONE_DIALS.map(([label, ...options]) => (
-                          <label key={label}>
-                            <span>{label}</span>
-                            <select disabled defaultValue={options[1]}>
-                              {options.map((option) => (
-                                <option key={option}>{option}</option>
+                        {TONE_DIAL_OPTIONS.map((dial) => (
+                          <label key={dial.key}>
+                            <span>{dial.label}</span>
+                            <select
+                              value={toneDials[dial.key]}
+                              onChange={(event) => updateToneDial(dial.key, event.target.value as ToneDials[typeof dial.key])}
+                            >
+                              {dial.options.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
                               ))}
                             </select>
                           </label>
@@ -3585,14 +3662,6 @@ export function SocialHub() {
                         </select>
                       </label>
                     </div>
-
-                    <button type="button" disabled className={styles.advancedButton}>
-                      <span>
-                        <b>Advanced rules</b>
-                        <small>Frequency caps, quiet-hour enforcement and automatic safety checks.</small>
-                      </span>
-                      <ComingSoon compact />
-                    </button>
                   </section>
                 </div>
               ) : null}
