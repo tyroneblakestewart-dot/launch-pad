@@ -92,7 +92,7 @@ export function BespokeSitePremiumController() {
       }
       .build-site-secondary-hint::before {
         content: "PREMIUM ";
-        color: #f1cf55;
+        color: var(--accent-lime, #c6f53e);
         font-weight: 800;
         letter-spacing: .06em;
       }

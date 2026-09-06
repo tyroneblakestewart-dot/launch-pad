@@ -249,3 +249,73 @@ describe("/social follows the same recipe (second page in the rollout)", () => {
     expect(css).toMatch(/\.connectionField input \{[^}]*box-shadow: var\(--well-shadow\);/);
   });
 });
+
+describe("the launch studio follows the same recipe (owner direction, 6 Sep 2026: the Token setup panel was the old design)", () => {
+  function studioRules(css: string): string {
+    return css.slice(css.indexOf("button { border: 0; }"), css.indexOf("@media (max-width: 1050px)"));
+  }
+
+  it("opts the studio root in", async () => {
+    const studio = await source("components/token-studio.tsx");
+    expect(studio).toContain('<main className="app-shell hoodlums-premium">');
+  });
+
+  it("uses no legacy green, gold or greenish hairline anywhere in the studio rules or the Build 02 gate", async () => {
+    const rules = studioRules(await source("app/globals.css"));
+    const gate = await source("components/build-site-gate.tsx");
+    const premium = await source("components/bespoke-site-premium-controller.tsx");
+    for (const legacy of ["var(--green)", "#55ff78", "rgba(85,255,120", "rgba(85, 255, 120", "var(--gold)", "#f1cf55", "rgba(241,207,85", "var(--line)", "rgba(131,183,139", "rgba(131, 183, 139"]) {
+      expect(rules).not.toContain(legacy);
+      expect(gate).not.toContain(legacy);
+      expect(premium).not.toContain(legacy);
+    }
+  });
+
+  it("uses the master panel recipe for the builder panel, the preview window and the modal", async () => {
+    const rules = studioRules(await source("app/globals.css"));
+    for (const selector of [".builder-panel {", ".site-preview {", ".modal-card {"]) {
+      const block = rules.slice(rules.indexOf(selector), rules.indexOf("}", rules.indexOf(selector)));
+      expect(block).toContain("border: var(--panel-border");
+      expect(block).toContain("border-radius: var(--panel-radius");
+      expect(block).toContain("background: var(--panel-bg");
+      expect(block).toContain("box-shadow: var(--panel-shadow");
+    }
+  });
+
+  it("uses the inset well for every text control and the glowing chip for the selected network and section", async () => {
+    const rules = studioRules(await source("app/globals.css"));
+    for (const selector of ["input, textarea {", ".chain-option {", ".ticker-input, .url-input {", ".section-toggle {", ".upload-box {"]) {
+      const block = rules.slice(rules.indexOf(selector), rules.indexOf("}", rules.indexOf(selector)));
+      expect(block).toContain("var(--well-bg");
+      expect(block).toContain("var(--well-radius");
+      expect(block).toContain("var(--well-shadow");
+    }
+    for (const selector of [".chain-option.active {", ".section-toggle:has(input:checked) {", ".progress-count {"]) {
+      const block = rules.slice(rules.indexOf(selector), rules.indexOf("}", rules.indexOf(selector)));
+      expect(block).toContain("var(--chip-active-border-color");
+      expect(block).toContain("var(--chip-active-bg");
+      expect(block).toContain("var(--chip-active-shadow");
+    }
+  });
+
+  it("uses the solid-lime CTA in the sans face for the primary buttons, the section-label recipe for field labels and the display face for the heading", async () => {
+    const rules = studioRules(await source("app/globals.css"));
+    const cta = rules.slice(rules.indexOf(".primary-button {"), rules.indexOf("}", rules.indexOf(".primary-button {")));
+    expect(cta).toContain("background: var(--cta-bg, #c6f53e);");
+    expect(cta).toContain("color: var(--cta-color, #071008);");
+    expect(rules).not.toContain("linear-gradient(180deg, #c6f53e");
+    expect(rules).toContain(".primary-button, .secondary-button, .ghost-button, .wallet-button {\n  min-height: 44px;\n  border-radius: 12px;\n  font: 800 12px var(--sans);");
+    const label = rules.slice(rules.indexOf(".field-label {"), rules.indexOf("}", rules.indexOf(".field-label {")));
+    expect(label).toContain("color: var(--text-label, #8d918c);");
+    expect(label).toContain("font: 600 9.5px var(--mono);");
+    expect(label).toContain("letter-spacing: .18em;");
+    expect(rules).toContain(".panel-heading h2 { color: var(--text-primary, #f4f7f1); font: 800 24px/1.05 var(--display);");
+    // The CRT scanline overlay of the old design is gone.
+    expect(rules).not.toContain(".site-preview::after");
+    // The Build 02 gate and its lock take the raised / panel recipes and the lime CTA.
+    const gate = await source("components/build-site-gate.tsx");
+    expect(gate).toContain(".build-site-gate {\n        display: grid;\n        gap: 11px;\n        margin: -5px 0 17px;\n        padding: 15px;\n        border: var(--raised-border");
+    expect(gate).toContain(".build-site-button:not(:disabled) {\n        color: var(--cta-color, #071008);");
+    expect(gate).toContain(".build-site-lock {\n        position: absolute;\n        inset: 0;\n        z-index: 70;\n        display: grid;\n        place-items: center;\n        padding: 24px;\n        border: var(--panel-border");
+  });
+});
