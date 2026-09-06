@@ -21,14 +21,18 @@ function ruleBlock(css: string, selector: string): string {
  * disabled rather than faked.
  */
 describe("Social Studio design pass", () => {
-  it("gives the connection cards the design's row shape, with X's connect action disabled and Telegram's real disconnect in its place", async () => {
+  it("gives the connection cards the design's row shape, with X's connect action live and Telegram's real disconnect in its place", async () => {
     const hub = await source("components", "social-hub.tsx");
-    expect(hub).toMatch(/className=\{styles\.connectionActionPrimary\}\n\s+disabled\n/);
+    // Rule 8, stated plainly: this pinned X's action as a permanently disabled
+    // button; Connect X is live since 6 Sep 2026 and is disabled only while
+    // busy or without a wallet.
+    expect(hub).toContain("disabled={xConnectBusy || !walletAddress}");
     expect(hub).toContain("Connect X");
     // The browser-handoff path is still the honest thing to point at, and is
     // still the only way to post to X today — now said in the disabled
     // button's title so the card stays one slim row.
-    expect(hub).toContain("it opens X's own composer");
+    // The browser-handoff note now shows only when the server reports X unconfigured.
+    expect(hub).toContain("Until X is switched on, “Post to X” below opens X&apos;s own composer with your text filled in, so you tap send yourself.");
     expect(hub).toContain("className={styles.connectionAction}");
     expect(hub).toContain("onClick={disconnectTelegramChannel}");
     // Disconnect now lives in the card's own action slot, not a separate row.
@@ -180,9 +184,13 @@ describe("Social Studio design pass", () => {
 
   it("keeps each connector card to the design's one slim row, with anything more behind a drawer or Options disclosure", async () => {
     const hub = await source("components", "social-hub.tsx");
-    // X: the not-available note moved off the card into the disabled button's title.
-    expect(hub).not.toContain("Connecting X isn&apos;t switched on yet.");
-    expect(hub).toContain("title=\"Connecting X isn't switched on yet.");
+    // Rule 8, stated plainly: this pinned the permanently disabled Connect X
+    // button and its "isn't switched on yet" title. Connect X is live (owner
+    // request, 6 Sep 2026): the row's own action runs the wallet-signed OAuth
+    // start, and the not-configured note only appears when the server says so.
+    expect(hub).not.toContain("Connecting X isn't switched on yet.");
+    expect(hub).toContain("onClick={connectX}");
+    expect(hub).toContain("<InlineStatus status={xStatus} />");
     // Telegram: the row's own action opens the connect drawer; the chat-ID field
     // and the real connect call live inside it, never on the bare card.
     expect(hub).toContain("const [telegramConnectOpen, setTelegramConnectOpen] = useState(false);");
