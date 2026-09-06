@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import type { TokenProject } from "@/lib/types";
+import { readProjectIndex, writeProjectIndex } from "@/lib/token-project-storage";
 
-const PROJECT_STORAGE_KEY = "private-meme-token-studio-projects-v1";
 
 function readField(panel: Element, labelText: string): string {
   const labels = Array.from(panel.querySelectorAll("label"));
@@ -32,14 +32,8 @@ function getCurrentStudioProject(): TokenProject | null {
   const rawDecimals = Number(readField(panel, "Decimals"));
   const artwork = panel.querySelector(".upload-box img") as HTMLImageElement | null;
 
-  let existingProjects: TokenProject[] = [];
-  try {
-    const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as TokenProject[]) : [];
-    existingProjects = Array.isArray(parsed) ? parsed : [];
-  } catch {
-    existingProjects = [];
-  }
+  // The confirmed wallet's own saved projects only (per-wallet project scoping).
+  const existingProjects = readProjectIndex() as TokenProject[];
 
   const existing = existingProjects.find(
     (item) =>
@@ -79,14 +73,12 @@ export function StudioProviderTransfer() {
     }
 
     try {
-      const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
-      const parsed = raw ? (JSON.parse(raw) as TokenProject[]) : [];
-      const projects = Array.isArray(parsed) ? parsed : [];
+      const projects = readProjectIndex();
       const nextProjects = [
         project,
         ...projects.filter((item) => item.id !== project.id),
       ];
-      localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(nextProjects));
+      writeProjectIndex(nextProjects);
       setMessage("Studio details copied. Opening provider launch desk…");
       window.setTimeout(() => window.location.assign("/providers?source=studio"), 80);
     } catch {

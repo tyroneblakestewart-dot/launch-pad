@@ -26,7 +26,8 @@ describe("Hoodlums AI Social Studio", () => {
   it("preserves the existing project, composer, X and Telegram publishing paths", async () => {
     const social = await source("components", "social-hub.tsx");
 
-    expect(social).toContain("PROJECT_STORAGE_KEY");
+    // Per-wallet project scoping (6 Sep 2026): the project list is read through the shared partition-aware accessor, never the raw key.
+    expect(social).toContain("readProjectIndex(projectOwner)");
     expect(social).toContain("DRAFT_STORAGE_KEY");
     expect(social).toContain("buildTemplate");
     expect(social).toContain("selectProject");

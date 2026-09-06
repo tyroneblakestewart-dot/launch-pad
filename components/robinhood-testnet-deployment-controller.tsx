@@ -34,6 +34,7 @@ import {
 import { describeWalletMismatch } from "@/lib/social-studio-queue";
 import { captureTokenArtworkThumbnail } from "@/lib/token-artwork-thumbnail";
 import { notifyTokenLaunchCompleted } from "@/lib/token-launch-events";
+import { readProjectIndex, writeProjectIndex } from "@/lib/token-project-storage";
 import type { TokenProject } from "@/lib/types";
 import styles from "./robinhood-testnet-deployment-controller.module.css";
 
@@ -64,7 +65,6 @@ type WalletMismatch = {
   message: string;
 };
 
-const STORAGE_KEY = "private-meme-token-studio-projects-v1";
 const TARGET_CHAIN_ID = ROBINHOOD_TESTNET_CHAIN_ID_HEX.toLowerCase();
 const EXPLORER_URL = "https://explorer.testnet.chain.robinhood.com";
 
@@ -96,35 +96,27 @@ function normaliseChainId(value: unknown): string {
   return Number.isFinite(numeric) ? `0x${numeric.toString(16)}` : "";
 }
 
+// Both read and write the confirmed wallet's own partition only (per-wallet
+// project scoping, 6 Sep 2026) — a launch can never land in, or read from,
+// another wallet's saved projects.
 function readPreparedProject(): TokenProject | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as TokenProject[]) : [];
-    if (!Array.isArray(parsed)) return null;
-    return parsed.find((item) => item.chain === "robinhood") || null;
-  } catch {
-    return null;
-  }
+  const projects = readProjectIndex() as TokenProject[];
+  return projects.find((item) => item.chain === "robinhood") || null;
 }
 
 function updateStoredProject(project: TokenProject, contractAddress: string) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as TokenProject[]) : [];
-    const projects = Array.isArray(parsed) ? parsed : [];
+    const projects = readProjectIndex();
     const updated: TokenProject = {
       ...project,
       contractAddress,
       status: "launched",
       updatedAt: new Date().toISOString(),
     };
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify([
-        updated,
-        ...projects.filter((item) => item.id !== project.id),
-      ]),
-    );
+    writeProjectIndex([
+      updated,
+      ...projects.filter((item) => item.id !== project.id),
+    ]);
   } catch {
     // The on-chain deployment remains valid when local saving is unavailable.
   }

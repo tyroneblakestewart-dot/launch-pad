@@ -18,7 +18,7 @@ describe("Token studio save flow wiring", () => {
     expect(studio).toContain("if (collision) {");
 
     expect(studio.indexOf("return false")).toBeGreaterThan(-1);
-    expect(studio.indexOf("return false")).toBeLessThan(studio.indexOf("saveProjectToStorage(saved, projects)"));
+    expect(studio.indexOf("return false")).toBeLessThan(studio.indexOf("saveProjectToStorage(saved, projects, owner)"));
 
     expect(studio).toContain("if (!(await saveProject(\"prepared\"))) return;");
 

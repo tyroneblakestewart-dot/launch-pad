@@ -18,6 +18,8 @@ import {
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { MASCOT_REFERENCE_TIPS, assessMascotReference, type MascotReferenceAssessment } from "@/lib/mascot-reference-guidance";
 import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
+import { readProjectIndex, type SavedProjectIndexEntry } from "@/lib/token-project-storage";
+import { useProjectOwner } from "@/lib/use-project-owner";
 import {
   VOICE_EXAMPLE_TARGET,
   addVoiceExamples,
@@ -78,7 +80,6 @@ import type { TokenProject } from "@/lib/types";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./social-hub.module.css";
 
-const PROJECT_STORAGE_KEY = "private-meme-token-studio-projects-v1";
 const DRAFT_STORAGE_KEY = "private-meme-token-studio-social-drafts-v1";
 const MAX_MASCOT_IMAGE_BYTES = 3_000_000;
 
@@ -282,19 +283,15 @@ function shiftedMonth(view: MonthView, delta: number): MonthView {
   return { year: view.year, month: next };
 }
 
-function safeProjects(raw: string | null): TokenProject[] {
-  if (!raw) return [];
+function safeProjects(entries: readonly SavedProjectIndexEntry[]): TokenProject[] {
   try {
-    const parsed = JSON.parse(raw) as TokenProject[];
-    return Array.isArray(parsed)
-      ? parsed.filter(
-          (item) =>
-            item &&
-            typeof item.id === "string" &&
-            typeof item.name === "string" &&
-            typeof item.ticker === "string",
-        )
-      : [];
+    return (entries as TokenProject[]).filter(
+      (item) =>
+        item &&
+        typeof item.id === "string" &&
+        typeof item.name === "string" &&
+        typeof item.ticker === "string",
+    );
   } catch {
     return [];
   }
@@ -571,18 +568,22 @@ export function SocialHub() {
   const [releaseBusy, setReleaseBusy] = useState(false);
   const [releaseStatus, setReleaseStatus] = useState<PanelStatus>(null);
 
+  // Per-wallet project scoping (6 Sep 2026): the picker lists the confirmed
+  // wallet's own saved projects only, and reloads (resetting the selection)
+  // the moment the wallet is confirmed, changed or disconnected.
+  const projectOwner = useProjectOwner();
   useEffect(() => {
-    const loadedProjects = safeProjects(localStorage.getItem(PROJECT_STORAGE_KEY));
+    const loadedProjects = safeProjects(readProjectIndex(projectOwner));
     const drafts = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
     setProjects(loadedProjects);
     setWalletAddress(storedWalletAddress());
 
-    if (loadedProjects[0]) {
-      const first = loadedProjects[0];
-      setSelectedProjectId(first.id);
+    const first = loadedProjects[0];
+    setSelectedProjectId(first ? first.id : "");
+    if (first) {
       setMessage(drafts[first.id] || buildTemplate(first, "launch"));
     }
-  }, []);
+  }, [projectOwner]);
 
   // Re-confirming the wallet from the Account panel in another tab only
   // updates localStorage there (issue #388) — walletAddress was otherwise
