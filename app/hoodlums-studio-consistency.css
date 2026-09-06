@@ -269,6 +269,10 @@
   font: 500 12px var(--studio-mono);
 }
 
+#launch-studio .url-input > svg {
+  color: var(--studio-muted-2);
+}
+
 #launch-studio label small {
   color: var(--studio-muted-2);
   font-family: var(--studio-mono);

@@ -106,5 +106,21 @@ describe("brand icon source of truth", () => {
 
     const publicTokenFallback = await readFile(path.join(componentsDir, "public-token-fallback.tsx"), "utf8");
     expect(publicTokenFallback).toContain('from "@/components/brand-icons"');
+
+    const tokenStudio = await readFile(path.join(componentsDir, "token-studio.tsx"), "utf8");
+    expect(tokenStudio).toContain('import { TelegramMark, XMark } from "@/components/brand-icons"');
+  });
+
+  it("the studio form's X handle and Telegram icons are decorative, not links", async () => {
+    const componentsDir = path.join(ROOT, "components");
+    const tokenStudio = await readFile(path.join(componentsDir, "token-studio.tsx"), "utf8");
+
+    expect(tokenStudio).toContain("<XMark aria-hidden=\"true\" focusable=\"false\" />");
+    expect(tokenStudio).toContain("<TelegramMark aria-hidden=\"true\" focusable=\"false\" />");
+
+    expect(tokenStudio).toContain('<span className="field-label">X handle</span>');
+    expect(tokenStudio).toContain('<span className="field-label">Telegram</span>');
+    expect(tokenStudio).toContain('onChange={(event) => updateProject("xHandle", event.target.value)}');
+    expect(tokenStudio).toContain('onChange={(event) => updateProject("telegram", event.target.value)}');
   });
 });

@@ -247,6 +247,7 @@ label small { display: block; margin-top: 5px; color: #5f6a61; font: 10px var(--
 .section-toggle .field-label { margin: 0; }
 .ticker-input input, .url-input input { border: 0; background: transparent; box-shadow: none; }
 .url-input > span { padding-left: 11px; color: #5f6a61; font: 10px var(--mono); white-space: nowrap; }
+.url-input > svg { flex: none; width: 14px; height: 14px; margin-left: 11px; color: #5f6a61; }
 .upload-box {
   min-height: 80px;
   display: flex;
