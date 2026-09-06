@@ -2034,3 +2034,44 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   test files / 3544 tests passing. `npm run lint` — 0 errors (11
   pre-existing warnings only). `npm run build` — succeeds, `/api/cron/buy-bot`
   and the three `/api/social/buy-bot` routes listed in the route output.
+
+- Settings & Rules wired (owner direction, 6 Sep 2026: "wire the not wired,
+  remove Advanced rules"). The two mock-ups on the tab are real per-project
+  settings now. **Words to avoid** — an editable chip list (remove ×, an
+  inline add form, capped at `MAX_WORDS_TO_AVOID` = 30 entries of 40 chars,
+  case-insensitively de-duplicated) whose defaults are the design's own five
+  words; **How it should sound** — the four dials (Humour dry/playful/full
+  degen, Emoji none/a little/plenty, Hashtags never/one or two/lots, Post
+  length short/medium/long) defaulting to the middle option each, exactly
+  what the disabled mock-up showed. Both persist on
+  `SocialStudioProjectRecord` (`wordsToAvoid`, `toneDials`) with
+  migrate-on-read defaults in `lib/social-studio-db.ts`, and both ride with
+  every `POST /api/social/draft`: `lib/social-tone-rules.ts` (shared, pure)
+  turns them into prompt lines (`wordsToAvoidInstruction`, one imperative
+  line per dial via `toneDialInstructions`; the pre-existing hard-coded
+  "Never use the words: guaranteed…" sentence is replaced by the list, and
+  the reflexive-hashtag anti-formula rule is dropped only when the user
+  picks "lots"), and into deterministic checks added to
+  `checkDraftCompliance` ahead of the style checks: `checkDraftWordsToAvoid`
+  (boundary-aware, case-insensitive, both channels — "rug" never fires on
+  "rugby") and `checkDraftToneRules` ("Emoji: none" and "Hashtags: never"
+  are checked, the graded levels are instructions only). A violation gets
+  the existing single corrective retry with the offending word named, and a
+  retry that still fails returns an error rather than the draft (#364's
+  fail-closed rule). The sorting station's `POST /api/social/voice-sample`
+  receives the banned words too (prompt line plus a 422 on a sample that
+  carries one), since a persona line outlives any single draft; it does not
+  receive the dials — samples mirror the source voice by design. An older
+  client sending neither field gets the defaults, so generation behaves
+  exactly as before. The **Advanced rules** placeholder is removed; its
+  one worthwhile idea, quiet hours, is a named follow-up that touches the
+  posting cron. **Tests changed rather than only added (rule 8, stated
+  plainly):** the design-pass pin on the disabled dial select
+  (`<select disabled defaultValue={options[1]}>`) now pins the live
+  binding; `tests/social-studio-db.test.ts`'s record fixture and legacy
+  `toEqual` expectations gained the two new fields. Rule 10 needs nothing
+  (no new page, route or integration). Checked in headless Chromium at
+  1400px and 390px (add a word, remove, change a dial) — not on a physical
+  iPhone; the owner confirms on device. Validated on the final commit:
+  `npm run test:app` — 306 test files / 3571 tests passing; `npm run lint` —
+  0 errors (11 pre-existing warnings); `npm run build` — succeeds.

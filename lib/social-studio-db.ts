@@ -4,6 +4,7 @@
 // lib/token-project-db.ts (issue #307) — they live only in IndexedDB, never
 // in localStorage or long-lived React state (CLAUDE.md rule 7).
 
+import { normaliseToneDials, normaliseWordsToAvoid } from "./social-tone-rules";
 import {
   DEFAULT_POSTING_CADENCE,
   DEFAULT_QUEUE_TARGET,
@@ -106,6 +107,11 @@ function normaliseSocialStudioRecord(
     sortedVoiceSourceKeys: Array.isArray(merged.sortedVoiceSourceKeys)
       ? merged.sortedVoiceSourceKeys.filter((key): key is string => typeof key === "string")
       : [],
+    // Settings & Rules wiring (6 Sep 2026): a record saved before these fields
+    // existed gets the design's five default words and the middle dial on
+    // every axis — exactly what the disabled mock-up always showed.
+    wordsToAvoid: normaliseWordsToAvoid(merged.wordsToAvoid),
+    toneDials: normaliseToneDials(merged.toneDials),
   };
 }
 

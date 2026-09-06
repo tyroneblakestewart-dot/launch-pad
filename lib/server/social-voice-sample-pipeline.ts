@@ -4,6 +4,7 @@
 // the original's identity strained out and the user's project poured in.
 // Pure request/response shaping for app/api/social/voice-sample/route.ts.
 
+import { wordsToAvoidInstruction } from "@/lib/social-tone-rules";
 import { MAX_REINFORCEMENT_SAMPLE_LINES } from "@/lib/social-voice-feedback";
 import type { OpenAIResponse } from "@/lib/server/generate-site-style";
 import { MAX_REINFORCEMENT_SAMPLE_LINE_LENGTH } from "@/lib/server/social-reinforcement";
@@ -54,7 +55,7 @@ export function normalisePersonaLines(raw: unknown): string[] {
 }
 
 export function buildVoiceSampleRequestBody(
-  input: { project: VoiceSampleProject; sourcePost: string; personaLines?: string[] },
+  input: { project: VoiceSampleProject; sourcePost: string; personaLines?: string[]; wordsToAvoid?: readonly string[] },
   model: string,
 ) {
   const personaLines = input.personaLines ?? [];
@@ -79,6 +80,7 @@ export function buildVoiceSampleRequestBody(
               `The post MUST be ${X_DRAFT_CHARACTER_LIMIT} characters or fewer, counting every character including spaces and emoji.`,
               "The only facts you may use are the project name, ticker and the project story below. Never invent holder counts, prices, market caps, listings, partnerships, dates, milestones, price predictions, guarantees or financial advice. Never include a link, URL or hashtag.",
               "Never copy any sentence from the source or from the persona lines verbatim.",
+              wordsToAvoidInstruction(input.wordsToAvoid ?? []),
               personaLines.length > 0
                 ? `The user has also kept ${personaLines.length} earlier reshaped line(s) as their persona (listed below, most important first). Use them as secondary reference for consistency only — the source post is the primary voice reference for this sample.`
                 : "",
