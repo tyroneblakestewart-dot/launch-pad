@@ -211,6 +211,22 @@ describe("GET /api/account/google/callback", () => {
     expect(activity[0].message).not.toContain("person@example.com");
   });
 
+  it("accepts the state cookie exactly as the start route's own Set-Cookie header serialises it (regression: first live sign-in failed with reason=state)", async () => {
+    configureGoogle();
+    vi.stubGlobal("fetch", googleFetchStub());
+    const start = await googleStart(get("/api/account/google/start?returnTo=/social"));
+    const setCookie = start.headers.get("set-cookie") ?? "";
+    // Next percent-encodes cookie values, so the raw header carries %3A where the sealed value has ':'.
+    expect(setCookie).toContain(`${GOOGLE_OAUTH_STATE_COOKIE}=`);
+    expect(setCookie).toContain("%3A");
+    const cookiePair = setCookie.split(";")[0];
+    const state = new URL(start.headers.get("location") ?? "").searchParams.get("state") ?? "";
+
+    const response = await googleCallback(get(`/api/account/google/callback?code=abc&state=${state}`, { Cookie: cookiePair }));
+    expect(redirected(response)).toEqual({ path: "/social", account: "open", google: "success", reason: null });
+    expect(store.accounts).toHaveLength(1);
+  });
+
   it("refuses an unverified Google email", async () => {
     configureGoogle();
     vi.stubGlobal("fetch", googleFetchStub({ sub: "sub-2", email: "x@y.z", email_verified: false }));

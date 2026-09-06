@@ -18,14 +18,26 @@ export function hashAccountSessionToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
-/** Reads one named cookie out of a raw `Cookie` header, if present. */
+/**
+ * Reads one named cookie out of a raw `Cookie` header, if present.
+ *
+ * Next's `response.cookies.set()` serialises values with `encodeURIComponent`,
+ * so a value carrying `:`, `+`, `/` or `=` (the sealed Google OAuth state is
+ * base64 segments joined by `:`) comes back as `%3A`, `%2B`… — this decodes
+ * it again. A value that is not valid percent-encoding is returned as-is.
+ */
 export function parseCookieValue(cookieHeader: string | null | undefined, name: string): string | null {
   if (!cookieHeader) return null;
   for (const part of cookieHeader.split(";")) {
     const [rawKey, ...rest] = part.trim().split("=");
     if (rawKey === name) {
       const value = rest.join("=").trim();
-      return value ? value : null;
+      if (!value) return null;
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
     }
   }
   return null;
