@@ -72,8 +72,12 @@ describe("the generated-site overlay replaces the heist preview mock (issue #318
   it("shows an honest empty state before a website is generated", async () => {
     const studio = await studioSource();
 
-    expect(studio).toContain("{!project.generatedSiteHtml && (");
+    // Rule 8, stated plainly: this pinned `{!project.generatedSiteHtml && (`;
+    // since the plan-aware studio (6 Sep 2026) the empty state is also gated on
+    // the plan offering a website at all — a token-only plan gets its own copy.
+    expect(studio).toContain("{!project.generatedSiteHtml && offersWebsiteBuild(studioFields) && (");
     expect(studio).toContain("Your generated site will appear here");
+    expect(studio).toContain("No website in this plan");
     expect(studio).toContain("site-preview-placeholder");
   });
 

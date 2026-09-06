@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { STUDIO_FIELD_PLAN_ATTRIBUTE, offersWebsiteBuild, studioFieldsForLaunchPath } from "@/lib/launch-path-fields";
 import { REOPEN_GENERATED_SITE_EVENT } from "@/components/full-website-generator";
 import { FREE_SITE_SECTION_KEYS, type FreeSiteSections } from "@/lib/free-site-sections";
 import {
@@ -166,17 +167,27 @@ export function BuildSiteGate() {
       return active.tagName === "INPUT" || active.tagName === "TEXTAREA";
     }
 
+    // The plan decides which fields exist (lib/launch-path-fields.ts); the
+    // studio stamps it on the builder panel so this DOM-driven gate reads the
+    // same answer React rendered.
+    function planFields(panel: Element) {
+      return studioFieldsForLaunchPath(panel.getAttribute(STUDIO_FIELD_PLAN_ATTRIBUTE));
+    }
+
     function currentDetail(panel: Element, mode: GenerateMode): GenerateDetail {
       const chain = panel.querySelector(".chain-option.active .chain-dot.solana")
         ? "solana"
         : "robinhood";
+      const fields = planFields(panel);
       return {
         name: findControl(panel, "Token name")?.value.trim() || "",
         ticker: findControl(panel, "Ticker")?.value.trim() || "",
         description: findControl(panel, "Project story")?.value.trim() || "",
         imageDataUrl: panel.querySelector<HTMLImageElement>(".upload-box img")?.src,
-        inspirationUrl:
-          panel.querySelector<HTMLInputElement>(".build-site-inspiration-url")?.value.trim() || "",
+        // A URL typed under a paid plan is ignored once the plan no longer offers the field.
+        inspirationUrl: fields.inspirationUrl
+          ? panel.querySelector<HTMLInputElement>(".build-site-inspiration-url")?.value.trim() || ""
+          : "",
         slug: findControl(panel, "Website path")?.value.trim() || "",
         supply: findControl(panel, "Total supply")?.value.trim() || "",
         decimals: Number(findControl(panel, "Decimals")?.value || 0),
@@ -272,10 +283,28 @@ export function BuildSiteGate() {
       return { panel, previewPanel };
     }
 
+    function applyPlanVisibility(panel: Element) {
+      const fields = planFields(panel);
+      const showBuild = offersWebsiteBuild(fields);
+      const inspiration = panel.querySelector<HTMLElement>(".build-site-inspiration-field");
+      if (inspiration) inspiration.hidden = !fields.inspirationUrl;
+      if (gate) {
+        gate.hidden = !showBuild;
+        gate.classList.toggle("bespoke-only", fields.bespokeGenerator && !fields.freeGenerator);
+      }
+      if (button) button.hidden = !fields.freeGenerator;
+      if (hint) hint.hidden = !fields.freeGenerator;
+      if (secondaryButton) secondaryButton.hidden = !fields.bespokeGenerator;
+      const secondaryHint = gate?.querySelector<HTMLElement>(".build-site-secondary-hint");
+      if (secondaryHint) secondaryHint.hidden = !fields.bespokeGenerator;
+      return showBuild;
+    }
+
     function refresh(fromPoll = false) {
       const elements = ensureElements();
       if (!elements || !button || !checklist || !overlay) return;
 
+      const showBuild = applyPlanVisibility(elements.panel);
       const detail = currentDetail(elements.panel, "free");
       const checks = [
         { label: "Token name", complete: detail.name.length >= 2 },
@@ -333,8 +362,10 @@ export function BuildSiteGate() {
       gate?.classList.toggle("ready", ready);
       gate?.classList.toggle("unlocked", unlocked);
       gate?.classList.toggle("generating", generating);
-      elements.previewPanel.classList.toggle("site-builder-locked", !unlocked);
-      overlay.hidden = unlocked;
+      // A token-only plan has no website to build, so it is never "locked"
+      // behind the artwork gate and the preview panel keeps its own state.
+      elements.previewPanel.classList.toggle("site-builder-locked", !unlocked && showBuild);
+      overlay.hidden = unlocked || !showBuild;
     }
 
     function onGenerated(event: Event) {
@@ -427,37 +458,45 @@ export function BuildSiteGate() {
 
   return (
     <style>{`
+      /* Build 02 on the shared premium theme (owner direction, 6 Sep 2026):
+         the same well / raised / chip / CTA recipes the Token setup panel
+         uses, read through the studio root's .hoodlums-premium variables. */
       .build-site-inspiration-field { display: block; margin-bottom: 16px; }
+      .build-site-inspiration-field[hidden] { display: none; }
       .build-site-inspiration-field input {
         width: 100%;
-        min-height: 48px;
-        padding: 0 13px;
-        border: 1px solid rgba(131,183,139,.2);
-        border-radius: 7px;
+        min-height: 46px;
+        padding: 0 14px;
+        border: var(--well-border, 1px solid rgba(255,255,255,.09));
+        border-radius: var(--well-radius, 14px);
         outline: none;
-        color: #f3f6ef;
-        background: #070b08;
+        color: var(--text-primary, #f4f7f1);
+        background: var(--well-bg, #0a0f0c);
+        box-shadow: var(--well-shadow, none);
         font-size: 14px;
       }
-      .build-site-inspiration-field input:focus { border-color: rgba(85,255,120,.65); }
-      .build-site-inspiration-field input:invalid:not(:placeholder-shown) { border-color: rgba(255,102,102,.7); }
+      .build-site-inspiration-field input:focus { border-color: rgba(198,245,62,.5); }
+      .build-site-inspiration-field input:invalid:not(:placeholder-shown) { border-color: rgba(226,86,75,.7); }
       .build-site-inspiration-help {
         display: block;
         margin-top: 7px;
-        color: #68736a;
+        color: var(--text-faint, #6f746e);
         font: 9px/1.55 "IBM Plex Mono", monospace;
+        text-align: left;
       }
       .build-site-gate {
         display: grid;
         gap: 11px;
         margin: -5px 0 17px;
         padding: 15px;
-        border: 1px solid rgba(241,207,85,.28);
-        border-radius: 8px;
-        background: linear-gradient(145deg, rgba(241,207,85,.055), rgba(85,255,120,.025));
+        border: var(--raised-border, 1px solid rgba(255,255,255,.1));
+        border-radius: 16px;
+        background: var(--raised-bg, #111713);
+        box-shadow: var(--raised-shadow, none);
       }
-      .build-site-gate.ready { border-color: rgba(85,255,120,.45); }
-      .build-site-gate.generating { border-color: rgba(125,173,255,.65); }
+      .build-site-gate[hidden] { display: none; }
+      .build-site-gate.ready { border-color: rgba(198,245,62,.35); }
+      .build-site-gate.generating { border-color: rgba(198,245,62,.5); }
       .build-site-gate-heading {
         display: flex;
         align-items: center;
@@ -465,71 +504,93 @@ export function BuildSiteGate() {
         gap: 12px;
       }
       .build-site-gate-heading span {
-        color: #f1cf55;
-        font: 700 9px "IBM Plex Mono", monospace;
-        letter-spacing: .14em;
+        color: var(--accent-lime, #c6f53e);
+        font: 600 9.5px "IBM Plex Mono", monospace;
+        letter-spacing: .18em;
+        white-space: nowrap;
       }
-      .build-site-gate-heading strong { color: #f4f7ef; font-size: 13px; }
+      .build-site-gate-heading strong { color: var(--text-primary, #f4f7f1); font-size: 13px; }
       .build-site-checklist { display: grid; gap: 6px; }
-      .build-site-checklist span { color: #6f7b72; font: 600 10px "IBM Plex Mono", monospace; }
-      .build-site-checklist span.complete { color: #b9c4bb; }
-      .build-site-checklist span.complete::first-letter { color: #55ff78; }
+      .build-site-checklist span { color: var(--text-faint, #6f746e); font: 600 10px "IBM Plex Mono", monospace; }
+      .build-site-checklist span.complete { color: var(--text-secondary, #c3c9c4); }
+      .build-site-checklist span.complete::first-letter { color: var(--accent-lime, #c6f53e); }
       .build-site-button {
-        min-height: 45px;
-        border: 1px solid rgba(85,255,120,.22);
-        border-radius: 7px;
-        color: #435047;
-        background: #111713;
-        font: 800 10px "IBM Plex Mono", monospace;
-        letter-spacing: .06em;
+        min-height: 46px;
+        border: var(--well-border, 1px solid rgba(255,255,255,.09));
+        border-radius: 12px;
+        color: var(--text-disabled, #4a4f49);
+        background: var(--well-bg, #0a0f0c);
+        box-shadow: var(--well-shadow, none);
+        font: 800 11px "Inter", sans-serif;
+        letter-spacing: .01em;
       }
       .build-site-button:not(:disabled) {
-        color: #061008;
-        background: #55ff78;
-        box-shadow: 0 8px 24px rgba(85,255,120,.14);
+        color: var(--cta-color, #071008);
+        border-color: transparent;
+        background: var(--cta-bg, #c6f53e);
+        box-shadow: 0 10px 30px -12px rgba(198,245,62,.6);
       }
       .build-site-button:disabled { cursor: not-allowed; }
       .build-site-gate.unlocked .build-site-button {
-        color: #fff7ca;
-        border-color: rgba(241,207,85,.48);
-        background: #172014;
+        color: var(--chip-active-color, #c6f53e);
+        border-color: var(--chip-active-border-color, rgba(198,245,62,.5));
+        background: var(--chip-active-bg, rgba(198,245,62,.1));
+        box-shadow: var(--chip-active-shadow, none);
+        text-shadow: var(--chip-active-text-shadow, none);
       }
       .build-site-gate.generating .build-site-button {
-        color: #dce8ff;
-        border-color: rgba(125,173,255,.45);
-        background: #11192a;
+        color: var(--text-secondary, #c3c9c4);
+        border-color: rgba(198,245,62,.35);
+        background: var(--well-bg, #0a0f0c);
+        box-shadow: var(--well-shadow, none);
       }
-      .build-site-hint { margin: 0; color: #68736a; font: 9px/1.5 "IBM Plex Mono", monospace; }
+      .build-site-button[hidden], .build-site-hint[hidden],
+      .build-site-secondary-button[hidden], .build-site-secondary-hint[hidden] { display: none; }
+      .build-site-hint { margin: 0; color: var(--text-faint, #6f746e); font: 9px/1.5 "IBM Plex Mono", monospace; }
       .build-site-secondary-button {
         min-height: 40px;
-        border: 1px solid rgba(131,183,139,.28);
-        border-radius: 7px;
-        color: #b9c4bb;
-        background: transparent;
+        border: var(--raised-border, 1px solid rgba(255,255,255,.1));
+        border-radius: 12px;
+        color: var(--text-secondary, #c3c9c4);
+        background: var(--raised-bg, transparent);
+        box-shadow: var(--raised-shadow, none);
         font: 700 9px "IBM Plex Mono", monospace;
         letter-spacing: .06em;
       }
-      .build-site-secondary-button:hover:not(:disabled) { border-color: rgba(131,183,139,.5); }
+      .build-site-secondary-button:hover:not(:disabled) { border-color: rgba(198,245,62,.5); }
       .build-site-secondary-button:disabled { cursor: not-allowed; opacity: .55; }
-      .build-site-secondary-hint { margin: 0; color: #68736a; font: 9px/1.5 "IBM Plex Mono", monospace; }
+      /* Paid plan: the bespoke button is the only generator, so it takes the primary CTA recipe. */
+      .build-site-gate.bespoke-only .build-site-secondary-button {
+        min-height: 46px;
+        font: 800 11px "Inter", sans-serif;
+        letter-spacing: .01em;
+      }
+      .build-site-gate.bespoke-only .build-site-secondary-button:not(:disabled) {
+        color: var(--cta-color, #071008);
+        border-color: transparent;
+        background: var(--cta-bg, #c6f53e);
+        box-shadow: 0 10px 30px -12px rgba(198,245,62,.6);
+      }
+      .build-site-gate.bespoke-only .build-site-secondary-button::after { font: 800 11px "Inter", sans-serif; letter-spacing: .01em; }
+      .build-site-secondary-hint { margin: 0; color: var(--text-faint, #6f746e); font: 9px/1.5 "IBM Plex Mono", monospace; }
       .build-site-optional-marker {
         float: right;
         margin-left: 8px;
-        color: #f1cf55;
+        color: var(--accent-lime, #c6f53e);
         font-size: 8px;
         letter-spacing: .08em;
       }
       .preview-panel { position: relative; }
       .build-site-lock {
         position: absolute;
-        inset: 24px;
+        inset: 0;
         z-index: 70;
         display: grid;
         place-items: center;
         padding: 24px;
-        border: 1px solid rgba(241,207,85,.28);
-        border-radius: 10px;
-        background: rgba(5,7,6,.92);
+        border: var(--panel-border, 1px solid rgba(255,255,255,.09));
+        border-radius: var(--panel-radius, 22px);
+        background: rgba(10,11,9,.92);
         backdrop-filter: blur(10px);
         text-align: center;
       }
@@ -538,23 +599,24 @@ export function BuildSiteGate() {
       .build-site-lock span {
         display: block;
         margin-bottom: 11px;
-        color: #f1cf55;
-        font: 700 9px "IBM Plex Mono", monospace;
-        letter-spacing: .14em;
+        color: var(--accent-lime, #c6f53e);
+        font: 600 9.5px "IBM Plex Mono", monospace;
+        letter-spacing: .18em;
       }
       .build-site-lock strong {
         display: block;
         margin-bottom: 10px;
-        color: #f4f7ef;
-        font-size: clamp(21px, 3vw, 34px);
+        color: var(--text-primary, #f4f7f1);
+        font: 800 clamp(21px, 3vw, 34px)/1.1 var(--display, "Archivo Black", "Inter", sans-serif);
+        letter-spacing: -0.02em;
       }
-      .build-site-lock p { margin: 0; color: #849087; font: 11px/1.7 "IBM Plex Mono", monospace; }
+      .build-site-lock p { margin: 0; color: var(--text-sub, #a8aaa9); font: 11px/1.7 "IBM Plex Mono", monospace; }
       .site-builder-locked > :not(.build-site-lock) {
         filter: saturate(.35) brightness(.5);
         pointer-events: none;
         user-select: none;
       }
-      @media (max-width: 780px) { .build-site-lock { inset: 16px 10px 30px; } }
+      @media (max-width: 780px) { .build-site-lock { inset: 0 0 30px; } }
     `}</style>
   );
 }

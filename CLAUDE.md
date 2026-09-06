@@ -2604,3 +2604,54 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   to one number. Validated on the final commit: `npm run test:app` — 324
   test files / 3804 tests passing; `npm run lint` — 0 errors (10
   pre-existing warnings); `npm run build` — succeeds.
+
+- Studio Token setup: plan-aware fields and the premium theme (owner direction,
+  6 Sep 2026: "this field should change depending what user wants — just
+  token launch, or free launch and site, or paid — so it's less confusing",
+  then "make the field fit aesthetically with the UI, this was an old
+  design"). **Fields per plan** — one pure module,
+  `lib/launch-path-fields.ts` (`studioFieldsForLaunchPath`,
+  `offersWebsiteBuild`, `STUDIO_FIELD_PLAN_ATTRIBUTE`), decides what the
+  Token setup panel shows: `bond` is the token only (no website path, no
+  free-site sections, no inspiration URL, no generator of either kind, and
+  the preview panel says "No website in this plan" instead of "generate a
+  website above"); `bond-site` adds the website path, the free-site sections
+  picker and the free generator; `bond-pro-site` adds the website path, the
+  optional inspiration URL and the bespoke generator as the only (primary-
+  styled, `.build-site-gate.bespoke-only`) button, hiding the free picker
+  and free generator; `pro`/`pro-bundle` get the free-site set (they buy no
+  website, per the 6 Sep decision); no plan yet shows everything as before.
+  React (`components/token-studio.tsx`) renders the Website path and Free
+  site sections conditionally and stamps `data-launch-path` on
+  `.builder-panel`; the DOM-driven Build 02 gate
+  (`components/build-site-gate.tsx`) reads that attribute in `refresh()`
+  (`applyPlanVisibility`) and toggles `hidden` on the inspiration field, the
+  gate, each generator button and hint — plus explicit `[hidden] { display:
+  none }` rules, since the field's own `display: block` would otherwise beat
+  the attribute — and never locks the preview for a plan with no website;
+  `currentDetail` also drops a stale inspiration URL when the plan no longer
+  offers the field. **Theme** — the studio root `main.app-shell` opts in to
+  `.hoodlums-premium`, and the studio rules in `app/globals.css` (buttons,
+  notice bar, workspace ground with the two lime radials, builder panel as
+  the master panel recipe, section-label field labels, inset-well
+  inputs/textarea/chain options/ticker & URL inputs/section toggles/upload
+  box, glowing-chip active network and checked section and the N/6 counter,
+  raised readiness card and project rows, solid-lime CTA, preview toolbar,
+  the preview window as a master panel with the CRT scanline overlay
+  removed, placeholder copy in the display face, and the saved-launches /
+  launch-summary modals) are re-pointed at the shared variables with
+  fallbacks so the same global class names stay safe on pages not yet opted
+  in; the Build 02 gate's style block and the PREMIUM marker drop the gold
+  `#f1cf55` and old `#55ff78` green for the same recipes. Layout is
+  unchanged. **Tests changed, not only added (rule 8, stated plainly):**
+  `tests/generated-site-overlay.test.ts` pinned the empty state's
+  `{!project.generatedSiteHtml && (` guard, which is now also gated on the
+  plan offering a website. New `tests/launch-path-fields.test.ts` covers the
+  plan matrix and the studio/gate wiring; `tests/hoodlums-premium-theme.test.ts`
+  gains a studio describe (opt-in, no legacy palette in the studio rules or
+  the gate, recipes on the named rules). Checked in headless Chromium at
+  1400px and 390px for all three plans (field visibility asserted per plan,
+  computed `display` of the inspiration field verified) — not on a physical
+  iPhone; the owner confirms on device. Validated on the final commit:
+  `npm run test:app` — 325 test files / 3816 tests passing; `npm run lint` —
+  0 errors (10 pre-existing warnings); `npm run build` — succeeds.

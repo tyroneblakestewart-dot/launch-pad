@@ -18,6 +18,7 @@ import { CHAIN_CONFIG, ROBINHOOD_MAINNET } from "@/lib/chains";
 import { FREE_SITE_SECTION_DEFAULTS, type FreeSiteSectionKey } from "@/lib/free-site-sections";
 import { isCompleteGeneratedPageHtml } from "@/lib/generated-site-page";
 import { launchPathLabel } from "@/lib/launch-paths";
+import { STUDIO_FIELD_PLAN_ATTRIBUTE, offersWebsiteBuild, studioFieldsForLaunchPath } from "@/lib/launch-path-fields";
 import { isPaidLaunchPath } from "@/lib/plan-payments";
 import { PROJECT_SAVE_RESULT_EVENT } from "@/lib/project-save-result";
 import { findSlugCollision, slugify, validateSlug } from "@/lib/slug";
@@ -350,6 +351,10 @@ export function TokenStudio() {
   // Projects saved before this field existed have none; fall back to the
   // studio default (about + tokenomics on, the rest off — issue #171).
   const siteSections = project.siteSections ?? FREE_SITE_SECTION_DEFAULTS;
+  // Only the fields this plan needs (owner direction, 6 Sep 2026): a
+  // token-only launch never sees website fields, the free site never sees
+  // the bespoke ones, and the paid site never sees the free picker.
+  const studioFields = studioFieldsForLaunchPath(project.launchPath);
   const displayTicker = project.ticker.trim().toUpperCase() || "TOKEN";
   const displayName = project.name.trim() || "Untitled Meme";
   const displaySlug = project.websiteSlug || slugify(project.name) || "new-token";
@@ -630,7 +635,7 @@ export function TokenStudio() {
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell hoodlums-premium">
       {/* The studio header band (H mark, "PRIVATE BUILD / Meme Token Studio",
           the Safe mode badge and the visible Projects / + New token buttons)
           was removed at the owner's direction (4 Sep 2026). The two actions
@@ -661,6 +666,7 @@ export function TokenStudio() {
       >
         <aside
           className={showPathChooser ? "builder-panel path-locked" : "builder-panel"}
+          {...{ [STUDIO_FIELD_PLAN_ATTRIBUTE]: project.launchPath ?? undefined }}
           role="group"
           aria-disabled={showPathChooser || undefined}
           inert={showPathChooser || undefined}
@@ -796,19 +802,21 @@ export function TokenStudio() {
             </label>
           </div>
 
-          <label>
-            <span className="field-label">Website path</span>
-            <div className="url-input">
-              <span>hoodlums.dev/</span>
-              <input
-                value={project.websiteSlug}
-                onChange={(event) =>
-                  updateProject("websiteSlug", slugify(event.target.value))
-                }
-                placeholder="your-token-name"
-              />
-            </div>
-          </label>
+          {studioFields.websitePath && (
+            <label>
+              <span className="field-label">Website path</span>
+              <div className="url-input">
+                <span>hoodlums.dev/</span>
+                <input
+                  value={project.websiteSlug}
+                  onChange={(event) =>
+                    updateProject("websiteSlug", slugify(event.target.value))
+                  }
+                  placeholder="your-token-name"
+                />
+              </div>
+            </label>
+          )}
 
           <label className="upload-box">
             <input type="file" accept="image/*" onChange={handleImage} />
@@ -851,6 +859,7 @@ export function TokenStudio() {
             />
           </label>
 
+          {studioFields.freeSiteSections && (
           <div className="field-group">
             <span className="field-label">Free site sections</span>
             <div className="section-toggle-grid">
@@ -872,6 +881,7 @@ export function TokenStudio() {
               rest are skipped instead of filled with invented copy.
             </small>
           </div>
+          )}
 
           <div className="readiness-card">
             <div className="readiness-title">
@@ -964,11 +974,18 @@ export function TokenStudio() {
                 </button>
               </div>
             )}
-            {!project.generatedSiteHtml && (
+            {!project.generatedSiteHtml && offersWebsiteBuild(studioFields) && (
               <div className="site-preview-placeholder">
                 <span className="site-preview-placeholder-eyebrow">NO WEBSITE YET</span>
                 <strong>Your generated site will appear here</strong>
                 <p>Generate a website above — it opens in a branded preview window, not this panel.</p>
+              </div>
+            )}
+            {!project.generatedSiteHtml && !offersWebsiteBuild(studioFields) && (
+              <div className="site-preview-placeholder">
+                <span className="site-preview-placeholder-eyebrow">TOKEN-ONLY LAUNCH</span>
+                <strong>No website in this plan</strong>
+                <p>Bond launches the token and opens its market. Change plan to add a free artwork-matched site or a bespoke AI design.</p>
               </div>
             )}
           </div>
