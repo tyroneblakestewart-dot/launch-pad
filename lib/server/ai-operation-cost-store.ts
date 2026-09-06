@@ -5,6 +5,7 @@ import {
   calculateImageCostUsd,
   calculateTextCostUsd,
   readAiPricingRates,
+  readAiPricingRatesForModel,
   type AiPricingRates,
 } from "@/lib/server/ai-pricing";
 import { countCompletedWebSearchCalls, extractOpenAIModel, extractOpenAIUsage } from "@/lib/server/ai-usage";
@@ -160,7 +161,10 @@ export async function recordTextOperationCostBestEffort(args: RecordTextOperatio
   const usage = extractOpenAIUsage(args.response);
   if (!usage) return;
 
-  const rates = args.rates ?? readAiPricingRates();
+  // Priced for the model that actually answered (the bespoke full page runs on
+  // gpt-5, everything else on gpt-5-mini), never a single flat rate.
+  const model = extractOpenAIModel(args.response, args.fallbackModel);
+  const rates = args.rates ?? readAiPricingRatesForModel(model);
   const webSearchCallCount = countCompletedWebSearchCalls(args.response);
   const estimatedCostUsd = calculateTextCostUsd(
     {
@@ -177,7 +181,7 @@ export async function recordTextOperationCostBestEffort(args: RecordTextOperatio
     walletAddress: args.walletAddress,
     accessSource: args.accessSource,
     provider: args.provider,
-    model: extractOpenAIModel(args.response, args.fallbackModel),
+    model,
     inputTokens: usage.inputTokens,
     cachedInputTokens: usage.cachedInputTokens,
     outputTokens: usage.outputTokens,

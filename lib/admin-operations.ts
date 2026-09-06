@@ -150,7 +150,8 @@ export type AdminActivityKind =
   | "account-deleted"
   | "social-post-image-generated"
   | "social-approvals-unlocked"
-  | "social-approvals-locked";
+  | "social-approvals-locked"
+  | "bespoke-cost-cap-held";
 
 export type AdminActivityItem = {
   id: string;

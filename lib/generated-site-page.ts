@@ -7,14 +7,11 @@ export const ARTWORK_PLACEHOLDER = "{{ARTWORK_DATA_URL}}";
 // told about this token, so it has no way to produce it deliberately.
 export const CHART_EMBED_PLACEHOLDER = "{{CHART_EMBED_URL}}";
 const DEXSCREENER_EMBED_ORIGIN = "https://dexscreener.com/";
-export const REQUIRED_PAGE_SECTIONS = [
-  "hero",
-  "about",
-  "tokenomics",
-  "roadmap",
-  "how-to-buy",
-  "community",
-] as const;
+// Owner decision (6 Sep 2026, free-rein bespoke generator): only the sections
+// a token page cannot do without are mandatory; the AI chooses the rest.
+export const REQUIRED_PAGE_SECTIONS = ["hero", "how-to-buy", "community"] as const;
+/** Sections the generator may add when the story calls for them — never required, never rejected for being absent. */
+export const OPTIONAL_PAGE_SECTIONS = ["about", "tokenomics", "roadmap", "faq", "team", "gallery"] as const;
 
 const MAX_GENERATED_HTML_LENGTH = 90_000;
 const MIN_GENERATED_HTML_LENGTH = 3_500;
