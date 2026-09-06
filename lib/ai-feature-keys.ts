@@ -22,6 +22,7 @@ export const AI_FEATURE_KEYS = {
   SOCIAL_DRAFT_RETRY: "social.draft-retry",
   SOCIAL_MASCOT_ANALYSIS: "social.mascot-analysis",
   SOCIAL_MASCOT_IMAGE: "social.mascot-image",
+  SOCIAL_POST_IMAGE: "social.post-image",
 } as const;
 
 export type AiFeatureKey = (typeof AI_FEATURE_KEYS)[keyof typeof AI_FEATURE_KEYS];
@@ -38,6 +39,7 @@ const FEATURE_GROUP_PREFIXES: Array<{ prefix: string; label: string }> = [
   { prefix: "social.draft", label: "Social draft" },
   { prefix: "social.mascot-analysis", label: "Mascot analysis" },
   { prefix: "social.mascot-image", label: "Mascot image" },
+  { prefix: "social.post-image", label: "Post image" },
   { prefix: "social.x-post", label: "X post" },
 ];
 

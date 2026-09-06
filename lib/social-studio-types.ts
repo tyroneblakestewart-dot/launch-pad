@@ -50,6 +50,12 @@ export type QueueItem = {
   source: "setup-ai" | "calendar-ai" | "manual" | "auto-replenish";
   dayLabel: string | null;
   createdAt: string;
+  /** The angle the draft route wrote this post to (DRAFT_ANGLES key) — ranks it for an AI image. Absent on manual and pre-existing drafts. */
+  angleKey?: string | null;
+  /** The user said "no image" for this post (skipped or removed) — never picked again, per the owner's no-remake rule. */
+  imageDeclined?: boolean;
+  /** `artwork` was made by the AI for this post at approve time, as opposed to project or mascot artwork the user attached. */
+  aiImage?: boolean;
 };
 
 /** Default and cap for issue #352's "always something loaded" Ready-to-review pool size, user-configurable in Settings & Rules. */

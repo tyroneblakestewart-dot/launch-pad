@@ -22,6 +22,7 @@ import {
   parseDraftResponseDetailed,
   MAX_PROJECT_NETWORK_LABEL_LENGTH,
   resolveChainLabel,
+  resolveDraftAngle,
   type DraftProject,
 } from "@/lib/server/social-draft-pipeline";
 import { authoriseSocialProjectSlot } from "@/lib/server/social-project-slot-entitlement";
@@ -342,6 +343,10 @@ export async function POST(request: Request) {
     wordsToAvoid,
     toneDials,
   };
+  // The angle this draft was written to rides back with it (AI images on
+  // approved posts, 6 Sep 2026): the client ranks drafts for an image by it.
+  // Purely informational; null when a theme overrode the rotating angle.
+  const angleKey = resolveDraftAngle(theme, angleIndex, Boolean(directionBrief?.trim()))?.key ?? null;
   const compliance = checkDraftCompliance(result.draft, complianceInput);
   const contentFilterResult = checkDraftContentFilter(result.draft);
   if (contentFilterResult.violated) {
@@ -352,7 +357,7 @@ export async function POST(request: Request) {
     });
   }
   if (!compliance.violated && !contentFilterResult.violated) {
-    return NextResponse.json({ draft: result.draft }, { headers: noStoreHeaders(rateHeaders) });
+    return NextResponse.json({ draft: result.draft, angleKey }, { headers: noStoreHeaders(rateHeaders) });
   }
 
   const correctiveFeedback = contentFilterResult.violated
@@ -389,5 +394,5 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ draft: retryResult.draft }, { headers: noStoreHeaders(rateHeaders) });
+  return NextResponse.json({ draft: retryResult.draft, angleKey }, { headers: noStoreHeaders(rateHeaders) });
 }

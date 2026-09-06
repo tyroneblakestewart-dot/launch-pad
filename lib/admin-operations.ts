@@ -48,9 +48,9 @@ export const ADMIN_SERVICE_DEFINITIONS = [
     key: "social-studio-ai",
     label: "AI Social Studio",
     description:
-      "Pro/Pro Bundle-gated voice-profile, draft and mascot scene-image generation for the /social Setup and Calendar tabs.",
+      "Pro/Pro Bundle-gated voice-profile, draft, mascot scene-image and approved-post image generation for the /social Setup, Calendar and Queue tabs.",
     affectedRoutes:
-      "/api/social/voice-profile, /api/social/draft, /api/social/mascot/visual-dna, /api/social/mascot/image, /api/social/project-slots, /api/social/project-slots/release",
+      "/api/social/voice-profile, /api/social/draft, /api/social/mascot/visual-dna, /api/social/mascot/image, /api/social/post-image, /api/social/project-slots, /api/social/project-slots/release",
   },
   {
     key: "social-posting",
@@ -147,7 +147,8 @@ export type AdminActivityKind =
   | "account-google-signed-in"
   | "account-wallet-linked"
   | "account-wallet-unlinked"
-  | "account-deleted";
+  | "account-deleted"
+  | "social-post-image-generated";
 
 export type AdminActivityItem = {
   id: string;
