@@ -127,6 +127,7 @@ async function expectWorkingSessionAndHealth(loginResponse: Response): Promise<v
       "contracts",
       "database",
       "deployment",
+      "google-sign-in",
       "hoodchat",
       "operations-cost",
       "outreach",

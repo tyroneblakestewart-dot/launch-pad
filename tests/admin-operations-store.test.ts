@@ -25,7 +25,7 @@ describe("admin service isolation store", () => {
   it("starts with every supported service active", async () => {
     const store = createMemoryAdminOperationsStore(state);
     const controls = await store.listServiceControls();
-    expect(controls).toHaveLength(13);
+    expect(controls).toHaveLength(14);
     expect(controls.every((control) => control.isolated === false)).toBe(true);
   });
 

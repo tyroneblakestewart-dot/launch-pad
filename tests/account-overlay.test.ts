@@ -105,7 +105,8 @@ describe("Account overlay restructure", () => {
   it("keeps the current sign-in and wallet choices inside a modal overlay", async () => {
     const overlay = await source("components", "account-overlay.tsx");
 
-    for (const provider of ["Google", "GitHub", "X", "MetaMask", "Rabby", "Phantom"]) {
+    // GitHub was dropped (owner decision, 6 Sep 2026) and Google is live via GoogleAccountPanel.
+    for (const provider of ["Google", "X", "MetaMask", "Rabby", "Phantom"]) {
       expect(overlay).toContain(provider);
     }
     expect(overlay).toContain("Coming next");
@@ -119,7 +120,6 @@ describe("Account overlay restructure", () => {
 
     const expectedLogos: Record<string, string> = {
       Google: "/logos/google.svg",
-      GitHub: "/logos/github.svg",
       X: "/logos/x.svg",
       MetaMask: "/logos/metamask.svg",
       Rabby: "/logos/rabby.svg",
@@ -132,7 +132,6 @@ describe("Account overlay restructure", () => {
 
     expect(overlay).toContain("styles.markLogo");
     expect(overlay).not.toMatch(/Google:\s*"G"/);
-    expect(overlay).not.toMatch(/GitHub:\s*"GH"/);
     expect(overlay).not.toMatch(/MetaMask:\s*"M"/);
     expect(overlay).not.toMatch(/Rabby:\s*"R"/);
     expect(overlay).not.toMatch(/Phantom:\s*"P"/);

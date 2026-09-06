@@ -83,6 +83,14 @@ export const ADMIN_SERVICE_DEFINITIONS = [
     affectedRoutes: "/api/social/buy-bot, /api/social/buy-bot/update, /api/social/buy-bot/disable, /api/cron/buy-bot",
   },
   {
+    key: "google-sign-in",
+    label: "Google sign-in",
+    description:
+      "Sign in with Google as a linked credential to a wallet (email on file, sessions, wallet link/unlink). Never a second identity: every paid or on-chain action still needs the wallet signature. Dormant until GOOGLE_OAUTH_CLIENT_ID/SECRET are set.",
+    affectedRoutes:
+      "/api/account/google/start, /api/account/google/callback, /api/account/session, /api/account/logout, /api/account/challenge, /api/account/link-wallet, /api/account/unlink-wallet, /api/account/delete, /api/admin/google-accounts",
+  },
+  {
     key: "test-access",
     label: "Wallet test-access allowlist",
     description:
@@ -135,7 +143,11 @@ export type AdminActivityKind =
   | "buy-bot-enabled"
   | "buy-bot-updated"
   | "buy-bot-disabled"
-  | "buy-bot-reconnect-needed";
+  | "buy-bot-reconnect-needed"
+  | "account-google-signed-in"
+  | "account-wallet-linked"
+  | "account-wallet-unlinked"
+  | "account-deleted";
 
 export type AdminActivityItem = {
   id: string;
@@ -164,6 +176,7 @@ export const SYSTEM_HEALTH_CHECK_IDS = [
   "support",
   "token-launches",
   "buy-bot",
+  "google-sign-in",
 ] as const;
 
 export type SystemHealthCheckId = (typeof SYSTEM_HEALTH_CHECK_IDS)[number];

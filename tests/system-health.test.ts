@@ -468,7 +468,7 @@ describe("checkOperationsCostHealth", () => {
 });
 
 describe("getSystemHealth", () => {
-  it("returns all fifteen checks, one per required area", async () => {
+  it("returns all sixteen checks, one per required area", async () => {
     const checks = await getSystemHealth({
       env: { NODE_ENV: "development" },
       database: { databaseUrl: "" },
@@ -492,6 +492,7 @@ describe("getSystemHealth", () => {
         "contracts",
         "database",
         "deployment",
+        "google-sign-in",
         "hoodchat",
         "operations-cost",
         "outreach",

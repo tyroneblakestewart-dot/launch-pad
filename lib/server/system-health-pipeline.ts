@@ -35,6 +35,7 @@ import { getTokenHolderStatsReadHealth, type TokenHolderStatsReadHealth } from "
 import { getSocialXCostStore, readXApiSendCostUsd, readXMonthlyCostCapUsd, type SocialXCostStore } from "@/lib/server/social-x-cost-store";
 import { getTokenLaunchesStore } from "@/lib/server/token-launches-store";
 import { getBuyBotStore, type BuyBotStore } from "@/lib/server/buy-bot-store";
+import { getUserAccountsStore, type UserAccountsStore } from "@/lib/server/user-accounts-store";
 import {
   CLIENT_ERRORS_RED_THRESHOLD,
   contractsClient,
@@ -2113,6 +2114,81 @@ export async function buildBuyBotPipeline(deps: BuyBotPipelineDeps = {}): Promis
 }
 
 // ---------------------------------------------------------------------------
+// Google sign-in (phase 1, 6 Sep 2026)
+// ---------------------------------------------------------------------------
+
+export type GoogleSignInPipelineDeps = {
+  env?: Record<string, string | undefined>;
+  getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
+  getStore?: () => Pick<UserAccountsStore, "tableExists" | "counts">;
+  now?: Date;
+};
+
+export async function buildGoogleSignInPipeline(deps: GoogleSignInPipelineDeps = {}): Promise<AdminServicePipeline> {
+  const env = deps.env ?? process.env;
+  const getServiceControl =
+    deps.getServiceControl ?? ((key: AdminServiceKey) => getAdminOperationsStore().getServiceControl(key));
+  const databaseUrl = env.DATABASE_URL?.trim() ?? "";
+
+  const isolationStage = await chatIsolationStage("google-sign-in", getServiceControl);
+  const clientConfigured = Boolean((env.GOOGLE_OAUTH_CLIENT_ID || "").trim() && (env.GOOGLE_OAUTH_CLIENT_SECRET || "").trim());
+  const clientStage = stage(
+    "oauth-client",
+    "GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET",
+    clientConfigured ? "green" : "amber",
+    clientConfigured
+      ? "Google OAuth client is configured; the Google row is live in the account panel."
+      : "Dormant: not set. The account panel keeps Google as 'coming next' and the start route 503s.",
+  );
+  const encryptionStage = socialPostingEncryptionStage(env);
+  const origin = (env.HOODLUMS_APP_ORIGIN || "").trim();
+  const callbackStage = stage(
+    "callback-url",
+    "Redirect URI registered with Google",
+    origin ? "green" : "amber",
+    origin
+      ? `Callback is ${origin}/api/account/google/callback — this exact URL must be in the Google client's authorised redirect URIs.`
+      : "HOODLUMS_APP_ORIGIN is unset; the callback URL falls back to each request's own origin.",
+  );
+
+  if (!databaseUrl) {
+    const message = "DATABASE_URL is not configured.";
+    return {
+      id: "google-sign-in",
+      label: "Google sign-in",
+      stages: [isolationStage, clientStage, encryptionStage, callbackStage, stage("table-exists", "user_accounts / user_sessions tables exist", "amber", message), stage("account-counts", "Accounts (total / linked to a wallet / signed in 7d)", "amber", message)],
+    };
+  }
+
+  const store = (deps.getStore ?? (() => getUserAccountsStore()))();
+  let tableExists = false;
+  let tableStage: AdminPipelineStage;
+  try {
+    tableExists = await withTimeout(store.tableExists(), HEALTH_CHECK_TIMEOUT_MS, "timed out");
+    tableStage = tableExists
+      ? stage("table-exists", "user_accounts / user_sessions tables exist", "green", "Both tables are present.")
+      : stage("table-exists", "user_accounts / user_sessions tables exist", "red", "Migration 033_user_accounts.sql has not been applied yet.");
+  } catch {
+    tableStage = stage("table-exists", "user_accounts / user_sessions tables exist", "red", "Could not check whether the account tables exist.");
+  }
+
+  let countsStage: AdminPipelineStage;
+  const countsLabel = "Accounts (total / linked to a wallet / signed in 7d)";
+  if (!tableExists) {
+    countsStage = stage("account-counts", countsLabel, "amber", "Not probed; the account tables do not exist yet.");
+  } else {
+    try {
+      const counts = await withTimeout(store.counts(deps.now ?? new Date()), HEALTH_CHECK_TIMEOUT_MS, "timed out");
+      countsStage = stage("account-counts", countsLabel, "green", `${counts.accounts} account(s), ${counts.linked} linked to a wallet, ${counts.signedIn7d} signed in this week.`);
+    } catch {
+      countsStage = stage("account-counts", countsLabel, "red", "Could not count accounts.");
+    }
+  }
+
+  return { id: "google-sign-in", label: "Google sign-in", stages: [isolationStage, clientStage, encryptionStage, callbackStage, tableStage, countsStage] };
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
 
@@ -2134,6 +2210,7 @@ export type SystemHealthPipelineDeps = {
   support?: SupportPipelineDeps;
   tokenLaunches?: TokenLaunchesPipelineDeps;
   buyBot?: BuyBotPipelineDeps;
+  googleSignIn?: GoogleSignInPipelineDeps;
 };
 
 /** Builds a single service's pipeline on demand — used by the drill-down endpoint. */
@@ -2182,5 +2259,7 @@ export async function buildServicePipeline(
       return buildTokenLaunchesPipeline({ env: deps.env, ...deps.tokenLaunches });
     case "buy-bot":
       return buildBuyBotPipeline({ env: deps.env, ...deps.buyBot });
+    case "google-sign-in":
+      return buildGoogleSignInPipeline({ env: deps.env, ...deps.googleSignIn });
   }
 }

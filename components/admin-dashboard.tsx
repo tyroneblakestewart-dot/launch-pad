@@ -19,6 +19,7 @@ import { AdminSubscribersSection } from "@/components/admin-subscribers-section"
 import { AdminSupportSection } from "@/components/admin-support-section";
 import { AdminSystemHealth } from "@/components/admin-system-health";
 import { AdminTokenLaunchesSection } from "@/components/admin-token-launches-section";
+import { AdminGoogleAccountsSection } from "@/components/admin-google-accounts-section";
 import { AdminTestAccessSection } from "@/components/admin-test-access-section";
 import type {
   AdminOperationsSnapshot,
@@ -43,6 +44,7 @@ type SectionId =
   | "client-errors"
   | "support"
   | "token-launches"
+  | "google-accounts"
   | "system-health";
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
@@ -61,6 +63,7 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "client-errors", label: "Errors" },
   { id: "support", label: "Support" },
   { id: "token-launches", label: "Launches" },
+  { id: "google-accounts", label: "Sign-ins" },
   { id: "system-health", label: "System Health" },
 ];
 
@@ -191,7 +194,8 @@ export function AdminDashboard() {
     activeSection === "street-team" ||
     activeSection === "client-errors" ||
     activeSection === "support" ||
-    activeSection === "token-launches";
+    activeSection === "token-launches" ||
+    activeSection === "google-accounts";
 
   return (
     <main className={styles.dashboard}>
@@ -289,6 +293,7 @@ export function AdminDashboard() {
         {activeSection === "client-errors" ? <AdminClientErrorsSection /> : null}
         {activeSection === "support" ? <AdminSupportSection /> : null}
         {activeSection === "token-launches" ? <AdminTokenLaunchesSection /> : null}
+        {activeSection === "google-accounts" ? <AdminGoogleAccountsSection /> : null}
         {activeSection === "system-health" ? <AdminSystemHealth /> : null}
       </section>
     </main>

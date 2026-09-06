@@ -409,6 +409,29 @@ export function resetSocialStudioActionRateLimitsForTests() {
   ["social-studio-action", "social-studio-read"].forEach((name) => namedRateStore(name).clear());
 }
 
+// Google sign-in, phase 1 (6 Sep 2026): "action" covers the OAuth start,
+// the callback, link/unlink, logout and delete; "read" covers the
+// GET /api/account/session the account panel reads on open and focus.
+export const ACCOUNT_ACTION_LIMIT = 30;
+export const ACCOUNT_READ_LIMIT = 120;
+
+export function consumeAccountActionRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("account-action"), ip, ACCOUNT_ACTION_LIMIT, SOCIAL_STUDIO_WINDOW_MS, now);
+}
+
+export function consumeAccountReadRateLimit(ip: string, now = Date.now()) {
+  return consumeRateLimit(namedRateStore("account-read"), ip, ACCOUNT_READ_LIMIT, SOCIAL_STUDIO_WINDOW_MS, now);
+}
+
+export function resetAccountRateLimitsForTests() {
+  ["account-action", "account-read"].forEach((name) => namedRateStore(name).clear());
+}
+
+/** Same resolution chain as the Social Studio origin check — the account panel lives on the same origin. */
+export function isAccountRequestOriginAllowed(request: Request): boolean {
+  return isSocialStudioRequestOriginAllowed(request);
+}
+
 // Street Team add-on interest capture (issue #343) — a lightweight demand
 // signal, not a sensitive write, so it gets a single generous per-IP limit
 // rather than separate read/action buckets.

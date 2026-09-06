@@ -341,3 +341,41 @@
     font-size: 7px;
   }
 }
+
+
+/* Sign in with Google, phase 1 (6 Sep 2026): the live Google row and its signed-in state. */
+.googlePanel { display: grid; gap: 8px; }
+.googleSignedIn {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  border: 1px solid rgba(198, 245, 62, 0.34);
+  border-radius: 11px;
+  color: #edf3e9;
+  background: linear-gradient(180deg, rgba(198, 245, 62, 0.1), rgba(198, 245, 62, 0.03));
+}
+.googleSignedIn em { color: #c6f53e; font: 700 8px "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-style: normal; letter-spacing: 0.07em; text-transform: uppercase; }
+.googleActions { display: flex; flex-wrap: wrap; gap: 7px; }
+.googleActions button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: #c8d1c9;
+  background: transparent;
+  font: 800 10.5px "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+.googleActions button:disabled { opacity: 0.5; cursor: not-allowed; }
+.googleActions .googlePrimary { border-color: transparent; color: #071006; background: #c6f53e; }
+.googleActions .googleDanger { border-color: rgba(255, 128, 128, 0.35); color: #ff9d9d; }
+.googleStatus,
+.googleStatusError { margin: 0; color: #8d9990; font-size: 11px; line-height: 1.45; }
+.googleStatusError { color: #ff9d9d; }
+@media (pointer: coarse) {
+  .googleActions button { min-height: 44px; }
+}

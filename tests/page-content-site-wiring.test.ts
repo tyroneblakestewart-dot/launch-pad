@@ -407,7 +407,8 @@ describe("account page content wiring", () => {
     const tree = await AccountPage({ searchParams: undefined });
     const text = collectText(tree);
     expect(text).toContain("Choose how you sign in.");
-    expect(text).toContain("Email and project sync");
+    expect(text).toContain("Email on file · projects across devices soon");
+    expect(text).not.toContain("GitHub");
     expect(text).toContain("Solana and EVM wallet");
     expect(text).toContain(
       "Existing wallet connections inside the launch tools remain unchanged while this account system is built safely in separate steps.",
