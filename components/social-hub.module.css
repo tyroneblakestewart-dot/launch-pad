@@ -2127,3 +2127,50 @@
   .queueWhen { width: auto; }
   .queueItemExpanded .queueThumb { width: 72px; height: 72px; }
 }
+
+/* Add an existing token (owner direction, 6 Sep 2026): Hoodlums Social runs
+   socials for a token launched anywhere, not only ones made in the studio. */
+.noProjectActions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.noProjectSecondary {
+  min-height: 44px;
+  padding: 0 22px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: var(--text-primary);
+  background: var(--studio-ghost-bg);
+  box-shadow: var(--studio-ghost-shadow);
+  font: 800 13px/1 var(--sans);
+  cursor: pointer;
+}
+.addTokenPanel { margin-bottom: 14px; }
+.addTokenGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+.addTokenWide { grid-column: 1 / -1; }
+.connectionField select,
+.connectionField textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 13px;
+  border: var(--well-border);
+  border-radius: var(--well-radius);
+  outline: none;
+  color: var(--text-primary);
+  background: var(--well-bg);
+  box-shadow: var(--well-shadow);
+  font: 600 11px var(--mono);
+}
+.connectionField textarea { resize: vertical; line-height: 1.5; }
+.connectionField input[type="file"] { padding: 9px 13px; }
+.connectionField > span em {
+  margin-left: 6px;
+  color: var(--text-faint);
+  font: 600 9.5px var(--mono);
+  font-style: normal;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.addTokenArtworkPreview { width: 72px; height: 72px; object-fit: cover; border-radius: 12px; border: var(--well-border); }
+@media (max-width: 860px) {
+  .addTokenGrid { grid-template-columns: 1fr; }
+  .noProjectActions a,
+  .noProjectSecondary { width: 100%; justify-content: center; text-align: center; }
+}

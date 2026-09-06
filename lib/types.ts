@@ -54,6 +54,20 @@ export interface TokenProject {
    * the UI after the server has verified and recorded the on-chain payment.
    */
   launchPath?: LaunchPath | null;
+  /**
+   * Set for a token that was NOT created in the Hoodlums launch studio — added
+   * from Hoodlums Social so a subscriber can run socials for a token launched
+   * anywhere (owner direction, 6 Sep 2026). External projects live in the
+   * same per-wallet vault but never appear in the launch tooling (studio
+   * vault, provider desks, allocation desk, launch modal).
+   */
+  origin?: "external";
+  /**
+   * Free-text network name for an external token on a chain the studio does
+   * not launch to (e.g. "Ethereum"). Display and AI facts only; `chain` then
+   * holds the closest base type as a placeholder.
+   */
+  network?: string;
 }
 
 export interface WalletState {

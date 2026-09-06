@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
-import { createWalletClient, custom } from "viem";
+import { createWalletClient, custom, isAddress } from "viem";
 import {
   ACCOUNT_WALLET_STORAGE_KEY,
   parseStoredAccountWallet,
@@ -18,7 +18,9 @@ import {
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { MASCOT_REFERENCE_TIPS, assessMascotReference, type MascotReferenceAssessment } from "@/lib/mascot-reference-guidance";
 import { MIN_USABLE_VOICE_EXAMPLES, filterUsableVoiceExamples } from "@/lib/social-voice-examples";
-import { readProjectIndex, type SavedProjectIndexEntry } from "@/lib/token-project-storage";
+import { getProjectBlob } from "@/lib/token-project-db";
+import { saveProjectToStorage } from "@/lib/token-project-persistence";
+import { isExternalProject, projectNetworkLabel, readProjectIndex, type SavedProjectIndexEntry } from "@/lib/token-project-storage";
 import { useProjectOwner } from "@/lib/use-project-owner";
 import {
   VOICE_EXAMPLE_TARGET,
@@ -89,6 +91,30 @@ type DraftMap = Record<string, string>;
 
 // Per-panel status shown inline next to the control that triggered it, instead of one status bar far below the fold.
 type PanelStatus = { tone: "progress" | "success" | "error"; message: string } | null;
+
+type ExternalNetworkChoice = "robinhood" | "solana" | "other";
+type ExternalTokenForm = {
+  name: string;
+  ticker: string;
+  networkChoice: ExternalNetworkChoice;
+  networkOther: string;
+  contractAddress: string;
+  description: string;
+  xHandle: string;
+  telegram: string;
+  artworkDataUrl: string;
+};
+const EMPTY_EXTERNAL_FORM: ExternalTokenForm = {
+  name: "",
+  ticker: "",
+  networkChoice: "robinhood",
+  networkOther: "",
+  contractAddress: "",
+  description: "",
+  xHandle: "",
+  telegram: "",
+  artworkDataUrl: "",
+};
 
 /** One card in the sorting station: a pasted post reshaped to this project, waiting for Fire / Sounds right / Bin. */
 type StationSample = { id: string; text: string; sourceKey: string };
@@ -329,7 +355,7 @@ function websiteFor(project: TokenProject): string {
 function buildTemplate(project: TokenProject, template: TemplateId): string {
   const name = project.name.trim() || "New token";
   const ticker = project.ticker.trim().toUpperCase() || "TOKEN";
-  const chain = project.chain === "robinhood" ? "Robinhood Chain" : "Solana";
+  const chain = projectNetworkLabel(project);
   const website = websiteFor(project);
   const xHandle = cleanHandle(project.xHandle);
   const telegram = cleanTelegram(project.telegram);
@@ -397,6 +423,15 @@ export function SocialHub() {
   const [projects, setProjects] = useState<TokenProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  // Add an existing token (owner direction, 6 Sep 2026): Hoodlums Social runs
+  // socials for a token launched anywhere, not only ones made in the studio.
+  const [addTokenOpen, setAddTokenOpen] = useState(false);
+  const [externalForm, setExternalForm] = useState<ExternalTokenForm>(EMPTY_EXTERNAL_FORM);
+  const [externalStatus, setExternalStatus] = useState<PanelStatus>(null);
+  const [externalSaving, setExternalSaving] = useState(false);
+  // The selected project's artwork, loaded from IndexedDB (issue #307 moved
+  // heroImage out of the localStorage index, so the entries here carry none).
+  const [selectedProjectArtwork, setSelectedProjectArtwork] = useState("");
   const [activeTab, setActiveTab] = useState<StudioTab>("setup");
   const [composeOpen, setComposeOpen] = useState(false);
   const [templateId, setTemplateId] = useState<TemplateId>("launch");
@@ -686,7 +721,7 @@ export function SocialHub() {
     setHowItsGoingStatus("loading");
     try {
       const params = new URLSearchParams({ walletAddress });
-      if (selectedProject?.chain === "robinhood" && selectedProject.contractAddress?.trim()) params.set("tokenAddress", selectedProject.contractAddress.trim());
+      if (selectedProject?.chain === "robinhood" && !isExternalSelected && selectedProject.contractAddress?.trim()) params.set("tokenAddress", selectedProject.contractAddress.trim());
       const response = await fetch(`/api/social/stats?${params.toString()}`, { cache: "no-store" });
       const payload = await readJsonResponse<SocialStatsSummary>(response, "Could not load your numbers.");
       setHowItsGoing(payload);
@@ -860,6 +895,27 @@ export function SocialHub() {
     () => projects.find((item) => item.id === selectedProjectId) || null,
     [projects, selectedProjectId],
   );
+  const isExternalSelected = Boolean(selectedProject && isExternalProject(selectedProject));
+
+  useEffect(() => {
+    if (!selectedProject) return;
+    let cancelled = false;
+    const inline = selectedProject.heroImage || "";
+    queueMicrotask(() => {
+      if (!cancelled) setSelectedProjectArtwork(inline);
+    });
+    getProjectBlob(selectedProject.id)
+      .then((blob) => {
+        if (!cancelled) setSelectedProjectArtwork(blob?.heroImage || inline);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedProjectArtwork(inline);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProject]);
+  const projectArtwork = selectedProject ? selectedProjectArtwork : "";
 
   /** Derived from `connections`, never separate state (issue #384) — the single source of truth shared by the Setup card and the Queue's destination toggles. */
   const telegramConnection = useMemo<TelegramConnectionState | null>(() => {
@@ -877,17 +933,19 @@ export function SocialHub() {
   /** The selected project's own Buy Bot, matched on its contract address — only Robinhood Chain Testnet launches have a curve to watch. */
   const selectedBuyBot = useMemo<BuyBotSummary | null>(() => {
     const contract = selectedProject?.contractAddress?.trim().toLowerCase();
-    if (!contract || selectedProject?.chain !== "robinhood") return null;
+    if (!contract || selectedProject?.chain !== "robinhood" || isExternalSelected) return null;
     return buyBots.find((bot) => bot.tokenAddress.toLowerCase() === contract && bot.chainId === ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL) ?? null;
-  }, [buyBots, selectedProject]);
-  const buyBotTokenAddress = selectedProject?.chain === "robinhood" ? selectedProject.contractAddress?.trim() || "" : "";
+  }, [buyBots, selectedProject, isExternalSelected]);
+  const buyBotTokenAddress = selectedProject?.chain === "robinhood" && !isExternalSelected ? selectedProject.contractAddress?.trim() || "" : "";
   const buyBotUnavailableReason = !walletAddress
     ? "Connect your wallet first."
     : !selectedProject
       ? "Pick a project first."
-      : !buyBotTokenAddress
-        ? "Launch this token on Robinhood Chain Testnet first — the Buy Bot watches its curve."
-        : null;
+      : isExternalSelected
+        ? "This token was not launched on Hoodlums — the Buy Bot only watches Hoodlums curves."
+        : !buyBotTokenAddress
+          ? "Launch this token on Robinhood Chain Testnet first — the Buy Bot watches its curve."
+          : null;
 
   const xCharacterCount = message.length;
   const xReady = xCharacterCount > 0 && xCharacterCount <= 280;
@@ -1010,17 +1068,17 @@ export function SocialHub() {
   }
 
   function downloadArtwork() {
-    if (!selectedProject?.heroImage) {
+    if (!selectedProject || !projectArtwork) {
       setStatus("This project has no artwork to download.");
       return;
     }
-    const extension = selectedProject.heroImage.startsWith("data:image/png")
+    const extension = projectArtwork.startsWith("data:image/png")
       ? "png"
-      : selectedProject.heroImage.startsWith("data:image/webp")
+      : projectArtwork.startsWith("data:image/webp")
         ? "webp"
         : "jpg";
     const anchor = document.createElement("a");
-    anchor.href = selectedProject.heroImage;
+    anchor.href = projectArtwork;
     anchor.download = `${selectedProject.websiteSlug || selectedProject.ticker || "token"}-social-artwork.${extension}`;
     anchor.click();
     setStatus("Artwork downloaded. Attach it manually inside the X composer.");
@@ -1159,7 +1217,7 @@ export function SocialHub() {
         body: JSON.stringify({
           chatId: telegramConnection.externalId,
           text: (telegramMessage || message).trim(),
-          artwork: includeArtwork ? attachedArtwork || selectedProject.heroImage : "",
+          artwork: includeArtwork ? attachedArtwork || projectArtwork : "",
         }),
       });
       const payload = (await response.json()) as { ok?: boolean; error?: string };
@@ -1189,6 +1247,7 @@ export function SocialHub() {
       ticker: selectedProject.ticker,
       description: selectedProject.description,
       chain: selectedProject.chain,
+      network: selectedProject.network,
       contractAddress: selectedProject.contractAddress,
     };
   }
@@ -2258,13 +2317,187 @@ export function SocialHub() {
   }
 
   function renderProjectArtwork(className: string, alt: string) {
-    if (selectedProject?.heroImage) {
+    if (projectArtwork) {
       return (
         // eslint-disable-next-line @next/next/no-img-element
-        <img className={className} src={selectedProject.heroImage} alt={alt} />
+        <img className={className} src={projectArtwork} alt={alt} />
       );
     }
     return <span className={styles.artworkFallback}>{projectInitial}</span>;
+  }
+
+  async function handleExternalArtwork(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
+      setExternalStatus({ tone: "error", message: "Use a PNG, JPG or WEBP image." });
+      return;
+    }
+    if (file.size > MAX_MASCOT_IMAGE_BYTES) {
+      setExternalStatus({ tone: "error", message: "Keep the artwork under 3 MB." });
+      return;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setExternalForm((current) => ({ ...current, artworkDataUrl: dataUrl }));
+      setExternalStatus(null);
+    } catch (error) {
+      setExternalStatus({ tone: "error", message: error instanceof Error ? error.message : "The artwork could not be read." });
+    }
+  }
+
+  // Saves a token launched anywhere into the confirmed wallet's own vault as
+  // an external project (Social-only: the launch tooling filters it out) and
+  // selects it. Requires a confirmed wallet — the project must land in that
+  // wallet's partition and nowhere else.
+  async function addExternalProject() {
+    if (!projectOwner) {
+      setExternalStatus({ tone: "error", message: "Confirm your wallet in Account first — the token is saved to that wallet." });
+      return;
+    }
+    const name = externalForm.name.trim();
+    const ticker = externalForm.ticker.trim().replace(/^\$/, "").toUpperCase();
+    const description = externalForm.description.trim();
+    const networkOther = externalForm.networkOther.replace(/\s+/g, " ").trim();
+    const contractAddress = externalForm.contractAddress.trim();
+    if (!name) {
+      setExternalStatus({ tone: "error", message: "Give the token a name." });
+      return;
+    }
+    if (!/^[A-Z0-9]{1,12}$/.test(ticker)) {
+      setExternalStatus({ tone: "error", message: "Ticker: 1–12 letters or numbers, no symbols." });
+      return;
+    }
+    if (externalForm.networkChoice === "other" && !networkOther) {
+      setExternalStatus({ tone: "error", message: "Name the network the token lives on." });
+      return;
+    }
+    if (externalForm.networkChoice === "robinhood" && contractAddress && !isAddress(contractAddress)) {
+      setExternalStatus({ tone: "error", message: "That is not a valid contract address for Robinhood Chain." });
+      return;
+    }
+    if (!description) {
+      setExternalStatus({ tone: "error", message: "Add a sentence about the token — the AI drafts from it." });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const looksEvm = /^0x[0-9a-fA-F]{40}$/.test(contractAddress);
+    const chain: TokenProject["chain"] =
+      externalForm.networkChoice === "solana" ? "solana" : externalForm.networkChoice === "robinhood" ? "robinhood" : looksEvm ? "robinhood" : "solana";
+    const project: TokenProject = {
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+      status: contractAddress ? "launched" : "draft",
+      chain,
+      origin: "external",
+      ...(externalForm.networkChoice === "other" ? { network: networkOther } : {}),
+      name,
+      ticker,
+      description,
+      supply: "",
+      decimals: chain === "solana" ? 9 : 18,
+      websiteSlug: "",
+      contractAddress,
+      xHandle: externalForm.xHandle.trim(),
+      telegram: externalForm.telegram.trim(),
+      heroImage: externalForm.artworkDataUrl,
+      theme: "hoodlums",
+    };
+
+    setExternalSaving(true);
+    setExternalStatus({ tone: "progress", message: "Saving to your wallet's projects…" });
+    try {
+      const outcome = await saveProjectToStorage(project, readProjectIndex(projectOwner), projectOwner);
+      if (!outcome.success) {
+        setExternalStatus({ tone: "error", message: outcome.error });
+        return;
+      }
+      setProjects(safeProjects(readProjectIndex(projectOwner)));
+      setSelectedProjectId(project.id);
+      setTemplateId("launch");
+      setMessage(buildTemplate(project, "launch"));
+      setTelegramMessage("");
+      setAttachedArtwork(null);
+      setExternalForm(EMPTY_EXTERNAL_FORM);
+      setAddTokenOpen(false);
+      setExternalStatus(null);
+      setStatus(`${name} added to Hoodlums Social. Only wallet ${shortAddress(projectOwner)} sees it.`);
+    } finally {
+      setExternalSaving(false);
+    }
+  }
+
+  function renderAddTokenForm() {
+    const isOther = externalForm.networkChoice === "other";
+    return (
+      <div className={styles.connectionDrawer} data-add-token-form>
+        <span className={styles.eyebrow}>ADD AN EXISTING TOKEN</span>
+        <p className={styles.connectionHelper}>
+          For a token launched anywhere else. It is saved to your confirmed wallet and appears only in Hoodlums Social — never in the launch tools.
+        </p>
+        {!projectOwner ? (
+          <p className={styles.connectionStateWarning}>Confirm your wallet in Account first — the token is saved to that wallet.</p>
+        ) : null}
+        <div className={styles.addTokenGrid}>
+          <label className={styles.connectionField}>
+            <span>Token name</span>
+            <input value={externalForm.name} maxLength={80} placeholder="Hoodlums" onChange={(event) => setExternalForm((current) => ({ ...current, name: event.target.value }))} />
+          </label>
+          <label className={styles.connectionField}>
+            <span>Ticker</span>
+            <input value={externalForm.ticker} maxLength={13} placeholder="HOODS" onChange={(event) => setExternalForm((current) => ({ ...current, ticker: event.target.value }))} />
+          </label>
+          <label className={styles.connectionField}>
+            <span>Network</span>
+            <select value={externalForm.networkChoice} onChange={(event) => setExternalForm((current) => ({ ...current, networkChoice: event.target.value as ExternalNetworkChoice }))}>
+              <option value="robinhood">Robinhood Chain</option>
+              <option value="solana">Solana</option>
+              <option value="other">Other network</option>
+            </select>
+          </label>
+          {isOther ? (
+            <label className={styles.connectionField}>
+              <span>Network name</span>
+              <input value={externalForm.networkOther} maxLength={40} placeholder="Ethereum, Base, PulseChain…" onChange={(event) => setExternalForm((current) => ({ ...current, networkOther: event.target.value }))} />
+            </label>
+          ) : null}
+          <label className={styles.connectionField}>
+            <span>Contract or mint address <em>optional</em></span>
+            <input value={externalForm.contractAddress} maxLength={120} placeholder="0x…" onChange={(event) => setExternalForm((current) => ({ ...current, contractAddress: event.target.value }))} />
+          </label>
+          <label className={styles.connectionField}>
+            <span>X handle <em>optional</em></span>
+            <input value={externalForm.xHandle} maxLength={60} placeholder="@hoodlums" onChange={(event) => setExternalForm((current) => ({ ...current, xHandle: event.target.value }))} />
+          </label>
+          <label className={styles.connectionField}>
+            <span>Telegram <em>optional</em></span>
+            <input value={externalForm.telegram} maxLength={60} placeholder="t.me/hoodlums" onChange={(event) => setExternalForm((current) => ({ ...current, telegram: event.target.value }))} />
+          </label>
+          <label className={`${styles.connectionField} ${styles.addTokenWide}`}>
+            <span>What is the token about?</span>
+            <textarea rows={3} value={externalForm.description} maxLength={600} placeholder="One or two sentences. The AI only ever states facts from here." onChange={(event) => setExternalForm((current) => ({ ...current, description: event.target.value }))} />
+          </label>
+          <label className={`${styles.connectionField} ${styles.addTokenWide}`}>
+            <span>Artwork <em>optional · PNG, JPG or WEBP up to 3 MB</em></span>
+            <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleExternalArtwork} />
+            {externalForm.artworkDataUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className={styles.addTokenArtworkPreview} src={externalForm.artworkDataUrl} alt="" />
+            ) : null}
+          </label>
+        </div>
+        <div className={styles.composerActions}>
+          <button type="button" className={styles.connectionActionPrimary} onClick={addExternalProject} disabled={externalSaving || !projectOwner}>
+            Add to Hoodlums Social
+          </button>
+          <button type="button" className={styles.connectionAction} onClick={() => setAddTokenOpen(false)}>Cancel</button>
+        </div>
+        <InlineStatus status={externalStatus} />
+      </div>
+    );
   }
 
   return (
@@ -2317,10 +2550,26 @@ export function SocialHub() {
                       </span>
                       <span>
                         <b>{project.name || "Untitled project"}</b>
-                        <small>${project.ticker || "TOKEN"} · {project.chain}</small>
+                        <small>${project.ticker || "TOKEN"} · {projectNetworkLabel(project)}{isExternalProject(project) ? " · added" : ""}</small>
                       </span>
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    className={styles.projectMenuItem}
+                    onClick={() => {
+                      setProjectMenuOpen(false);
+                      setAddTokenOpen(true);
+                    }}
+                    role="option"
+                    aria-selected={false}
+                  >
+                    <span className={styles.projectMenuMark}>+</span>
+                    <span>
+                      <b>Add an existing token</b>
+                      <small>Any network · launched anywhere</small>
+                    </span>
+                  </button>
                 </div>
               ) : null}
             </div>
@@ -2368,12 +2617,19 @@ export function SocialHub() {
         {projects.length === 0 ? (
           <section className={styles.noProject}>
             <span>NO SAVED PROJECT</span>
-            <h1>Save a token project before using Hoodlums Social.</h1>
-            <p>Your existing project picker still reads the private browser vault used by the launch studio.</p>
-            <Link href="/">Return to launch studio</Link>
+            <h1>Pick the token Hoodlums Social should run.</h1>
+            <p>Launch one in the studio, or add a token that already exists anywhere — Hoodlums Social works for any project, not only ones launched here.</p>
+            <div className={styles.noProjectActions}>
+              <Link href="/">Return to launch studio</Link>
+              <button type="button" className={styles.noProjectSecondary} onClick={() => setAddTokenOpen((current) => !current)}>
+                {addTokenOpen ? "Close" : "Add an existing token"}
+              </button>
+            </div>
+            {addTokenOpen ? renderAddTokenForm() : null}
           </section>
         ) : (
           <section className={styles.studioPanel}>
+            {addTokenOpen ? <div className={styles.addTokenPanel}>{renderAddTokenForm()}</div> : null}
             <div className={styles.tabBar}>
               <div className={styles.tabs} role="tablist" aria-label="Hoodlums Social sections">
                 {TABS.map((tab) => (
@@ -2881,7 +3137,7 @@ export function SocialHub() {
                               <span>
                                 <b>{selectedProject?.name || "Untitled project"}</b>
                                 <small>
-                                  ${projectTicker} · {selectedProject?.chain}
+                                  ${projectTicker} · {selectedProject ? projectNetworkLabel(selectedProject) : ""}
                                   {selectedProject?.contractAddress
                                     ? ` · ${shortAddress(selectedProject.contractAddress)}`
                                     : " · contract pending"}
@@ -2906,7 +3162,7 @@ export function SocialHub() {
                             <div className={styles.composerActions}>
                               <button type="button" onClick={saveDraft}>Save draft</button>
                               <button type="button" onClick={copyPost}>Copy post</button>
-                              <button type="button" onClick={downloadArtwork} disabled={!selectedProject?.heroImage}>
+                              <button type="button" onClick={downloadArtwork} disabled={!projectArtwork}>
                                 Download artwork
                               </button>
                               <button type="button" onClick={generateDraftFromSetup} disabled={draftBusy}>

@@ -20,6 +20,7 @@ import {
   checkDraftContentFilter,
   extractRepeatedPhrases,
   parseDraftResponseDetailed,
+  MAX_PROJECT_NETWORK_LABEL_LENGTH,
   resolveChainLabel,
   type DraftProject,
 } from "@/lib/server/social-draft-pipeline";
@@ -40,6 +41,7 @@ type DraftRequestBody = {
     description?: unknown;
     chain?: unknown;
     contractAddress?: unknown;
+    network?: unknown;
   };
   voiceProfile?: unknown;
   dayLabel?: unknown;
@@ -168,12 +170,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A project name and ticker are required." }, { status: 400, headers: noStoreHeaders(rateHeaders) });
   }
 
+  // An external token's own network name (a token launched anywhere, added
+  // from Hoodlums Social). Printable text only, bounded; it is stated to the
+  // model as the chain fact in place of the studio chain label.
+  const network =
+    typeof body.project?.network === "string"
+      ? body.project.network.replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim().slice(0, MAX_PROJECT_NETWORK_LABEL_LENGTH)
+      : "";
   const project: DraftProject = {
     name,
     ticker,
     description: typeof body.project?.description === "string" ? body.project.description.slice(0, 2000) : "",
     chain,
     contractAddress: typeof body.project?.contractAddress === "string" ? body.project.contractAddress.slice(0, 200) : "",
+    ...(network ? { network } : {}),
   };
   const voiceProfile = isVoiceProfile(body.voiceProfile) ? body.voiceProfile : null;
   const dayLabel = typeof body.dayLabel === "string" ? body.dayLabel.slice(0, 60) : null;
@@ -193,6 +203,7 @@ export async function POST(request: Request) {
     name: project.name,
     ticker: project.ticker,
     description: project.description,
+    network: project.network,
     directionBrief,
     theme,
   });
@@ -325,7 +336,7 @@ export async function POST(request: Request) {
     directionBrief,
     bannedPhrases,
     project: { name: project.name, ticker: project.ticker },
-    chainLabel: resolveChainLabel(project.chain),
+    chainLabel: resolveChainLabel(project.chain, project.network),
     recentDrafts,
     recentTelegramDrafts,
     wordsToAvoid,

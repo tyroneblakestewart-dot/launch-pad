@@ -13,7 +13,7 @@ import {
   type Hash,
 } from "viem";
 import { ROBINHOOD_TESTNET } from "@/lib/chains";
-import { readProjectIndex } from "@/lib/token-project-storage";
+import { isExternalProject, readProjectIndex } from "@/lib/token-project-storage";
 import type { TokenProject } from "@/lib/types";
 import { useProjectOwner } from "@/lib/use-project-owner";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
@@ -172,7 +172,7 @@ export function TokenAllocationDesk({
   useEffect(() => {
     try {
       const parsed = readProjectIndex(projectOwner) as TokenProject[];
-      const deployed = parsed.filter((project) => project.chain === "robinhood" && isAddress(project.contractAddress));
+      const deployed = parsed.filter((project) => project.chain === "robinhood" && !isExternalProject(project) && isAddress(project.contractAddress));
       setProjects(deployed);
       if (deployed[0]) {
         setSelectedProjectId(deployed[0].id);

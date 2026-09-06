@@ -47,7 +47,8 @@ describe("Social Studio Buy Bot card", () => {
 
   it("matches the selected project's bot by contract address on Robinhood only, and explains exactly why the action is unavailable", async () => {
     const hub = await source("components", "social-hub.tsx");
-    expect(hub).toContain('if (!contract || selectedProject?.chain !== "robinhood") return null;');
+    // Tokens added from Hoodlums Social (launched anywhere, 6 Sep 2026) never match a Buy Bot, even with a Robinhood-shaped address.
+    expect(hub).toContain('if (!contract || selectedProject?.chain !== "robinhood" || isExternalSelected) return null;');
     expect(hub).toContain("bot.tokenAddress.toLowerCase() === contract && bot.chainId === ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL");
     expect(hub).toContain('"Launch this token on Robinhood Chain Testnet first — the Buy Bot watches its curve."');
     expect(hub).toContain("title={buyBotUnavailableReason ?? undefined}");

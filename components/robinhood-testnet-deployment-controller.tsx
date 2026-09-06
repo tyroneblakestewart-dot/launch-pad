@@ -34,7 +34,7 @@ import {
 import { describeWalletMismatch } from "@/lib/social-studio-queue";
 import { captureTokenArtworkThumbnail } from "@/lib/token-artwork-thumbnail";
 import { notifyTokenLaunchCompleted } from "@/lib/token-launch-events";
-import { readProjectIndex, writeProjectIndex } from "@/lib/token-project-storage";
+import { isExternalProject, readProjectIndex, writeProjectIndex } from "@/lib/token-project-storage";
 import type { TokenProject } from "@/lib/types";
 import styles from "./robinhood-testnet-deployment-controller.module.css";
 
@@ -101,7 +101,7 @@ function normaliseChainId(value: unknown): string {
 // another wallet's saved projects.
 function readPreparedProject(): TokenProject | null {
   const projects = readProjectIndex() as TokenProject[];
-  return projects.find((item) => item.chain === "robinhood") || null;
+  return projects.find((item) => item.chain === "robinhood" && !isExternalProject(item)) || null;
 }
 
 function updateStoredProject(project: TokenProject, contractAddress: string) {

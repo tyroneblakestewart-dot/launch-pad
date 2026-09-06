@@ -9,6 +9,7 @@ import {
   type ProjectSaveResultDetail,
 } from "@/lib/project-save-result";
 import {
+  isExternalProject,
   readProjectIndex,
   readUnassignedProjectIndex,
   writeProjectIndex,
@@ -163,8 +164,10 @@ export function TokenStudioWorkspace() {
     // A wallet with nothing of its own sees the empty state — never a hint
     // that unassigned drafts exist; those are attached from the no-wallet vault.
     const savedLaunches = readProjectIndex();
+    // Tokens added from Hoodlums Social (launched elsewhere) never open here.
+    const launchProjects = savedLaunches.filter((entry) => !isExternalProject(entry));
 
-    if (savedLaunches.length === 0) {
+    if (launchProjects.length === 0) {
       setPendingAction(null);
       setShowEmptySavedLaunches(true);
       setIsOpen(true);
