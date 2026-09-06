@@ -53,7 +53,6 @@ function environment(usdtEnabled = false): Record<string, string | undefined> {
     HOODLUMS_PAYMENT_CHAIN_NAME: "Robinhood Chain",
     HOODLUMS_PAYMENT_EXPLORER_URL: "https://robinhoodchain.blockscout.com",
     HOODLUMS_PAYMENT_TOKENS_JSON: tokenJson(usdtEnabled),
-    HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI: "1000000000000000",
   };
 }
 

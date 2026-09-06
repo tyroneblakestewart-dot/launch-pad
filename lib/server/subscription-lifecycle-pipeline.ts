@@ -75,7 +75,6 @@ function configurationStage(
     "CRON_SECRET",
     "HOODLUMS_TREASURY_ADDRESS",
     "HOODLUMS_PAYMENT_RPC_URL",
-    "HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI",
   ];
   const missingRequired = required.filter(
     (name) => !(environment[name] || "").trim(),
@@ -115,7 +114,7 @@ function configurationStage(
   const missingTelegram = telegram.filter(
     (name) => !(environment[name] || "").trim(),
   );
-  const paymentSummary = `Bond + Pro Site native payment and ${enabledTokens.join(", ")} stablecoin payments`;
+  const paymentSummary = `${enabledTokens.join(", ")} stablecoin payments (Bond + Pro Site one-off and subscriptions)`;
   const disabledSummary = disabledTokens.length
     ? ` Disabled token(s): ${disabledTokens.join(", ")}.`
     : "";

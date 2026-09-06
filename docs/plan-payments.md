@@ -89,8 +89,8 @@ HOODLUMS_PAYMENT_ALLOWED_ORIGINS=
 # to request a REAL wallet payment after its preflight passes.
 HOODLUMS_PAYMENT_ALLOW_VERCEL_PREVIEWS=false
 
-# Bond + Pro Site only: exact one-off ETH price in wei.
-HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI=...
+# Bond + Pro Site ($15 one-off) is paid in the enabled stablecoin, priced from
+# the USD catalog — no native-ETH amount (owner decision, 6 Sep 2026).
 ```
 
 ## Payment origin safety

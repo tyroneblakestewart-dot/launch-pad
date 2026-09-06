@@ -32,7 +32,6 @@ function environment(overrides: Record<string, string | undefined> = {}) {
     CRON_SECRET: "cron-secret",
     HOODLUMS_TREASURY_ADDRESS: "0x1111111111111111111111111111111111111111",
     HOODLUMS_PAYMENT_RPC_URL: "https://rpc.mainnet.chain.robinhood.com",
-    HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI: "1",
     HOODLUMS_PAYMENT_TOKENS_JSON: PAYMENT_TOKENS,
     TELEGRAM_BOT_TOKEN: "123456:abcdefghijklmnopqrstuvwxyzABCDE",
     TELEGRAM_BOT_USERNAME: "HoodlumsBot",
@@ -121,7 +120,7 @@ describe("Subscribers and renewals System Health pipeline", () => {
     expect(pipeline.label).toBe("Plan payments, subscribers and renewals");
     const configuration = pipeline.stages.find((item) => item.id === "lifecycle-configuration");
     expect(configuration).toMatchObject({ status: "green" });
-    expect(configuration?.message).toContain("Bond + Pro Site native payment");
+    expect(configuration?.message).toContain("stablecoin payments (Bond + Pro Site one-off and subscriptions)");
     expect(configuration?.message).toContain("USDG stablecoin payments");
     expect(configuration?.message).toContain("Disabled token(s): USDT");
     expect(pipeline.stages.find((item) => item.id === "lifecycle-tables")).toMatchObject({
@@ -151,7 +150,9 @@ describe("Subscribers and renewals System Health pipeline", () => {
     expect(configuration?.message).toContain("CRON_SECRET");
   });
 
-  it("fails health when the Bond + Pro Site native amount is missing", async () => {
+  // Rule 8, stated plainly: this required HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI;
+  // the one-off is a stablecoin payment now, so no native amount is checked.
+  it("does not require a Bond + Pro Site native amount and names the one-off in the summary", async () => {
     const pipeline = await buildSubscriptionLifecyclePipeline({
       databaseUrl: "postgres://example",
       environment: environment({ HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI: undefined }),
@@ -160,8 +161,9 @@ describe("Subscribers and renewals System Health pipeline", () => {
     });
 
     const configuration = pipeline.stages.find((item) => item.id === "lifecycle-configuration");
-    expect(configuration).toMatchObject({ status: "red" });
-    expect(configuration?.message).toContain("HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI");
+    expect(configuration?.status).not.toBe("red");
+    expect(configuration?.message).toContain("stablecoin payments (Bond + Pro Site one-off and subscriptions)");
+    expect(configuration?.message).not.toContain("HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI");
   });
 
   it("fails health when the stablecoin catalog has no enabled token", async () => {

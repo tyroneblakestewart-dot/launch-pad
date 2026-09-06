@@ -20,9 +20,8 @@ afterEach(() => {
 });
 
 describe("Bond + Pro Site quote configuration", () => {
-  it("returns a friendly not-configured response when the native amount is missing", async () => {
+  it("returns a friendly not-configured response when no stablecoin catalog is configured", async () => {
     configuredBaseEnvironment();
-    delete process.env.HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI;
     vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const response = await GET(
@@ -40,7 +39,6 @@ describe("Bond + Pro Site quote configuration", () => {
 
   it("fails closed before returning a quote when payment persistence is unavailable", async () => {
     configuredBaseEnvironment();
-    process.env.HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI = "1";
     delete process.env.DATABASE_URL;
     vi.spyOn(console, "error").mockImplementation(() => undefined);
 
