@@ -3,8 +3,10 @@ import { AI_FEATURE_KEYS } from "@/lib/ai-feature-keys";
 import {
   SOCIAL_MASCOT_IMAGE_LIMIT,
   consumeSocialMascotImageRateLimit,
+  consumeSocialStudioReadRateLimit,
   getClientIp,
   isGenerateSiteStyleRequestAuthorised,
+  isGenerateSiteStyleSecretPresented,
 } from "@/lib/server/api-protection";
 import { getVercelOidcToken, resolveAIResponsesRuntime } from "@/lib/server/ai-responses-runtime";
 import { recordImageOperationCostBestEffort, runAfterResponse, type AiOperationAccessSource } from "@/lib/server/ai-operation-cost-store";
@@ -60,9 +62,19 @@ function allowanceProjectKey(projectId: unknown): string {
  */
 export async function GET(request: Request) {
   const sharedSecret = process.env.GENERATE_SITE_STYLE_SHARED_SECRET || "";
-  const allowedOrigin = process.env.GENERATE_SITE_STYLE_ALLOWED_ORIGIN || "https://hoodlums.dev";
-  if (sharedSecret && !isGenerateSiteStyleRequestAuthorised(request, sharedSecret, allowedOrigin)) {
+  // Secret header only, no Origin check: browsers omit Origin on same-page
+  // GET fetches, so requiring it 401'd every real read of the allowance
+  // (6 Sep 2026: no "AI images" pill, no picks, no images). The paid POST
+  // below keeps the full check.
+  if (sharedSecret && !isGenerateSiteStyleSecretPresented(request, sharedSecret)) {
     return NextResponse.json({ error: "Unauthorised mascot-image usage request." }, { status: 401, headers: noStoreHeaders() });
+  }
+  const rate = consumeSocialStudioReadRateLimit(getClientIp(request));
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again later." },
+      { status: 429, headers: noStoreHeaders({ "Retry-After": String(rate.retryAfterSeconds) }) },
+    );
   }
   const url = new URL(request.url);
   const walletAddress = (url.searchParams.get("walletAddress") || "").trim();

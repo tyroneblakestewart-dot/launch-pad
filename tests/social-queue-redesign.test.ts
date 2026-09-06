@@ -41,14 +41,14 @@ describe("Queue tab layout (source pins)", () => {
     expect(hub).not.toMatch(/autopilot/i);
   });
 
-  it("renders each waiting draft as a slim row with a destination tag, Approve and an expand toggle; the editors, toggles, schedule and action row only when expanded", async () => {
+  it("renders each waiting draft as a slim row with a destination tag, Approve and an expand toggle; the editors, schedule and action row only when expanded", async () => {
     const hub = await source("components", "social-hub.tsx");
     const queue = hub.slice(hub.indexOf('{activeTab === "queue" ? ('), hub.indexOf('{activeTab === "rules" ? ('));
     expect(queue).toContain("<span className={styles.eyebrow}>WAITING FOR YOU</span>");
     expect(queue).toContain("<span className={styles.queueCountBadge}>{queue.length}</span>");
-    expect(queue).toContain('selectedDestinations.length === 2 ? "Both" : selectedDestinations.length === 1 ? platformLabel(selectedDestinations[0]) : "Pick where"');
+    expect(queue).toContain('destinations.length === 2 ? "Both" : destinations.length === 1 ? platformLabel(destinations[0]) : "Nowhere yet"');
     expect(queue).toContain("<article className={isExpanded ? styles.queueItemExpanded : styles.queueItem} key={item.id}>");
-    // Row-level Approve is the same handler as before (auto-expands into the confirm step), only shown while collapsed.
+    // Row-level Approve is the same one-tap handler as the card's, only shown while collapsed.
     const rowActions = queue.slice(queue.indexOf("<div className={styles.queueRowActions}>"), queue.indexOf("<div className={styles.queueRowActions}>") + 1800);
     expect(rowActions).toContain("{!isExpanded ? (");
     expect(rowActions).toContain("onClick={() => handleApproveClick(item)}");
@@ -57,7 +57,8 @@ describe("Queue tab layout (source pins)", () => {
     expect(queue).toContain("{!isExpanded ? (\n                                  <button\n                                    type=\"button\"\n                                    className={styles.queuePreview}");
     expect(queue).toContain("{isExpanded ? (\n                              <div className={styles.queueItemBody}>");
     // Everything wired survives inside the expanded body.
-    for (const kept of ["updateQueueItem(item.id, { xText: event.target.value })", "toggleItemDestination(item.id, platform)", "className={styles.scheduleCompact}", "className={styles.confirmPanel}", "className={styles.queueItemActions}", 'handleQuickSendClick(item, "x")', 'handleQuickSendClick(item, "telegram")', "removeQueueItem(item.id)"]) {
+    // Destination toggles are gone (one-tap approvals, 6 Sep 2026): destinations derive from the connected platforms whose field has text.
+    for (const kept of ["updateQueueItem(item.id, { xText: event.target.value })", "approvalDestinations(item, myConnectedPlatforms)", "className={styles.scheduleCompact}", "className={styles.confirmPanel}", "className={styles.queueItemActions}", 'handleQuickSendClick(item, "x")', 'handleQuickSendClick(item, "telegram")', "removeQueueItem(item.id)"]) {
       expect(queue, kept).toContain(kept);
     }
   });

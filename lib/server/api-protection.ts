@@ -203,6 +203,18 @@ export function isGenerateSiteStyleRequestAuthorised(
   );
 }
 
+/**
+ * The shared-secret header alone, for same-page GET reads. Browsers omit the
+ * Origin header on same-origin GET fetches, so the full
+ * isGenerateSiteStyleRequestAuthorised check (which requires one) rejects
+ * every legitimate read — the mascot-image allowance GET failed exactly that
+ * way live (6 Sep 2026). Writes and paid calls keep the full check.
+ */
+export function isGenerateSiteStyleSecretPresented(request: Request, sharedSecret: string): boolean {
+  const suppliedSecret = request.headers.get(GENERATE_SITE_STYLE_HEADER) || "";
+  return Boolean(sharedSecret && safeEqual(suppliedSecret, sharedSecret));
+}
+
 function consumeRateLimit(store: RateStore, ip: string, limit: number, windowMs: number, now: number) {
   const current = store.get(ip);
   const record = !current || current.resetAt <= now

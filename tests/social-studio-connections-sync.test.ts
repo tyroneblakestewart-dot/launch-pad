@@ -93,7 +93,8 @@ describe("Queue connection state sync and resilience (issue #384)", () => {
   it("the Queue's fallback message only renders after a successful empty fetch, and shows a retry state on failure instead", async () => {
     const social = await source("components", "social-hub.tsx");
 
-    const fallbackIndex = social.indexOf("myConnectedPlatforms.length > 0 ? (");
+    // One-tap approvals (6 Sep 2026) removed the destination toggles, so the helper block is now gated on "no connected platforms".
+    const fallbackIndex = social.indexOf("myConnectedPlatforms.length === 0 ? (");
     expect(fallbackIndex).toBeGreaterThan(-1);
     const block = social.slice(fallbackIndex, fallbackIndex + 3000);
     expect(block).toContain('connectionsStatus === "error" ? (');

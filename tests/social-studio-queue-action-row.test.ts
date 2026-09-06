@@ -48,15 +48,13 @@ describe("Queue tab draft-card action row (issue #356)", () => {
     expect(actionsBlock).toContain("className={styles.queueActionSecondary}");
     expect(actionsBlock).toContain("className={styles.queueActionDelete}");
 
-    // Approve is still primary and still disabled with no destination selected, mid-request,
-    // (issue #380) pending an unedited-template acknowledgement, or (6 Sep 2026) while the AI
-    // image for this post is still being made — confirming then would send without it.
-    expect(actionsBlock).toContain(
-      "disabled={approvingItemId === item.id || selectedDestinations.length === 0 || requiresTemplateAck || postImageBusyId === item.id}",
-    );
-    expect(actionsBlock).toContain(
-      '{approvingItemId === item.id ? "Approving…" : postImageBusyId === item.id ? "Making the image…" : isPendingApproval ? "Confirm & approve" : "Approve"}',
-    );
+    // Approve is still primary and still disabled with nowhere to send, mid-request, or pending an
+    // unedited-template acknowledgement (one-tap approvals, 6 Sep 2026: the shared approveDisabled /
+    // approveLabel are computed once per card and used by both the row and the card button).
+    expect(actionsBlock).toContain("disabled={approveDisabled}");
+    expect(actionsBlock).toContain("{approveLabel}");
+    expect(social).toContain("const approveDisabled = isApproving || destinations.length === 0 || requiresTemplateAck;");
+    expect(social).toContain('const approveLabel = isApproving ? (postImageBusyId === item.id ? "Making the image…" : "Approving…") : "Approve";');
 
     // Post to X / Send to Telegram keep their brand marks inline beside the label, but are now a
     // two-tap quick-send confirm step through handleQuickSendClick, same pattern as Approve (issue #382).

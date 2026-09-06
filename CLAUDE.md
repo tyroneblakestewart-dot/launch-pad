@@ -2401,3 +2401,62 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   "Making the image…" label; nothing else was re-pinned. Checked in
   headless Chromium at 1400px and 390px with mocked draft/image routes —
   not on a physical iPhone; the owner confirms on device.
+
+- Queue approvals: one tap, one signature a day, slimmer cards, times never
+  in the past — and the reason no image was ever made (owner first-pass on the
+  live Queue tab, 6 Sep 2026). **The image bug:** `GET /api/social/mascot/image`
+  (PR #500's allowance read) reused the paid POST routes'
+  `isGenerateSiteStyleRequestAuthorised`, which requires an `Origin` header —
+  and browsers omit `Origin` on same-origin GET fetches, so every real read
+  401'd, the allowance stayed unknown, nothing was ever picked and no image
+  was ever requested (the posts route's own GET already documents this trap).
+  A new `isGenerateSiteStyleSecretPresented` (secret header only) guards that
+  GET, with the read rate limiter; the paid POSTs keep the full check.
+  **One tap:** issue #380's two-tap confirm is removed for Approve (kept for
+  quick-send, which publishes immediately) — `handleApproveClick` calls
+  `approveQueueItem` directly from the row or the card. **One signature a
+  day:** a wallet-signed `social:approval-session` grant
+  (`POST /api/social/approval-session`, purpose added to
+  `SOCIAL_STUDIO_ACTION_PURPOSES`) stores a token hash in a new
+  `social_approval_sessions` table (migration 034) and sets a 24h httpOnly
+  cookie; `POST /api/social/posts` accepts that cookie in place of the
+  per-post signature, only for the wallet it was signed by (the body names
+  the wallet; a mismatch is a 403, no cookie and no signature a 401 with
+  `approval-session-required`), and the session authorises nothing else.
+  The client's `ensureApprovalSession` signs once, then approves without
+  prompts; it falls back to per-post signing when the route 503s (table not
+  yet migrated), so approvals never break before 034 is applied. The header
+  shows "Approvals unlocked until … · Lock" or "First approval today asks
+  for one wallet signature". `GET`/`DELETE` on the same route read and
+  revoke. **Slimmer card:** the destination toggles are gone — destinations
+  derive from the connected platforms whose field carries text
+  (`approvalDestinations`, pure, `lib/social-studio-queue.ts`); the
+  Scheduled picker moved into the #356 action row. **Times:** the schedule is
+  decided at approval (the user's own pick, else the cadence spread from what
+  is pending now) and clamped by `ensureFutureScheduledAt` to at least two
+  minutes from now. **Images at approval:** with no confirm step the image is
+  made inside the one-tap approval (`generatePostImageForApproval`, with a
+  "Skip the image" button while it runs, resolved through a `Promise.race`) and
+  posted with the post; a "No image" link on a picked row declines before
+  anything is made, so the pick moves on at no cost; the made image is
+  visible in Coming up, and removing it after approval means cancelling the
+  post. **Rule 10:** `social-posting` gains an `approval-sessions` health
+  stage (amber until 034 is applied, since approvals still work by
+  signature) and two Activity kinds (`social-approvals-unlocked`/`-locked`,
+  wallet only); the route is in the service definition and inventory.
+  **Tests changed rather than only added (rule 8, stated plainly):** the
+  #380 approval-confirmation pins on the two-tap flow (five cases), the #356
+  action-row pin on the Confirm button's disabled expression/label, the
+  Queue-redesign pins on `toggleItemDestination` and the "Pick where" tag,
+  the #384 connections-sync anchor (`myConnectedPlatforms.length > 0` →
+  `=== 0`), and four of #516's own hub pins (confirm-step image row,
+  `attachPostImage`/`removePostImage`) were rewritten to the one-tap
+  contract. New `tests/social-approval-session.test.ts` covers the store,
+  the route (cookie, wallet binding, lock, wrong purpose, 503 without the
+  table), the posts route's session path and unchanged signature path, the
+  no-Origin allowance read, the pure helpers, the migration and the health
+  stage. Checked in headless Chromium at 1400px and 390px with a fake
+  injected wallet (one signature for two approvals, image made and posted,
+  schedule in the future) — not on a physical iPhone. Owner: run migration
+  034 in Supabase before merging; without it approvals still work, one
+  signature per post.

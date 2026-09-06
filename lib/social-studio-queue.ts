@@ -98,6 +98,27 @@ export function computeDefaultScheduledAt(
   return new Date(latestMs > nowMs ? latestMs + spreadHoursMs : nowMs);
 }
 
+/**
+ * Where a one-tap approval goes (owner direction, 6 Sep 2026: no destination
+ * toggles — the X and Telegram fields already say it): every connected
+ * platform whose field carries text. An empty field means "not this one".
+ */
+export function approvalDestinations(
+  item: { xText: string; telegramText: string },
+  connected: readonly SocialPlatform[],
+): SocialPlatform[] {
+  return connected.filter((platform) => (platform === "x" ? item.xText : item.telegramText).trim().length > 0);
+}
+
+/** A post approved at 17:41 must never be scheduled for 17:40 (owner report, 6 Sep 2026): anything earlier than now + lead is moved to now + lead. */
+export const MIN_SCHEDULE_LEAD_MS = 2 * 60 * 1000;
+
+export function ensureFutureScheduledAt(candidate: Date, now: Date, minLeadMs = MIN_SCHEDULE_LEAD_MS): Date {
+  const floor = now.getTime() + minLeadMs;
+  const value = candidate.getTime();
+  return Number.isFinite(value) && value >= floor ? candidate : new Date(floor);
+}
+
 /** The free X intent-composer URL used for both the existing manual queue and #344's needs_composer hand-off. */
 export function buildXIntentUrl(text: string): string {
   return `https://x.com/intent/post?text=${encodeURIComponent(text)}`;

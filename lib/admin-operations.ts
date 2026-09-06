@@ -58,7 +58,7 @@ export const ADMIN_SERVICE_DEFINITIONS = [
     description:
       "Review-and-release X/Telegram connections and the approve-first scheduled-post queue (Mode 1). Ships dormant until the owner configures the X app and/or Telegram bot.",
     affectedRoutes:
-      "/api/social/challenge, /api/social/x/connect/start, /api/social/x/connect/callback, /api/social/x/disconnect, /api/social/telegram/connect, /api/social/telegram/disconnect, /api/social/connections, /api/social/posts, /api/social/posts/cancel, /api/cron/social-posting",
+      "/api/social/challenge, /api/social/x/connect/start, /api/social/x/connect/callback, /api/social/x/disconnect, /api/social/telegram/connect, /api/social/telegram/disconnect, /api/social/connections, /api/social/posts, /api/social/posts/cancel, /api/social/approval-session, /api/cron/social-posting",
   },
   {
     key: "support",
@@ -148,7 +148,9 @@ export type AdminActivityKind =
   | "account-wallet-linked"
   | "account-wallet-unlinked"
   | "account-deleted"
-  | "social-post-image-generated";
+  | "social-post-image-generated"
+  | "social-approvals-unlocked"
+  | "social-approvals-locked";
 
 export type AdminActivityItem = {
   id: string;

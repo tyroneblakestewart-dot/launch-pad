@@ -20,6 +20,7 @@ export const SOCIAL_STUDIO_ACTION_PURPOSES = [
   "social:buy-bot-enable",
   "social:buy-bot-update",
   "social:buy-bot-disable",
+  "social:approval-session",
 ] as const;
 
 export type SocialStudioActionPurpose = (typeof SOCIAL_STUDIO_ACTION_PURPOSES)[number];

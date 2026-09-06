@@ -955,6 +955,8 @@ function socialPostingEncryptionStage(env: Record<string, string | undefined>): 
   );
 }
 
+const APPROVAL_SESSIONS_LABEL = "Approval sessions (social_approval_sessions)";
+
 export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps = {}): Promise<AdminServicePipeline> {
   const env = deps.env ?? process.env;
   const getServiceControl =
@@ -986,6 +988,7 @@ export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps
         stage("table-exists", "social_scheduled_posts table exists", "amber", message),
         stage("cron-heartbeat", "Social-posting cron freshness", "amber", message),
         stage("queue-counts", "Post counts (scheduled/sent/partially_sent/failed/canceled)", "amber", message),
+        stage("approval-sessions", APPROVAL_SESSIONS_LABEL, "amber", message),
       ],
     };
   }
@@ -1122,6 +1125,44 @@ export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps
     }
   }
 
+  // One-signature-a-day approvals (owner direction, 6 Sep 2026). Amber, not
+  // red, when the table is missing: approvals still work, they just ask for a
+  // signature per post until migration 034 is applied.
+  let approvalSessionsStage: AdminPipelineStage;
+  try {
+    const exists = await withTimeout(
+      pool.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'social_approval_sessions'`,
+      ),
+      HEALTH_CHECK_TIMEOUT_MS,
+      "timed out",
+    );
+    if (exists.rows.length === 0) {
+      approvalSessionsStage = stage(
+        "approval-sessions",
+        APPROVAL_SESSIONS_LABEL,
+        "amber",
+        "Migration 034_social_approval_sessions.sql has not been applied; every approval asks for a wallet signature until it is.",
+      );
+    } else {
+      const active = await withTimeout(
+        pool.query<{ count: string | number }>(
+          `SELECT COUNT(*)::int AS count FROM social_approval_sessions WHERE revoked_at IS NULL AND expires_at > NOW()`,
+        ),
+        HEALTH_CHECK_TIMEOUT_MS,
+        "timed out",
+      );
+      approvalSessionsStage = stage(
+        "approval-sessions",
+        APPROVAL_SESSIONS_LABEL,
+        "green",
+        `${Number(active.rows[0]?.count ?? 0)} wallet(s) currently have approvals unlocked (24h per signature; approving posts only).`,
+      );
+    }
+  } catch {
+    approvalSessionsStage = stage("approval-sessions", APPROVAL_SESSIONS_LABEL, "red", "Could not read the approval-sessions table.");
+  }
+
   return {
     id: "social-posting",
     label: "Social Studio posting",
@@ -1134,6 +1175,7 @@ export async function buildSocialPostingPipeline(deps: SocialPostingPipelineDeps
       heartbeatStage,
       queueCountsStage,
       costCapStage,
+      approvalSessionsStage,
     ],
   };
 }
