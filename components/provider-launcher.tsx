@@ -11,7 +11,7 @@ import {
   type Hash,
 } from "viem";
 import { ROBINHOOD_MAINNET } from "@/lib/chains";
-import { readProjectIndex, writeProjectIndex } from "@/lib/token-project-storage";
+import { isExternalProject, readProjectIndex, writeProjectIndex } from "@/lib/token-project-storage";
 import type { TokenProject } from "@/lib/types";
 import { useProjectOwner } from "@/lib/use-project-owner";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
@@ -129,7 +129,7 @@ export function ProviderLauncher({
   useEffect(() => {
     try {
       const parsed = readProjectIndex(projectOwner) as TokenProject[];
-      const robinhoodProjects = parsed.filter((item) => item.chain === "robinhood");
+      const robinhoodProjects = parsed.filter((item) => item.chain === "robinhood" && !isExternalProject(item));
       setProjects(robinhoodProjects);
       if (robinhoodProjects[0]) {
         loadProject(robinhoodProjects[0], robinhoodProjects);
@@ -478,7 +478,7 @@ export function ProviderLauncher({
         : item,
     );
     writeProjectIndex(updated);
-    setProjects(updated.filter((item) => item.chain === "robinhood"));
+    setProjects(updated.filter((item) => item.chain === "robinhood" && !isExternalProject(item)));
   }
 
   async function handleArtwork(event: ChangeEvent<HTMLInputElement>) {

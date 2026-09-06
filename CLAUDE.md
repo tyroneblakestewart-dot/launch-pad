@@ -2228,3 +2228,48 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   drafts, including the arm → confirm → attached round trip — not on a
   physical iPhone; the owner confirms on device by switching wallets in the
   Account panel and opening Saved launches.
+
+- Hoodlums Social works for tokens launched anywhere (owner direction, 6 Sep
+  2026: "this sub should work with anyone that has a project they want
+  Hoodlums to handle their socials for"). `/social` used to gate on a project
+  saved from the launch studio. It now offers **Add an existing token** — from
+  the empty state (beside the studio link) and as the last item in the project
+  picker — a small form (name, ticker, network as Robinhood Chain / Solana /
+  Other with a free-text network name, optional contract or mint address,
+  description, optional X and Telegram, optional artwork up to 3 MB) that
+  saves a `TokenProject` into the confirmed wallet's own vault via
+  `saveProjectToStorage(project, readProjectIndex(owner), owner)` and selects
+  it. It requires a confirmed wallet (the project must land in that wallet's
+  partition and nowhere else) and never calls a server — it is a browser-vault
+  write. `TokenProject` gains two optional fields: `origin: "external"` marks a
+  token not created in the studio, and `network` holds its real network name
+  when it is on a chain the studio does not launch to; `chain` then holds the
+  closest base type as a placeholder only. `lib/token-project-storage.ts`
+  gains `isExternalProject` and `projectNetworkLabel`. External projects are
+  **Social-only**: the studio vault (`launchProjects`, while `projects` stays
+  the full index so saves never drop them), the workspace's Saved launches
+  count, the provider transfer and launch desk, the allocation desk and the
+  studio launch modal all filter them out — there is nothing to launch,
+  transfer, allocate or watch on a curve. In Social Studio the Buy Bot card
+  and on-chain stats stay limited to Hoodlums launches (`isExternalSelected`),
+  with a plain reason. The stated chain fact reaches the AI truthfully:
+  `DraftProject.network` is accepted by `POST /api/social/draft` (control
+  characters stripped, whitespace collapsed, capped at
+  `MAX_PROJECT_NETWORK_LABEL_LENGTH` = 60, screened by the content filter with
+  the other inputs) and `resolveChainLabel(chain, network)` prefers it over the
+  studio label everywhere the pipeline names the chain; the hub's manual
+  templates and picker use `projectNetworkLabel` the same way. **Companion fix,
+  stated plainly:** since issue #307 moved `heroImage` out of the localStorage
+  index, Social Studio had been reading `selectedProject.heroImage` from index
+  entries that no longer carry it, so studio projects showed no artwork and
+  Telegram posts attached none; the hub now loads the selected project's
+  artwork from IndexedDB (`getProjectBlob`) into `projectArtwork`, with the
+  inline value as the legacy fallback — this is what makes the new form's
+  artwork field (and every studio project's artwork) actually appear on
+  posts. Rule 10 needs nothing (no new page, route or integration; the draft
+  route only gained an optional field). Checked in headless Chromium at
+  1400px and 390px (empty state with the form open, picker entry, a saved
+  external token selected) — not on a physical iPhone; the owner confirms on
+  device. Not built: editing or removing an external token from Social
+  Studio (it can be removed from nowhere else either, since the studio vault
+  hides it) — a named follow-up.

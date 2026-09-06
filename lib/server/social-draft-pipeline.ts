@@ -21,6 +21,8 @@ export type DraftProject = {
   description: string;
   chain: "solana" | "robinhood";
   contractAddress: string;
+  /** An external token's own network name (Hoodlums Social for tokens launched anywhere, 6 Sep 2026); wins over `chain` for the stated chain fact. */
+  network?: string;
 };
 
 const DRAFT_SCHEMA = {
@@ -558,7 +560,11 @@ function allowedFactsLedgerInstruction(
 }
 
 /** Shared X/prompt chain label for a project — also used to protect the chain name from the short-signature-phrase ban below. */
-export function resolveChainLabel(chain: DraftProject["chain"]): string {
+export const MAX_PROJECT_NETWORK_LABEL_LENGTH = 60;
+
+export function resolveChainLabel(chain: DraftProject["chain"], network?: string | null): string {
+  const label = network?.replace(/\s+/g, " ").trim().slice(0, MAX_PROJECT_NETWORK_LABEL_LENGTH);
+  if (label) return label;
   return chain === "robinhood" ? "Robinhood Chain" : "Solana";
 }
 
@@ -600,7 +606,7 @@ export function buildDraftRequestBody(
   // be drawn from the same combined history or the prompt and the mechanical
   // check would disagree about what's already been said.
   const allRecentDraftsForPhraseExtraction = [...recentDrafts, ...recentTelegramDrafts];
-  const chain = resolveChainLabel(input.project.chain);
+  const chain = resolveChainLabel(input.project.chain, input.project.network);
   const angle = resolveDraftAngle(input.theme, input.angleIndex, Boolean(input.directionBrief?.trim()));
   const themeLine = input.theme?.trim() ? `Theme for this post: ${input.theme.trim()}.` : "";
   const dayLine = input.dayLabel?.trim() ? `This post is scheduled for ${input.dayLabel.trim()}.` : "";

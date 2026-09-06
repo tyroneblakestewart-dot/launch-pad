@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { TokenProject } from "@/lib/types";
-import { readProjectIndex, writeProjectIndex } from "@/lib/token-project-storage";
+import { isExternalProject, readProjectIndex, writeProjectIndex } from "@/lib/token-project-storage";
 
 
 function readField(panel: Element, labelText: string): string {
@@ -38,6 +38,7 @@ function getCurrentStudioProject(): TokenProject | null {
   const existing = existingProjects.find(
     (item) =>
       item.chain === "robinhood" &&
+      !isExternalProject(item) &&
       item.ticker.toUpperCase() === ticker &&
       item.websiteSlug === websiteSlug,
   );

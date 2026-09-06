@@ -352,7 +352,7 @@ describe("the studio's wallet-switch contract", () => {
     const block = workspace.slice(workspace.indexOf("function openSavedLaunches"), workspace.indexOf("function saveAndClose"));
     expect(block).toContain("const savedLaunches = readProjectIndex();");
     // A wallet with nothing of its own gets the plain empty state — never a hint that unassigned drafts exist.
-    expect(block).toContain("if (savedLaunches.length === 0) {");
+    expect(block).toContain("if (launchProjects.length === 0) {");
     expect(block).not.toContain("readUnassignedProjectIndex");
     const controller = await source("components", "robinhood-testnet-deployment-controller.tsx");
     expect(controller).toContain("const projects = readProjectIndex() as TokenProject[];");

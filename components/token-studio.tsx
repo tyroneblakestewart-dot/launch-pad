@@ -27,6 +27,7 @@ import {
   migrateLegacySavedProjects,
   moveUnassignedProjects,
   projectIndexStorageKey,
+  isExternalProject,
   readProjectIndex,
   writeProjectIndex,
   type SavedProjectIndexEntry,
@@ -191,6 +192,9 @@ export function TokenStudio() {
   const owner = useProjectOwner();
   const previousOwnerRef = useRef<string | null | undefined>(undefined);
   const [attachArmed, setAttachArmed] = useState(false);
+  // Tokens added from Hoodlums Social (launched elsewhere) share the vault but
+  // are Social-only; `projects` stays the full index so saves never drop them.
+  const launchProjects = projects.filter((entry) => !isExternalProject(entry));
   const [wallet, setWallet] = useState<WalletState | null>(null);
   // Empty until something happens; the notice bar only renders with a message.
   const [notice, setNotice] = useState("");
@@ -937,11 +941,11 @@ export function TokenStudio() {
                 )}
               </div>
             ) : null}
-            {projects.length === 0 ? (
+            {launchProjects.length === 0 ? (
               <div className="empty-state">{owner ? "No saved projects for this wallet yet." : "No saved projects yet."}</div>
             ) : (
               <div className="project-list">
-                {projects.map((saved) => (
+                {launchProjects.map((saved) => (
                   <article key={saved.id}>
                     <button className="project-main" onClick={() => loadProject(saved)}>
                       <span className={`chain-dot ${saved.chain}`} />

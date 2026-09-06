@@ -60,6 +60,23 @@ export function writeProjectIndex(entries: readonly SavedProjectIndexEntry[], ow
   localStorage.setItem(projectIndexStorageKey(resolveOwner(owner)), serialiseSavedTokenProjects([...entries]));
 }
 
+/**
+ * A token added from Hoodlums Social rather than created in the launch
+ * studio (owner direction, 6 Sep 2026). It shares the wallet's vault but the
+ * launch tooling filters it out — it was launched elsewhere, so there is
+ * nothing here to launch, transfer, allocate or watch on a curve.
+ */
+export function isExternalProject(entry: { origin?: string | null }): boolean {
+  return entry.origin === "external";
+}
+
+/** Human-readable network for a project: an external token's own network name, else the studio chain's label. */
+export function projectNetworkLabel(project: { chain: "solana" | "robinhood"; network?: string | null }): string {
+  const network = project.network?.trim();
+  if (network) return network;
+  return project.chain === "robinhood" ? "Robinhood Chain" : "Solana";
+}
+
 /** Drafts saved with no wallet confirmed (which includes every draft saved before wallet scoping existed). */
 export function readUnassignedProjectIndex(): SavedProjectIndexEntry[] {
   return readProjectIndex(null);
