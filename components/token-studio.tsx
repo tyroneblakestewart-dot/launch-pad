@@ -210,6 +210,7 @@ export function TokenStudio() {
 
   useEffect(() => {
     let cancelled = false;
+    let settled = false;
     const previous = previousOwnerRef.current;
     previousOwnerRef.current = owner;
 
@@ -217,11 +218,13 @@ export function TokenStudio() {
     // owner's project across to the new wallet — the open project is closed.
     // Two explicit exceptions, both started from the no-wallet state: an armed
     // "Attach to a wallet" intent moves every unassigned draft to the wallet
-    // being confirmed; otherwise a no-wallet draft that is open right now
-    // moves with the person confirming a wallet while editing it.
+    // being confirmed — also on the studio's first run, so the attach survives
+    // a reload or remount between arming and confirming; otherwise a no-wallet
+    // draft that is open right now moves with the person confirming a wallet
+    // while editing it.
     function applyWalletSwitch() {
-      if (previous === undefined || previous === owner) return;
-      if (previous === null && owner && hasAttachUnassignedIntent()) {
+      if (previous === owner) return;
+      if (owner && (previous === null || previous === undefined) && hasAttachUnassignedIntent()) {
         const { moved } = moveUnassignedProjects(owner);
         clearAttachUnassignedIntent();
         setAttachArmed(false);
@@ -232,6 +235,7 @@ export function TokenStudio() {
         );
         return;
       }
+      if (previous === undefined) return;
       clearAttachUnassignedIntent();
       setAttachArmed(false);
       const open = projectRef.current;
@@ -266,6 +270,7 @@ export function TokenStudio() {
 
     queueMicrotask(() => {
       if (cancelled) return;
+      settled = true;
       try {
         applyWalletSwitch();
       } catch (error) {
@@ -280,6 +285,11 @@ export function TokenStudio() {
 
     return () => {
       cancelled = true;
+      // A run that never reached its microtask (StrictMode's mount/unmount/
+      // mount in development, or a hydration re-render) must not leave its
+      // owner behind as "previous", or the real run would see no change and
+      // skip the switch/attach logic.
+      if (!settled) previousOwnerRef.current = previous;
     };
   }, [owner]);
 
@@ -942,7 +952,14 @@ export function TokenStudio() {
               </div>
             ) : null}
             {launchProjects.length === 0 ? (
-              <div className="empty-state">{owner ? "No saved projects for this wallet yet." : "No saved projects yet."}</div>
+              <div className="empty-state">
+                {owner ? "No saved projects for this wallet yet." : "No saved projects yet."}
+                {owner ? (
+                  <small className="vault-hint">
+                    Drafts saved before a wallet was confirmed live under &ldquo;no wallet&rdquo;: Account → Change wallet or address, then reopen Saved launches to attach them.
+                  </small>
+                ) : null}
+              </div>
             ) : (
               <div className="project-list">
                 {launchProjects.map((saved) => (

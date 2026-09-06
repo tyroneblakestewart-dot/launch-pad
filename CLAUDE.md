@@ -2205,7 +2205,19 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   in sessionStorage (`armAttachUnassignedIntent`, this tab only), opens the
   Account panel, and the drafts move to the wallet the user then confirms —
   and to no other; a wallet confirmed without that step never sees them, and
-  Cancel or the window expiring leaves them unassigned. The single other
+  Cancel or the window expiring leaves them unassigned. The armed intent is
+  consumed on a wallet switch AND on the studio's first run with a wallet
+  confirmed, so the attach survives a reload or remount between arming and
+  confirming; because the workspace's Saved launches button shows its own
+  empty panel without mounting the studio when the wallet's partition is
+  empty, it routes into the studio instead whenever such an intent is
+  pending (`attachPending`), so the studio — the only place the move ever
+  happens — gets to consume it. Because a confirmed wallet's empty vault must not hint whether
+  unassigned drafts exist, it instead carries generic, always-shown copy
+  (`savedLaunchHint` in the workspace panel, `.vault-hint` in the studio
+  modal) saying that drafts saved before a wallet was confirmed live under
+  "no wallet" and how to get there (Account → Change wallet or address) —
+  the owner's own first pass hit exactly this dead end. The single other
   exception is the draft being edited when it was saved with no wallet: the
   user confirming a wallet while it is open moves that one draft. Switching
   to a different wallet while another wallet's project is open closes it with
@@ -2236,7 +2248,11 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   the empty state (beside the studio link) and as the last item in the project
   picker — a small form (name, ticker, network as Robinhood Chain / Solana /
   Other with a free-text network name, optional contract or mint address,
-  description, optional X and Telegram, optional artwork up to 3 MB) that
+  description, optional X and Telegram taken as bare usernames — no "@", no
+  "t.me/"; `bareXHandle`/`bareTelegramHandle` strip any pasted prefix or URL
+  on save, and the existing `cleanHandle`/`cleanTelegram` add the prefix back
+  when a post needs it (owner direction: "remove prefix handles") — and
+  optional artwork up to 3 MB) that
   saves a `TokenProject` into the confirmed wallet's own vault via
   `saveProjectToStorage(project, readProjectIndex(owner), owner)` and selects
   it. It requires a confirmed wallet (the project must land in that wallet's

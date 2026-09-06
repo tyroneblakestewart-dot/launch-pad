@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildDraftRequestBody, MAX_PROJECT_NETWORK_LABEL_LENGTH, resolveChainLabel } from "@/lib/server/social-draft-pipeline";
 import { isExternalProject, projectNetworkLabel } from "@/lib/token-project-storage";
+import { bareTelegramHandle, bareXHandle } from "@/components/social-hub";
 
 // Hoodlums Social for tokens launched anywhere (owner direction, 6 Sep 2026:
 // "this sub should work with anyone that has a project they want Hoodlums to
@@ -114,6 +115,30 @@ describe("Social Studio: add an existing token", () => {
     expect(hub).toContain("disabled={externalSaving || !projectOwner}");
   });
 
+  it("takes handles without prefixes and strips any the user pastes (owner direction: remove prefix handles)", async () => {
+    expect(bareXHandle("@hoodlums")).toBe("hoodlums");
+    expect(bareXHandle("hoodlums")).toBe("hoodlums");
+    expect(bareXHandle("https://x.com/hoodlums")).toBe("hoodlums");
+    expect(bareXHandle("https://twitter.com/Hoodlums?s=21")).toBe("Hoodlums");
+    expect(bareXHandle("  ")).toBe("");
+    expect(bareTelegramHandle("@hoodlums")).toBe("hoodlums");
+    expect(bareTelegramHandle("t.me/hoodlums")).toBe("hoodlums");
+    expect(bareTelegramHandle("https://t.me/hoodlums")).toBe("hoodlums");
+    expect(bareTelegramHandle("hoodlums")).toBe("hoodlums");
+
+    const hub = await source("components", "social-hub.tsx");
+    expect(hub).toContain('<span>X handle <em>optional · no @</em></span>');
+    expect(hub).toContain('<span>Telegram <em>optional · username only</em></span>');
+    expect(hub).not.toContain('placeholder="@hoodlums"');
+    expect(hub).not.toContain('placeholder="t.me/hoodlums"');
+    const block = hub.slice(hub.indexOf("async function addExternalProject()"), hub.indexOf("function renderAddTokenForm()"));
+    expect(block).toContain("const xHandle = bareXHandle(externalForm.xHandle);");
+    expect(block).toContain("const telegram = bareTelegramHandle(externalForm.telegram);");
+    // The stored bare values are what the existing post builders expect: cleanHandle adds "@", cleanTelegram adds "https://t.me/".
+    expect(hub).toContain('return trimmed.startsWith("@") ? trimmed : `@${trimmed.replace(/^https?:\\/\\/x\\.com\\//i, "")}`;');
+    expect(hub).toContain("return `https://t.me/${trimmed.replace(/^@/, \"\")}`;");
+  });
+
   it("states the token's own network everywhere it names a chain, and sends it with AI drafts", async () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("const chain = projectNetworkLabel(project);");
@@ -158,7 +183,7 @@ describe("external tokens never reach the launch tooling", () => {
   it("the workspace, provider desks, allocation desk and launch modal all skip external projects", async () => {
     const workspace = await source("components", "token-studio-workspace.tsx");
     expect(workspace).toContain("const launchProjects = savedLaunches.filter((entry) => !isExternalProject(entry));");
-    expect(workspace).toContain("if (launchProjects.length === 0) {");
+    expect(workspace).toContain("if (launchProjects.length === 0 && !attachPending) {");
 
     const launcher = await source("components", "provider-launcher.tsx");
     expect(launcher.match(/item\.chain === "robinhood" && !isExternalProject\(item\)/g)?.length).toBe(2);
