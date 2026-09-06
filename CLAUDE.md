@@ -2021,6 +2021,15 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   a burst of more than 5 qualifying buys a minute drains at 5 per minute per
   bot; a crash between a delivered send and the cursor write can repeat one
   announcement once; Hype Bot and Watchtower are the next two builds.
+  Follow-up (owner confirmation, 6 Sep): a bot belongs to a studio project,
+  and enabling now runs the same `authoriseSocialProjectSlot` check every AI
+  route and post approval uses (`projectId`/`displayName` in the request,
+  `projectId` inside the signed payload), so a Buy Bot can only exist for a
+  project that holds one of the plan's slots — one on Pro, up to three on Pro
+  Bundle, one per project. Refused with the existing
+  `social-studio-project-slot-limit` code before any Telegram call. Validated
+  on that commit: `npm run test:app` — 304 test files / 3547 tests passing;
+  `npm run lint` — 0 errors (11 pre-existing warnings); `npm run build` — succeeds.
   Validated this session, on the final commit: `npm run test:app` — 304
   test files / 3544 tests passing. `npm run lint` — 0 errors (11
   pre-existing warnings only). `npm run build` — succeeds, `/api/cron/buy-bot`

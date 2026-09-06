@@ -16,6 +16,7 @@ import { resolveBuyBotTradesReader } from "@/lib/server/buy-bot-cron";
 import { BuyBotStoreUnavailableError, getBuyBotStore, toBuyBotSummary } from "@/lib/server/buy-bot-store";
 import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import { authoriseSocialStudioAction, type AuthoriseSocialStudioActionResult } from "@/lib/server/social-studio-action-auth";
+import { authoriseSocialProjectSlot } from "@/lib/server/social-project-slot-entitlement";
 import { authoriseSocialStudioRequest } from "@/lib/server/social-studio-entitlement";
 import { isTelegramConnectConfigured, verifyTelegramChannelAdmin } from "@/lib/server/social-telegram-connect";
 import { isChatId } from "@/lib/server/telegram";
@@ -28,10 +29,14 @@ import { getTokenLaunchesStore } from "@/lib/server/token-launches-store";
 // action rate limit, service isolation, a wallet-signed challenge bound to
 // this exact payload, then a real getChat/getChatMember check that the
 // platform bot is an admin in the named channel before anything is stored —
-// plus two checks of its own: the wallet must hold the Pro/Pro Bundle
-// entitlement every Social Studio route requires, and it must be the wallet
-// that launched the token (the recorded token_launches creator), so nobody
-// can point a buy announcer for someone else's token at their own channel.
+// plus three checks of its own: the wallet must hold the Pro/Pro Bundle
+// entitlement every Social Studio route requires; the studio project the bot
+// belongs to must hold one of that plan's project slots (one on Pro, three on
+// Pro Bundle — the same authoriseSocialProjectSlot every AI route and post
+// approval uses, so a bot can never exist for a project the plan doesn't
+// cover); and the wallet must be the one that launched the token (the
+// recorded token_launches creator), so nobody can point a buy announcer for
+// someone else's token at their own channel.
 // The bot's cursor starts at the newest trade that exists right now, so the
 // first announcement is the first buy AFTER it was switched on — history is
 // never replayed into the channel.
@@ -100,12 +105,17 @@ export async function POST(request: Request) {
   const tokenAddress = typeof body?.tokenAddress === "string" ? body.tokenAddress.trim() : "";
   const chatId = typeof body?.chatId === "string" ? body.chatId.trim() : "";
   const thresholdWei = typeof body?.thresholdWei === "string" && body.thresholdWei.trim() ? body.thresholdWei.trim() : DEFAULT_BUY_BOT_THRESHOLD_WEI;
+  const projectId = typeof body?.projectId === "string" ? body.projectId.trim() : "";
+  const displayName = typeof body?.displayName === "string" ? body.displayName.trim() : "";
   const challengeId = typeof body?.challengeId === "string" ? body.challengeId.trim() : "";
   const nonce = typeof body?.nonce === "string" ? body.nonce.trim() : "";
   const signature = typeof body?.signature === "string" ? body.signature.trim() : "";
 
   if (!chatId || !challengeId || !nonce || !signature || !tokenAddress) {
     return NextResponse.json({ error: "A token, a channel, a valid Buy Bot challenge and a signature are all required." }, { status: 400, headers });
+  }
+  if (!projectId || !displayName) {
+    return NextResponse.json({ error: "A valid project id and project name are required." }, { status: 400, headers });
   }
   if (chainId !== ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL) {
     return NextResponse.json({ error: "The Buy Bot only supports Robinhood Chain Testnet tokens today." }, { status: 400, headers });
@@ -122,7 +132,7 @@ export async function POST(request: Request) {
 
   const authorisation = await authoriseSocialStudioAction({
     purpose: "social:buy-bot-enable",
-    payload: { chainId: String(chainId), tokenAddress, chatId, thresholdWei },
+    payload: { chainId: String(chainId), tokenAddress, chatId, thresholdWei, projectId },
     challengeId,
     nonce,
     signature,
@@ -134,6 +144,19 @@ export async function POST(request: Request) {
   if (entitlement.status !== "allowed") {
     const status = entitlement.status === "upsell" ? 403 : entitlement.status === "invalid-wallet" ? 400 : 503;
     return NextResponse.json({ error: entitlement.message }, { status, headers });
+  }
+  const projectSlot = await authoriseSocialProjectSlot(entitlement, { projectId, displayName }, { serviceKey: "buy-bot" });
+  if (projectSlot.status === "invalid-project") {
+    return NextResponse.json({ error: projectSlot.message }, { status: 400, headers });
+  }
+  if (projectSlot.status === "limit-reached") {
+    return NextResponse.json(
+      { error: projectSlot.message, code: "social-studio-project-slot-limit", activeCount: projectSlot.activeCount, limit: projectSlot.limit },
+      { status: 403, headers },
+    );
+  }
+  if (projectSlot.status === "unavailable") {
+    return NextResponse.json({ error: projectSlot.message }, { status: 503, headers });
   }
 
   let launch;
