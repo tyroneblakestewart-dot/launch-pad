@@ -2582,3 +2582,25 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   device. Validated on the final commit: `npm run test:app` — 323 test
   files / 3801 tests passing; `npm run lint` — 0 errors (10 pre-existing
   warnings); `npm run build` — succeeds.
+
+- Bond + Pro Site price raised to $15 (owner decision, 6 Sep 2026: "raise to
+  15"). `paymentCatalogPrice("bond-pro-site")` (`lib/plan-payments.ts`) is
+  now `usdCents: 1_500` — the figure recorded on every verified payment and
+  shown in the checkout quote; the launch-path card reads `$15 · one-off`
+  (`lib/launch-paths.ts`), the bespoke upsell message says "($15)", and the
+  cost-cap comment is updated. The ETH actually charged is still the exact
+  wei in `HOODLUMS_BOND_PRO_SITE_AMOUNT_WEI` (server-only, owner-set in
+  Vercel), which the code never derives from the USD figure — `.env.example`
+  now says to set it to about $15 of ETH. **Deploy note for the owner:**
+  raise that Vercel variable to the $15 equivalent when this merges;
+  otherwise the checkout would record $15 while charging the old $10 in ETH.
+  Bespoke entitlement, the three-per-purchase count and Social Studio pricing
+  are unchanged. **Tests changed, not only added (rule 8, stated plainly):**
+  the `$10 · one-off` pins in `bond-pro-site-promises`, `token-path-chooser`
+  and `public-site-subdomain-metadata`, and the `usdCents: 1_000` pins in
+  `plan-payments` (verify result) and the `plan-payment-unlock` /
+  `bespoke-site-entitlement` fixtures, now read $15 / `1_500`. New
+  `tests/bespoke-price.test.ts` pins the catalog, card, upsell and env note
+  to one number. Validated on the final commit: `npm run test:app` — 324
+  test files / 3804 tests passing; `npm run lint` — 0 errors (10
+  pre-existing warnings); `npm run build` — succeeds.

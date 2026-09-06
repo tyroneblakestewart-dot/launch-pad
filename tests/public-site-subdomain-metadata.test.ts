@@ -142,7 +142,7 @@ describe("Bond + Pro Site pricing promise", () => {
     const plan = LAUNCH_PATH_OPTIONS.find(
       (option) => option.id === "bond-pro-site",
     );
-    expect(plan?.price).toBe("$10 · one-off");
+    expect(plan?.price).toBe("$15 · one-off");
     expect(plan?.bullets).toContain("[token].hoodlums.dev subdomain");
     expect(plan?.bullets).not.toContain(
       "[token].hoodlums.dev subdomain — coming soon",
