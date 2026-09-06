@@ -2773,7 +2773,8 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   `/social?xConnect=success|error&reason=…`, and the hub reads that once on
   mount (`describeXConnectReturn` → one plain sentence per reason: denied,
   expired, paused, not matched), then clears it from the address bar with
-  `history.replaceState`. `disconnectX()` signs `social:x-disconnect` and
+  `useRouter().replace` (raw `history.replaceState` was tried first and Next
+  re-synced the params back on hydration). `disconnectX()` signs `social:x-disconnect` and
   drops the connection from `connections` in the same render, exactly like
   Telegram. `xConnection` is derived from `connections` (single source of
   truth, issue #384). A new read-only `GET /api/social/x/status`
@@ -2803,5 +2804,6 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   final commit: `npm run test:app` — 327 test files / 3832 tests passing;
   `npm run lint` — 0 errors (10 pre-existing warnings); `npm run build` —
   succeeds, `/api/social/x/status` in the route output. Checked in headless
-  Chromium only by source and unit tests at commit time — the mocked-state
-  screenshot pass was still running; not on a physical iPhone.
+  Chromium at 1400px and 390px with mocked routes in every card state
+  (not configured, ready, connected, needs reconnecting, and both return
+  cases) — not on a physical iPhone.

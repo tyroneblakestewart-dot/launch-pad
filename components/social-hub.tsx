@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { createWalletClient, custom, isAddress } from "viem";
@@ -611,6 +612,7 @@ export function SocialHub() {
   // 3-legged OAuth flow from issue #335 — wallet-signed start, X's own
   // authorize page, then /api/social/x/connect/callback redirects back here
   // with ?xConnect=success|error. `xConfigured` is null while loading.
+  const router = useRouter();
   const [xConfigured, setXConfigured] = useState<boolean | null>(null);
   const [xConnectBusy, setXConnectBusy] = useState(false);
   const [xStatus, setXStatus] = useState<PanelStatus>(null);
@@ -807,12 +809,13 @@ export function SocialHub() {
       params.delete("xConnect");
       params.delete("reason");
       const rest = params.toString();
-      window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
+      // Through the app router, not raw history — Next re-syncs the address bar from its own state on hydration and would put the params back.
+      router.replace(`${window.location.pathname}${rest ? `?${rest}` : ""}`, { scroll: false });
     }
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   /**
    * Single source of truth for connections (issue #384): both the Setup
