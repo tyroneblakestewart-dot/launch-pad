@@ -17,6 +17,14 @@ import {
 // silently starting to fill.
 
 export const OUTREACH_DAILY_DRAFT_CAP = 10;
+/**
+ * Owner request, 7 Sep 2026: don't draft a first-touch outreach the moment a
+ * token enters the feed's 60-99% window (`pumpfun-graduating.ts`'s own
+ * MIN_PROGRESS_PERCENT) — wait until it's a stronger bet to actually
+ * graduate. This is an outreach-specific gate, separate from the public
+ * "GRADUATING NOW" homepage row's own 60-99% window, which is unchanged.
+ */
+export const OUTREACH_FIRST_TOUCH_PROGRESS_THRESHOLD = 75;
 export const OUTREACH_FOLLOWUP_PROGRESS_THRESHOLD = 95;
 
 export type OutreachCronResult = {
@@ -120,7 +128,10 @@ export async function runOutreachCron(deps: OutreachCronDeps = {}): Promise<Outr
     const firstTouchLastKey = { key: await store.getLastTemplateKey("first").catch(() => null) };
 
     if (!feed.error && !skippedCapReached) {
-      for (const token of feed.tokens) {
+      const eligibleTokens = feed.tokens.filter(
+        (token) => token.progressPercent >= OUTREACH_FIRST_TOUCH_PROGRESS_THRESHOLD,
+      );
+      for (const token of eligibleTokens) {
         if (skippedCapReached) break;
         const outcome = await draftAndInsert("first", firstTouchLastKey, {
           tokenMint: token.address,
