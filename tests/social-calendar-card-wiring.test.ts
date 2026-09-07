@@ -23,15 +23,22 @@ describe("Calendar schedule card: quiet hours, own posts and live destination ch
     expect(hub).toContain("setQuietHours(record.quietHours);");
     expect(hub).toContain("      quietHours,\n      sortedVoiceSourceKeys,");
     expect(hub).toContain("persistSocialStudio({ quietHours: next });");
-    expect(hub).toContain("updateQuietHours(next.startHour === next.endHour ? null : next);");
+    expect(hub).toContain("updateQuietHours(next.start === next.end ? null : next);");
+    // A cleared time field is ignored rather than saved as off.
+    expect(hub).toContain("if (parseClockTime(value) === null) return;");
   });
 
-  it("binds the two selects and an on/off control, and no select on the card is a disabled placeholder", async () => {
+  it("binds two native time fields (the phone's wheel, a compact hh:mm on desktop — never a 24-row dropdown) and an on/off control", async () => {
     const hub = await source("components", "social-hub.tsx");
     const card = hub.slice(hub.indexOf("<aside className={styles.scheduleCard}>"), hub.indexOf("</aside>", hub.indexOf("<aside className={styles.scheduleCard}>")));
-    expect(card).toContain('onChange={(event) => setQuietHourBound("startHour", Number(event.target.value))}');
-    expect(card).toContain('onChange={(event) => setQuietHourBound("endHour", Number(event.target.value))}');
-    expect(card).toContain("{QUIET_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{formatQuietHour(hour)}</option>)}");
+    expect(card).toContain('onChange={(event) => setQuietHourBound("start", event.target.value)}');
+    expect(card).toContain('onChange={(event) => setQuietHourBound("end", event.target.value)}');
+    expect(card.match(/type="time"/g)).toHaveLength(2);
+    expect(card).not.toContain("<select");
+    const css = await source("components", "social-hub.module.css");
+    expect(css).toContain('.quietHours input[type="time"] { width: auto; flex: 0 0 auto; min-width: 108px; height: 38px; padding: 0 10px; box-sizing: border-box; color-scheme: dark;');
+    expect(css).toContain('.quietHours input[type="time"] { height: 44px; }');
+    expect(css).toContain('.quietHours input[type="time"] { min-height: 44px; }');
     expect(card).toContain("onClick={() => updateQuietHours(quietHours ? null : { ...DEFAULT_QUIET_HOURS })}");
     expect(card).not.toContain("<select disabled>");
     expect(card).not.toContain("<ComingSoon");
@@ -79,6 +86,6 @@ describe("Calendar schedule card: quiet hours, own posts and live destination ch
     expect(css).toContain(".destinationChips .chipConnected {");
     expect(css).toContain(".destinationChips .chipOff {");
     expect(css).toContain(".ownPostComposer textarea {");
-    expect(css).toContain(".quietHours select { min-height: 44px; }");
+    expect(css).toContain('.quietHours select,\n  .quietHours input[type="time"] { min-height: 44px; }');
   });
 });

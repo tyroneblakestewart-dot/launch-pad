@@ -1663,7 +1663,8 @@
 .timezoneControl > span:first-child { color: var(--text-label); font: 700 10px var(--mono); letter-spacing: 0.1em; }
 .timezoneControl b { color: var(--text-secondary); font: 700 11px var(--mono); }
 .timezoneControl select,
-.quietHours select {
+.quietHours select,
+.quietHours input[type="time"] {
   min-height: 38px;
   padding: 0 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -1674,7 +1675,11 @@
   font-weight: 700;
 }
 .timezoneControl select:disabled,
-.quietHours select:disabled { color: var(--text-label); opacity: 1; }
+.quietHours select:disabled,
+.quietHours input[type="time"]:disabled { color: var(--text-label); opacity: 1; }
+/* Dark native pickers (the iPhone wheel, Chrome's popover) and a fixed width so the row never jumps between values. */
+.quietHours input[type="time"] { width: auto; flex: 0 0 auto; min-width: 108px; height: 38px; padding: 0 10px; box-sizing: border-box; color-scheme: dark; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.quietHours input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cursor: pointer; }
 
 .desktopCalendar {
   display: grid;
@@ -1781,7 +1786,9 @@
 .composerActions .ownPostAdd { border-color: rgba(198, 245, 62, 0.5); color: #0a0b09; background: var(--cta-bg); }
 @media (pointer: coarse) {
   .quietHoursToggle,
-  .quietHours select { min-height: 44px; }
+  .quietHours select,
+  .quietHours input[type="time"] { min-height: 44px; }
+  .quietHours input[type="time"] { height: 44px; }
 }
 
 .segmentedDisabled { display: flex; gap: 3px; padding: 4px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; background: rgba(0, 0, 0, 0.24); }

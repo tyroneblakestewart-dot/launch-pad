@@ -82,13 +82,7 @@ import {
   describeDetectedTimezone,
   listCalendarDayEntries,
 } from "@/lib/social-calendar-days";
-import {
-  DEFAULT_QUIET_HOURS,
-  QUIET_HOUR_OPTIONS,
-  formatQuietHour,
-  shiftOutOfQuietHours,
-  type QuietHours,
-} from "@/lib/social-quiet-hours";
+import { DEFAULT_QUIET_HOURS, parseClockTime, shiftOutOfQuietHours, type QuietHours } from "@/lib/social-quiet-hours";
 import type {
   MascotVisualDNA,
   PostingCadence,
@@ -1945,9 +1939,11 @@ export function SocialHub() {
     persistSocialStudio({ quietHours: next });
   }
 
-  function setQuietHourBound(bound: keyof QuietHours, hour: number) {
-    const next = { ...(quietHours ?? DEFAULT_QUIET_HOURS), [bound]: hour };
-    updateQuietHours(next.startHour === next.endHour ? null : next);
+  /** A native time field's "HH:MM" (a cleared field is ignored, never saved as off). */
+  function setQuietHourBound(bound: keyof QuietHours, value: string) {
+    if (parseClockTime(value) === null) return;
+    const next = { ...(quietHours ?? DEFAULT_QUIET_HOURS), [bound]: value };
+    updateQuietHours(next.start === next.end ? null : next);
   }
 
   /**
@@ -4310,23 +4306,22 @@ export function SocialHub() {
                         <span className={styles.eyebrow}>QUIET HOURS</span>
                         <div className={styles.quietHours}>
                           <span>Never post between</span>
-                          <select
+                          {/* A native time field: the wheel picker on iPhone, a compact inline hh:mm on desktop — never a 24-row dropdown. */}
+                          <input
+                            type="time"
                             aria-label="Quiet hours start"
-                            value={(quietHours ?? DEFAULT_QUIET_HOURS).startHour}
+                            value={(quietHours ?? DEFAULT_QUIET_HOURS).start}
                             disabled={!quietHours}
-                            onChange={(event) => setQuietHourBound("startHour", Number(event.target.value))}
-                          >
-                            {QUIET_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{formatQuietHour(hour)}</option>)}
-                          </select>
+                            onChange={(event) => setQuietHourBound("start", event.target.value)}
+                          />
                           <span>and</span>
-                          <select
+                          <input
+                            type="time"
                             aria-label="Quiet hours end"
-                            value={(quietHours ?? DEFAULT_QUIET_HOURS).endHour}
+                            value={(quietHours ?? DEFAULT_QUIET_HOURS).end}
                             disabled={!quietHours}
-                            onChange={(event) => setQuietHourBound("endHour", Number(event.target.value))}
-                          >
-                            {QUIET_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{formatQuietHour(hour)}</option>)}
-                          </select>
+                            onChange={(event) => setQuietHourBound("end", event.target.value)}
+                          />
                           <button
                             type="button"
                             className={styles.quietHoursToggle}

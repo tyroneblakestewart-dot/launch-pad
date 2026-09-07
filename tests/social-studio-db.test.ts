@@ -58,7 +58,7 @@ const RECORD: SocialStudioProjectRecord = {
   sortedVoiceSourceKeys: [],
   wordsToAvoid: ["rug", "guaranteed"],
   toneDials: { humour: "dry", emoji: "none", hashtags: "never", postLength: "short" },
-  quietHours: { startHour: 22, endHour: 8 },
+  quietHours: { start: "22:00", end: "08:00" },
 };
 
 describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
@@ -227,11 +227,15 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
       await putSocialStudioRecord("quiet-off", { ...RECORD, quietHours: null });
       await expect(getSocialStudioRecord("quiet-off")).resolves.toMatchObject({ quietHours: null });
 
-      await putSocialStudioRecord("quiet-corrupt", { ...RECORD, quietHours: { startHour: 25, endHour: "7" } } as unknown as SocialStudioProjectRecord);
+      await putSocialStudioRecord("quiet-corrupt", { ...RECORD, quietHours: { start: "25:00", end: 7 } } as unknown as SocialStudioProjectRecord);
       await expect(getSocialStudioRecord("quiet-corrupt")).resolves.toMatchObject({ quietHours: DEFAULT_QUIET_HOURS });
 
-      await putSocialStudioRecord("quiet-empty-window", { ...RECORD, quietHours: { startHour: 9, endHour: 9 } });
+      await putSocialStudioRecord("quiet-empty-window", { ...RECORD, quietHours: { start: "09:00", end: "09:00" } });
       await expect(getSocialStudioRecord("quiet-empty-window")).resolves.toMatchObject({ quietHours: null });
+
+      // Saved between the two Calendar PRs on 7 Sep 2026: whole hours, read as clock strings.
+      await putSocialStudioRecord("quiet-whole-hours", { ...RECORD, quietHours: { startHour: 22, endHour: 8 } } as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("quiet-whole-hours")).resolves.toMatchObject({ quietHours: { start: "22:00", end: "08:00" } });
     });
 
     it("coerces non-array sampleLineFeedback, voiceExamples and queue to empty arrays instead of throwing", async () => {
