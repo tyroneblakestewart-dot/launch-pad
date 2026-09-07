@@ -63,6 +63,24 @@ function readProviderError(error: unknown): { code?: number; message?: string } 
 }
 
 /**
+ * MetaMask mobile (owner recording, 7 Sep 2026): after the user picks an
+ * account, the wallet's own CAIP-25 permission approval can reject itself —
+ * "Invalid approved permissions request: endowment:caip25 error: Received
+ * scopeString value(s): eip155:5042 for caveat of type "authorizedScopes"
+ * that are not supported by the wallet." The chain in that scope is whatever
+ * network the wallet is currently on (here 5042, not a Hoodlums chain), so the
+ * cure is to move the wallet onto Robinhood Chain Testnet and ask again.
+ * Returns the offending chain id when the message carries one.
+ */
+export function readPermissionScopeError(error: unknown): { scopeError: true; chainId: number | null } | null {
+  const { message } = readProviderError(error);
+  if (!message || !/caip25|scopeString|authorizedScopes/i.test(message)) return null;
+  const match = /eip155:(\d+)/.exec(message);
+  const chainId = match ? Number.parseInt(match[1], 10) : Number.NaN;
+  return { scopeError: true, chainId: Number.isFinite(chainId) ? chainId : null };
+}
+
+/**
  * One plain sentence for the status line when a wallet connect attempt
  * fails. Wallets reject with plain objects as often as with `Error`s, so
  * this never depends on `instanceof Error`, and the wallet's own message is
@@ -76,6 +94,11 @@ export function describeWalletConnectError(walletName: string, error: unknown): 
   }
   if (code === REQUEST_ALREADY_PENDING_CODE) {
     return `${walletName} already has a request open. Open the ${walletName} app, finish or dismiss it, then tap Connect again.`;
+  }
+  const scope = readPermissionScopeError(error);
+  if (scope) {
+    const network = scope.chainId !== null ? ` (chain ${scope.chainId})` : "";
+    return `${walletName} could not approve this site on the network it is currently on${network}. In ${walletName}, switch to Robinhood Chain Testnet, then tap Connect again.`;
   }
   if (message) return `${walletName}: ${message}`;
   return `${walletName} did not complete the connection. Open the ${walletName} app, then tap Connect again.`;

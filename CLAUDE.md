@@ -2896,3 +2896,43 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   hoodlums.dev. Validated on the final commit: `npm run test:app` — 329 test
   files / 3845 tests passing; `npm run lint` — 0 errors (10 pre-existing
   warnings); `npm run build` — succeeds.
+
+- MetaMask mobile connect, second round (owner recording, 7 Sep 2026, after
+  #528 made the status line honest). The real reason is now visible:
+  "Invalid approved permissions request: endowment:caip25 error: Received
+  scopeString value(s): eip155:5042 for caveat of type "authorizedScopes" that
+  are not supported by the wallet." — MetaMask's own permission approval
+  rejects itself because the wallet is sitting on chain 5042 (whatever
+  network the owner's MetaMask had selected; not a Hoodlums chain and nowhere
+  in this codebase), while its "Permissions updated" toast fires in the same
+  moment. `components/account-wallet-bridge.tsx`'s `requestAccountChoice` is
+  now an ordered recovery: (1) the grant's own accounts; (2) on a wallet-side
+  failure (anything but a 4001 rejection or an unsupported-method code), read
+  `eth_accounts` silently first, since the permission may already be saved;
+  (3) when `readPermissionScopeError` (new in `lib/wallet-connect-helpers.ts`,
+  matches caip25 / scopeString / authorizedScopes and reads the `eip155:` chain)
+  recognises the network-scope error, ask the wallet to
+  `wallet_switchEthereumChain` to Robinhood Chain Testnet — adding it via
+  `wallet_addEthereumChain` from the shared `ROBINHOOD_TESTNET` config on 4902,
+  both allowed pre-permission and each confirmed by the user in the wallet —
+  and request permissions once more; (4) last resort the plain
+  `eth_requestAccounts`, and if that fails too the permission step's own
+  reason is what the user sees. A 4001 anywhere (including declining the
+  network switch) is final. `describeWalletConnectError` names this case
+  plainly ("could not approve this site on the network it is currently on
+  (chain 5042) … switch to Robinhood Chain Testnet") instead of the raw
+  message. Stated plainly: the Account panel now may prompt a network switch
+  during connect, only on this specific error, and only to the testnet the
+  whole site already requires (rule 3 untouched). **Tests changed, not only
+  added (rule 8, stated plainly):** #528's own source pins on the previous
+  `requestAccountChoice` body were rewritten to the new helpers/order. New
+  coverage: the scope-error parser and wording, and source pins on the
+  recovery order and the 4902 add path. Checked in headless Chromium at
+  390px against five fake MetaMask providers (scope error → switch → retry
+  connects; switch needs add → connects; permission already saved → connects
+  with no switch; user declines the switch → cancelled wording; scope error
+  persists → the network wording) — not on a physical iPhone; the owner
+  retries Connect in the MetaMask mobile browser and expects one
+  "switch network" prompt. Validated on the final commit: `npm run test:app`
+  — 329 test files / 3849 tests passing; `npm run lint` — 0 errors (10
+  pre-existing warnings); `npm run build` — succeeds.

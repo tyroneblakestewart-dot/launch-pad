@@ -7,7 +7,13 @@ import {
   parseStoredAccountWallet,
   truncateAccountAddress,
 } from "@/lib/account-wallet-state";
-import { accountsFromPermissionGrant, describeWalletConnectError } from "@/lib/wallet-connect-helpers";
+import { ROBINHOOD_TESTNET } from "@/lib/chains";
+import {
+  USER_REJECTED_REQUEST_CODE,
+  accountsFromPermissionGrant,
+  describeWalletConnectError,
+  readPermissionScopeError,
+} from "@/lib/wallet-connect-helpers";
 
 type AccountsChangedHandler = (accounts: string[]) => void;
 
@@ -89,39 +95,82 @@ async function discoverProvider(walletName: string) {
   return exact?.provider || injectedFallback(walletName, window as BrowserWindow);
 }
 
+/** Accounts the wallet has already permitted for this site — silent, never a prompt; [] on any failure. */
+async function readPermittedAccounts(provider: Eip1193Provider): Promise<string[]> {
+  try {
+    const accounts = await provider.request({ method: "eth_accounts" });
+    return Array.isArray(accounts) ? accounts.filter((account): account is string => typeof account === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
- * MetaMask: `wallet_requestPermissions` opens the account selector AND its
- * result already names the accounts the user picked, so that is the answer —
- * a second `eth_requestAccounts` prompt right after it is what failed on
- * MetaMask mobile's in-app browser (owner report, 7 Sep 2026). If the grant
- * carries no addresses, the now-permitted accounts are read silently with
- * `eth_accounts`; only when that is empty too does the wallet get asked
- * again. Wallets without the permissions method fall straight through.
+ * `wallet_requestPermissions` opens MetaMask's account selector AND its result
+ * already names the accounts the user picked, so that is the answer — a second
+ * `eth_requestAccounts` prompt right after it is what failed on MetaMask
+ * mobile first (owner report, 7 Sep 2026). If the grant carries no addresses,
+ * the now-permitted accounts are read silently.
+ */
+async function requestPermissionAccounts(provider: Eip1193Provider): Promise<string[]> {
+  const granted = await provider.request({
+    method: "wallet_requestPermissions",
+    params: [{ eth_accounts: {} }],
+  });
+  const chosen = accountsFromPermissionGrant(granted);
+  return chosen.length > 0 ? chosen : readPermittedAccounts(provider);
+}
+
+/**
+ * Both chain methods are allowed before a site has account permission, and
+ * each is confirmed by the user inside the wallet. Adds the network first when
+ * the wallet does not know it (4902).
+ */
+async function switchToRobinhoodTestnet(provider: Eip1193Provider) {
+  try {
+    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: ROBINHOOD_TESTNET.chainId }] });
+  } catch (error) {
+    if ((error as ProviderError).code !== 4902) throw error;
+    await provider.request({ method: "wallet_addEthereumChain", params: [ROBINHOOD_TESTNET] });
+  }
+}
+
+/**
+ * MetaMask connect order (owner recordings, 7 Sep 2026):
+ * 1. the permission grant itself names the chosen accounts (one prompt);
+ * 2. if the wallet's own approval step fails for a wallet-side reason, the
+ *    permission may still have been saved (the phone showed "Permissions
+ *    updated" next to the error) — read it silently before anything else;
+ * 3. if it failed because the wallet's current network is not one its
+ *    permission system supports (the CAIP-25 scope error, chain 5042 in the
+ *    recording), move the wallet to Robinhood Chain Testnet and ask once more;
+ * 4. last resort, the plain `eth_requestAccounts` prompt — and if that fails
+ *    too, the permission step's own reason is the one worth showing.
+ * A user rejection (4001) at any step is final. Wallets without the
+ * permissions method fall straight through to `eth_requestAccounts`.
  */
 async function requestAccountChoice(walletName: string, provider: Eip1193Provider) {
   if (walletName === "MetaMask") {
-    let granted: unknown = null;
-    let supported = true;
     try {
-      granted = await provider.request({
-        method: "wallet_requestPermissions",
-        params: [{ eth_accounts: {} }],
-      });
+      const accounts = await requestPermissionAccounts(provider);
+      if (accounts.length > 0) return accounts;
     } catch (error) {
       const providerError = error as ProviderError;
+      if (providerError.code === USER_REJECTED_REQUEST_CODE) throw error;
       const unsupported = providerError.code === -32601 || providerError.code === 4200;
-      if (!unsupported) throw error;
-      supported = false;
-    }
-
-    if (supported) {
-      const chosen = accountsFromPermissionGrant(granted);
-      if (chosen.length > 0) return chosen;
-      try {
-        const permitted = (await provider.request({ method: "eth_accounts" })) as string[];
-        if (Array.isArray(permitted) && permitted.length > 0) return permitted;
-      } catch {
-        // Fall through to the explicit prompt below.
+      if (!unsupported) {
+        const alreadyPermitted = await readPermittedAccounts(provider);
+        if (alreadyPermitted.length > 0) return alreadyPermitted;
+        if (readPermissionScopeError(error)) {
+          await switchToRobinhoodTestnet(provider);
+          const retried = await requestPermissionAccounts(provider);
+          if (retried.length > 0) return retried;
+        }
+        try {
+          return (await provider.request({ method: "eth_requestAccounts" })) as string[];
+        } catch {
+          throw error;
+        }
       }
     }
   }
