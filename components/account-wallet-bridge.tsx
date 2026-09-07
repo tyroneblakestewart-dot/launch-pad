@@ -7,6 +7,7 @@ import {
   parseStoredAccountWallet,
   truncateAccountAddress,
 } from "@/lib/account-wallet-state";
+import { accountsFromPermissionGrant, describeWalletConnectError } from "@/lib/wallet-connect-helpers";
 
 type AccountsChangedHandler = (accounts: string[]) => void;
 
@@ -88,10 +89,21 @@ async function discoverProvider(walletName: string) {
   return exact?.provider || injectedFallback(walletName, window as BrowserWindow);
 }
 
+/**
+ * MetaMask: `wallet_requestPermissions` opens the account selector AND its
+ * result already names the accounts the user picked, so that is the answer —
+ * a second `eth_requestAccounts` prompt right after it is what failed on
+ * MetaMask mobile's in-app browser (owner report, 7 Sep 2026). If the grant
+ * carries no addresses, the now-permitted accounts are read silently with
+ * `eth_accounts`; only when that is empty too does the wallet get asked
+ * again. Wallets without the permissions method fall straight through.
+ */
 async function requestAccountChoice(walletName: string, provider: Eip1193Provider) {
   if (walletName === "MetaMask") {
+    let granted: unknown = null;
+    let supported = true;
     try {
-      await provider.request({
+      granted = await provider.request({
         method: "wallet_requestPermissions",
         params: [{ eth_accounts: {} }],
       });
@@ -99,6 +111,18 @@ async function requestAccountChoice(walletName: string, provider: Eip1193Provide
       const providerError = error as ProviderError;
       const unsupported = providerError.code === -32601 || providerError.code === 4200;
       if (!unsupported) throw error;
+      supported = false;
+    }
+
+    if (supported) {
+      const chosen = accountsFromPermissionGrant(granted);
+      if (chosen.length > 0) return chosen;
+      try {
+        const permitted = (await provider.request({ method: "eth_accounts" })) as string[];
+        if (Array.isArray(permitted) && permitted.length > 0) return permitted;
+      } catch {
+        // Fall through to the explicit prompt below.
+      }
     }
   }
 
@@ -238,8 +262,7 @@ export function AccountWalletBridge({ embedded = false }: { embedded?: boolean }
           walletButtons.forEach((candidate) => candidate.removeAttribute("aria-current"));
           button.setAttribute("aria-current", "true");
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Wallet account selection was cancelled.";
-          setStatus(message);
+          setStatus(describeWalletConnectError(walletName, error));
         } finally {
           delete button.dataset.connecting;
         }
