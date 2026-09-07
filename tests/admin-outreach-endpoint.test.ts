@@ -20,6 +20,7 @@ import {
   setOutreachStoreForTests,
   type InsertOutreachDraftInput,
 } from "@/lib/server/outreach-store";
+import { resetGraduatingFeedCacheForTests } from "@/lib/server/pumpfun-graduating";
 import { createMemoryOutreachStore } from "./outreach-test-helpers";
 
 const ORIGIN = "http://localhost:3000";
@@ -28,6 +29,7 @@ let cookie = "";
 
 const X_OUTREACH_ENV_KEYS = ["X_OUTREACH_API_KEY", "X_OUTREACH_API_SECRET", "X_OUTREACH_ACCESS_TOKEN", "X_OUTREACH_ACCESS_SECRET"];
 const ORIGINAL_ENV: Record<string, string | undefined> = {};
+const ORIGINAL_BITQUERY_TOKEN = process.env.BITQUERY_ACCESS_TOKEN;
 
 function setFullXOutreachCreds(): void {
   for (const key of X_OUTREACH_ENV_KEYS) process.env[key] = "test-value";
@@ -35,6 +37,22 @@ function setFullXOutreachCreds(): void {
 
 function clearXOutreachCreds(): void {
   for (const key of X_OUTREACH_ENV_KEYS) delete process.env[key];
+}
+
+/**
+ * Approval re-checks the live graduating feed before it will ever post
+ * (owner requirement, 7 Sep 2026) — a real request to Bitquery, distinct
+ * from the X posting request this file already mocks. Responding with no
+ * pools at all simulates "this mint is no longer bonding", i.e. graduated.
+ */
+function mockGraduatedFeedAndXPost(): typeof fetch {
+  return (async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (url.includes("bitquery.io")) {
+      return new Response(JSON.stringify({ data: { Solana: { DEXPools: [] } } }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ data: { id: "x-post-123" } }), { status: 201 });
+  }) as typeof fetch;
 }
 
 function request(
@@ -74,6 +92,8 @@ function draft(overrides: Partial<InsertOutreachDraftInput> = {}): InsertOutreac
 beforeEach(async () => {
   for (const key of X_OUTREACH_ENV_KEYS) ORIGINAL_ENV[key] = process.env[key];
   clearXOutreachCreds();
+  delete process.env.BITQUERY_ACCESS_TOKEN;
+  resetGraduatingFeedCacheForTests();
   setAdminSessionStoreForTests(createMemoryAdminSessionStore());
   setOutreachStoreForTests(createMemoryOutreachStore());
   setAdminOperationsStoreForTests(createMemoryAdminOperationsStore());
@@ -86,6 +106,9 @@ afterEach(() => {
     if (ORIGINAL_ENV[key] === undefined) delete process.env[key];
     else process.env[key] = ORIGINAL_ENV[key];
   }
+  if (ORIGINAL_BITQUERY_TOKEN === undefined) delete process.env.BITQUERY_ACCESS_TOKEN;
+  else process.env.BITQUERY_ACCESS_TOKEN = ORIGINAL_BITQUERY_TOKEN;
+  resetGraduatingFeedCacheForTests();
   resetAdminStoresForTests();
   resetOutreachStoreForTests();
   resetAdminOperationsStoreForTests();
@@ -238,10 +261,9 @@ describe("POST /api/admin/outreach/actions", () => {
   describe("approve — fully configured", () => {
     it("posts, marks the item posted, and logs it to the admin activity feed", async () => {
       setFullXOutreachCreds();
-      const fetchMock = async () =>
-        new Response(JSON.stringify({ data: { id: "x-post-123" } }), { status: 201 });
+      process.env.BITQUERY_ACCESS_TOKEN = "test-bitquery-token";
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = fetchMock as typeof fetch;
+      globalThis.fetch = mockGraduatedFeedAndXPost();
 
       try {
         const store = getOutreachStore();
@@ -258,6 +280,59 @@ describe("POST /api/admin/outreach/actions", () => {
 
         const activity = await getAdminOperationsStore().listActivity(10);
         expect(activity[0]).toMatchObject({ kind: "outreach-posted", serviceKey: "outreach" });
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    /**
+     * Owner requirement, 7 Sep 2026: never post before the token has
+     * actually graduated, even though the draft itself was created early
+     * (75%+ progress, issue #550).
+     */
+    it("refuses with 409 and leaves the draft pending when the mint is still shown bonding in the live feed", async () => {
+      setFullXOutreachCreds();
+      process.env.BITQUERY_ACCESS_TOKEN = "test-bitquery-token";
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("bitquery.io")) {
+          return new Response(
+            JSON.stringify({
+              data: {
+                Solana: {
+                  DEXPools: [
+                    {
+                      Block: { Time: new Date().toISOString() },
+                      Pool: {
+                        Base: { PostAmount: 400_000_000 },
+                        Market: { BaseCurrency: { MintAddress: "Mint1", Name: "Doggo", Symbol: "DOGGO", Uri: "" } },
+                      },
+                    },
+                  ],
+                },
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        throw new Error("The X posting endpoint should never be called while the mint is still bonding.");
+      }) as typeof fetch;
+
+      try {
+        const store = getOutreachStore();
+        const inserted = await store.insertDraftIfEligible(draft({ tokenMint: "Mint1" }), 10);
+        if (inserted.status !== "inserted") throw new Error("expected inserted");
+
+        const response = await postOutreachAction(
+          request("POST", "/api/admin/outreach/actions", { id: inserted.item.id, action: "approve" }),
+        );
+        expect(response.status).toBe(409);
+        const payload = (await response.json()) as { error: string };
+        expect(payload.error).toContain("hasn't graduated yet");
+
+        const stillPending = await store.getItem(inserted.item.id);
+        expect(stillPending?.status).toBe("pending");
       } finally {
         globalThis.fetch = originalFetch;
       }
