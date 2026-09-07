@@ -17,7 +17,7 @@ const POLL_INTERVAL_MS = 60_000;
  * visibilitychange while active, and silent in-place updates. A route
  * failure (including a 429 from the shared per-IP trade-read rate limit)
  * just leaves `trades` at its last-known value/null — the caller's pure
- * sparkline builder already renders a flat baseline for that, so one busy
+ * candle-chart builder already renders nothing for that, so one busy
  * card degrading gracefully can never break the surrounding grid.
  *
  * The `source=grid` query marker (issue #453 area 1) is an additive flag
@@ -47,8 +47,8 @@ export function useGridTokenTrades(curveAddress: string, active: boolean) {
       const body = (await response.json()) as { trades: TokenTrade[] };
       setTrades(body.trades);
     } catch {
-      // Silent: the pure sparkline builder already renders a flat baseline
-      // for a null/stale trades list, matching this hook's "degrade quietly"
+      // Silent: the pure candle-chart builder already renders nothing for
+      // a null/stale trades list, matching this hook's "degrade quietly"
       // contract.
     } finally {
       inFlightRef.current = false;

@@ -155,20 +155,34 @@
   opacity: 0.55;
 }
 
-/* Performance line over the artwork (owner direction, 4 Sep 2026, the
-   pump.fun card): the token's real trade history as one line across the
-   lower half of the image, lime when up and the design's grey when down,
-   over a soft bottom-up wash so it stays legible on any picture. Only
-   rendered with real data — no trades means no line and no box. */
-.sparkOverlay {
+/* Thin/slim candlesticks over the artwork (owner direction, 7 Sep 2026,
+   replacing the single performance line): the token's real 5-minute trade
+   history as small bars across the lower half of the image, lime when a
+   candle closes up and the design's grey when it closes down, each glowing
+   so it stays legible on any picture, over a soft bottom-up wash. Only
+   rendered with real data — no trades means no bars and no box. The
+   overlay itself grows a little on hover/focus — "expand, not too much,
+   like pump.fun" — clipped by the art frame's own rounded corners, and
+   never on a device with no real hover (a stuck touch state would never
+   release). */
+.candleOverlay {
   position: absolute;
   inset: auto 0 0 0;
   height: 52%;
   z-index: 2;
   background: linear-gradient(to top, rgba(3, 6, 4, 0.7) 0%, rgba(3, 6, 4, 0.25) 60%, rgba(3, 6, 4, 0) 100%);
+  transform: scaleY(1);
+  transform-origin: bottom;
+  transition: transform 0.22s ease;
 }
 
-.sparkSvg {
+@media (hover: hover) and (pointer: fine) {
+  .card:hover .candleOverlay {
+    transform: scaleY(1.16);
+  }
+}
+
+.candleSvg {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -176,37 +190,41 @@
   overflow: visible;
 }
 
-.sparkArea {
-  fill: currentColor;
-  opacity: 0.09;
-}
-
-.sparkLine {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 5px currentColor);
-  stroke-dasharray: 100;
-  stroke-dashoffset: 100;
-  animation: sparkDraw 0.9s ease-out forwards;
-}
-
-@keyframes sparkDraw {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-/* Up/down follow the token page's settled ruling: lime up, the design's
-   grey down — never red on a performance line. */
-.sparklineUp {
+.candleUp {
   color: var(--accent-lime);
 }
 
-.sparklineDown {
+.candleDown {
   color: var(--accent-down);
+}
+
+.candleUp,
+.candleDown {
+  filter: drop-shadow(0 0 3px currentColor);
+  transform-origin: bottom;
+  animation: candleGrow 0.5s ease-out backwards;
+}
+
+.candleWick {
+  stroke: currentColor;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.candleBody {
+  fill: currentColor;
+  rx: 0.6;
+}
+
+@keyframes candleGrow {
+  from {
+    opacity: 0;
+    transform: scaleY(0.2);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
 }
 
 /* Metadata hierarchy (issue #440, retuned 4 Sep 2026 to the pump.fun
@@ -387,9 +405,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sparkLine {
+  .candleUp,
+  .candleDown {
     animation: none;
-    stroke-dashoffset: 0;
+  }
+
+  .candleOverlay {
+    transition: none;
   }
 
   .cardCapFlash {

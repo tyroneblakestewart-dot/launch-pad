@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { buildSparkline, SPARKLINE_HEIGHT, SPARKLINE_WIDTH } from "@/lib/token-sparkline";
+import { buildGridCandleChart, GRID_CANDLE_CHART_HEIGHT, GRID_CANDLE_CHART_WIDTH } from "@/lib/token-grid-candle-chart";
 import {
   buildGridChangePill,
   computeGridMarketCapNative,
@@ -14,21 +14,25 @@ import styles from "./hoodlums-token-grid.module.css";
 
 /**
  * The body of one homepage token card (owner direction, 4 Sep 2026: the
- * pump.fun card shape). The recorded artwork fills the square art region
- * edge to edge, and the token's real performance line — built by the pure
- * lib/token-sparkline.ts from GET /api/token-trades via
+ * pump.fun card shape; revised 7 Sep 2026: thin/slim 5-minute candlesticks
+ * with a lime/grey glow, replacing the single performance line). The
+ * recorded artwork fills the square art region edge to edge, and the
+ * token's real trade history — built by the pure
+ * lib/token-grid-candle-chart.ts from GET /api/token-trades via
  * lib/use-grid-token-trades.ts, the only trade-reading path — is drawn over
- * its lower half as inline SVG: lime when up, the design's grey when down,
- * with a soft area fill and a short draw-in each time the line changes.
- * Never a chart-library instance per card (twelve on one page is not
- * acceptable), never candles, and never a floating hover preview — the
- * numbers a viewer wants (market cap, change since launch, age) live on the
- * card itself and update in place on every poll; the market cap figure
- * remounts whenever its value CHANGES after first paint (never on the
- * initial render, so a page load is calm) and its highlight flash marks the
- * live move, exactly the reaction pump.fun's cards give. A token with no trades yet shows its art
- * alone (no flat line, no empty box) with an em-dash market cap: nothing on
- * this card is ever invented.
+ * its lower half as inline SVG bars: lime when a candle closes up, the
+ * design's grey when it closes down, each with a soft drop-shadow glow so
+ * it stays legible over any artwork, and a brief grow-in the first time
+ * data arrives. The chart layer grows a little on hover/focus (never a
+ * floating preview, never a chart-library instance per card — a dozen-plus
+ * on one page stays unacceptable) — the numbers a viewer wants (market cap,
+ * change since launch, age) live on the card itself and update in place on
+ * every poll; the market cap figure remounts whenever its value CHANGES
+ * after first paint (never on the initial render, so a page load is calm)
+ * and its highlight flash marks the live move, exactly the reaction
+ * pump.fun's cards give. A token with no trades yet shows its art alone (no
+ * flat line, no empty box) with an em-dash market cap: nothing on this card
+ * is ever invented.
  */
 export function TokenGridCardChart({
   tokenName,
@@ -53,10 +57,9 @@ export function TokenGridCardChart({
 }) {
   const { ref, inView } = useInView<HTMLDivElement>();
   const { trades } = useGridTokenTrades(curveAddress, inView);
-  const sparkline = buildSparkline(trades ?? [], { paddingY: 4 });
-  const tone = sparkline.trend === "down" ? styles.sparklineDown : styles.sparklineUp;
-  const pill = buildGridChangePill(sparkline.changePercent);
-  const marketCap = formatGridMarketCap(computeGridMarketCapNative(sparkline.lastPrice, wholeTokenSupply));
+  const chart = buildGridCandleChart(trades ?? []);
+  const pill = buildGridChangePill(chart.changePercent);
+  const marketCap = formatGridMarketCap(computeGridMarketCapNative(chart.lastPrice, wholeTokenSupply));
   const letter = tokenName.trim().slice(0, 1).toUpperCase() || "?";
   const flashKey = useMarketCapFlash(marketCap);
 
@@ -69,21 +72,36 @@ export function TokenGridCardChart({
         ) : (
           <span className={styles.artInitial}>{letter}</span>
         )}
-        {sparkline.hasData && (
-          <div className={`${styles.sparkOverlay} ${tone}`} aria-hidden="true">
+        {chart.hasData && (
+          <div className={styles.candleOverlay} aria-hidden="true">
             <svg
-              className={styles.sparkSvg}
-              viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`}
+              className={styles.candleSvg}
+              viewBox={`0 0 ${GRID_CANDLE_CHART_WIDTH} ${GRID_CANDLE_CHART_HEIGHT}`}
               preserveAspectRatio="none"
             >
-              <path className={styles.sparkArea} d={sparkline.areaPath} />
-              <path
-                key={sparkline.linePath}
-                className={styles.sparkLine}
-                d={sparkline.linePath}
-                pathLength={100}
-                vectorEffect="non-scaling-stroke"
-              />
+              {chart.bars.map((bar, index) => (
+                <g
+                  key={index}
+                  className={bar.tone === "up" ? styles.candleUp : styles.candleDown}
+                  style={{ animationDelay: `${Math.min(index * 20, 300)}ms` }}
+                >
+                  <line
+                    x1={bar.wickX}
+                    x2={bar.wickX}
+                    y1={bar.wickTop}
+                    y2={bar.wickBottom}
+                    className={styles.candleWick}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <rect
+                    x={bar.x}
+                    y={bar.bodyTop}
+                    width={bar.bodyWidth}
+                    height={bar.bodyHeight}
+                    className={styles.candleBody}
+                  />
+                </g>
+              ))}
             </svg>
           </div>
         )}

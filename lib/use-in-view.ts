@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
  * Reports whether the returned ref's node is scrolled near the viewport,
  * following components/hoodlums-social-showcase.tsx's existing
  * IntersectionObserver pattern (SSR/unsupported-browser guard, disconnect on
- * unmount). Used by the homepage grid's per-card sparkline (issue #436) so a
+ * unmount). Used by the homepage grid's per-card mini candle chart (issue #436) so a
  * card off screen never fetches or polls its trade history. `rootMargin` is
  * generous enough that a card just below the fold is already warm by the
  * time it's scrolled into view.
