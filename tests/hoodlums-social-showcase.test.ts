@@ -221,7 +221,8 @@ describe("AI Social Studio showcase wiring", () => {
     expect(component).toContain("calDaySel");
     expect(component).toContain("calDayMark");
     expect(component).toContain("addToOptionActive");
-    expect(component).toContain("AI makes it");
+    expect(component).toContain("Announcement post");
+    expect(component).not.toContain("AI makes it");
     expect(component).toContain("Schedule it");
   });
 
