@@ -19,18 +19,21 @@ describe("Calendar AI drafts keep their day, and scheduled posts load on the Cal
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("scheduledDay?: string;");
     expect(hub).toContain("scheduledDay: options.scheduledDay ?? null,");
-    expect(hub).toContain("const scheduledDay = toCalendarDayIso(selectedDay.year, selectedDay.month, selectedDay.day);");
-    expect(hub).toContain("await generateDraft({ dayLabel: selectedDayLabel, scheduledDay, scheduledTime: calendarTime }, setCalendarDraftStatus);");
+    // The announcement composer is the calendar's one way in (owner direction, 7 Sep 2026); it pins the picked day the same way.
+    expect(hub).toContain("const selectedDayIso = toCalendarDayIso(selectedDay.year, selectedDay.month, selectedDay.day);");
+    expect(hub).toContain("scheduledDay: selectedDayIso,");
   });
 
   it("refuses a day already gone before any paid draft call", async () => {
     const hub = await source("components", "social-hub.tsx");
-    const fn = hub.slice(hub.indexOf("async function generateDraftForDay()"), hub.indexOf("function calendarDayScheduledAt("));
-    expect(fn).toContain("if (isCalendarDayBeforeToday(scheduledDay, new Date())) {");
-    expect(fn).toContain("has already passed — pick today or a later day.");
-    expect(fn.indexOf("isCalendarDayBeforeToday(")).toBeLessThan(fn.indexOf("setCalendarAiBusy(true);"));
+    const jazz = hub.slice(hub.indexOf("async function jazzUpAnnouncement()"), hub.indexOf("\n  }\n", hub.indexOf("async function jazzUpAnnouncement()")));
+    expect(jazz).toContain("if (isCalendarDayBeforeToday(selectedDayIso, new Date())) {");
+    expect(jazz).toContain("has already passed — pick today or a later day.");
     // The refusal returns before the busy flag and the request.
-    expect(fn.indexOf("return;")).toBeLessThan(fn.indexOf("setCalendarAiBusy(true);"));
+    expect(jazz.indexOf("isCalendarDayBeforeToday(")).toBeLessThan(jazz.indexOf("setAnnouncementAiBusy(true);"));
+    const add = hub.slice(hub.indexOf("function addAnnouncementToQueue("), hub.indexOf("\n  }\n", hub.indexOf("function addAnnouncementToQueue(")));
+    expect(add).toContain("if (isCalendarDayBeforeToday(selectedDayIso, new Date())) {");
+    expect(add.indexOf("isCalendarDayBeforeToday(")).toBeLessThan(add.indexOf("const item: QueueItem = {"));
   });
 
   it("the shown default and the approval time both come from the same calendar-day helper", async () => {
@@ -69,7 +72,9 @@ describe("Calendar AI drafts keep their day, and scheduled posts load on the Cal
 
   it("the calendar card says what now happens", async () => {
     const hub = await source("components", "social-hub.tsx");
-    expect(hub).toContain("Drafts a post for this day and adds it to the Queue — approve it there and it goes out on this day.");
+    // The card is the announcement composer now (owner direction, 7 Sep 2026): no "AI makes it", no explanatory paragraph.
+    expect(hub).toContain("<span className={styles.eyebrow}>ANNOUNCEMENT</span>");
     expect(hub).not.toContain("Generates a voice-aware draft for this day");
+    expect(hub).not.toContain("Drafts a post for this day and adds it to the Queue");
   });
 });

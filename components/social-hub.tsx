@@ -598,11 +598,9 @@ export function SocialHub() {
   const [attachedArtwork, setAttachedArtwork] = useState<string | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [draftBusy, setDraftBusy] = useState(false);
-  const [calendarAiBusy, setCalendarAiBusy] = useState(false);
   /** Calendar quiet hours (owner direction, 7 Sep 2026): per project, local time, null = off. Every default time and every approval is shifted out of it. */
   const [quietHours, setQuietHours] = useState<QuietHours | null>({ ...DEFAULT_QUIET_HOURS });
   /** Calendar "Announcement post" (owner direction, 7 Sep 2026): the user's own announcement, posted as written or jazzed up by the AI, pinned to the selected day. */
-  const [announcementOpen, setAnnouncementOpen] = useState(false);
   const [announcementMode, setAnnouncementMode] = useState<"own" | "ai">("own");
   const [announcementText, setAnnouncementText] = useState("");
   const [announcementAi, setAnnouncementAi] = useState<{ xText: string; telegramText: string } | null>(null);
@@ -636,7 +634,6 @@ export function SocialHub() {
   const [mascotReferenceAssessment, setMascotReferenceAssessment] = useState<MascotReferenceAssessment | null>(null);
   const [mascotSceneStatus, setMascotSceneStatus] = useState<PanelStatus>(null);
   const [setupDraftStatus, setSetupDraftStatus] = useState<PanelStatus>(null);
-  const [calendarDraftStatus, setCalendarDraftStatus] = useState<PanelStatus>(null);
   const [telegramStatus, setTelegramStatus] = useState<PanelStatus>(null);
 
   // Real Telegram connect flow (issue #340): reconciles the Setup card with
@@ -1046,7 +1043,6 @@ export function SocialHub() {
       setWordsToAvoid(record.wordsToAvoid);
       setToneDials(record.toneDials);
       setQuietHours(record.quietHours);
-      setAnnouncementOpen(false);
       setAnnouncementText("");
       setAnnouncementAi(null);
       setAnnouncementStatus(null);
@@ -1302,7 +1298,6 @@ export function SocialHub() {
     setMascotUploadStatus(null);
     setMascotSceneStatus(null);
     setSetupDraftStatus(null);
-    setCalendarDraftStatus(null);
     setPostsStatus(null);
     setReplenishStatus(null);
     setStatus(`${project.name || "Project"} loaded into Hoodlums Social.`);
@@ -1938,20 +1933,6 @@ export function SocialHub() {
     setDraftBusy(false);
   }
 
-  async function generateDraftForDay() {
-    // The picked day rides with the draft so approval lands it ON that day
-    // (owner test, 7 Sep 2026: a draft for the 14th defaulted to today). A
-    // day already gone gets a plain refusal instead of a paid draft that
-    // could only ever be clamped to "now".
-    const scheduledDay = toCalendarDayIso(selectedDay.year, selectedDay.month, selectedDay.day);
-    if (isCalendarDayBeforeToday(scheduledDay, new Date())) {
-      setCalendarDraftStatus({ tone: "error", message: `${selectedDayLabel} has already passed — pick today or a later day.` });
-      return;
-    }
-    setCalendarAiBusy(true);
-    await generateDraft({ dayLabel: selectedDayLabel, scheduledDay, scheduledTime: calendarTime }, setCalendarDraftStatus);
-    setCalendarAiBusy(false);
-  }
 
   /**
    * The default time for a Calendar-tab draft: on its picked day (first
@@ -2026,8 +2007,7 @@ export function SocialHub() {
     });
     setAnnouncementText("");
     setAnnouncementAi(null);
-    setAnnouncementOpen(false);
-    setAnnouncementStatus({ tone: "success", message: `Your announcement for ${selectedDayLabel} at ${calendarTime} is in the Queue — approve it there and it goes out then.` });
+    setAnnouncementStatus({ tone: "success", message: `In the Queue for ${selectedDayLabel} at ${calendarTime} — approve it there.` });
   }
 
   /** "AI jazz-up": one draft call with the announcement as the source of truth; the result is shown for editing, never queued or sent by itself. */
@@ -2035,6 +2015,10 @@ export function SocialHub() {
     const text = announcementText.trim();
     if (!text) {
       setAnnouncementStatus({ tone: "error", message: "Write the announcement first — the AI rewrites your words, it doesn't invent them." });
+      return;
+    }
+    if (isCalendarDayBeforeToday(selectedDayIso, new Date())) {
+      setAnnouncementStatus({ tone: "error", message: `${selectedDayLabel} has already passed — pick today or a later day.` });
       return;
     }
     setAnnouncementAiBusy(true);
@@ -4295,7 +4279,7 @@ export function SocialHub() {
                               value={calendarTime}
                               onChange={(event) => setCalendarTimeFromField(event.target.value)}
                             />
-                            <small>{calendarTimeQuietNote ?? "your local time · quiet hours and the approve tap still apply"}</small>
+                            {calendarTimeQuietNote ? <small>{calendarTimeQuietNote}</small> : null}
                           </label>
                         </div>
                         {selectedDayEntries.length > 0 ? (
@@ -4320,22 +4304,8 @@ export function SocialHub() {
                             ))}
                           </ul>
                         ) : null}
-                        <button type="button" className={styles.aiMakeButton} onClick={generateDraftForDay} disabled={calendarAiBusy}>
-                          <b>{calendarAiBusy ? "Making it…" : "AI makes it"}</b>
-                          <span>Drafts a post for this day and adds it to the Queue — approve it there and it goes out on this day.</span>
-                        </button>
-                        <InlineStatus status={calendarDraftStatus} />
-                        <button
-                          type="button"
-                          className={styles.ownPostButton}
-                          aria-expanded={announcementOpen}
-                          onClick={() => { setAnnouncementOpen((current) => !current); setAnnouncementStatus(null); }}
-                        >
-                          <b>Announcement post</b>
-                          <span>Write your announcement in your own words — post it as it is, or let the AI jazz it up. It joins the Queue for this day at the time above.</span>
-                        </button>
-                        {announcementOpen ? (
-                          <div className={styles.ownPostComposer}>
+                        <span className={styles.eyebrow}>ANNOUNCEMENT</span>
+                        <div className={styles.ownPostComposer}>
                             <div className={styles.announcementTabs} role="tablist" aria-label="Announcement mode">
                               <button
                                 type="button"
@@ -4367,21 +4337,17 @@ export function SocialHub() {
                               <>
                                 <div className={styles.ownPostMeta}>
                                   <span className={announcementText.trim().length > X_CHARACTER_LIMIT ? styles.ownPostOver : undefined}>
-                                    {announcementText.trim().length}/{X_CHARACTER_LIMIT} for X · same text goes to Telegram (edit either in the Queue)
+                                    {announcementText.trim().length}/{X_CHARACTER_LIMIT} for X
                                   </span>
                                 </div>
                                 <div className={styles.composerActions}>
                                   <button type="button" className={styles.ownPostAdd} onClick={() => addAnnouncementToQueue("own")}>
                                     Add to Queue for {selectedDay.day} {MONTH_NAMES[selectedDay.month]}
                                   </button>
-                                  <button type="button" onClick={() => { setAnnouncementOpen(false); setAnnouncementStatus(null); }}>Cancel</button>
                                 </div>
                               </>
                             ) : (
                               <>
-                                <div className={styles.ownPostMeta}>
-                                  <span>The AI rewrites your announcement in your voice and keeps every fact you gave — it never adds one. Nothing goes out until you approve it in the Queue.</span>
-                                </div>
                                 {announcementAi ? (
                                   <div className={styles.announcementResult}>
                                     <label>
@@ -4413,12 +4379,10 @@ export function SocialHub() {
                                   <button type="button" onClick={() => void jazzUpAnnouncement()} disabled={announcementAiBusy}>
                                     {announcementAiBusy ? "Jazzing it up…" : announcementAi ? "Try again" : "Jazz it up with AI"}
                                   </button>
-                                  <button type="button" onClick={() => { setAnnouncementOpen(false); setAnnouncementStatus(null); }}>Cancel</button>
                                 </div>
                               </>
                             )}
-                          </div>
-                        ) : null}
+                        </div>
                         <InlineStatus status={announcementStatus} />
                         <div className={styles.miniDivider} />
                         <span className={styles.eyebrow}>WHERE IT POSTS</span>
@@ -4430,11 +4394,7 @@ export function SocialHub() {
                             <TelegramMark /> Telegram{myConnectedPlatforms.includes("telegram") ? "" : " · not connected"}
                           </span>
                         </div>
-                        <p>
-                          {myConnectedPlatforms.length === 0
-                            ? "Nothing is connected yet — connect X or Telegram in Setup and approved posts go there."
-                            : "Approved posts go to every connected platform that has text for it. Connect the other in Setup to post to both."}
-                        </p>
+                        {myConnectedPlatforms.length < 2 ? <p>Connect {myConnectedPlatforms.length === 0 ? "X or Telegram" : myConnectedPlatforms.includes("x") ? "Telegram" : "X"} in Setup.</p> : null}
                         <div className={styles.miniDivider} />
                         <span className={styles.eyebrow}>QUIET HOURS</span>
                         <div className={styles.quietHours}>
@@ -4464,10 +4424,7 @@ export function SocialHub() {
                           </button>
                         </div>
                         <p className={styles.exampleLabel}>
-                          {quietHours
-                            ? "Your local time. Any post that would land in this window is moved to the end of it when you approve — the time is decided at approval, so nothing is ever sent inside it."
-                            : "Quiet hours are off — posts can be scheduled at any hour."}
-                          {" "}Every post still needs your approve tap in the Queue before it goes out.
+                          {quietHours ? "Your local time. Anything landing in this window moves to its end when you approve." : "Off — posts can go out at any hour."}
                         </p>
                       </aside>
                     </div>
@@ -4511,7 +4468,7 @@ export function SocialHub() {
                     {queue.length === 0 ? (
                       <div className={styles.queueEmpty}>
                         <b>Nothing waiting.</b>
-                        <p>Use &quot;Draft with AI&quot; in Setup, &quot;AI makes it&quot; in Calendar, or wait a moment — new drafts generate automatically.</p>
+                        <p>Use &quot;Draft with AI&quot; in Setup, write an announcement in Calendar, or wait a moment — new drafts generate automatically.</p>
                       </div>
                     ) : null}
                     {queue.length > 0 ? (

@@ -66,7 +66,8 @@ describe("Hoodlums AI Social Studio", () => {
 
     expect(social).toContain('fetch("/api/social/draft"');
     expect(social).toContain("generateDraftFromSetup");
-    expect(social).toContain("generateDraftForDay");
+    // The calendar card's "AI makes it" is gone (owner direction, 7 Sep 2026): the calendar is for the user's own announcements.
+    expect(social).not.toContain("generateDraftForDay");
 
     expect(social).toContain("Your mascot");
     expect(social).toContain('fetch("/api/social/mascot/visual-dna"');
@@ -76,7 +77,7 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).not.toContain("{MASCOT_ACTIONS.map((label) => <button type=\"button\" disabled key={label}>{label}</button>)}");
 
     expect(social).toContain("MONTH_NAMES[calendarView.month]");
-    expect(social).toContain('onClick={generateDraftForDay} disabled={calendarAiBusy}');
+    expect(social).not.toContain("AI makes it");
 
     expect(social).toContain("What&apos;s going out");
     expect(social).toContain("postQueueItemToX");
@@ -88,7 +89,7 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain("Words to avoid");
     expect(social).toContain("Coming soon");
     // The announcement composer (7 Sep 2026) is a live toggle, no longer a disabled "I'll post my own" placeholder.
-    expect(social).toContain('aria-expanded={announcementOpen}');
+    expect(social).toContain('role="tablist" aria-label="Announcement mode"');
     expect(social).not.toContain('disabled className={styles.ownPostButton}');
     expect(social).toContain("Add to your channel");
   });
@@ -168,7 +169,7 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain("const [mascotUploadStatus, setMascotUploadStatus] = useState<PanelStatus>(null);");
     expect(social).toContain("const [mascotSceneStatus, setMascotSceneStatus] = useState<PanelStatus>(null);");
     expect(social).toContain("const [setupDraftStatus, setSetupDraftStatus] = useState<PanelStatus>(null);");
-    expect(social).toContain("const [calendarDraftStatus, setCalendarDraftStatus] = useState<PanelStatus>(null);");
+    expect(social).toContain("const [announcementStatus, setAnnouncementStatus] = useState<PanelStatus>(null);");
 
     // Each AI handler reports to its own panel status, not the shared one.
     expect(social).toContain('setVoiceStatus({ tone: "error", message: error instanceof Error ? error.message : "The voice profile could not be built." });');
@@ -180,14 +181,14 @@ describe("Hoodlums AI Social Studio", () => {
     );
     expect(social).toContain('report({ tone: "error", message: error instanceof Error ? error.message : "The draft could not be generated." });');
     expect(social).toContain("await generateDraft({}, setSetupDraftStatus);");
-    expect(social).toContain("await generateDraft({ dayLabel: selectedDayLabel, scheduledDay, scheduledTime: calendarTime }, setCalendarDraftStatus);");
+    expect(social).toContain("await generateDraft({ dayLabel: selectedDayLabel, announcement: text }, setAnnouncementStatus);");
 
     // Each status renders next to the control that triggered it, not only inside the statusBar.
     expect(social).toContain("<InlineStatus status={voiceStatus} />");
     expect(social).toContain("<InlineStatus status={mascotUploadStatus} />");
     expect(social).toContain("<InlineStatus status={mascotSceneStatus} />");
     expect(social).toContain("<InlineStatus status={setupDraftStatus} />");
-    expect(social).toContain("<InlineStatus status={calendarDraftStatus} />");
+    expect(social).toContain("<InlineStatus status={announcementStatus} />");
 
     // Placement checks: each status must sit right after (not far below) its trigger.
     const learnVoiceButtonIndex = social.indexOf("Learn my voice");

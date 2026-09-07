@@ -235,12 +235,12 @@ function CalendarSlideVisual() {
           <span className={styles.addToLabel}>Add to</span>
           <p className={styles.addToDate}>11 August 2026</p>
           <div className={styles.addToOptionActive}>
-            <h4>AI makes it</h4>
-            <p>Describe your idea and we&apos;ll create the post and artwork.</p>
+            <h4>Announcement post</h4>
+            <p>Your words as they are — or let the AI jazz them up.</p>
           </div>
           <div className={styles.addToOption}>
-            <h4>I&apos;ll post my own</h4>
-            <p>Upload or write it yourself — we&apos;ll publish it on time.</p>
+            <h4>At 18:30</h4>
+            <p>Pick the day and time. You approve it before it goes out.</p>
           </div>
           <span className={styles.whereLabel}>Where it posts</span>
           <div className={styles.previewDests}>

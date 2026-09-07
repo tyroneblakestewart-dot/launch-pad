@@ -151,7 +151,8 @@ describe("Calendar card wiring for announcements and the time field", () => {
 
   it("the composer has My words and AI jazz-up tabs, and both add through the Queue with the day and time", async () => {
     const hub = await source("components", "social-hub.tsx");
-    expect(hub).toContain("<b>Announcement post</b>");
+    expect(hub).toContain("<span className={styles.eyebrow}>ANNOUNCEMENT</span>");
+    expect(hub).not.toContain("generateDraftForDay");
     expect(hub).toContain('role="tablist" aria-label="Announcement mode"');
     expect(hub).toContain("My words");
     expect(hub).toContain("AI jazz-up");

@@ -3217,3 +3217,37 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Validated on the final commit: `npm run test:app` — 336 test files / 3897
   tests passing; `npm run lint` — 0 errors (11 warnings, none in files this
   PR touches); `npm run build` — succeeds.
+
+- Calendar card trimmed to the announcement (owner direction, 7 Sep 2026:
+  "remove 'AI makes it', it's unneeded — the user will have their own
+  intention for making an announcement; 'Announcement post' doesn't look
+  like a tab unless you click it; it doesn't need all that instruction,
+  it's self-explanatory"). The card is now: ADD TO date and time (the
+  quiet-hours warning is the only note, shown only when it applies), the
+  day's entries, an ANNOUNCEMENT section with the composer **open on the
+  card** — the My words / AI jazz-up tabs, the box and the actions are
+  visible at once, no toggle button to discover — then WHERE IT POSTS (one
+  "Connect X in Setup" line only while something is missing) and QUIET HOURS
+  (one sentence). The "AI makes it" button, its status line,
+  `generateDraftForDay`, `calendarAiBusy` and `calendarDraftStatus` are
+  removed from `components/social-hub.tsx`; the AI on the calendar is the
+  jazz-up alone, and it now refuses a past day before spending the call,
+  like the add does. The Queue empty-state copy and the homepage showcase's
+  calendar slide (`components/hoodlums-social-showcase.tsx`) no longer
+  advertise "AI makes it" — the slide reads "Announcement post · Your words
+  as they are — or let the AI jazz them up" and "At 18:30". Legacy
+  `calendar-ai` drafts still load and caption as before. **Tests changed,
+  not only added (rule 8, stated plainly):** the #332 pins on
+  `generateDraftForDay` / `onClick={generateDraftForDay} disabled={calendarAiBusy}`
+  / `calendarDraftStatus` in `social-studio-ui`, PR #532's
+  `generateDraftForDay` past-day slice in `social-calendar-day-schedule`
+  (now the jazz-up and add paths), the day-old composer copy and toggle
+  pins in `social-calendar-day-schedule`, `social-calendar-card-wiring` and
+  `social-announcement-post`, and the showcase test's "AI makes it" pin.
+  Rule 10 needs nothing. Checked in headless Chromium at 1400px and 390px:
+  no "AI makes it" or toggle on the card, the composer open with both tabs,
+  My words and jazz-up both adding at the picked time, a past day refusing
+  the jazz-up with no request — not on a physical iPhone. Validated on the
+  final commit: `npm run test:app` — 336 test files / 3897 tests passing;
+  `npm run lint` — 0 errors (11 warnings, none in files this PR touches);
+  `npm run build` — succeeds.

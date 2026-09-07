@@ -44,7 +44,7 @@ describe("Calendar schedule card: quiet hours, own posts and live destination ch
     expect(card).not.toContain("<select disabled>");
     expect(card).not.toContain("<ComingSoon");
     expect(card).not.toContain("are not built yet");
-    expect(card).toContain("Every post still needs your approve tap in the Queue before it goes out.");
+    expect(card).toContain("Your local time. Anything landing in this window moves to its end when you approve.");
   });
 
   it("applies quiet hours to every default time and every approval, after the future clamp, and says so", async () => {
@@ -60,7 +60,8 @@ describe("Calendar schedule card: quiet hours, own posts and live destination ch
 
   it("the announcement composer (formerly \"I'll post my own\") is live and adds through the ordinary Queue approve path", async () => {
     const hub = await source("components", "social-hub.tsx");
-    expect(hub).toContain("aria-expanded={announcementOpen}");
+    expect(hub).toContain('role="tablist" aria-label="Announcement mode"');
+    expect(hub).not.toContain("AI makes it");
     expect(hub).toContain("<InlineStatus status={announcementStatus} />");
     expect(hub).toContain("const X_CHARACTER_LIMIT = 280;");
     expect(hub).not.toContain("I'll post my own");
