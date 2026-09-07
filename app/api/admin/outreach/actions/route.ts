@@ -73,6 +73,9 @@ export async function POST(request: Request) {
       if (result.status === "not_pending") {
         return NextResponse.json({ error: "Only pending drafts can be approved." }, { status: 400, headers: NO_STORE_HEADERS });
       }
+      if (result.status === "not_graduated") {
+        return NextResponse.json({ error: result.reason }, { status: 409, headers: NO_STORE_HEADERS });
+      }
       if (result.status === "posted") {
         await recordAdminActivityBestEffort({
           kind: "outreach-posted",

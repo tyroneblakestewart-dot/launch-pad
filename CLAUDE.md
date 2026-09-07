@@ -3861,3 +3861,42 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   (60/74 excluded, 75/91 included). Validated on the final commit: `npm run
   test:app` — 340 test files / 3968 tests passing; `npm run lint` — 0 errors
   (11 pre-existing warnings); `npm run build` — succeeds.
+
+- X outreach bot: approval never posts before the token has actually
+  graduated (owner requirement, 7 Sep 2026: "it shouldn't post till
+  graduated"). A first-touch draft is created early — at 75%+ progress,
+  per the previous entry — precisely so there's something ready for admin
+  review ahead of time, but the congratulations tweet must not go out until
+  the token has genuinely graduated. Previously `approveOutreachDraft`
+  (`lib/server/outreach-approve.ts`) trusted the `progressPercent` snapshot
+  taken at draft time and posted immediately on admin approval, with no
+  re-check — so approving a draft minutes after it was created (well before
+  graduation) would have posted early. It now re-fetches the live graduating
+  feed at approval time and refuses to post (`not_graduated`, new
+  discriminated-union member on `OutreachApproveResult`) if the mint is
+  still present in that 60-99% feed — the same "still bonding vs. graduated"
+  presence signal the cron's own follow-up detection already relies on — or
+  if the feed itself errors (inconclusive, not evidence of graduation,
+  mirroring the cron's existing philosophy there). A refusal leaves the
+  draft `pending` (not `failed` — this isn't a posting error, just not the
+  right time yet), so the admin can simply approve again later once it has
+  graduated; `app/api/admin/outreach/actions/route.ts` maps this to a 409
+  with the plain-English reason, which the existing admin UI already
+  surfaces via its generic action-error paragraph (no UI change needed).
+  **Tests changed, not only added (rule 8, stated plainly):** three
+  `tests/outreach-approve.test.ts` cases (marks posted, rate-limit failure,
+  API-error failure) previously reached `post()` with no graduation check
+  in the way; they now inject a `fetchGraduating` stub reporting the mint
+  has left the feed (graduated), matching the new required step, and one
+  `tests/admin-outreach-endpoint.test.ts` case ("posts, marks the item
+  posted…") now also sets `BITQUERY_ACCESS_TOKEN` and mocks the Bitquery
+  endpoint (discriminated from the X-posting mock already in that file by
+  URL) to the same "graduated" shape, plus resets the module-level
+  graduating-feed cache in `beforeEach`/`afterEach` so this new Bitquery
+  call can't leak state into other tests in the file. New coverage: refusal
+  while still bonding (post never called, draft stays pending), refusal on
+  a feed error, and success once the mint has left the feed, at both the
+  pure-function level and the real route level (409 + exact reason).
+  Validated on the final commit: `npm run test:app` — 340 test files / 3972
+  tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
+  `npm run build` — succeeds.
