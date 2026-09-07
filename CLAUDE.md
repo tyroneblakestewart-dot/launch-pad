@@ -3121,3 +3121,35 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Validated on the final commit: `npm run test:app` — 335 test files / 3886
   tests passing; `npm run lint` — 0 errors (11 warnings, none in files this
   PR touches); `npm run build` — succeeds.
+
+- Quiet-hours time pickers are native time fields (owner direction, 7 Sep
+  2026: "time panels need to be better — too long on desktop; mobile can
+  have a touch roller to correct time"). The two `<select>`s from the
+  Calendar wiring PR (#533) listed all 24 hours as one long dropdown; they
+  are now `<input type="time">`, which is the wheel picker on iPhone, a
+  compact inline hh:mm field on desktop Firefox/Safari and a small
+  popover on desktop Chrome — never a 24-row list. Because the roller
+  offers minutes, `QuietHours` is now `{ start: "HH:MM"; end: "HH:MM" }`
+  (`lib/social-quiet-hours.ts`: `parseClockTime`/`formatClockTime`;
+  `isInQuietHours`/`shiftOutOfQuietHours` compare minutes since midnight,
+  so a 22:30 → 07:30 window is honoured to the minute); the whole-hour
+  shape any record saved between the two 7 Sep Calendar PRs carries
+  (`{ startHour, endHour }`) is read as clock strings by
+  `normaliseQuietHours`, so nothing is lost. A cleared field is ignored
+  (never saved as off); Turn off / Turn on is unchanged. CSS: `color-scheme:
+  dark` so the native pickers render dark, a fixed 108px min width so the
+  row never jumps between values, 38px tall on desktop and 44px under
+  `(pointer: coarse)`. **Tests changed, not only added (rule 8, stated
+  plainly):** `tests/social-quiet-hours.test.ts` (from #533, the same day)
+  is rewritten for the clock-string shape and gains minute-level cases and
+  a 7-minute-step sweep; `tests/social-calendar-card-wiring.test.ts`'s
+  select/option pins now pin the two time fields and the CSS;
+  `tests/social-studio-db.test.ts`'s fixture uses the new shape and gains a
+  whole-hour migration case. Rule 10 needs nothing. Checked in headless
+  Chromium at 1400px and 390px: two time fields at 23:00/07:00, a half-hour
+  end (09:30) accepted, Turn off/on, field box 112×38 on desktop and 112×44
+  on mobile, the calendar draft's Queue default still lifted by the window
+  — the iPhone wheel itself cannot be driven from here; the owner confirms
+  on device. Validated on the final commit: `npm run test:app` — 335 test
+  files / 3887 tests passing; `npm run lint` — 0 errors (11 warnings, none
+  in files this PR touches); `npm run build` — succeeds.
