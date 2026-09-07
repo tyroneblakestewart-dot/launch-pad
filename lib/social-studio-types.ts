@@ -49,6 +49,14 @@ export type QueueItem = {
   artwork: string | null;
   source: "setup-ai" | "calendar-ai" | "manual" | "auto-replenish";
   dayLabel: string | null;
+  /**
+   * The local calendar day ("YYYY-MM-DD") the user picked on the Calendar
+   * tab when they tapped "AI makes it" — the day the post is scheduled on
+   * when approved, unless the user picks their own time in the Queue.
+   * Absent on Setup, manual and replenish drafts (and on pre-existing
+   * calendar drafts, which fall back to the cadence spread as before).
+   */
+  scheduledDay?: string | null;
   createdAt: string;
   /** The angle the draft route wrote this post to (DRAFT_ANGLES key) — ranks it for an AI image. Absent on manual and pre-existing drafts. */
   angleKey?: string | null;

@@ -2966,3 +2966,53 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   the final commit: `npm run test:app` — 330 test files / 3852 tests passing;
   `npm run lint` — 0 errors (10 pre-existing warnings); `npm run build` —
   succeeds.
+
+- Calendar AI drafts keep their day, and scheduled posts load on the Calendar
+  tab (owner request, 7 Sep 2026: "run test on calendar, check functions are
+  working"; a headless-Chromium pass at 1400px and 390px found the two
+  defects fixed here, plus the still-unbuilt controls listed below). **The
+  day was only a label:** "AI makes it" wrote `dayLabel` ("14 September
+  2026") onto the draft for the Queue row's caption, but the shown default
+  time and the approval time both came from the cadence spread from "now",
+  so a draft made for the 14th was approved for today unless the user
+  re-picked the date in the Queue row. `QueueItem` gains an optional
+  `scheduledDay` ("YYYY-MM-DD", local), set by `generateDraftForDay` from
+  the selected day; a new pure `computeDefaultScheduledAtOnDay`
+  (`lib/social-studio-queue.ts`, with `toCalendarDayIso`/
+  `parseCalendarDayIso`/`isCalendarDayBeforeToday`) places such a draft ON
+  that day — the first waking slot (07:00 local, or now if the day is today
+  and 07:00 has passed), one cadence spread past the latest post already
+  pending that same day, never spilling past the day's last slot (23:00)
+  into a day the user did not pick — and the hub's `calendarDayScheduledAt`
+  feeds it into both the shown default and `approveQueueItem`, so the time
+  the row shows is the time approval uses; the user's own pick still wins
+  and `ensureFutureScheduledAt` still clamps. A day already gone is refused
+  with a plain status line before any paid draft call. The card copy now
+  says what happens ("approve it there and it goes out on this day"). **The
+  pill was blind outside Queue:** `loadScheduledPosts` ran only on Queue
+  activation, so the header's TODAY x/5 read 0/5 on Setup and Calendar until
+  the user visited Queue; a new effect loads once per wallet on arrival and
+  again whenever the Calendar tab opens (never replenishing — that stays the
+  Queue tab's paid decision). Non-calendar drafts, pre-existing calendar
+  drafts (no `scheduledDay`) and the Queue tab's own load behave exactly as
+  before. **Tests changed, not only added (rule 8, stated plainly):** one
+  `tests/social-studio-ui.test.ts` pin on the two-argument
+  `generateDraft({ dayLabel: selectedDayLabel }, …)` call now pins the call
+  carrying `scheduledDay`. New coverage: nine `computeDefaultScheduledAtOnDay`
+  / day-parsing cases in `tests/social-studio-queue.test.ts` and source pins
+  in `tests/social-calendar-day-schedule.test.ts`. Rule 10 needs nothing (no
+  route, page or integration). **Found by the same pass, deliberately left
+  for the next PRs:** the calendar never marks days that hold posts (the
+  legend's lime/grey dots and "Lime days will hold launches or
+  announcements" have no code behind them, and every mobile week card says
+  "No scheduled posts"); the mobile week strip opens at day 1, not today;
+  the timezone select is display-only with hardcoded offsets; "I'll post my
+  own", quiet hours and the WHERE IT POSTS chips remain honest coming-soon
+  placeholders; the TODAY pill is not shown at all at 390px. Checked in
+  headless Chromium at 1400px and 390px with mocked routes (schedule input
+  reads 14 September 07:00 for a draft made for the 14th, past day refused
+  with no request, pill correct on the Calendar tab) — not on a physical
+  iPhone; the owner confirms on device. Validated on the final commit:
+  `npm run test:app` — 331 test files / 3866 tests passing; `npm run lint` —
+  0 errors (11 warnings, none in files this PR touches); `npm run build` —
+  succeeds.

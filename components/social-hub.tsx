@@ -62,8 +62,11 @@ import {
   describePlanBadge,
   cadenceSpreadHoursMs,
   computeDefaultScheduledAt,
+  computeDefaultScheduledAtOnDay,
   connectedPlatforms,
   describeWalletMismatch,
+  isCalendarDayBeforeToday,
+  toCalendarDayIso,
   isAwaitingSend,
   isHistoryStatus,
   isPendingSendStatus,
@@ -1757,6 +1760,8 @@ export function SocialHub() {
   async function generateDraft(
     options: {
       dayLabel?: string;
+      /** The picked calendar day ("YYYY-MM-DD") a Calendar-tab draft is scheduled on at approval. */
+      scheduledDay?: string;
       theme?: string;
       replenish?: boolean;
       recentDraftsOverride?: string[];
@@ -1824,6 +1829,7 @@ export function SocialHub() {
           artwork: null,
           source: options.dayLabel ? "calendar-ai" : "auto-replenish",
           dayLabel: options.dayLabel ?? null,
+          scheduledDay: options.scheduledDay ?? null,
           createdAt: new Date().toISOString(),
           angleKey: payload.angleKey ?? null,
         };
@@ -1857,9 +1863,31 @@ export function SocialHub() {
   }
 
   async function generateDraftForDay() {
+    // The picked day rides with the draft so approval lands it ON that day
+    // (owner test, 7 Sep 2026: a draft for the 14th defaulted to today). A
+    // day already gone gets a plain refusal instead of a paid draft that
+    // could only ever be clamped to "now".
+    const scheduledDay = toCalendarDayIso(selectedDay.year, selectedDay.month, selectedDay.day);
+    if (isCalendarDayBeforeToday(scheduledDay, new Date())) {
+      setCalendarDraftStatus({ tone: "error", message: `${selectedDayLabel} has already passed — pick today or a later day.` });
+      return;
+    }
     setCalendarAiBusy(true);
-    await generateDraft({ dayLabel: selectedDayLabel }, setCalendarDraftStatus);
+    await generateDraft({ dayLabel: selectedDayLabel, scheduledDay }, setCalendarDraftStatus);
     setCalendarAiBusy(false);
+  }
+
+  /**
+   * The default time for a Calendar-tab draft: on its picked day (first
+   * waking slot, one cadence spread past anything already pending that day),
+   * or null for every other draft so the caller falls back to the ordinary
+   * cadence spread from now. Used by the shown default and by approval, so
+   * the time the row shows is the time approval uses.
+   */
+  function calendarDayScheduledAt(item: QueueItem, awaitingIso: string[], now: Date): Date | null {
+    return item.scheduledDay
+      ? computeDefaultScheduledAtOnDay(item.scheduledDay, awaitingIso, now, cadenceSpreadHoursMs(postingCadence))
+      : null;
   }
 
   /**
@@ -2322,7 +2350,7 @@ export function SocialHub() {
       const picked =
         scheduleManuallySet[item.id] && itemScheduledAt[item.id]
           ? new Date(itemScheduledAt[item.id])
-          : computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));
+          : calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));
       const scheduledAtIso = ensureFutureScheduledAt(picked, now).toISOString();
 
       let authMode: "session" | "signature";
@@ -2489,8 +2517,9 @@ export function SocialHub() {
       const next = { ...current };
       for (const item of queue) {
         if (next[item.id] === undefined) {
+          const now = new Date();
           next[item.id] = toDateTimeLocalValue(
-            computeDefaultScheduledAt(awaitingIso, new Date(), cadenceSpreadHoursMs(postingCadence)),
+            calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence)),
           );
           changed = true;
         }
@@ -2512,6 +2541,20 @@ export function SocialHub() {
     selectedProjectIdRef.current = selectedProjectId;
     queueTabActionsRef.current = { loadScheduledPosts, loadConnections, replenishQueue };
   });
+
+  // Scheduled posts used to load only when the Queue tab opened, so the
+  // header's TODAY x/5 pill read 0/5 on every other tab until then (owner
+  // test, 7 Sep 2026). Load once per wallet on arrival and again whenever
+  // the Calendar tab opens; the Queue tab keeps its own load below.
+  const postsLoadedForWalletRef = useRef("");
+  useEffect(() => {
+    if (!walletAddress) return;
+    const firstLoadForWallet = postsLoadedForWalletRef.current !== walletAddress;
+    postsLoadedForWalletRef.current = walletAddress;
+    if (activeTab === "queue") return;
+    if (!firstLoadForWallet && activeTab !== "calendar") return;
+    void queueTabActionsRef.current.loadScheduledPosts();
+  }, [activeTab, walletAddress]);
 
   useEffect(() => {
     if (activeTab !== "queue") return;
@@ -4071,7 +4114,7 @@ export function SocialHub() {
                         </div>
                         <button type="button" className={styles.aiMakeButton} onClick={generateDraftForDay} disabled={calendarAiBusy}>
                           <b>{calendarAiBusy ? "Making it…" : "AI makes it"}</b>
-                          <span>Generates a voice-aware draft for this day and adds it to the Queue.</span>
+                          <span>Drafts a post for this day and adds it to the Queue — approve it there and it goes out on this day.</span>
                         </button>
                         <InlineStatus status={calendarDraftStatus} />
                         <button type="button" disabled className={styles.ownPostButton}>
