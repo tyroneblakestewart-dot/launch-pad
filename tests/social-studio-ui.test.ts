@@ -176,7 +176,7 @@ describe("Hoodlums AI Social Studio", () => {
     );
     expect(social).toContain('report({ tone: "error", message: error instanceof Error ? error.message : "The draft could not be generated." });');
     expect(social).toContain("await generateDraft({}, setSetupDraftStatus);");
-    expect(social).toContain("await generateDraft({ dayLabel: selectedDayLabel }, setCalendarDraftStatus);");
+    expect(social).toContain("await generateDraft({ dayLabel: selectedDayLabel, scheduledDay }, setCalendarDraftStatus);");
 
     // Each status renders next to the control that triggered it, not only inside the statusBar.
     expect(social).toContain("<InlineStatus status={voiceStatus} />");

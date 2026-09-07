@@ -164,6 +164,75 @@ export function cadenceSpreadHoursMs(cadence: PostingCadence): number {
   return Math.round(WAKING_HOURS_MS / cadenceQueueTarget(cadence));
 }
 
+/** First and last hour (local time) a calendar-day draft is placed at — the same 07:00–23:00 waking window the cadence spread fans across. */
+export const CALENDAR_DAY_FIRST_SLOT_HOUR = 7;
+export const CALENDAR_DAY_LAST_SLOT_HOUR = 23;
+
+/** A local calendar day as "YYYY-MM-DD" — the form `QueueItem.scheduledDay` carries (month is 0-based, like `Date`). */
+export function toCalendarDayIso(year: number, month: number, day: number): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${year}-${pad(month + 1)}-${pad(day)}`;
+}
+
+/** Parses "YYYY-MM-DD" into the local-midnight Date of that day, or null for anything that is not exactly a real calendar day. */
+export function parseCalendarDayIso(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(year, month, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
+  return date;
+}
+
+/** True when the calendar day is strictly before `now`'s local day — a day nothing can be scheduled on any more. */
+export function isCalendarDayBeforeToday(dayIso: string, now: Date): boolean {
+  const day = parseCalendarDayIso(dayIso);
+  if (!day) return false;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return day.getTime() < today.getTime();
+}
+
+/**
+ * The default time for a draft the user pinned to a calendar day: ON THAT
+ * DAY, never the cadence spread from "now" (owner test, 7 Sep 2026: an
+ * "AI makes it" draft for the 14th defaulted to today). Starts at the first
+ * waking slot (07:00 local) — or now, if the day is today and 07:00 has
+ * passed — and steps one cadence spread past the latest post already
+ * pending on that same day, so two calendar drafts for one day fan out
+ * like approvals do. Never leaves the day: once the day's waking window is
+ * full the last slot (23:00) is reused rather than spilling into the next
+ * day the user did not pick. Returns null for a day that is not a real
+ * calendar day, so the caller can fall back to the cadence default; a day
+ * already in the past yields a time on that day, which the existing
+ * approval clamp then lifts to "at least two minutes from now".
+ */
+export function computeDefaultScheduledAtOnDay(
+  dayIso: string,
+  existingScheduledAtIso: readonly string[],
+  now: Date,
+  spreadHoursMs: number,
+): Date | null {
+  const day = parseCalendarDayIso(dayIso);
+  if (!day) return null;
+  const firstSlotMs = new Date(day.getFullYear(), day.getMonth(), day.getDate(), CALENDAR_DAY_FIRST_SLOT_HOUR).getTime();
+  const lastSlotMs = new Date(day.getFullYear(), day.getMonth(), day.getDate(), CALENDAR_DAY_LAST_SLOT_HOUR).getTime();
+  const dayStartMs = day.getTime();
+  const dayEndMs = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime();
+  const latestOnDayMs = existingScheduledAtIso
+    .map((iso) => new Date(iso).getTime())
+    .filter((value) => Number.isFinite(value) && value >= dayStartMs && value < dayEndMs)
+    .reduce((max, value) => Math.max(max, value), Number.NEGATIVE_INFINITY);
+  const isToday = now.getTime() >= dayStartMs && now.getTime() < dayEndMs;
+  let candidateMs = Math.max(firstSlotMs, isToday ? now.getTime() : Number.NEGATIVE_INFINITY);
+  if (Number.isFinite(latestOnDayMs)) candidateMs = Math.max(candidateMs, latestOnDayMs + spreadHoursMs);
+  // Late on the day itself, "now" is the honest floor even past the last slot (the approval clamp adds its two minutes).
+  const capMs = Math.max(lastSlotMs, isToday ? now.getTime() : Number.NEGATIVE_INFINITY);
+  return new Date(Math.min(candidateMs, capMs));
+}
+
 /**
  * Whether `text` is still exactly one of the canned `buildTemplate()`
  * outputs, unedited (issue #380). A single edited character makes this

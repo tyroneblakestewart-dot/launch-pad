@@ -9,7 +9,11 @@ import {
   cadenceSpreadHoursMs,
   clampQueueTarget,
   computeDefaultScheduledAt,
+  computeDefaultScheduledAtOnDay,
   connectedPlatforms,
+  isCalendarDayBeforeToday,
+  parseCalendarDayIso,
+  toCalendarDayIso,
   countPostsScheduledToday,
   describePlanBadge,
   describeWalletMismatch,
@@ -270,5 +274,68 @@ describe("describePlanBadge", () => {
   it("drops the token count for an unlimited or unbounded plan rather than printing null", () => {
     expect(describePlanBadge({ plan: "pro", limit: null, unlimited: true })).toBe("PRO");
     expect(describePlanBadge({ plan: "pro-bundle", limit: null, unlimited: false })).toBe("PRO BUNDLE");
+  });
+});
+
+describe("calendar-day scheduling (Calendar tab 'AI makes it', owner test 7 Sep 2026)", () => {
+  const spread = 2 * 60 * 60 * 1000;
+  const local = (y: number, m: number, d: number, h = 0, min = 0) => new Date(y, m, d, h, min);
+
+  it("formats and parses a local calendar day round-trip, rejecting anything that is not a real day", () => {
+    expect(toCalendarDayIso(2026, 8, 14)).toBe("2026-09-14");
+    expect(toCalendarDayIso(2027, 0, 1)).toBe("2027-01-01");
+    expect(parseCalendarDayIso("2026-09-14")?.getTime()).toBe(local(2026, 8, 14).getTime());
+    expect(parseCalendarDayIso("2026-02-30")).toBeNull();
+    expect(parseCalendarDayIso("2026-9-4")).toBeNull();
+    expect(parseCalendarDayIso("14 September 2026")).toBeNull();
+    expect(parseCalendarDayIso(null)).toBeNull();
+  });
+
+  it("knows a day before today from today and later days", () => {
+    const now = local(2026, 8, 7, 8, 51);
+    expect(isCalendarDayBeforeToday("2026-09-06", now)).toBe(true);
+    expect(isCalendarDayBeforeToday("2026-09-07", now)).toBe(false);
+    expect(isCalendarDayBeforeToday("2026-09-14", now)).toBe(false);
+    expect(isCalendarDayBeforeToday("nonsense", now)).toBe(false);
+  });
+
+  it("puts a future day's draft at that day's first waking slot, never the cadence spread from now", () => {
+    const now = local(2026, 8, 7, 9, 10);
+    const result = computeDefaultScheduledAtOnDay("2026-09-14", [], now, spread);
+    expect(result?.getTime()).toBe(local(2026, 8, 14, 7).getTime());
+  });
+
+  it("ignores pending posts on other days and steps one spread past the latest post already pending that day", () => {
+    const now = local(2026, 8, 7, 9, 10);
+    const pending = [local(2026, 8, 7, 16).toISOString(), local(2026, 8, 14, 10, 30).toISOString(), local(2026, 8, 15, 8).toISOString()];
+    expect(computeDefaultScheduledAtOnDay("2026-09-14", pending, now, spread)?.getTime()).toBe(local(2026, 8, 14, 12, 30).getTime());
+  });
+
+  it("uses now as the floor when the day is today and 07:00 has passed", () => {
+    const now = local(2026, 8, 7, 9, 10);
+    expect(computeDefaultScheduledAtOnDay("2026-09-07", [], now, spread)?.getTime()).toBe(now.getTime());
+    const early = local(2026, 8, 7, 5, 0);
+    expect(computeDefaultScheduledAtOnDay("2026-09-07", [], early, spread)?.getTime()).toBe(local(2026, 8, 7, 7).getTime());
+  });
+
+  it("never leaves the picked day once its waking window is full", () => {
+    const now = local(2026, 8, 7, 9, 10);
+    const pending = [local(2026, 8, 14, 22, 30).toISOString()];
+    expect(computeDefaultScheduledAtOnDay("2026-09-14", pending, now, spread)?.getTime()).toBe(local(2026, 8, 14, 23).getTime());
+  });
+
+  it("late on the day itself, now is the honest floor even past the last slot", () => {
+    const now = local(2026, 8, 7, 23, 40);
+    expect(computeDefaultScheduledAtOnDay("2026-09-07", [], now, spread)?.getTime()).toBe(now.getTime());
+  });
+
+  it("returns null for a day that is not a real calendar day, so callers fall back to the cadence default", () => {
+    expect(computeDefaultScheduledAtOnDay("14 September 2026", [], local(2026, 8, 7), spread)).toBeNull();
+    expect(computeDefaultScheduledAtOnDay("", [], local(2026, 8, 7), spread)).toBeNull();
+  });
+
+  it("a past day still yields a time on that day (the approval clamp lifts it to now + lead)", () => {
+    const now = local(2026, 8, 7, 9, 10);
+    expect(computeDefaultScheduledAtOnDay("2026-09-03", [], now, spread)?.getTime()).toBe(local(2026, 8, 3, 7).getTime());
   });
 });
