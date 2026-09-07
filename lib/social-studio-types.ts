@@ -1,4 +1,5 @@
 import { DEFAULT_TONE_DIALS, DEFAULT_WORDS_TO_AVOID, type ToneDials } from "./social-tone-rules";
+import { DEFAULT_QUIET_HOURS, type QuietHours } from "./social-quiet-hours";
 // Client-safe types shared between components/social-hub.tsx and the new
 // AI Social Studio server routes. Kept separate from lib/server/* so the
 // client bundle never pulls in server-only modules.
@@ -118,6 +119,8 @@ export type SocialStudioProjectRecord = {
   wordsToAvoid: string[];
   /** Settings & Rules "How it should sound" dials (owner direction, 6 Sep 2026) — fed into every AI draft as tone instructions. */
   toneDials: ToneDials;
+  /** Calendar "Quiet hours" (owner direction, 7 Sep 2026): no post is ever scheduled inside this local-time window; `null` is off. */
+  quietHours: QuietHours | null;
 };
 
 export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
@@ -133,4 +136,5 @@ export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
   sortedVoiceSourceKeys: [],
   wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
   toneDials: { ...DEFAULT_TONE_DIALS },
+  quietHours: { ...DEFAULT_QUIET_HOURS },
 };

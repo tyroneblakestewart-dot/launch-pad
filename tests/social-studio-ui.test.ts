@@ -87,7 +87,9 @@ describe("Hoodlums AI Social Studio", () => {
     // Rules tab and the still out-of-scope calendar/bot controls stay coming soon.
     expect(social).toContain("Words to avoid");
     expect(social).toContain("Coming soon");
-    expect(social).toContain('disabled className={styles.ownPostButton}');
+    // "I'll post my own" is live since the Calendar wiring (7 Sep 2026): a composer toggle, no longer a disabled placeholder.
+    expect(social).toContain('aria-expanded={ownPostOpen}');
+    expect(social).not.toContain('disabled className={styles.ownPostButton}');
     expect(social).toContain("Add to your channel");
   });
 

@@ -3016,3 +3016,55 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   `npm run test:app` — 331 test files / 3866 tests passing; `npm run lint` —
   0 errors (11 warnings, none in files this PR touches); `npm run build` —
   succeeds.
+
+- Calendar tab wired: quiet hours, "I'll post my own", live WHERE IT POSTS
+  chips (owner direction, 7 Sep 2026: "check functions and wire things that
+  ain't been built yet — use initiative"). The schedule card's three
+  coming-soon placeholders are real controls; the "not built yet" note and
+  badge are gone. **Quiet hours** — a per-project window in the user's own
+  local time (`SocialStudioProjectRecord.quietHours`, `QuietHours | null`,
+  migrate-on-read to the design's 23:00 → 07:00; explicit `null` is off; a
+  start equal to its end is off) held in a new pure, client-safe
+  `lib/social-quiet-hours.ts` (`normaliseQuietHours`, `isInQuietHours`,
+  `shiftOutOfQuietHours`, wrap-around and same-day windows). Stated plainly
+  how it is enforced: every send happens at a time decided at approval, so
+  `approveQueueItem` runs the future clamp first and then
+  `shiftOutOfQuietHours` on every approval — the user's own pick included —
+  moving anything inside the window to the window's end and saying so in
+  the success line; the Queue row's shown default is shifted the same way,
+  so the time shown is the time used. No server or cron change and no
+  migration; the one gap is a retry after a failed send drifting into the
+  window (#335's backoff), noted rather than built. The two selects are
+  bound (every hour, 44px under coarse pointers) with a Turn off / Turn on
+  control. **"I'll post my own"** — the button opens an inline composer
+  whose text becomes an ordinary `manual` `QueueItem` carrying `dayLabel`
+  and `scheduledDay` for the selected day (so PR #532's on-that-day default
+  applies), then takes the same Queue approve path as every AI draft —
+  nothing is sent from the calendar; over 280 characters is refused up front
+  (`X_CHARACTER_LIMIT`), a past day is refused, and the Queue caption reads
+  "Your own · 14 September 2026". Artwork is attached in the Queue row, not
+  the composer. **WHERE IT POSTS** — the chips now read
+  `myConnectedPlatforms` (lit when connected, "· not connected" otherwise)
+  with copy pointing at Setup. **Tests changed, not only added (rule 8,
+  stated plainly):** `tests/social-studio-ui.test.ts`'s pin on the disabled
+  `ownPostButton` now pins the live toggle; PR #532's own day-old
+  `tests/social-calendar-day-schedule.test.ts` pin on the default-time
+  expression now pins the `const base =` form the quiet-hours shift wraps;
+  `tests/social-studio-db.test.ts`'s fixture and three legacy `toEqual`
+  expectations gained `quietHours`; `tests/social-external-token.test.ts`'s
+  count of "Add your token details before" prompts is 11, not 10, because
+  the composer asks too. New `tests/social-quiet-hours.test.ts`
+  (window maths, including a sweep proving a shifted time is itself outside
+  the window) and `tests/social-calendar-card-wiring.test.ts` (source pins).
+  Rule 10 needs nothing (no route, page or integration; nothing leaves the
+  browser). Checked in headless Chromium at 1400px and 390px with mocked
+  routes: selects default 23:00/07:00, end moved to 09:00 lifts a calendar
+  draft's Queue default from 07:00 to 09:00, Turn off/on, own post added and
+  listed with its day, 281 characters refused, chips reflect a connected
+  Telegram and an unconnected X — not on a physical iPhone; the owner
+  confirms on device. Still open from the same test pass, next PR: day
+  markers on the calendar, the mobile week strip opening at today (and its
+  solid-lime selected card), and the display-only timezone select.
+  Validated on the final commit: `npm run test:app` — 333 test files / 3878
+  tests passing; `npm run lint` — 0 errors (11 warnings, none in files this
+  PR touches); `npm run build` — succeeds.
