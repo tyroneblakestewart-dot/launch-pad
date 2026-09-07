@@ -3116,7 +3116,8 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   scheduled" for today and the new draft for the 14th as waiting for
   approval; the timezone line reads "Europe/London · GMT+1" — not on a
   physical iPhone; the owner confirms on device. The TODAY x/5 pill is
-  still not rendered at 390px (pre-existing layout choice, unchanged).
+  not rendered at 390px by the owner's own mobile-only layout decision
+  (confirmed 7 Sep 2026) and is untouched.
   Validated on the final commit: `npm run test:app` — 335 test files / 3886
   tests passing; `npm run lint` — 0 errors (11 warnings, none in files this
   PR touches); `npm run build` — succeeds.
