@@ -11,6 +11,7 @@ import {
   listTimezones,
   normaliseTimezone,
   searchTimezones,
+  buildTimezoneOptions,
   suggestedTimezones,
   timezoneOffsetLabel,
   wallClockIn,
@@ -93,11 +94,56 @@ describe("the zone itself", () => {
     expect(searchTimezones(zones, "zzzz nothing")).toEqual([]);
   });
 
-  it("returns a short list, never the whole world", () => {
+  it("caps how many matches it returns", () => {
     const zones = listTimezones();
-    expect(searchTimezones(zones, "a").length).toBeLessThanOrEqual(8);
+    expect(searchTimezones(zones, "a").length).toBeLessThanOrEqual(40);
     expect(searchTimezones(zones, "a", 3).length).toBeLessThanOrEqual(3);
     expect(suggestedTimezones(TOKYO, LONDON).length).toBeLessThanOrEqual(8);
+  });
+
+  /**
+   * Owner report, 7 Sep 2026: "limited countries". IANA zones are named after
+   * cities, so a country word found nothing — you had to already know your
+   * zone was called Europe/London.
+   */
+  it("finds a zone by country, not only by city", () => {
+    const zones = listTimezones();
+    for (const [query, expected] of [
+      ["uk", "Europe/London"],
+      ["britain", "Europe/London"],
+      ["england", "Europe/London"],
+      ["ireland", "Europe/Dublin"],
+      ["usa", "America/New_York"],
+      ["germany", "Europe/Berlin"],
+      ["japan", "Asia/Tokyo"],
+      ["south africa", "Africa/Johannesburg"],
+      ["nigeria", "Africa/Lagos"],
+      ["australia", "Australia/Sydney"],
+    ] as const) {
+      expect(searchTimezones(zones, query)[0]).toBe(expected);
+    }
+    // India is Asia/Kolkata on a current runtime and Asia/Calcutta on an older
+    // ICU — the same zone under two names, and either is a correct answer.
+    expect(["Asia/Kolkata", "Asia/Calcutta"]).toContain(searchTimezones(zones, "india")[0]);
+    // A partial country word works while typing.
+    expect(searchTimezones(zones, "germ")[0]).toBe("Europe/Berlin");
+    // Cities still win for a city query.
+    expect(searchTimezones(zones, "berlin")[0]).toBe("Europe/Berlin");
+  });
+
+  it("offers every zone when nothing is typed, suggestions first", () => {
+    const zones = listTimezones();
+    const options = buildTimezoneOptions(zones, "", TOKYO, LONDON);
+    // The whole world is reachable by scrolling — not a list of eight.
+    expect(options.length).toBe(zones.length);
+    expect(options[0]).toBe(TOKYO);
+    expect(options[1]).toBe(LONDON);
+    expect(new Set(options).size).toBe(options.length);
+    expect(options).toContain("Pacific/Auckland");
+    // Typing narrows it to the matches.
+    const typed = buildTimezoneOptions(zones, "tokyo", TOKYO, LONDON);
+    expect(typed[0]).toBe(TOKYO);
+    expect(typed.length).toBeLessThan(zones.length);
   });
 
   it("suggests the zone in force and the device's own before anything is typed", () => {
@@ -259,8 +305,7 @@ describe("the picker and what it changes", () => {
     expect(hub).not.toContain('aria-label="Time zone"\n');
     // Matches are computed only while the picker is open.
     expect(hub).toContain("if (!timezoneEditing) return [];");
-    expect(hub).toContain("return searchTimezones(listTimezones(timezone, deviceTimezone), timezoneQuery);");
-    expect(hub).toContain("if (!timezoneQuery.trim()) return suggestedTimezones(timezone, deviceTimezone);");
+    expect(hub).toContain("return buildTimezoneOptions(listTimezones(timezone, deviceTimezone), timezoneQuery, timezone, deviceTimezone);");
     // Enter takes the top match; Escape closes; choosing closes it too.
     expect(hub).toContain('if (event.key === "Enter" && timezoneMatches[0]) updateTimezone(timezoneMatches[0]);');
     expect(hub).toContain('if (event.key === "Escape") setTimezoneEditing(false);');
@@ -287,9 +332,14 @@ describe("the picker and what it changes", () => {
     expect(block).toContain("background: transparent;");
     expect(block).toContain("color: var(--text-primary);");
     expect(block).toContain("border: 1px solid transparent;");
-    // Hover and the current zone are lime, not a light block.
+    // Hover is a lime block; the zone in force is lime text and a tick, so two
+    // rows never look pressed at once (owner recording: "stuck highlighted on africa").
     expect(block).toContain("background: rgba(198, 245, 62, 0.13);");
-    expect(block).toContain('.timezoneResults button[aria-selected="true"] {');
+    expect(block).toContain('.timezoneResults button[aria-selected="true"] b,');
+    expect(block).not.toContain('.timezoneResults button[aria-selected="true"] {\n  border-color');
+    const hub = await source("components", "social-hub.tsx");
+    expect(hub).toContain("{zone === timezone ? `✓ ${timezoneOffsetLabel(zone)}` : timezoneOffsetLabel(zone)}");
+    expect(hub).toContain("{timezone ? deviceTimezone : `✓ ${deviceTimezone}`}");
     // The app-wide hover lift would jitter a list row.
     expect(block).toContain(".timezoneResults button:hover:not(:disabled) { transform: none; }");
   });

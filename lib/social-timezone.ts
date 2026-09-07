@@ -114,26 +114,118 @@ function searchable(value: string): string {
 }
 
 /**
+ * Country and region words that IANA zone names never contain (owner report,
+ * 7 Sep 2026: "limited countries"). Typing the country finds its zone, which
+ * a city-only list cannot do — nobody should have to know their zone is
+ * named after a city they may not live in.
+ */
+const TIMEZONE_ALIASES: Record<string, string[]> = {
+  uk: ["Europe/London"],
+  britain: ["Europe/London"],
+  england: ["Europe/London"],
+  scotland: ["Europe/London"],
+  wales: ["Europe/London"],
+  "northern ireland": ["Europe/London"],
+  ireland: ["Europe/Dublin"],
+  usa: ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"],
+  us: ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"],
+  "united states": ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"],
+  canada: ["America/Toronto", "America/Vancouver"],
+  mexico: ["America/Mexico_City"],
+  brazil: ["America/Sao_Paulo"],
+  argentina: ["America/Buenos_Aires"],
+  germany: ["Europe/Berlin"],
+  france: ["Europe/Paris"],
+  spain: ["Europe/Madrid"],
+  portugal: ["Europe/Lisbon"],
+  italy: ["Europe/Rome"],
+  netherlands: ["Europe/Amsterdam"],
+  holland: ["Europe/Amsterdam"],
+  poland: ["Europe/Warsaw"],
+  turkey: ["Europe/Istanbul"],
+  greece: ["Europe/Athens"],
+  sweden: ["Europe/Stockholm"],
+  norway: ["Europe/Oslo"],
+  switzerland: ["Europe/Zurich"],
+  russia: ["Europe/Moscow"],
+  uae: ["Asia/Dubai"],
+  "saudi arabia": ["Asia/Riyadh"],
+  israel: ["Asia/Jerusalem"],
+  india: ["Asia/Kolkata", "Asia/Calcutta"],
+  pakistan: ["Asia/Karachi"],
+  china: ["Asia/Shanghai"],
+  japan: ["Asia/Tokyo"],
+  korea: ["Asia/Seoul"],
+  vietnam: ["Asia/Saigon"],
+  thailand: ["Asia/Bangkok"],
+  philippines: ["Asia/Manila"],
+  indonesia: ["Asia/Jakarta"],
+  malaysia: ["Asia/Kuala_Lumpur"],
+  australia: ["Australia/Sydney", "Australia/Melbourne", "Australia/Perth", "Australia/Brisbane"],
+  "new zealand": ["Pacific/Auckland"],
+  nigeria: ["Africa/Lagos"],
+  "south africa": ["Africa/Johannesburg"],
+  kenya: ["Africa/Nairobi"],
+  egypt: ["Africa/Cairo"],
+  morocco: ["Africa/Casablanca"],
+  ghana: ["Africa/Accra"],
+};
+
+/**
  * The picker's matches for what the user typed (owner report, 7 Sep 2026:
  * the full zone list as a native dropdown filled the whole screen and was
- * mis-tapped). A city that starts with the query comes first, then a zone
- * that starts with it, then anything containing it — so "lond" lands on
- * Europe/London rather than a run of unrelated zones.
+ * mis-tapped). A country word comes first, then a city that starts with the
+ * query, then a zone that starts with it, then anything containing it — so
+ * both "uk" and "lond" land on Europe/London.
  */
-export function searchTimezones(zones: readonly string[], query: string, limit = 8): string[] {
+export function searchTimezones(zones: readonly string[], query: string, limit = 40): string[] {
   const needle = searchable(query);
   if (!needle) return zones.slice(0, limit);
+  const aliasKey = Object.keys(TIMEZONE_ALIASES).find((key) => key === needle || key.startsWith(needle));
+  // The alias list's own order is the useful one (a country's main zone first),
+  // so it ranks ahead of the alphabetical sort below.
+  const aliased = new Map<string, number>(
+    (aliasKey ? TIMEZONE_ALIASES[aliasKey].filter((zone) => zones.includes(zone)) : []).map((zone, index) => [zone, index - 1000]),
+  );
   const scored: Array<{ zone: string; score: number }> = [];
   for (const zone of zones) {
     const whole = searchable(zone);
     const city = searchable(zone.slice(zone.lastIndexOf("/") + 1));
-    const score = city.startsWith(needle) ? 0 : whole.startsWith(needle) ? 1 : city.includes(needle) ? 2 : whole.includes(needle) ? 3 : -1;
-    if (score >= 0) scored.push({ zone, score });
+    const score = aliased.has(zone)
+      ? (aliased.get(zone) as number)
+      : city.startsWith(needle)
+        ? 0
+        : whole.startsWith(needle)
+          ? 1
+          : city.includes(needle)
+            ? 2
+            : whole.includes(needle)
+              ? 3
+              : Number.NaN;
+    if (!Number.isNaN(score)) scored.push({ zone, score });
   }
   return scored
     .sort((a, b) => a.score - b.score || a.zone.localeCompare(b.zone))
     .slice(0, limit)
     .map((entry) => entry.zone);
+}
+
+/**
+ * What the list shows: the matches while the user is typing, else the
+ * suggestions followed by every other zone (owner report, 7 Sep 2026:
+ * "limited countries" — the un-typed list stopped at eight, so a zone that
+ * was not suggested could only be reached by knowing what to type).
+ */
+export function buildTimezoneOptions(
+  zones: readonly string[],
+  query: string,
+  current: string | null | undefined,
+  device: string | null | undefined,
+): string[] {
+  if (query.trim()) return searchTimezones(zones, query);
+  const suggested = suggestedTimezones(current, device);
+  const seen = new Set(suggested);
+  return [...suggested, ...zones.filter((zone) => !seen.has(zone))];
 }
 
 /** What the picker offers before anything is typed: the zone in force, the device's own, then common ones — never an alphabetical wall starting at Africa/Abidjan. */

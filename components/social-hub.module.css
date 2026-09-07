@@ -1729,11 +1729,11 @@
   border-color: rgba(198, 245, 62, 0.34);
   background: rgba(198, 245, 62, 0.13);
 }
-.timezoneResults button[aria-selected="true"] {
-  border-color: rgba(198, 245, 62, 0.5);
-  background: rgba(198, 245, 62, 0.1);
-}
-.timezoneResults button[aria-selected="true"] b { color: var(--accent-lime); }
+/* The zone in force is named in lime with a tick; only the row under the
+   pointer gets a background, so two rows never look pressed at once (owner
+   recording, 7 Sep 2026: "stuck highlighted on africa"). */
+.timezoneResults button[aria-selected="true"] b,
+.timezoneResults button[aria-selected="true"] em { color: var(--accent-lime); }
 /* The row lifts on hover everywhere else in the app; inside a list it just jitters. */
 .timezoneResults button:hover:not(:disabled) { transform: none; }
 .timezoneResults button b { color: inherit; font: 600 12px var(--sans); }
