@@ -39,16 +39,16 @@ describe("Calendar AI drafts keep their day, and scheduled posts load on the Cal
   it("the shown default and the approval time both come from the same calendar-day helper", async () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("function calendarDayScheduledAt(item: QueueItem, awaitingIso: string[], now: Date): Date | null {");
-    expect(hub).toContain("computeDefaultScheduledAtOnDay(item.scheduledDay, awaitingIso, now, cadenceSpreadHoursMs(postingCadence), timezone)");
+    expect(hub).toContain("computeDefaultScheduledAtOnDay(item.scheduledDay, awaitingIso, now, cadenceSpreadHoursMs(postingCadence), timezone, dailyStartTime)");
     // Shown default (the Queue row's Scheduled input).
     expect(hub).toContain(
-      "const base = calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));",
+      "const base = calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence), dailyStartTime, timezone);",
     );
     // Approval — still behind the user's own pick, still through the future clamp.
     const approve = hub.slice(hub.indexOf("async function approveQueueItem("));
     expect(approve).toContain("scheduleManuallySet[item.id] && itemScheduledAt[item.id]");
     expect(approve).toContain(
-      ": calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));",
+      ": calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence), dailyStartTime, timezone);",
     );
     expect(approve).toContain("const scheduledAtIso = ensureFutureScheduledAt(picked, now).toISOString();");
   });

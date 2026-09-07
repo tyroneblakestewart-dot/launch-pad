@@ -108,6 +108,60 @@ export function listTimezones(...include: Array<string | null | undefined>): str
   return [...all].sort((a, b) => a.localeCompare(b));
 }
 
+/** Zone names compare as plain words: "America/New_York" reads "america new york", so "new yor" finds it. */
+function searchable(value: string): string {
+  return value.toLowerCase().replace(/[_/]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The picker's matches for what the user typed (owner report, 7 Sep 2026:
+ * the full zone list as a native dropdown filled the whole screen and was
+ * mis-tapped). A city that starts with the query comes first, then a zone
+ * that starts with it, then anything containing it — so "lond" lands on
+ * Europe/London rather than a run of unrelated zones.
+ */
+export function searchTimezones(zones: readonly string[], query: string, limit = 8): string[] {
+  const needle = searchable(query);
+  if (!needle) return zones.slice(0, limit);
+  const scored: Array<{ zone: string; score: number }> = [];
+  for (const zone of zones) {
+    const whole = searchable(zone);
+    const city = searchable(zone.slice(zone.lastIndexOf("/") + 1));
+    const score = city.startsWith(needle) ? 0 : whole.startsWith(needle) ? 1 : city.includes(needle) ? 2 : whole.includes(needle) ? 3 : -1;
+    if (score >= 0) scored.push({ zone, score });
+  }
+  return scored
+    .sort((a, b) => a.score - b.score || a.zone.localeCompare(b.zone))
+    .slice(0, limit)
+    .map((entry) => entry.zone);
+}
+
+/** What the picker offers before anything is typed: the zone in force, the device's own, then common ones — never an alphabetical wall starting at Africa/Abidjan. */
+export function suggestedTimezones(current: string | null | undefined, device: string | null | undefined, limit = 8): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const zone of [current, device, ...FALLBACK_TIMEZONES]) {
+    if (!isValidTimezone(zone) || seen.has(zone)) continue;
+    seen.add(zone);
+    out.push(zone);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** "GMT+1" for the zone at this instant — the small print beside each match. */
+export function timezoneOffsetLabel(zone: string, now: Date = new Date()): string {
+  try {
+    return (
+      new Intl.DateTimeFormat("en-GB", { timeZone: zone, timeZoneName: "shortOffset" })
+        .formatToParts(now)
+        .find((part) => part.type === "timeZoneName")?.value ?? ""
+    );
+  } catch {
+    return "";
+  }
+}
+
 /** The picker's `<optgroup>`s: zones grouped by their region prefix ("Europe", "America", …), each group sorted. */
 export function groupTimezones(zones: readonly string[]): Array<{ region: string; zones: string[] }> {
   const groups = new Map<string, string[]>();

@@ -132,6 +132,8 @@ export type SocialStudioProjectRecord = {
   quietHours: QuietHours | null;
   /** The zone every time on the Calendar and Queue is shown and scheduled in (owner direction, 7 Sep 2026). `null` follows the device, which is what the line said before it could be changed. */
   timezone: string | null;
+  /** When the day's first post goes out ("HH:MM" on the chosen zone's clock); every later post spaces out from it. `null` means the user has not been asked yet, and everything behaves as it did before (owner direction, 7 Sep 2026). */
+  dailyStartTime: string | null;
 };
 
 export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
@@ -150,4 +152,5 @@ export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
   toneDials: { ...DEFAULT_TONE_DIALS },
   quietHours: { ...DEFAULT_QUIET_HOURS },
   timezone: null,
+  dailyStartTime: null,
 };

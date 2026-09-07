@@ -60,7 +60,7 @@ describe("Approval integrity: one tap, template badging, reschedule (issue #380,
     expect(social).toContain("const [scheduleManuallySet, setScheduleManuallySet] = useState<Record<string, boolean>>({});");
     const approveBlock = social.slice(social.indexOf("async function approveQueueItem"), social.indexOf("async function approveQueueItem") + 5200);
     expect(approveBlock).toContain("scheduleManuallySet[item.id] && itemScheduledAt[item.id]");
-    expect(approveBlock).toContain("computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence))");
+    expect(approveBlock).toContain("computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence), dailyStartTime, timezone)");
     expect(approveBlock).toContain("ensureFutureScheduledAt(picked, now)");
 
     // needs_composer must not permanently anchor the spread (it never sends automatically).

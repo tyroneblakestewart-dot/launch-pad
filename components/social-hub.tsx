@@ -60,7 +60,9 @@ import {
   countPostsScheduledToday,
   describePlanBadge,
   cadenceSpreadHoursMs,
+  DEFAULT_DAILY_START_CLOCK,
   computeDefaultScheduledAt,
+  describeSpreadHours,
   calendarDayAtTime,
   computeDefaultScheduledAtOnDay,
   connectedPlatforms,
@@ -88,8 +90,10 @@ import {
   dateFromWallClock,
   detectTimezone,
   describeTimezone,
-  groupTimezones,
   listTimezones,
+  searchTimezones,
+  suggestedTimezones,
+  timezoneOffsetLabel,
   wallClockIn,
 } from "@/lib/social-timezone";
 import type {
@@ -167,6 +171,8 @@ type ExternalTokenForm = {
 };
 /** "Fill out later" on the token-details box, remembered per wallet for this tab only. Never throws. */
 const TOKEN_DETAILS_LATER_KEY = "hoodlums.social.tokenDetailsLater.v1";
+/** "Not now" on the start-time question, remembered for this tab only — the same shape as the token-details reminder (7 Sep 2026). */
+const DAILY_START_LATER_KEY = "hoodlums.social.dailyStartLater.v1";
 function readTokenDetailsLater(owner: string | null): boolean {
   if (!owner) return false;
   try {
@@ -181,6 +187,23 @@ function writeTokenDetailsLater(owner: string | null, later: boolean): void {
     else sessionStorage.removeItem(TOKEN_DETAILS_LATER_KEY);
   } catch {
     // Without session storage the box simply shows again next time.
+  }
+}
+
+function readDailyStartLater(owner: string | null): boolean {
+  if (!owner) return false;
+  try {
+    return sessionStorage.getItem(DAILY_START_LATER_KEY) === owner;
+  } catch {
+    return false;
+  }
+}
+function writeDailyStartLater(owner: string | null, later: boolean): void {
+  try {
+    if (later && owner) sessionStorage.setItem(DAILY_START_LATER_KEY, owner);
+    else sessionStorage.removeItem(DAILY_START_LATER_KEY);
+  } catch {
+    // Without session storage the question simply asks again next time.
   }
 }
 
@@ -601,6 +624,13 @@ export function SocialHub() {
   /** The zone every Calendar and Queue time is shown and scheduled in; `null` follows the device (owner direction, 7 Sep 2026). */
   const [timezone, setTimezone] = useState<string | null>(null);
   const [timezoneEditing, setTimezoneEditing] = useState(false);
+  /** What the user has typed into the zone search (owner report, 7 Sep 2026: the full list as a dropdown filled the screen). */
+  const [timezoneQuery, setTimezoneQuery] = useState("");
+  /** When the day's first post goes out; `null` until the user answers, and until then everything schedules exactly as it did before (owner direction, 7 Sep 2026). */
+  const [dailyStartTime, setDailyStartTime] = useState<string | null>(null);
+  /** The answer in the prompt's own field, before it is saved. */
+  const [dailyStartDraft, setDailyStartDraft] = useState(DEFAULT_DAILY_START_CLOCK);
+  const [dailyStartLater, setDailyStartLater] = useState(false);
   /** Calendar "Announcement post" (owner direction, 7 Sep 2026): the user's own announcement, posted as written or jazzed up by the AI, pinned to the selected day. */
   const [announcementMode, setAnnouncementMode] = useState<"own" | "ai" | "now">("own");
   /** "Post now" (7 Sep 2026, replacing Setup's Compose now): the text that goes out immediately — X through its own composer, Telegram through the bot. */
@@ -785,6 +815,7 @@ export function SocialHub() {
     setProjects(loadedProjects);
     setWalletAddress(storedWalletAddress());
     setDetailsLater(readTokenDetailsLater(projectOwner));
+    setDailyStartLater(readDailyStartLater(projectOwner));
     setEditingProjectId(null);
 
     const first = loadedProjects[0];
@@ -1047,6 +1078,8 @@ export function SocialHub() {
       setToneDials(record.toneDials);
       setQuietHours(record.quietHours);
       setTimezone(record.timezone);
+      setDailyStartTime(record.dailyStartTime);
+      setDailyStartDraft(record.dailyStartTime ?? DEFAULT_DAILY_START_CLOCK);
       setAnnouncementText("");
       setAnnouncementAi(null);
       setAnnouncementStatus(null);
@@ -1081,6 +1114,7 @@ export function SocialHub() {
       toneDials,
       quietHours,
       timezone,
+      dailyStartTime,
       sortedVoiceSourceKeys,
       ...overrides,
     };
@@ -1234,11 +1268,23 @@ export function SocialHub() {
     setDeviceTimezone(detectTimezone());
   }, []);
 
-  /** The picker's options, built only once the user opens it — a few hundred zone names never render otherwise. */
-  const timezoneGroups = useMemo(
-    () => (timezoneEditing ? groupTimezones(listTimezones(timezone, deviceTimezone)) : []),
-    [timezoneEditing, timezone, deviceTimezone],
-  );
+  // The record loads after mount, so an untouched "at" field follows the
+  // start time (and zone) once they arrive.
+  useEffect(() => {
+    if (calendarTimeTouchedRef.current) return;
+    setCalendarTime(defaultCalendarClockTime(selectedDayIso, new Date(), timezone, dailyStartTime));
+  }, [dailyStartTime, timezone, selectedDayIso]);
+
+  /**
+   * The handful of zones the picker actually shows: what the user typed
+   * matched against every zone, or a short suggestion list before they type.
+   * Built only while the picker is open, so a few hundred names never render.
+   */
+  const timezoneMatches = useMemo(() => {
+    if (!timezoneEditing) return [];
+    if (!timezoneQuery.trim()) return suggestedTimezones(timezone, deviceTimezone);
+    return searchTimezones(listTimezones(timezone, deviceTimezone), timezoneQuery);
+  }, [timezoneEditing, timezoneQuery, timezone, deviceTimezone]);
 
   // The mobile week strip opens on the selected day (today on arrival)
   // instead of the 1st, which put today off-screen for most of the month
@@ -1829,7 +1875,7 @@ export function SocialHub() {
     if (!item.scheduledDay) return null;
     // A time picked beside the date on the Calendar card is the exact default; otherwise the day's first free waking slot.
     const pinned = item.scheduledTime ? calendarDayAtTime(item.scheduledDay, item.scheduledTime, timezone) : null;
-    return pinned ?? computeDefaultScheduledAtOnDay(item.scheduledDay, awaitingIso, now, cadenceSpreadHoursMs(postingCadence), timezone);
+    return pinned ?? computeDefaultScheduledAtOnDay(item.scheduledDay, awaitingIso, now, cadenceSpreadHoursMs(postingCadence), timezone, dailyStartTime);
   }
 
   /** Calendar quiet hours: saved at once; a start equal to its end means off. */
@@ -1848,7 +1894,35 @@ export function SocialHub() {
   function updateTimezone(next: string) {
     const chosen = next.trim() ? next : null;
     setTimezone(chosen);
+    setTimezoneEditing(false);
+    setTimezoneQuery("");
     persistSocialStudio({ timezone: chosen });
+  }
+
+  function openTimezonePicker() {
+    setTimezoneQuery("");
+    setTimezoneEditing(true);
+  }
+
+  /**
+   * When the day's first post goes out (owner direction, 7 Sep 2026: "all
+   * users should be prompted when do you want your first post to start …
+   * and space posts out in accordance with the first initial post"). Saved
+   * at once; every later post on that day steps one cadence spread from it.
+   */
+  function updateDailyStartTime(next: string) {
+    if (parseClockTime(next) === null) return;
+    setDailyStartTime(next);
+    setDailyStartDraft(next);
+    writeDailyStartLater(projectOwner, false);
+    setDailyStartLater(false);
+    persistSocialStudio({ dailyStartTime: next });
+  }
+
+  /** "Not now" leaves the question unanswered: scheduling keeps the behaviour it had before, and the row returns next visit. */
+  function askDailyStartLater() {
+    writeDailyStartLater(projectOwner, true);
+    setDailyStartLater(true);
   }
 
   /** A native time field's "HH:MM" (a cleared field is ignored, never saved as off). */
@@ -2446,7 +2520,7 @@ export function SocialHub() {
       const rawPicked =
         scheduleManuallySet[item.id] && itemScheduledAt[item.id]
           ? fromDateTimeLocalValue(itemScheduledAt[item.id], timezone)
-          : calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));
+          : calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence), dailyStartTime, timezone);
       // Quiet hours apply to every approval, the user's own pick included:
       // the future clamp runs first so a lifted past time can't land back
       // inside the window, and the clamp below is then a no-op.
@@ -2621,14 +2695,14 @@ export function SocialHub() {
       for (const item of queue) {
         if (next[item.id] === undefined) {
           const now = new Date();
-          const base = calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));
+          const base = calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence), dailyStartTime, timezone);
           next[item.id] = toDateTimeLocalValue(shiftOutOfQuietHours(base, quietHours, timezone), timezone);
           changed = true;
         }
       }
       return changed ? next : current;
     });
-  }, [queue, scheduledPosts, postingCadence, quietHours, timezone]);
+  }, [queue, scheduledPosts, postingCadence, quietHours, timezone, dailyStartTime]);
 
   // Queue tab data is fetched client-side only (never in the background) on
   // tab open, on window/tab focus while the tab is active, and after
@@ -2850,12 +2924,12 @@ export function SocialHub() {
     const now = new Date();
     setCalendarView({ year: todayInZone.year, month: todayInZone.month });
     setSelectedDay({ year: todayInZone.year, month: todayInZone.month, day: todayInZone.day });
-    if (!calendarTimeTouchedRef.current) setCalendarTime(defaultCalendarClockTime(toCalendarDayIso(todayInZone.year, todayInZone.month, todayInZone.day), now, timezone));
+    if (!calendarTimeTouchedRef.current) setCalendarTime(defaultCalendarClockTime(toCalendarDayIso(todayInZone.year, todayInZone.month, todayInZone.day), now, timezone, dailyStartTime));
   }
 
   function selectDay(day: number) {
     setSelectedDay({ year: calendarView.year, month: calendarView.month, day });
-    if (!calendarTimeTouchedRef.current) setCalendarTime(defaultCalendarClockTime(toCalendarDayIso(calendarView.year, calendarView.month, day), new Date(), timezone));
+    if (!calendarTimeTouchedRef.current) setCalendarTime(defaultCalendarClockTime(toCalendarDayIso(calendarView.year, calendarView.month, day), new Date(), timezone, dailyStartTime));
   }
 
   function setCalendarTimeFromField(value: string) {
@@ -3224,6 +3298,27 @@ export function SocialHub() {
           return (
           <section className={styles.studioPanel}>
             {showDetailsBox ? <div className={styles.addTokenPanel}>{renderAddTokenForm()}</div> : null}
+            {selectedProjectId && !dailyStartTime && !dailyStartLater && !showDetailsBox ? (
+              <div className={styles.detailsReminder}>
+                <span>
+                  <b>What time should your posts start each day?</b> The day&apos;s first post goes out then, and the rest space out from it.
+                </span>
+                <div className={styles.startTimeAsk}>
+                  <input
+                    type="time"
+                    aria-label="Daily start time"
+                    value={dailyStartDraft}
+                    onChange={(event) => setDailyStartDraft(event.target.value)}
+                  />
+                  <button type="button" className={styles.connectionAction} onClick={() => updateDailyStartTime(dailyStartDraft)}>
+                    Set this time
+                  </button>
+                  <button type="button" className={styles.quietHoursToggle} onClick={askDailyStartLater}>
+                    Not now
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {projects.length === 0 && !showDetailsBox ? (
               <div className={styles.detailsReminder}>
                 <span>
@@ -3846,27 +3941,46 @@ export function SocialHub() {
                         <span>ALL TIMES SHOWN IN</span>
                         <b>{detectedTimezone}</b>
                         {timezoneEditing ? (
-                          <>
-                            <select
-                              value={timezone ?? ""}
-                              aria-label="Time zone"
-                              onChange={(event) => updateTimezone(event.target.value)}
-                            >
-                              <option value="">Follow this device{deviceTimezone ? ` · ${deviceTimezone}` : ""}</option>
-                              {timezoneGroups.map((group) => (
-                                <optgroup key={group.region} label={group.region}>
-                                  {group.zones.map((zone) => (
-                                    <option key={zone} value={zone}>{zone}</option>
-                                  ))}
-                                </optgroup>
+                          <div className={styles.timezonePicker}>
+                            <input
+                              type="text"
+                              autoFocus
+                              value={timezoneQuery}
+                              aria-label="Search time zones"
+                              placeholder="Type a city — London, New York…"
+                              onChange={(event) => setTimezoneQuery(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" && timezoneMatches[0]) updateTimezone(timezoneMatches[0]);
+                                if (event.key === "Escape") setTimezoneEditing(false);
+                              }}
+                            />
+                            <div className={styles.timezoneResults} role="listbox" aria-label="Time zones">
+                              <button type="button" role="option" aria-selected={!timezone} onClick={() => updateTimezone("")}>
+                                <b>Follow this device</b>
+                                {deviceTimezone ? <em>{deviceTimezone}</em> : null}
+                              </button>
+                              {timezoneMatches.map((zone) => (
+                                <button
+                                  type="button"
+                                  key={zone}
+                                  role="option"
+                                  aria-selected={zone === timezone}
+                                  onClick={() => updateTimezone(zone)}
+                                >
+                                  <b>{zone.replace(/_/g, " ")}</b>
+                                  <em>{timezoneOffsetLabel(zone)}</em>
+                                </button>
                               ))}
-                            </select>
+                              {timezoneQuery.trim() && timezoneMatches.length === 0 ? (
+                                <p>No zone matches that. Try a city name.</p>
+                              ) : null}
+                            </div>
                             <button type="button" className={styles.timezoneEdit} onClick={() => setTimezoneEditing(false)}>
-                              Done
+                              Cancel
                             </button>
-                          </>
+                          </div>
                         ) : (
-                          <button type="button" className={styles.timezoneEdit} onClick={() => setTimezoneEditing(true)}>
+                          <button type="button" className={styles.timezoneEdit} onClick={openTimezonePicker}>
                             {timezone ? "Change" : "Edit local time"}
                           </button>
                         )}
@@ -4105,6 +4219,22 @@ export function SocialHub() {
                           </span>
                         </div>
                         {myConnectedPlatforms.length < 2 ? <p>Connect {myConnectedPlatforms.length === 0 ? "X or Telegram" : myConnectedPlatforms.includes("x") ? "Telegram" : "X"} in Setup.</p> : null}
+                        <div className={styles.miniDivider} />
+                        <span className={styles.eyebrow}>POSTS START AT</span>
+                        <div className={styles.quietHours}>
+                          <span>First post of the day</span>
+                          <input
+                            type="time"
+                            aria-label="Daily start time"
+                            value={dailyStartTime ?? DEFAULT_DAILY_START_CLOCK}
+                            onChange={(event) => updateDailyStartTime(event.target.value)}
+                          />
+                        </div>
+                        <p className={styles.exampleLabel}>
+                          {dailyStartTime
+                            ? `The rest of the day's posts space out from ${dailyStartTime}, about ${describeSpreadHours(cadenceSpreadHoursMs(postingCadence))} apart.`
+                            : `Not set — posts are scheduled from the moment you approve them. Pick a time and the day starts there instead.`}
+                        </p>
                         <div className={styles.miniDivider} />
                         <span className={styles.eyebrow}>QUIET HOURS</span>
                         <div className={styles.quietHours}>

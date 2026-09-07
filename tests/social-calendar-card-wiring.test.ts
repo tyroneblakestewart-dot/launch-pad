@@ -21,7 +21,7 @@ describe("Calendar schedule card: quiet hours, own posts and live destination ch
     expect(db).toContain("quietHours: normaliseQuietHours(merged.quietHours),");
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("setQuietHours(record.quietHours);");
-    expect(hub).toContain("      quietHours,\n      timezone,\n      sortedVoiceSourceKeys,");
+    expect(hub).toContain("      quietHours,\n      timezone,\n      dailyStartTime,\n      sortedVoiceSourceKeys,");
     expect(hub).toContain("persistSocialStudio({ quietHours: next });");
     expect(hub).toContain("updateQuietHours(next.start === next.end ? null : next);");
     // A cleared time field is ignored rather than saved as off.
@@ -33,8 +33,8 @@ describe("Calendar schedule card: quiet hours, own posts and live destination ch
     const card = hub.slice(hub.indexOf("<aside className={styles.scheduleCard}>"), hub.indexOf("</aside>", hub.indexOf("<aside className={styles.scheduleCard}>")));
     expect(card).toContain('onChange={(event) => setQuietHourBound("start", event.target.value)}');
     expect(card).toContain('onChange={(event) => setQuietHourBound("end", event.target.value)}');
-    // Two quiet-hours fields plus the "at" time beside the date (7 Sep 2026).
-    expect(card.match(/type="time"/g)).toHaveLength(3);
+    // Two quiet-hours fields, the "at" time beside the date (7 Sep 2026) and the daily start time.
+    expect(card.match(/type="time"/g)).toHaveLength(4);
     expect(card).not.toContain("<select");
     const css = await source("components", "social-hub.module.css");
     expect(css).toContain('.quietHours input[type="time"] { width: auto; flex: 0 0 auto; min-width: 108px; height: 38px; padding: 0 10px; box-sizing: border-box; color-scheme: dark;');
@@ -50,7 +50,7 @@ describe("Calendar schedule card: quiet hours, own posts and live destination ch
   it("applies quiet hours to every default time and every approval, after the future clamp, and says so", async () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("next[item.id] = toDateTimeLocalValue(shiftOutOfQuietHours(base, quietHours, timezone), timezone);");
-    expect(hub).toContain("}, [queue, scheduledPosts, postingCadence, quietHours, timezone]);");
+    expect(hub).toContain("}, [queue, scheduledPosts, postingCadence, quietHours, timezone, dailyStartTime]);");
     const approve = hub.slice(hub.indexOf("async function approveQueueItem("));
     expect(approve).toContain("const picked = shiftOutOfQuietHours(ensureFutureScheduledAt(rawPicked, now), quietHours, timezone);");
     expect(approve).toContain("const scheduledAtIso = ensureFutureScheduledAt(picked, now).toISOString();");

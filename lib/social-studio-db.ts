@@ -7,6 +7,7 @@
 import { normaliseToneDials, normaliseWordsToAvoid, seedWordsToAvoid } from "./social-tone-rules";
 import { normaliseQuietHours } from "./social-quiet-hours";
 import { normaliseTimezone } from "./social-timezone";
+import { normaliseDailyStartTime } from "./social-studio-queue";
 import {
   DEFAULT_POSTING_CADENCE,
   DEFAULT_QUEUE_TARGET,
@@ -130,6 +131,9 @@ function normaliseSocialStudioRecord(
     // naming a zone this runtime does not know, follows the device — never
     // a wrong clock.
     timezone: normaliseTimezone(merged.timezone),
+    // "Not asked yet" is null, and every scheduling helper then behaves
+    // exactly as it did before the start time existed (7 Sep 2026).
+    dailyStartTime: normaliseDailyStartTime(merged.dailyStartTime),
   };
 }
 

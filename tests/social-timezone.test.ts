@@ -6,11 +6,13 @@ import {
   describeTimezone,
   detectTimezone,
   effectiveTimezone,
-  groupTimezones,
   isSameZonedDay,
   isValidTimezone,
   listTimezones,
   normaliseTimezone,
+  searchTimezones,
+  suggestedTimezones,
+  timezoneOffsetLabel,
   wallClockIn,
   zoneOffsetMs,
   zonedMinutesOfDay,
@@ -65,7 +67,7 @@ describe("the zone itself", () => {
     expect(describeTimezone(NY, new Date("2026-09-07T10:00:00Z"))).toBe("America/New_York · GMT-4");
   });
 
-  it("lists zones, keeps the ones already in play, and groups them by region", () => {
+  it("lists zones and keeps the ones already in play", () => {
     const zones = listTimezones(TOKYO, LONDON);
     expect(zones).toContain(TOKYO);
     expect(zones).toContain(LONDON);
@@ -73,9 +75,45 @@ describe("the zone itself", () => {
     expect([...zones]).toEqual([...zones].sort((a, b) => a.localeCompare(b)));
     // An unknown name is never offered as a choice.
     expect(listTimezones("Not/AZone")).not.toContain("Not/AZone");
-    const groups = groupTimezones(["Europe/London", "Asia/Tokyo", "Europe/Berlin", "UTC"]);
-    expect(groups.map((group) => group.region)).toEqual(["Asia", "Europe", "Other"]);
-    expect(groups.find((group) => group.region === "Europe")?.zones).toEqual(["Europe/Berlin", "Europe/London"]);
+  });
+
+  /**
+   * Owner report, 7 Sep 2026: the full list as a native dropdown filled the
+   * whole screen and was mis-tapped onto Africa/Abidjan. Typing finds it.
+   */
+  it("finds a zone by city name, closest match first", () => {
+    const zones = listTimezones();
+    expect(searchTimezones(zones, "lond")[0]).toBe("Europe/London");
+    expect(searchTimezones(zones, "new york")[0]).toBe("America/New_York");
+    // An underscore in the name never has to be typed.
+    expect(searchTimezones(zones, "new_york")[0]).toBe("America/New_York");
+    expect(searchTimezones(zones, "tokyo")[0]).toBe(TOKYO);
+    // The region works too, and a whole-name match still ranks behind a city.
+    expect(searchTimezones(zones, "europe").every((zone) => zone.startsWith("Europe/"))).toBe(true);
+    expect(searchTimezones(zones, "zzzz nothing")).toEqual([]);
+  });
+
+  it("returns a short list, never the whole world", () => {
+    const zones = listTimezones();
+    expect(searchTimezones(zones, "a").length).toBeLessThanOrEqual(8);
+    expect(searchTimezones(zones, "a", 3).length).toBeLessThanOrEqual(3);
+    expect(suggestedTimezones(TOKYO, LONDON).length).toBeLessThanOrEqual(8);
+  });
+
+  it("suggests the zone in force and the device's own before anything is typed", () => {
+    const suggestions = suggestedTimezones(TOKYO, LONDON);
+    expect(suggestions[0]).toBe(TOKYO);
+    expect(suggestions[1]).toBe(LONDON);
+    // Never an alphabetical wall starting at Africa/Abidjan.
+    expect(suggestions[0]).not.toBe("Africa/Abidjan");
+    expect(suggestedTimezones(null, LONDON)[0]).toBe(LONDON);
+    expect(suggestedTimezones("Not/AZone", null).length).toBeGreaterThan(0);
+  });
+
+  it("labels each match with its current offset", () => {
+    expect(timezoneOffsetLabel(LONDON, new Date("2026-09-07T10:00:00Z"))).toBe("GMT+1");
+    expect(timezoneOffsetLabel(TOKYO, new Date("2026-09-07T10:00:00Z"))).toBe("GMT+9");
+    expect(timezoneOffsetLabel("Not/AZone")).toBe("");
   });
 
   it("reads a wall clock in the zone, and the instant back from it", () => {
@@ -206,17 +244,35 @@ describe("the picker and what it changes", () => {
     expect(db).toContain("timezone: normaliseTimezone(merged.timezone),");
   });
 
-  it("renders an edit control that saves at once, and never a fixed-offset list", async () => {
+  it("renders a compact type-to-find picker that saves at once, never a full-screen dropdown", async () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain('const [timezone, setTimezone] = useState<string | null>(null);');
     expect(hub).toContain("setTimezone(record.timezone);");
     expect(hub).toContain("function updateTimezone(next: string) {");
     expect(hub).toContain("persistSocialStudio({ timezone: chosen });");
     expect(hub).toContain('{timezone ? "Change" : "Edit local time"}');
-    expect(hub).toContain('<option value="">Follow this device{deviceTimezone ? ` · ${deviceTimezone}` : ""}</option>');
-    expect(hub).toContain("onChange={(event) => updateTimezone(event.target.value)}");
-    // The options are built only when the picker is open.
-    expect(hub).toContain("timezoneEditing ? groupTimezones(listTimezones(timezone, deviceTimezone)) : []");
+    expect(hub).toContain('placeholder="Type a city — London, New York…"');
+    expect(hub).toContain("<b>Follow this device</b>");
+    expect(hub).toContain("onClick={() => updateTimezone(zone)}");
+    // A search box and a short result list, never a <select> of every zone.
+    expect(hub).not.toContain("<optgroup");
+    expect(hub).not.toContain('aria-label="Time zone"\n');
+    // Matches are computed only while the picker is open.
+    expect(hub).toContain("if (!timezoneEditing) return [];");
+    expect(hub).toContain("return searchTimezones(listTimezones(timezone, deviceTimezone), timezoneQuery);");
+    expect(hub).toContain("if (!timezoneQuery.trim()) return suggestedTimezones(timezone, deviceTimezone);");
+    // Enter takes the top match; Escape closes; choosing closes it too.
+    expect(hub).toContain('if (event.key === "Enter" && timezoneMatches[0]) updateTimezone(timezoneMatches[0]);');
+    expect(hub).toContain('if (event.key === "Escape") setTimezoneEditing(false);');
+    expect(hub).toContain("    setTimezoneEditing(false);\n    setTimezoneQuery(\"\");");
+  });
+
+  it("keeps the result list small and scrolling inside itself", async () => {
+    const css = await source("components", "social-hub.module.css");
+    expect(css).toContain(".timezoneResults {");
+    expect(css).toContain("  max-height: 232px;");
+    expect(css).toContain("  overflow-y: auto;");
+    expect(css).toContain("  position: absolute;");
   });
 
   it("shows and reads the schedule pickers in the chosen zone", async () => {
@@ -238,6 +294,6 @@ describe("the picker and what it changes", () => {
   it("gives the control a 44px touch target", async () => {
     const css = await source("components", "social-hub.module.css");
     expect(css).toContain(".timezoneEdit {");
-    expect(css).toContain("  .timezoneEdit,\n  .timezoneControl select,");
+    expect(css).toContain("  .timezonePicker > input,\n  .timezoneResults button,");
   });
 });
