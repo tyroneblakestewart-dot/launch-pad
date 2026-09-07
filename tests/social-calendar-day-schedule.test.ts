@@ -27,19 +27,19 @@ describe("Calendar AI drafts keep their day, and scheduled posts load on the Cal
   it("refuses a day already gone before any paid draft call", async () => {
     const hub = await source("components", "social-hub.tsx");
     const jazz = hub.slice(hub.indexOf("async function jazzUpAnnouncement()"), hub.indexOf("\n  }\n", hub.indexOf("async function jazzUpAnnouncement()")));
-    expect(jazz).toContain("if (isCalendarDayBeforeToday(selectedDayIso, new Date())) {");
+    expect(jazz).toContain("if (isCalendarDayBeforeToday(selectedDayIso, new Date(), timezone)) {");
     expect(jazz).toContain("has already passed — pick today or a later day.");
     // The refusal returns before the busy flag and the request.
     expect(jazz.indexOf("isCalendarDayBeforeToday(")).toBeLessThan(jazz.indexOf("setAnnouncementAiBusy(true);"));
     const add = hub.slice(hub.indexOf("function addAnnouncementToQueue("), hub.indexOf("\n  }\n", hub.indexOf("function addAnnouncementToQueue(")));
-    expect(add).toContain("if (isCalendarDayBeforeToday(selectedDayIso, new Date())) {");
+    expect(add).toContain("if (isCalendarDayBeforeToday(selectedDayIso, new Date(), timezone)) {");
     expect(add.indexOf("isCalendarDayBeforeToday(")).toBeLessThan(add.indexOf("const item: QueueItem = {"));
   });
 
   it("the shown default and the approval time both come from the same calendar-day helper", async () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("function calendarDayScheduledAt(item: QueueItem, awaitingIso: string[], now: Date): Date | null {");
-    expect(hub).toContain("computeDefaultScheduledAtOnDay(item.scheduledDay, awaitingIso, now, cadenceSpreadHoursMs(postingCadence))");
+    expect(hub).toContain("computeDefaultScheduledAtOnDay(item.scheduledDay, awaitingIso, now, cadenceSpreadHoursMs(postingCadence), timezone)");
     // Shown default (the Queue row's Scheduled input).
     expect(hub).toContain(
       "const base = calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));",

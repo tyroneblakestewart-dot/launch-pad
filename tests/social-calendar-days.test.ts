@@ -61,6 +61,9 @@ describe("calendar day markers (owner direction, 7 Sep 2026)", () => {
     // Node's ICU prints "GMT+0" for a zero offset where browsers print "GMT"; either is honest.
     expect(describeDetectedTimezone(new Date("2026-11-07T10:00:00Z"), "Europe/London")).toMatch(/^Europe\/London · GMT(\+0)?$/);
     expect(describeDetectedTimezone(new Date("2026-09-07T10:00:00Z"), "America/New_York")).toBe("America/New_York · GMT-4");
-    expect(describeDetectedTimezone(new Date(), "Not/AZone")).toBe("your local time");
+    // An unrecognised zone falls back to the device's own zone and names it —
+    // the user always sees the clock actually in force, never a vague phrase
+    // (the stored value is validated by normaliseTimezone before it gets here).
+    expect(describeDetectedTimezone(new Date(), "Not/AZone")).toBe(describeDetectedTimezone(new Date()));
   });
 });

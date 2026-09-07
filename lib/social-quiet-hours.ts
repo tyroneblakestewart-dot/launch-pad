@@ -13,6 +13,8 @@
  * can have a touch roller"). Records saved with the first shape
  * (`{ startHour, endHour }`) are read as whole hours.
  */
+import { dateFromWallClock, wallClockIn } from "@/lib/social-timezone";
+
 export type QuietHours = { start: string; end: string };
 
 /** The design's mock-up always showed 23:00 → 07:00, so a record saved before the field existed gets exactly that. */
@@ -58,13 +60,14 @@ export function normaliseQuietHours(raw: unknown): QuietHours | null {
   return { start: formatClockTime(start), end: formatClockTime(end) };
 }
 
-/** Whether the local wall-clock time of `date` falls inside the window (start inclusive, end exclusive). */
-export function isInQuietHours(date: Date, quiet: QuietHours | null): boolean {
+/** Whether the wall-clock time of `date` falls inside the window (start inclusive, end exclusive), read in `timeZone` — the device's own clock when none is given. */
+export function isInQuietHours(date: Date, quiet: QuietHours | null, timeZone?: string | null): boolean {
   if (!quiet) return false;
   const start = parseClockTime(quiet.start);
   const end = parseClockTime(quiet.end);
   if (start === null || end === null || start === end) return false;
-  const minutes = date.getHours() * 60 + date.getMinutes();
+  const wall = wallClockIn(date, timeZone);
+  const minutes = wall.hour * 60 + wall.minute;
   return start < end ? minutes >= start && minutes < end : minutes >= start || minutes < end;
 }
 
@@ -74,14 +77,18 @@ export function isInQuietHours(date: Date, quiet: QuietHours | null): boolean {
  * midnight and a time after the start, the same morning for a time
  * already past midnight.
  */
-export function shiftOutOfQuietHours(date: Date, quiet: QuietHours | null): Date {
-  if (!quiet || !isInQuietHours(date, quiet)) return date;
+export function shiftOutOfQuietHours(date: Date, quiet: QuietHours | null, timeZone?: string | null): Date {
+  if (!quiet || !isInQuietHours(date, quiet, timeZone)) return date;
   const start = parseClockTime(quiet.start) ?? 0;
   const end = parseClockTime(quiet.end) ?? 0;
-  const minutes = date.getHours() * 60 + date.getMinutes();
+  const wall = wallClockIn(date, timeZone);
+  const minutes = wall.hour * 60 + wall.minute;
   const wraps = start > end;
   const dayOffset = wraps && minutes >= start ? 1 : 0;
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + dayOffset, Math.floor(end / 60), end % 60, 0, 0);
+  return dateFromWallClock(
+    { year: wall.year, month: wall.month, day: wall.day + dayOffset, hour: Math.floor(end / 60), minute: end % 60 },
+    timeZone,
+  );
 }
 
 /** "23:00 and 07:00" for the "Never post between … and …" sentence, or null when off. */

@@ -5,7 +5,8 @@
  * the approved posts the hub already holds and the Ready-to-review drafts
  * pinned to a day (PR #532's `scheduledDay`), never a second fetch.
  */
-import { parseCalendarDayIso, toCalendarDayIso } from "./social-studio-queue";
+import { parseCalendarDayParts, toCalendarDayIso } from "./social-studio-queue";
+import { describeTimezone, wallClockIn } from "./social-timezone";
 
 export type CalendarPostLike = { id: string; status: string; scheduledAt: string; body?: string; destinations?: ReadonlyArray<{ platform: string; status: string }> };
 export type CalendarDraftLike = { id: string; scheduledDay?: string | null; source?: string; xText?: string; telegramText?: string };
@@ -24,22 +25,24 @@ export type CalendarDayMarks = {
 const SCHEDULED_STATUSES = new Set(["scheduled", "needs_composer"]);
 const SENT_STATUSES = new Set(["sent", "partially_sent"]);
 
-function localDayOf(iso: string): { year: number; month: number; day: number } | null {
+function zonedDayOf(iso: string, timeZone?: string | null): { year: number; month: number; day: number } | null {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return null;
-  return { year: at.getFullYear(), month: at.getMonth(), day: at.getDate() };
+  const wall = wallClockIn(at, timeZone);
+  return { year: wall.year, month: wall.month, day: wall.day };
 }
 
 function emptyMarks(): CalendarDayMarks {
   return { scheduled: 0, sent: 0, failed: 0, drafts: 0 };
 }
 
-/** Per-day counts for one month (month 0-based, local time); days with nothing are absent. Canceled posts never count. */
+/** Per-day counts for one month (month 0-based, read in `timeZone` — the device's own zone when none is given); days with nothing are absent. Canceled posts never count. */
 export function buildCalendarDayMarks(
   posts: readonly CalendarPostLike[],
   drafts: readonly CalendarDraftLike[],
   year: number,
   month: number,
+  timeZone?: string | null,
 ): Map<number, CalendarDayMarks> {
   const marks = new Map<number, CalendarDayMarks>();
   const bump = (day: number, key: keyof CalendarDayMarks) => {
@@ -48,16 +51,16 @@ export function buildCalendarDayMarks(
     marks.set(day, current);
   };
   for (const post of posts) {
-    const local = localDayOf(post.scheduledAt);
-    if (!local || local.year !== year || local.month !== month) continue;
-    if (SCHEDULED_STATUSES.has(post.status)) bump(local.day, "scheduled");
-    else if (SENT_STATUSES.has(post.status)) bump(local.day, "sent");
-    else if (post.status === "failed") bump(local.day, "failed");
+    const zoned = zonedDayOf(post.scheduledAt, timeZone);
+    if (!zoned || zoned.year !== year || zoned.month !== month) continue;
+    if (SCHEDULED_STATUSES.has(post.status)) bump(zoned.day, "scheduled");
+    else if (SENT_STATUSES.has(post.status)) bump(zoned.day, "sent");
+    else if (post.status === "failed") bump(zoned.day, "failed");
   }
   for (const draft of drafts) {
-    const day = parseCalendarDayIso(draft.scheduledDay);
-    if (!day || day.getFullYear() !== year || day.getMonth() !== month) continue;
-    bump(day.getDate(), "drafts");
+    const day = parseCalendarDayParts(draft.scheduledDay);
+    if (!day || day.year !== year || day.month !== month) continue;
+    bump(day.day, "drafts");
   }
   return marks;
 }
@@ -88,8 +91,10 @@ export type CalendarDayEntry =
   | { kind: "post"; id: string; at: string; timeLabel: string; status: string; platforms: string[]; body: string }
   | { kind: "draft"; id: string; source: string; body: string };
 
-function timeLabel(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+function timeLabel(iso: string, timeZone?: string | null): string {
+  const options: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+  if (timeZone) options.timeZone = timeZone;
+  return new Date(iso).toLocaleTimeString(undefined, options);
 }
 
 /** Everything the calendar knows about one day, posts first by time then drafts — for the "On this day" list on the schedule card. */
@@ -99,20 +104,21 @@ export function listCalendarDayEntries(
   year: number,
   month: number,
   day: number,
+  timeZone?: string | null,
 ): CalendarDayEntry[] {
   const dayIso = toCalendarDayIso(year, month, day);
   const postEntries = posts
     .filter((post) => post.status !== "canceled")
     .filter((post) => {
-      const local = localDayOf(post.scheduledAt);
-      return local !== null && toCalendarDayIso(local.year, local.month, local.day) === dayIso;
+      const zoned = zonedDayOf(post.scheduledAt, timeZone);
+      return zoned !== null && toCalendarDayIso(zoned.year, zoned.month, zoned.day) === dayIso;
     })
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
     .map<CalendarDayEntry>((post) => ({
       kind: "post",
       id: post.id,
       at: post.scheduledAt,
-      timeLabel: timeLabel(post.scheduledAt),
+      timeLabel: timeLabel(post.scheduledAt, timeZone),
       status: post.status,
       platforms: (post.destinations ?? []).map((destination) => destination.platform),
       body: post.body ?? "",
@@ -129,21 +135,14 @@ export function listCalendarDayEntries(
 }
 
 /**
- * "Europe/London · GMT+1" from the browser's own settings — the one zone
- * every time on the page is actually shown in (datetime-local inputs and
- * toLocaleString are browser-local by nature), replacing a three-option
- * select nothing ever read.
+ * "Europe/London · GMT+1" for the line above the calendar — the browser's
+ * own zone by default, or the one the user picked (owner direction, 7 Sep
+ * 2026: "what happened to time zones, that needs to come back"). One
+ * definition, in `lib/social-timezone.ts`, so the label and the scheduling
+ * maths can never name different zones.
  */
-export function describeDetectedTimezone(now: Date = new Date(), timeZone?: string): string {
-  try {
-    const zone = timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const offset = new Intl.DateTimeFormat("en-GB", { timeZone: zone, timeZoneName: "shortOffset" })
-      .formatToParts(now)
-      .find((part) => part.type === "timeZoneName")?.value;
-    return offset ? `${zone} · ${offset}` : zone;
-  } catch {
-    return "your local time";
-  }
+export function describeDetectedTimezone(now: Date = new Date(), timeZone?: string | null): string {
+  return describeTimezone(timeZone ?? null, now);
 }
 
 /** Plain words for a post's status on the day list. */

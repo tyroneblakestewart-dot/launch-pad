@@ -6,6 +6,7 @@
 
 import { normaliseToneDials, normaliseWordsToAvoid, seedWordsToAvoid } from "./social-tone-rules";
 import { normaliseQuietHours } from "./social-quiet-hours";
+import { normaliseTimezone } from "./social-timezone";
 import {
   DEFAULT_POSTING_CADENCE,
   DEFAULT_QUEUE_TARGET,
@@ -125,6 +126,10 @@ function normaliseSocialStudioRecord(
     // Calendar quiet hours (7 Sep 2026): a record saved before the field
     // existed gets the design's 23:00 → 07:00; an explicit null stays off.
     quietHours: normaliseQuietHours(merged.quietHours),
+    // A record saved before the zone could be chosen (7 Sep 2026), or one
+    // naming a zone this runtime does not know, follows the device — never
+    // a wrong clock.
+    timezone: normaliseTimezone(merged.timezone),
   };
 }
 

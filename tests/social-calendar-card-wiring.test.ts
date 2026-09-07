@@ -21,7 +21,7 @@ describe("Calendar schedule card: quiet hours, own posts and live destination ch
     expect(db).toContain("quietHours: normaliseQuietHours(merged.quietHours),");
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("setQuietHours(record.quietHours);");
-    expect(hub).toContain("      quietHours,\n      sortedVoiceSourceKeys,");
+    expect(hub).toContain("      quietHours,\n      timezone,\n      sortedVoiceSourceKeys,");
     expect(hub).toContain("persistSocialStudio({ quietHours: next });");
     expect(hub).toContain("updateQuietHours(next.start === next.end ? null : next);");
     // A cleared time field is ignored rather than saved as off.
@@ -49,10 +49,10 @@ describe("Calendar schedule card: quiet hours, own posts and live destination ch
 
   it("applies quiet hours to every default time and every approval, after the future clamp, and says so", async () => {
     const hub = await source("components", "social-hub.tsx");
-    expect(hub).toContain("next[item.id] = toDateTimeLocalValue(shiftOutOfQuietHours(base, quietHours));");
-    expect(hub).toContain("}, [queue, scheduledPosts, postingCadence, quietHours]);");
+    expect(hub).toContain("next[item.id] = toDateTimeLocalValue(shiftOutOfQuietHours(base, quietHours, timezone), timezone);");
+    expect(hub).toContain("}, [queue, scheduledPosts, postingCadence, quietHours, timezone]);");
     const approve = hub.slice(hub.indexOf("async function approveQueueItem("));
-    expect(approve).toContain("const picked = shiftOutOfQuietHours(ensureFutureScheduledAt(rawPicked, now), quietHours);");
+    expect(approve).toContain("const picked = shiftOutOfQuietHours(ensureFutureScheduledAt(rawPicked, now), quietHours, timezone);");
     expect(approve).toContain("const scheduledAtIso = ensureFutureScheduledAt(picked, now).toISOString();");
     expect(approve.indexOf("shiftOutOfQuietHours(ensureFutureScheduledAt(rawPicked, now)")).toBeLessThan(approve.indexOf("const scheduledAtIso ="));
     expect(approve).toContain("to stay out of quiet hours.");

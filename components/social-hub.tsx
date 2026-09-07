@@ -80,11 +80,18 @@ import {
   buildCalendarDayMarks,
   describeCalendarDayMarks,
   describeCalendarPostStatus,
-  describeDetectedTimezone,
   describeDraftSource,
   listCalendarDayEntries,
 } from "@/lib/social-calendar-days";
 import { DEFAULT_QUIET_HOURS, isInQuietHours, parseClockTime, shiftOutOfQuietHours, type QuietHours } from "@/lib/social-quiet-hours";
+import {
+  dateFromWallClock,
+  detectTimezone,
+  describeTimezone,
+  groupTimezones,
+  listTimezones,
+  wallClockIn,
+} from "@/lib/social-timezone";
 import type {
   MascotVisualDNA,
   PostingCadence,
@@ -269,16 +276,34 @@ function newQueueItemId(): string {
   return `queue-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 }
 
-/** Formats a Date for an <input type="datetime-local"> value, in the browser's local time zone. */
-function toDateTimeLocalValue(date: Date): string {
+/**
+ * Formats a Date for an <input type="datetime-local"> value. The input has
+ * no zone of its own — it shows and returns a bare wall clock — so feeding
+ * it the chosen zone's wall clock is what makes the picker speak that zone
+ * (owner direction, 7 Sep 2026).
+ */
+function toDateTimeLocalValue(date: Date, timeZone?: string | null): string {
   const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const wall = wallClockIn(date, timeZone);
+  return `${wall.year}-${pad(wall.month + 1)}-${pad(wall.day)}T${pad(wall.hour)}:${pad(wall.minute)}`;
 }
 
-function formatScheduledAt(iso: string): string {
+/** Reads an <input type="datetime-local"> value back as the instant that wall clock names in the chosen zone. */
+function fromDateTimeLocalValue(value: string, timeZone?: string | null): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value);
+  if (!match) return new Date(value);
+  return dateFromWallClock(
+    { year: Number(match[1]), month: Number(match[2]) - 1, day: Number(match[3]), hour: Number(match[4]), minute: Number(match[5]) },
+    timeZone,
+  );
+}
+
+function formatScheduledAt(iso: string, timeZone?: string | null): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
+  if (timeZone) options.timeZone = timeZone;
+  return date.toLocaleString(undefined, options);
 }
 
 function storedWalletAddress(): string {
@@ -535,8 +560,10 @@ export function SocialHub() {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth(), day: now.getDate() };
   });
-  /** The browser's own zone, read after mount (Intl on the server would print UTC and mismatch on hydration) — the only zone any time on this page is shown in. */
+  /** The label for the zone in force, read after mount (Intl on the server would print UTC and mismatch on hydration) — the chosen zone, else the device's. */
   const [detectedTimezone, setDetectedTimezone] = useState("your local time");
+  /** The device's own zone, read after mount — the "follow this device" option's label and the reset target. */
+  const [deviceTimezone, setDeviceTimezone] = useState("");
   const mobileWeekRef = useRef<HTMLDivElement | null>(null);
 
   const [walletAddress, setWalletAddress] = useState("");
@@ -571,6 +598,9 @@ export function SocialHub() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   /** Calendar quiet hours (owner direction, 7 Sep 2026): per project, local time, null = off. Every default time and every approval is shifted out of it. */
   const [quietHours, setQuietHours] = useState<QuietHours | null>({ ...DEFAULT_QUIET_HOURS });
+  /** The zone every Calendar and Queue time is shown and scheduled in; `null` follows the device (owner direction, 7 Sep 2026). */
+  const [timezone, setTimezone] = useState<string | null>(null);
+  const [timezoneEditing, setTimezoneEditing] = useState(false);
   /** Calendar "Announcement post" (owner direction, 7 Sep 2026): the user's own announcement, posted as written or jazzed up by the AI, pinned to the selected day. */
   const [announcementMode, setAnnouncementMode] = useState<"own" | "ai" | "now">("own");
   /** "Post now" (7 Sep 2026, replacing Setup's Compose now): the text that goes out immediately — X through its own composer, Telegram through the bot. */
@@ -585,6 +615,8 @@ export function SocialHub() {
     const now = new Date();
     return defaultCalendarClockTime(toCalendarDayIso(now.getFullYear(), now.getMonth(), now.getDate()), now);
   });
+  /** Today, on the chosen zone's clock — what "today" means everywhere on the calendar. */
+  const todayInZone = wallClockIn(new Date(), timezone);
   /** Once the user has set the time themselves, switching days keeps it; until then each day gets its own sensible default. */
   const calendarTimeTouchedRef = useRef(false);
   const mascotFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1014,6 +1046,7 @@ export function SocialHub() {
       setWordsToAvoidSeed(record.wordsToAvoidSeed);
       setToneDials(record.toneDials);
       setQuietHours(record.quietHours);
+      setTimezone(record.timezone);
       setAnnouncementText("");
       setAnnouncementAi(null);
       setAnnouncementStatus(null);
@@ -1047,6 +1080,7 @@ export function SocialHub() {
       wordsToAvoidSeed,
       toneDials,
       quietHours,
+      timezone,
       sortedVoiceSourceKeys,
       ...overrides,
     };
@@ -1166,8 +1200,7 @@ export function SocialHub() {
     ? selectedProject.ticker?.trim().toUpperCase() || selectedProject.name?.trim().toUpperCase().slice(0, 14) || "UNTITLED"
     : "PROJECT";
   const xHandle = selectedProject?.xHandle ? cleanHandle(selectedProject.xHandle) : "";
-  const now = new Date();
-  const isCurrentMonthView = calendarView.year === now.getFullYear() && calendarView.month === now.getMonth();
+  const isCurrentMonthView = calendarView.year === todayInZone.year && calendarView.month === todayInZone.month;
   const monthGrid = useMemo(
     () => buildMonthGrid(calendarView.year, calendarView.month),
     [calendarView.year, calendarView.month],
@@ -1180,22 +1213,32 @@ export function SocialHub() {
   const selectedDayIso = toCalendarDayIso(selectedDay.year, selectedDay.month, selectedDay.day);
   /** Said before the tap: a picked time inside quiet hours is moved to the window's end at approval. */
   const calendarTimeQuietNote = useMemo(() => {
-    const at = calendarDayAtTime(selectedDayIso, calendarTime);
-    return quietHours && at && isInQuietHours(at, quietHours) ? `Inside quiet hours — it will go out at ${quietHours.end}.` : null;
-  }, [selectedDayIso, calendarTime, quietHours]);
+    const at = calendarDayAtTime(selectedDayIso, calendarTime, timezone);
+    return quietHours && at && isInQuietHours(at, quietHours, timezone) ? `Inside quiet hours — it will go out at ${quietHours.end}.` : null;
+  }, [selectedDayIso, calendarTime, quietHours, timezone]);
   /** Day markers for the month in view, from the approved posts already loaded and the drafts pinned to a day (never a second fetch). */
   const calendarDayMarks = useMemo(
-    () => buildCalendarDayMarks(scheduledPosts, queue, calendarView.year, calendarView.month),
-    [scheduledPosts, queue, calendarView.year, calendarView.month],
+    () => buildCalendarDayMarks(scheduledPosts, queue, calendarView.year, calendarView.month, timezone),
+    [scheduledPosts, queue, calendarView.year, calendarView.month, timezone],
   );
   const selectedDayEntries = useMemo(
-    () => listCalendarDayEntries(scheduledPosts, queue, selectedDay.year, selectedDay.month, selectedDay.day),
-    [scheduledPosts, queue, selectedDay],
+    () => listCalendarDayEntries(scheduledPosts, queue, selectedDay.year, selectedDay.month, selectedDay.day, timezone),
+    [scheduledPosts, queue, selectedDay, timezone],
   );
 
   useEffect(() => {
-    setDetectedTimezone(describeDetectedTimezone());
+    setDetectedTimezone(describeTimezone(timezone));
+  }, [timezone]);
+
+  useEffect(() => {
+    setDeviceTimezone(detectTimezone());
   }, []);
+
+  /** The picker's options, built only once the user opens it — a few hundred zone names never render otherwise. */
+  const timezoneGroups = useMemo(
+    () => (timezoneEditing ? groupTimezones(listTimezones(timezone, deviceTimezone)) : []),
+    [timezoneEditing, timezone, deviceTimezone],
+  );
 
   // The mobile week strip opens on the selected day (today on arrival)
   // instead of the 1st, which put today off-screen for most of the month
@@ -1228,8 +1271,9 @@ export function SocialHub() {
       countPostsScheduledToday(
         scheduledPosts.filter((post) => post.status !== "canceled").map((post) => post.scheduledAt),
         new Date(),
+        timezone,
       ),
-    [scheduledPosts],
+    [scheduledPosts, timezone],
   );
   const cadencePostsPerDay = cadenceQueueTarget(postingCadence);
 
@@ -1784,14 +1828,27 @@ export function SocialHub() {
   function calendarDayScheduledAt(item: QueueItem, awaitingIso: string[], now: Date): Date | null {
     if (!item.scheduledDay) return null;
     // A time picked beside the date on the Calendar card is the exact default; otherwise the day's first free waking slot.
-    const pinned = item.scheduledTime ? calendarDayAtTime(item.scheduledDay, item.scheduledTime) : null;
-    return pinned ?? computeDefaultScheduledAtOnDay(item.scheduledDay, awaitingIso, now, cadenceSpreadHoursMs(postingCadence));
+    const pinned = item.scheduledTime ? calendarDayAtTime(item.scheduledDay, item.scheduledTime, timezone) : null;
+    return pinned ?? computeDefaultScheduledAtOnDay(item.scheduledDay, awaitingIso, now, cadenceSpreadHoursMs(postingCadence), timezone);
   }
 
   /** Calendar quiet hours: saved at once; a start equal to its end means off. */
   function updateQuietHours(next: QuietHours | null) {
     setQuietHours(next);
     persistSocialStudio({ quietHours: next });
+  }
+
+  /**
+   * The zone every Calendar and Queue time is shown and scheduled in
+   * (owner direction, 7 Sep 2026). Saved at once; "" means follow the
+   * device, which is what the read-only line said before it could be
+   * changed. Only the clock changes — no already-approved post moves,
+   * since a scheduled post is stored as an instant.
+   */
+  function updateTimezone(next: string) {
+    const chosen = next.trim() ? next : null;
+    setTimezone(chosen);
+    persistSocialStudio({ timezone: chosen });
   }
 
   /** A native time field's "HH:MM" (a cleared field is ignored, never saved as off). */
@@ -1820,7 +1877,7 @@ export function SocialHub() {
       setAnnouncementStatus({ tone: "error", message: `The X version is ${xText.length} characters — X allows ${X_CHARACTER_LIMIT}. Shorten it here, or add it and edit the X version in the Queue.` });
       return;
     }
-    if (isCalendarDayBeforeToday(selectedDayIso, new Date())) {
+    if (isCalendarDayBeforeToday(selectedDayIso, new Date(), timezone)) {
       setAnnouncementStatus({ tone: "error", message: `${selectedDayLabel} has already passed — pick today or a later day.` });
       return;
     }
@@ -1857,7 +1914,7 @@ export function SocialHub() {
       setAnnouncementStatus({ tone: "error", message: "Write the announcement first — the AI rewrites your words, it doesn't invent them." });
       return;
     }
-    if (isCalendarDayBeforeToday(selectedDayIso, new Date())) {
+    if (isCalendarDayBeforeToday(selectedDayIso, new Date(), timezone)) {
       setAnnouncementStatus({ tone: "error", message: `${selectedDayLabel} has already passed — pick today or a later day.` });
       return;
     }
@@ -2388,14 +2445,14 @@ export function SocialHub() {
       const awaitingIso = scheduledPosts.filter((post) => isPendingSendStatus(post.status)).map((post) => post.scheduledAt);
       const rawPicked =
         scheduleManuallySet[item.id] && itemScheduledAt[item.id]
-          ? new Date(itemScheduledAt[item.id])
+          ? fromDateTimeLocalValue(itemScheduledAt[item.id], timezone)
           : calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));
       // Quiet hours apply to every approval, the user's own pick included:
       // the future clamp runs first so a lifted past time can't land back
       // inside the window, and the clamp below is then a no-op.
-      const picked = shiftOutOfQuietHours(ensureFutureScheduledAt(rawPicked, now), quietHours);
+      const picked = shiftOutOfQuietHours(ensureFutureScheduledAt(rawPicked, now), quietHours, timezone);
       const scheduledAtIso = ensureFutureScheduledAt(picked, now).toISOString();
-      if (picked.getTime() !== ensureFutureScheduledAt(rawPicked, now).getTime()) quietHoursMovedTo = formatScheduledAt(scheduledAtIso);
+      if (picked.getTime() !== ensureFutureScheduledAt(rawPicked, now).getTime()) quietHoursMovedTo = formatScheduledAt(scheduledAtIso, timezone);
 
       let authMode: "session" | "signature";
       try {
@@ -2565,13 +2622,13 @@ export function SocialHub() {
         if (next[item.id] === undefined) {
           const now = new Date();
           const base = calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));
-          next[item.id] = toDateTimeLocalValue(shiftOutOfQuietHours(base, quietHours));
+          next[item.id] = toDateTimeLocalValue(shiftOutOfQuietHours(base, quietHours, timezone), timezone);
           changed = true;
         }
       }
       return changed ? next : current;
     });
-  }, [queue, scheduledPosts, postingCadence, quietHours]);
+  }, [queue, scheduledPosts, postingCadence, quietHours, timezone]);
 
   // Queue tab data is fetched client-side only (never in the background) on
   // tab open, on window/tab focus while the tab is active, and after
@@ -2791,14 +2848,14 @@ export function SocialHub() {
 
   function jumpToToday() {
     const now = new Date();
-    setCalendarView({ year: now.getFullYear(), month: now.getMonth() });
-    setSelectedDay({ year: now.getFullYear(), month: now.getMonth(), day: now.getDate() });
-    if (!calendarTimeTouchedRef.current) setCalendarTime(defaultCalendarClockTime(toCalendarDayIso(now.getFullYear(), now.getMonth(), now.getDate()), now));
+    setCalendarView({ year: todayInZone.year, month: todayInZone.month });
+    setSelectedDay({ year: todayInZone.year, month: todayInZone.month, day: todayInZone.day });
+    if (!calendarTimeTouchedRef.current) setCalendarTime(defaultCalendarClockTime(toCalendarDayIso(todayInZone.year, todayInZone.month, todayInZone.day), now, timezone));
   }
 
   function selectDay(day: number) {
     setSelectedDay({ year: calendarView.year, month: calendarView.month, day });
-    if (!calendarTimeTouchedRef.current) setCalendarTime(defaultCalendarClockTime(toCalendarDayIso(calendarView.year, calendarView.month, day), new Date()));
+    if (!calendarTimeTouchedRef.current) setCalendarTime(defaultCalendarClockTime(toCalendarDayIso(calendarView.year, calendarView.month, day), new Date(), timezone));
   }
 
   function setCalendarTimeFromField(value: string) {
@@ -3788,6 +3845,31 @@ export function SocialHub() {
                       <div className={styles.timezoneControl}>
                         <span>ALL TIMES SHOWN IN</span>
                         <b>{detectedTimezone}</b>
+                        {timezoneEditing ? (
+                          <>
+                            <select
+                              value={timezone ?? ""}
+                              aria-label="Time zone"
+                              onChange={(event) => updateTimezone(event.target.value)}
+                            >
+                              <option value="">Follow this device{deviceTimezone ? ` · ${deviceTimezone}` : ""}</option>
+                              {timezoneGroups.map((group) => (
+                                <optgroup key={group.region} label={group.region}>
+                                  {group.zones.map((zone) => (
+                                    <option key={zone} value={zone}>{zone}</option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                            </select>
+                            <button type="button" className={styles.timezoneEdit} onClick={() => setTimezoneEditing(false)}>
+                              Done
+                            </button>
+                          </>
+                        ) : (
+                          <button type="button" className={styles.timezoneEdit} onClick={() => setTimezoneEditing(true)}>
+                            {timezone ? "Change" : "Edit local time"}
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -3796,7 +3878,7 @@ export function SocialHub() {
                         <div className={styles.desktopCalendar}>
                           {CALENDAR_DAY_NAMES.map((day) => <span key={day}>{day}</span>)}
                           {monthGrid.map((day, index) => {
-                            const isToday = day !== null && isCurrentMonthView && day === now.getDate();
+                            const isToday = day !== null && isCurrentMonthView && day === todayInZone.day;
                             const isSelected =
                               day !== null &&
                               selectedDay.year === calendarView.year &&
@@ -3832,7 +3914,7 @@ export function SocialHub() {
                         <div className={styles.mobileWeek} ref={mobileWeekRef}>
                           {monthDays.map((day) => {
                             const weekdayIndex = (new Date(calendarView.year, calendarView.month, day).getDay() + 6) % 7;
-                            const isToday = isCurrentMonthView && day === now.getDate();
+                            const isToday = isCurrentMonthView && day === todayInZone.day;
                             const isSelected =
                               selectedDay.year === calendarView.year &&
                               selectedDay.month === calendarView.month &&
