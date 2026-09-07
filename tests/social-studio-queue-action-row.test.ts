@@ -72,13 +72,13 @@ describe("Queue tab draft-card action row (issue #356)", () => {
     expect(social).toContain("Connect X or Telegram in Setup before approving a post.");
   });
 
-  it("keeps the Setup composer's plain button row (Save draft / Copy post / etc.) on its own unrelated class", async () => {
+  it("keeps the announcement composer's plain button rows on their own unrelated class", async () => {
     const social = await source("components", "social-hub.tsx");
 
     // Regression guard: the Queue tab restyle must not have been done by
-    // repurposing .composerActions, which the Setup composer still uses for
-    // buttons that have no primary/secondary/destructive meaning.
-    expect(social).toContain('<div className={styles.composerActions}>\n                              <button type="button" onClick={saveDraft}>Save draft</button>');
+    // repurposing .composerActions, which the Calendar's announcement
+    // composer (Setup's Compose now until 7 Sep 2026) still uses.
+    expect(social).toContain('<div className={styles.composerActions}>\n                                  <button type="button" className={styles.ownPostAdd} onClick={() => void postNowToTelegram()} disabled={busy}>');
   });
 
   it("sizes brand marks for an inline row (14-16px) and keeps every action's touch target at least 44px even though the visible row is shorter", async () => {

@@ -49,7 +49,7 @@ describe("Queue connection state sync and resilience (issue #384)", () => {
 
     const disconnectBlock = social.slice(
       social.indexOf("async function disconnectTelegramChannel"),
-      social.indexOf("async function postTelegram"),
+      social.indexOf("function draftProjectPayload()"),
     );
     expect(disconnectBlock).toContain(
       'setConnections((current) => current.filter((connection) => connection.platform !== "telegram"));',

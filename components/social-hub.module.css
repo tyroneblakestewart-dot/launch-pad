@@ -1806,6 +1806,8 @@
   .quietHours select,
   .quietHours input[type="time"] { min-height: 44px; }
   .quietHours input[type="time"] { height: 44px; }
+  /* Every action on the announcement card — Add to Queue, Jazz it up, and Post now's two sends — is a 44px touch target. */
+  .ownPostComposer .composerActions button { min-height: 44px; }
 }
 
 .segmentedDisabled { display: flex; gap: 3px; padding: 4px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; background: rgba(0, 0, 0, 0.24); }

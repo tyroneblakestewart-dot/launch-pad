@@ -114,14 +114,12 @@ import type { TokenProject } from "@/lib/types";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./social-hub.module.css";
 
-const DRAFT_STORAGE_KEY = "private-meme-token-studio-social-drafts-v1";
 /** How long a mouse may be outside the saved-examples box before it closes (crossing the pill→box gap takes a few frames). */
 const VOICE_EXAMPLES_HOVER_CLOSE_DELAY_MS = 220;
 const MAX_MASCOT_IMAGE_BYTES = 3_000_000;
 
 type TemplateId = "launch" | "countdown" | "contract" | "community" | "custom";
 type StudioTab = "setup" | "calendar" | "queue" | "rules";
-type DraftMap = Record<string, string>;
 
 // Per-panel status shown inline next to the control that triggered it, instead of one status bar far below the fold.
 type PanelStatus = { tone: "progress" | "success" | "error"; message: string } | null;
@@ -398,15 +396,6 @@ function safeProjects(entries: readonly SavedProjectIndexEntry[]): TokenProject[
   }
 }
 
-function safeMap(raw: string | null): Record<string, string> {
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw) as Record<string, string>;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
 
 function cleanHandle(value: string): string {
   const trimmed = value.trim();
@@ -536,13 +525,7 @@ export function SocialHub() {
   // heroImage out of the localStorage index, so the entries here carry none).
   const [selectedProjectArtwork, setSelectedProjectArtwork] = useState("");
   const [activeTab, setActiveTab] = useState<StudioTab>("setup");
-  const [composeOpen, setComposeOpen] = useState(false);
-  const [templateId, setTemplateId] = useState<TemplateId>("launch");
-  const [message, setMessage] = useState("");
   const [includeArtwork, setIncludeArtwork] = useState(true);
-  const [status, setStatus] = useState(
-    "Choose a saved project, review the post and approve each destination.",
-  );
   const [busy, setBusy] = useState(false);
   const [calendarView, setCalendarView] = useState<MonthView>(() => {
     const now = new Date();
@@ -585,14 +568,14 @@ export function SocialHub() {
   const [mascotVisualDNA, setMascotVisualDNA] = useState<MascotVisualDNA | null>(null);
   const [mascotReferenceImage, setMascotReferenceImage] = useState<string | null>(null);
   const [mascotBusy, setMascotBusy] = useState(false);
-  const [telegramMessage, setTelegramMessage] = useState("");
-  const [attachedArtwork, setAttachedArtwork] = useState<string | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [draftBusy, setDraftBusy] = useState(false);
   /** Calendar quiet hours (owner direction, 7 Sep 2026): per project, local time, null = off. Every default time and every approval is shifted out of it. */
   const [quietHours, setQuietHours] = useState<QuietHours | null>({ ...DEFAULT_QUIET_HOURS });
   /** Calendar "Announcement post" (owner direction, 7 Sep 2026): the user's own announcement, posted as written or jazzed up by the AI, pinned to the selected day. */
-  const [announcementMode, setAnnouncementMode] = useState<"own" | "ai">("own");
+  const [announcementMode, setAnnouncementMode] = useState<"own" | "ai" | "now">("own");
+  /** "Post now" (7 Sep 2026, replacing Setup's Compose now): the text that goes out immediately — X through its own composer, Telegram through the bot. */
+  const [postNowX, setPostNowX] = useState("");
+  const [postNowTelegram, setPostNowTelegram] = useState("");
   const [announcementText, setAnnouncementText] = useState("");
   const [announcementAi, setAnnouncementAi] = useState<{ xText: string; telegramText: string } | null>(null);
   const [announcementAiBusy, setAnnouncementAiBusy] = useState(false);
@@ -623,7 +606,6 @@ export function SocialHub() {
   const postImageSkipResolversRef = useRef<Map<string, () => void>>(new Map());
   // Best-results read-out for the last uploaded reference — advice only, the upload proceeds regardless.
   const [mascotReferenceAssessment, setMascotReferenceAssessment] = useState<MascotReferenceAssessment | null>(null);
-  const [setupDraftStatus, setSetupDraftStatus] = useState<PanelStatus>(null);
   const [telegramStatus, setTelegramStatus] = useState<PanelStatus>(null);
 
   // Real Telegram connect flow (issue #340): reconciles the Setup card with
@@ -768,7 +750,6 @@ export function SocialHub() {
   const projectOwner = useProjectOwner();
   useEffect(() => {
     const loadedProjects = safeProjects(readProjectIndex(projectOwner));
-    const drafts = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
     setProjects(loadedProjects);
     setWalletAddress(storedWalletAddress());
     setDetailsLater(readTokenDetailsLater(projectOwner));
@@ -776,9 +757,6 @@ export function SocialHub() {
 
     const first = loadedProjects[0];
     setSelectedProjectId(first ? first.id : "");
-    if (first) {
-      setMessage(drafts[first.id] || buildTemplate(first, "launch"));
-    }
   }, [projectOwner]);
 
   // Re-confirming the wallet from the Account panel in another tab only
@@ -1178,11 +1156,6 @@ export function SocialHub() {
           ? "Launch this token on Robinhood Chain Testnet first — the Buy Bot watches its curve."
           : null;
 
-  const xCharacterCount = message.length;
-  const xReady = xCharacterCount > 0 && xCharacterCount <= 280;
-  const telegramReady = Boolean(
-    selectedProject && telegramConnection?.status === "connected" && (telegramMessage || message).trim(),
-  );
   const voiceExampleFilter = useMemo(() => filterUsableVoiceExamples(voiceExamplesText), [voiceExamplesText]);
   const voiceExampleCount = voiceExampleFilter.usable.length;
   const voiceProgressPercent = Math.min(100, Math.round((voiceExampleCount / VOICE_EXAMPLE_TARGET) * 100));
@@ -1276,26 +1249,12 @@ export function SocialHub() {
   function selectProject(id: string) {
     const project = projects.find((item) => item.id === id);
     if (!project) return;
-    const drafts = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
     setSelectedProjectId(id);
-    setTemplateId("launch");
-    setMessage(drafts[id] || buildTemplate(project, "launch"));
-    setTelegramMessage("");
-    setAttachedArtwork(null);
     setProjectMenuOpen(false);
     setVoiceStatus(null);
     setMascotUploadStatus(null);
-    setSetupDraftStatus(null);
     setPostsStatus(null);
     setReplenishStatus(null);
-    setStatus(`${project.name || "Project"} loaded into Hoodlums Social.`);
-  }
-
-  function chooseTemplate(id: TemplateId) {
-    setTemplateId(id);
-    if (!selectedProject) return;
-    setMessage(buildTemplate(selectedProject, id));
-    setStatus(`${TEMPLATES.find((item) => item.id === id)?.label || "Template"} loaded.`);
   }
 
   // Opens the token-details box with a reason — every tool that needs a
@@ -1306,62 +1265,9 @@ export function SocialHub() {
     setEditingProjectId(null);
     setAddTokenOpen(true);
     setExternalStatus({ tone: "progress", message: reason });
-    setStatus(reason);
     window.requestAnimationFrame(() => {
       document.querySelector("[data-add-token-form]")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
-  }
-
-  function saveDraft() {
-    if (!selectedProject) {
-      promptForTokenDetails("Add your token details before saving a draft.");
-      return;
-    }
-    const drafts: DraftMap = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
-    drafts[selectedProject.id] = message;
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(drafts));
-    setStatus("Draft saved privately in this browser.");
-  }
-
-  async function copyPost() {
-    if (!message.trim()) {
-      setStatus("Write a post before copying it.");
-      return;
-    }
-    await navigator.clipboard.writeText(message);
-    setStatus("Post copied to the clipboard.");
-  }
-
-  function openXComposer() {
-    if (!message.trim()) {
-      setStatus("Write a post before opening X.");
-      return false;
-    }
-    if (!xReady) {
-      setStatus(`X posts must be 280 characters or fewer. Remove ${xCharacterCount - 280} characters.`);
-      return false;
-    }
-    const url = `https://x.com/intent/post?text=${encodeURIComponent(message)}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-    setStatus("X composer opened with the post filled in. Review it and press Post on X.");
-    return true;
-  }
-
-  function downloadArtwork() {
-    if (!selectedProject || !projectArtwork) {
-      setStatus("This project has no artwork to download.");
-      return;
-    }
-    const extension = projectArtwork.startsWith("data:image/png")
-      ? "png"
-      : projectArtwork.startsWith("data:image/webp")
-        ? "webp"
-        : "jpg";
-    const anchor = document.createElement("a");
-    anchor.href = projectArtwork;
-    anchor.download = `${selectedProject.websiteSlug || selectedProject.ticker || "token"}-social-artwork.${extension}`;
-    anchor.click();
-    setStatus("Artwork downloaded. Attach it manually inside the X composer.");
   }
 
   async function connectX() {
@@ -1531,48 +1437,6 @@ export function SocialHub() {
     } finally {
       setTelegramConnectBusy(false);
     }
-  }
-
-  async function postTelegram() {
-    if (!selectedProject) {
-      promptForTokenDetails("Add your token details before publishing.");
-      return false;
-    }
-    if (!telegramReady || !telegramConnection || telegramConnection.status !== "connected") {
-      setStatus("Connect a verified Telegram channel in Setup and add post text first.");
-      return false;
-    }
-
-    setBusy(true);
-    setStatus("Sending the approved post through the Hoodlums Telegram bot…");
-    try {
-      const response = await fetch("/api/social/telegram", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chatId: telegramConnection.externalId,
-          text: (telegramMessage || message).trim(),
-          artwork: includeArtwork ? attachedArtwork || projectArtwork : "",
-        }),
-      });
-      const payload = (await response.json()) as { ok?: boolean; error?: string };
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "Telegram rejected the post.");
-      }
-
-      setStatus("Telegram post published through the Hoodlums bot.");
-      return true;
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Telegram publishing failed.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function publishBoth() {
-    if (!openXComposer()) return;
-    await postTelegram();
   }
 
   function draftProjectPayload() {
@@ -1879,7 +1743,7 @@ export function SocialHub() {
         return payload.draft;
       }
 
-      if (options.dayLabel || options.replenish) {
+      {
         const item: QueueItem = {
           id: newQueueItemId(),
           xText: payload.draft.xText,
@@ -1902,11 +1766,6 @@ export function SocialHub() {
             ? { tone: "success", message: `AI draft for ${options.dayLabel} added to the Queue.` }
             : { tone: "success", message: "New draft added to Ready to review." },
         );
-      } else {
-        setMessage(payload.draft.xText);
-        setTelegramMessage(payload.draft.telegramText);
-        setComposeOpen(true);
-        report({ tone: "success", message: "AI draft ready. Review it below before posting." });
       }
       return payload.draft;
     } catch (error) {
@@ -1914,13 +1773,6 @@ export function SocialHub() {
       return null;
     }
   }
-
-  async function generateDraftFromSetup() {
-    setDraftBusy(true);
-    await generateDraft({}, setSetupDraftStatus);
-    setDraftBusy(false);
-  }
-
 
   /**
    * The default time for a Calendar-tab draft: on its picked day (first
@@ -2013,6 +1865,66 @@ export function SocialHub() {
     const draft = await generateDraft({ dayLabel: selectedDayLabel, announcement: text }, setAnnouncementStatus);
     if (draft) setAnnouncementAi(draft);
     setAnnouncementAiBusy(false);
+  }
+
+  /** Entering the Post now tab starts from whatever is written — the jazzed version when there is one, else the announcement as typed — without overwriting text already edited there. */
+  function openPostNow() {
+    setAnnouncementMode("now");
+    setAnnouncementStatus(null);
+    if (!postNowX.trim() && !postNowTelegram.trim()) {
+      setPostNowX(announcementAi?.xText ?? announcementText);
+      setPostNowTelegram(announcementAi?.telegramText ?? announcementText);
+    }
+  }
+
+  /** X never posts through the API from here (issue #342 cost control): the free intent composer opens with the text filled in, and the user presses Post on X. */
+  function postNowToX() {
+    const text = postNowX.trim();
+    if (!text) {
+      setAnnouncementStatus({ tone: "error", message: "Write the X post first." });
+      return;
+    }
+    if (text.length > X_CHARACTER_LIMIT) {
+      setAnnouncementStatus({ tone: "error", message: `X posts must be ${X_CHARACTER_LIMIT} characters or fewer. Remove ${text.length - X_CHARACTER_LIMIT} characters.` });
+      return;
+    }
+    window.open(`https://x.com/intent/post?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+    setAnnouncementStatus({ tone: "success", message: "X composer opened with the post filled in. Review it and press Post on X." });
+  }
+
+  /** Telegram goes out immediately through the Hoodlums bot, to the verified channel connected in Setup. */
+  async function postNowToTelegram() {
+    if (!selectedProject) {
+      promptForTokenDetails("Add your token details before publishing.");
+      return;
+    }
+    const text = postNowTelegram.trim();
+    if (!telegramConnection || telegramConnection.status !== "connected" || !text) {
+      setAnnouncementStatus({ tone: "error", message: "Connect a verified Telegram channel in Setup and write the Telegram post first." });
+      return;
+    }
+    setBusy(true);
+    setAnnouncementStatus({ tone: "progress", message: "Sending through the Hoodlums Telegram bot…" });
+    try {
+      const response = await fetch("/api/social/telegram", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chatId: telegramConnection.externalId,
+          text,
+          artwork: includeArtwork ? projectArtwork : "",
+        }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Telegram rejected the post.");
+      }
+      setAnnouncementStatus({ tone: "success", message: "Posted to Telegram through the Hoodlums bot." });
+    } catch (error) {
+      setAnnouncementStatus({ tone: "error", message: error instanceof Error ? error.message : "Telegram publishing failed." });
+    } finally {
+      setBusy(false);
+    }
   }
 
   /**
@@ -2578,7 +2490,7 @@ export function SocialHub() {
 
   function openComposerForPost(post: ScheduledPostSummary) {
     window.open(buildXIntentUrl(post.body), "_blank", "noopener,noreferrer");
-    setStatus("X composer opened with the approved post filled in.");
+    setPostsStatus({ tone: "success", message: "X composer opened with the approved post filled in." });
   }
 
   function setReschedulePostValue(postId: string, value: string) {
@@ -2795,23 +2707,23 @@ export function SocialHub() {
       return next;
     });
     if (!options.silent) {
-      setStatus("Removed from Ready to review.");
+      setPostsStatus({ tone: "success", message: "Removed from Ready to review." });
       void replenishQueue();
     }
   }
 
   function postQueueItemToX(item: QueueItem) {
     if (!item.xText.trim()) {
-      setStatus("Write the X text before posting.");
+      setPostsStatus({ tone: "error", message: "Write the X text before posting." });
       return;
     }
     if (item.xText.length > 280) {
-      setStatus(`X posts must be 280 characters or fewer. Remove ${item.xText.length - 280} characters.`);
+      setPostsStatus({ tone: "error", message: `X posts must be 280 characters or fewer. Remove ${item.xText.length - 280} characters.` });
       return;
     }
     const url = `https://x.com/intent/post?text=${encodeURIComponent(item.xText)}`;
     window.open(url, "_blank", "noopener,noreferrer");
-    setStatus("X composer opened with the queued post filled in.");
+    setPostsStatus({ tone: "success", message: "X composer opened with the queued post filled in." });
   }
 
   async function sendQueueItemToTelegram(item: QueueItem) {
@@ -2820,12 +2732,12 @@ export function SocialHub() {
       return;
     }
     if (!telegramConnection || telegramConnection.status !== "connected" || !item.telegramText.trim()) {
-      setStatus("Connect a verified Telegram channel in Setup and add post text first.");
+      setPostsStatus({ tone: "error", message: "Connect a verified Telegram channel in Setup and add post text first." });
       return;
     }
 
     setBusy(true);
-    setStatus("Sending the queued post through the Hoodlums Telegram bot…");
+    setPostsStatus({ tone: "progress", message: "Sending the queued post through the Hoodlums Telegram bot…" });
     try {
       const response = await fetch("/api/social/telegram", {
         method: "POST",
@@ -2840,9 +2752,9 @@ export function SocialHub() {
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error || "Telegram rejected the post.");
       }
-      setStatus("Queued post published through the Hoodlums Telegram bot.");
+      setPostsStatus({ tone: "success", message: "Queued post published through the Hoodlums Telegram bot." });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Telegram publishing failed.");
+      setPostsStatus({ tone: "error", message: error instanceof Error ? error.message : "Telegram publishing failed." });
     } finally {
       setBusy(false);
     }
@@ -2895,15 +2807,6 @@ export function SocialHub() {
     setCalendarTime(value);
   }
 
-  function renderProjectArtwork(className: string, alt: string) {
-    if (projectArtwork) {
-      return (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img className={className} src={projectArtwork} alt={alt} />
-      );
-    }
-    return <span className={styles.artworkFallback}>{projectInitial}</span>;
-  }
 
   async function handleExternalArtwork(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -2932,7 +2835,6 @@ export function SocialHub() {
     setAddTokenOpen(false);
     setEditingProjectId(null);
     setExternalStatus(null);
-    setStatus("No problem — any tool that needs your token details will ask for them when you use it.");
   }
 
   function closeTokenDetails() {
@@ -3044,10 +2946,6 @@ export function SocialHub() {
       setProjects(safeProjects(readProjectIndex(projectOwner)));
       setSelectedProjectId(project.id);
       if (!editing) {
-        setTemplateId("launch");
-        setMessage(buildTemplate(project, "launch"));
-        setTelegramMessage("");
-        setAttachedArtwork(null);
       }
       setExternalForm(EMPTY_EXTERNAL_FORM);
       setEditingProjectId(null);
@@ -3055,7 +2953,7 @@ export function SocialHub() {
       setExternalStatus(null);
       writeTokenDetailsLater(projectOwner, false);
       setDetailsLater(false);
-      setStatus(editing ? `${name} updated.` : `${name} added to Hoodlums Social. Only wallet ${shortAddress(projectOwner)} sees it.`);
+      setExternalStatus({ tone: "success", message: editing ? `${name} updated.` : `${name} added to Hoodlums Social. Only wallet ${shortAddress(projectOwner)} sees it.` });
     } finally {
       setExternalSaving(false);
     }
@@ -3800,122 +3698,6 @@ export function SocialHub() {
                   <div className={styles.divider} />
 
                   <section className={styles.block}>
-                    <button
-                      type="button"
-                      className={styles.accordionHeader}
-                      onClick={() => setComposeOpen((current) => !current)}
-                      aria-expanded={composeOpen}
-                      aria-controls="compose-panel"
-                    >
-                      <div>
-                        <h2>Compose now</h2>
-                        <p>Choose a post type, review it, then approve X and/or Telegram.</p>
-                      </div>
-                      <div className={styles.accordionHeaderRight}>
-                        <span className={xReady ? styles.characterReady : styles.characterWarning}>{xCharacterCount}/280</span>
-                        <span className={composeOpen ? styles.accordionChevronOpen : styles.accordionChevron}>▼</span>
-                      </div>
-                    </button>
-
-                    {composeOpen ? (
-                      <div id="compose-panel" className={styles.accordionBody}>
-                        <div className={styles.composeGrid}>
-                          <aside className={styles.templatePanel}>
-                            <span className={styles.eyebrow}>POST TYPE</span>
-                            <div className={styles.templateList}>
-                              {TEMPLATES.map((template) => (
-                                <button
-                                  type="button"
-                                  key={template.id}
-                                  className={template.id === templateId ? styles.templateActive : styles.template}
-                                  onClick={() => chooseTemplate(template.id)}
-                                >
-                                  <b>{template.label}</b>
-                                  <span>{template.description}</span>
-                                </button>
-                              ))}
-                            </div>
-                          </aside>
-
-                          <div className={styles.composerPanel}>
-                            <div className={styles.projectSummary}>
-                              <span className={styles.summaryArtwork}>
-                                {renderProjectArtwork(styles.summaryImage, `${selectedProject?.name || "Token"} artwork`)}
-                              </span>
-                              <span>
-                                <b>{selectedProject?.name || "Untitled project"}</b>
-                                <small>
-                                  ${projectTicker} · {selectedProject ? projectNetworkLabel(selectedProject) : ""}
-                                  {selectedProject?.contractAddress
-                                    ? ` · ${shortAddress(selectedProject.contractAddress)}`
-                                    : " · contract pending"}
-                                </small>
-                              </span>
-                            </div>
-                            <textarea
-                              value={message}
-                              onChange={(event) => setMessage(event.target.value)}
-                              placeholder="Write the announcement…"
-                              rows={9}
-                            />
-                            <label className={styles.connectionField}>
-                              <span>Telegram version (optional — defaults to the same text)</span>
-                              <textarea
-                                value={telegramMessage}
-                                onChange={(event) => setTelegramMessage(event.target.value)}
-                                placeholder="Leave blank to send the same text to Telegram"
-                                rows={3}
-                              />
-                            </label>
-                            <div className={styles.composerActions}>
-                              <button type="button" onClick={saveDraft}>Save draft</button>
-                              <button type="button" onClick={copyPost}>Copy post</button>
-                              <button type="button" onClick={downloadArtwork} disabled={!projectArtwork}>
-                                Download artwork
-                              </button>
-                              <button type="button" onClick={generateDraftFromSetup} disabled={draftBusy}>
-                                {draftBusy ? "Drafting…" : "Draft with AI"}
-                              </button>
-                            </div>
-                            <InlineStatus status={setupDraftStatus} />
-                          </div>
-                        </div>
-
-                        <div className={styles.postActions}>
-                          <button type="button" className={styles.xButton} onClick={openXComposer} disabled={!xReady}>
-                            <XMark /> Approve &amp; open X composer
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.telegramButton}
-                            onClick={postTelegram}
-                            disabled={!telegramReady || busy}
-                          >
-                            <TelegramMark /> {busy ? "Publishing…" : "Approve & post to Telegram"}
-                          </button>
-                        </div>
-
-                        <div className={styles.publishBar}>
-                          <div>
-                            <b>Publish to both</b>
-                            <span>Opens X for your final click, then sends the approved Telegram post.</span>
-                          </div>
-                          <button type="button" onClick={publishBoth} disabled={!xReady || !telegramReady || busy}>
-                            APPROVE BOTH DESTINATIONS
-                          </button>
-                        </div>
-
-                        <div className={styles.statusBar} role="status" aria-live="polite">
-                          <span>●</span>
-                          <p>{status}</p>
-                        </div>
-                      </div>
-                    ) : null}
-                  </section>
-
-                  <div className={styles.divider} />
-
-                  <section className={styles.block}>
                     <div className={styles.sectionHeading}>
                       <div>
                         <h2>Your mascot</h2>
@@ -4135,15 +3917,51 @@ export function SocialHub() {
                               >
                                 AI jazz-up
                               </button>
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={announcementMode === "now"}
+                                className={announcementMode === "now" ? styles.announcementTabActive : styles.announcementTab}
+                                onClick={openPostNow}
+                              >
+                                Post now
+                              </button>
                             </div>
-                            <textarea
-                              value={announcementText}
-                              onChange={(event) => setAnnouncementText(event.target.value)}
-                              placeholder={`Your announcement for ${selectedDayLabel}`}
-                              rows={4}
-                              maxLength={ANNOUNCEMENT_MAX_LENGTH}
-                            />
-                            {announcementMode === "own" ? (
+                            {announcementMode !== "now" ? (
+                              <textarea
+                                value={announcementText}
+                                onChange={(event) => setAnnouncementText(event.target.value)}
+                                placeholder={`Your announcement for ${selectedDayLabel}`}
+                                rows={4}
+                                maxLength={ANNOUNCEMENT_MAX_LENGTH}
+                              />
+                            ) : null}
+                            {announcementMode === "now" ? (
+                              <>
+                                <div className={styles.announcementResult}>
+                                  <label>
+                                    <span className={postNowX.trim().length > X_CHARACTER_LIMIT ? styles.ownPostOver : undefined}>
+                                      X · {postNowX.trim().length}/{X_CHARACTER_LIMIT}
+                                    </span>
+                                    <textarea value={postNowX} onChange={(event) => setPostNowX(event.target.value)} placeholder="The X post" rows={3} />
+                                  </label>
+                                  <label>
+                                    <span>Telegram</span>
+                                    <textarea value={postNowTelegram} onChange={(event) => setPostNowTelegram(event.target.value)} placeholder="The Telegram post" rows={4} />
+                                  </label>
+                                </div>
+                                <label className={styles.checkbox}>
+                                  <input type="checkbox" checked={includeArtwork} onChange={(event) => setIncludeArtwork(event.target.checked)} />
+                                  <span>Attach the token artwork to Telegram</span>
+                                </label>
+                                <div className={styles.composerActions}>
+                                  <button type="button" className={styles.ownPostAdd} onClick={() => void postNowToTelegram()} disabled={busy}>
+                                    {busy ? "Sending…" : "Send to Telegram now"}
+                                  </button>
+                                  <button type="button" onClick={postNowToX}>Post to X now</button>
+                                </div>
+                              </>
+                            ) : announcementMode === "own" ? (
                               <>
                                 <div className={styles.ownPostMeta}>
                                   <span className={announcementText.trim().length > X_CHARACTER_LIMIT ? styles.ownPostOver : undefined}>
