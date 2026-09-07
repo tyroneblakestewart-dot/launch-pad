@@ -626,6 +626,7 @@ export function SocialHub() {
   const [timezoneEditing, setTimezoneEditing] = useState(false);
   /** What the user has typed into the zone search (owner report, 7 Sep 2026: the full list as a dropdown filled the screen). */
   const [timezoneQuery, setTimezoneQuery] = useState("");
+  const timezonePickerRef = useRef<HTMLDivElement | null>(null);
   /** When the day's first post goes out; `null` until the user answers, and until then everything schedules exactly as it did before (owner direction, 7 Sep 2026). */
   const [dailyStartTime, setDailyStartTime] = useState<string | null>(null);
   /** The answer in the prompt's own field, before it is saved. */
@@ -1268,6 +1269,18 @@ export function SocialHub() {
     setDeviceTimezone(detectTimezone());
   }, []);
 
+  // A tap anywhere else closes the zone picker (owner recording, 7 Sep 2026:
+  // it stayed open over the calendar until Cancel was pressed).
+  useEffect(() => {
+    if (!timezoneEditing) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const picker = timezonePickerRef.current;
+      if (picker && event.target instanceof Node && !picker.contains(event.target)) setTimezoneEditing(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [timezoneEditing]);
+
   // The record loads after mount, so an untouched "at" field follows the
   // start time (and zone) once they arrive.
   useEffect(() => {
@@ -1902,6 +1915,11 @@ export function SocialHub() {
   function openTimezonePicker() {
     setTimezoneQuery("");
     setTimezoneEditing(true);
+    // On a phone the list opens in flow under the search box, so bring the
+    // whole picker into view rather than leaving it behind the bottom nav.
+    window.requestAnimationFrame(() => {
+      timezonePickerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   }
 
   /**
@@ -3941,7 +3959,7 @@ export function SocialHub() {
                         <span>ALL TIMES SHOWN IN</span>
                         <b>{detectedTimezone}</b>
                         {timezoneEditing ? (
-                          <div className={styles.timezonePicker}>
+                          <div className={styles.timezonePicker} ref={timezonePickerRef}>
                             <input
                               type="text"
                               autoFocus
