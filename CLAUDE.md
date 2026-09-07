@@ -3780,3 +3780,30 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   (rule 7) — the owner confirms on hoodlums.dev. Validated on the final
   commit: `npm run test:app` — 340 test files / 3965 tests passing; `npm run
   lint` — 0 errors (11 pre-existing warnings); `npm run build` — succeeds.
+
+- Client-errors "new group" tile no longer disagrees with the Errors tab
+  (owner report, 7 Sep 2026: `/admin`'s System Health showed "1 new client
+  error group(s) in the last 24 hours," but the Errors tab itself listed
+  none). Root cause: `countNewClientErrorGroups` (`lib/server/system-health.ts`)
+  counted a (message, route_path) group as "new" purely from how long ago it
+  first ever appeared — it never checked whether that group had since been
+  resolved, while the Errors tab's own list (`ClientErrorStore.listGroups`,
+  `lib/server/client-errors-store.ts`) hides a resolved group unless a fresh
+  occurrence has landed after the resolution. A group resolved once would
+  keep tripping the "new" tile forever, with nothing to click into — exactly
+  what was reported. Fix: `countNewClientErrorGroups`'s SQL now joins
+  `client_error_resolutions` and applies the identical condition
+  `listGroups` already uses (`resolved_at IS NULL OR last_seen > resolved_at`),
+  so the two can no longer disagree. Confirmed this PR's own #547 (the grid
+  candlestick sizing fix, merged immediately before this) touches none of
+  this code — `lib/token-grid-candle-chart.ts` and a CSS height value only —
+  so the timing the owner flagged was coincidental, not causal.
+  `lib/server/client-errors-store.ts`'s own `countNewGroupsSince` carries the
+  identical gap (verified: not called from any production code path today,
+  only from tests) and is left as a named follow-up rather than widened into
+  this fix. New test in `tests/system-health.test.ts` pins the SQL text
+  (join + WHERE clause) against a regression, since the query runs against a
+  raw pool with no JS-side seam to inject a fake resolutions table. No
+  existing test assertion was changed. Validated on the final commit:
+  `npm run test:app` — 340 test files / 3966 tests passing; `npm run lint` —
+  0 errors (11 pre-existing warnings); `npm run build` — succeeds.

@@ -560,6 +560,16 @@ export type ClientErrorsPing = () => Promise<{ newGroupCount: number }>;
  * just one that happened to fire again recently. Kept red/amber at the
  * summary-card level (not just in the pipeline drill-down) so a fresh
  * client-side crash is visible at a glance rather than requiring a click-in.
+ *
+ * Owner report, 7 Sep 2026: the tile said "1 new client error group" while
+ * the Errors tab's own list (`ClientErrorStore.listGroups`) showed none.
+ * Root cause: this count only ever checked how long ago a group first
+ * appeared — it never checked whether that group had since been resolved,
+ * while `listGroups` hides a resolved group (unless it has reoccurred since
+ * the resolution). A group resolved once would keep tripping this "new"
+ * tile forever, with nothing to click into. This now excludes a resolved
+ * group the same way `listGroups` does — resolved, and no fresh occurrence
+ * after the resolution — so the two can no longer disagree.
  */
 async function countNewClientErrorGroups(
   pool: { query: <T = Record<string, unknown>>(text: string, params?: unknown[]) => Promise<{ rows: T[] }> },
@@ -567,9 +577,16 @@ async function countNewClientErrorGroups(
 ): Promise<number> {
   const result = await pool.query<{ count: number | string }>(
     `SELECT COUNT(*)::int AS count FROM (
-       SELECT message, route_path FROM client_errors
-        GROUP BY message, route_path
-       HAVING MIN(created_at) >= $1
+       SELECT g.message, g.route_path
+         FROM (
+           SELECT message, route_path, MIN(created_at) AS first_seen, MAX(created_at) AS last_seen
+             FROM client_errors
+            GROUP BY message, route_path
+           HAVING MIN(created_at) >= $1
+         ) g
+         LEFT JOIN client_error_resolutions r
+           ON r.message = g.message AND r.route_path = g.route_path
+        WHERE r.resolved_at IS NULL OR g.last_seen > r.resolved_at
      ) AS new_groups`,
     [since],
   );
