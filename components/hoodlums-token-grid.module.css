@@ -157,18 +157,22 @@
 
 /* Thin/slim candlesticks over the artwork (owner direction, 7 Sep 2026,
    replacing the single performance line): the token's real 5-minute trade
-   history as small bars across the lower half of the image, lime when a
+   history as small bars across the lower third of the image, lime when a
    candle closes up and the design's grey when it closes down, each glowing
    so it stays legible on any picture, over a soft bottom-up wash. Only
    rendered with real data — no trades means no bars and no box. The
    overlay itself grows a little on hover/focus — "expand, not too much,
    like pump.fun" — clipped by the art frame's own rounded corners, and
    never on a device with no real hover (a stuck touch state would never
-   release). */
+   release).
+   Owner bug report, 7 Sep 2026: on real cards this read as "covering half
+   images" against pump.fun's own much more compact treatment — 52% of the
+   art region is dropped to 34%, closer to what the reference recording
+   actually shows. */
 .candleOverlay {
   position: absolute;
   inset: auto 0 0 0;
-  height: 52%;
+  height: 34%;
   z-index: 2;
   background: linear-gradient(to top, rgba(3, 6, 4, 0.7) 0%, rgba(3, 6, 4, 0.25) 60%, rgba(3, 6, 4, 0) 100%);
   transform: scaleY(1);

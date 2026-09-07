@@ -3739,3 +3739,44 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   the final commit: `npm run test:app` — 340 test files / 3963 tests
   passing; `npm run lint` — 0 errors (11 pre-existing warnings); `npm run
   build` — succeeds.
+
+- Grid card candlesticks: fixed width and a smaller footprint (owner report,
+  7 Sep 2026, on the just-deployed candlestick cards above: "candel stick are
+  different sizes still to big plus covering half images heres a reminder of
+  pump fun"). Root cause, confirmed by reading the live recording frame by
+  frame: `lib/token-grid-candle-chart.ts` divided the fixed 100-unit viewBox
+  width by THAT TOKEN's OWN `candles.length` (`slotWidth = width /
+  candles.length`), so a quiet token with two or three 5-minute buckets got a
+  couple of huge, chunky bars while an active one with a full 20-bucket
+  window got many thin ones — exactly "different sizes". The original PR's
+  own verification never caught this because its three mock tokens all had
+  similar, moderate trade counts; nothing in that pass exercised a wide
+  spread. `buildGridCandleChart` now derives `slotWidth` from the FIXED
+  `GRID_CANDLE_CHART_WIDTH / MAX_GRID_CANDLES` denominator, so a candle body
+  is the same absolute size on every card no matter how many buckets that
+  specific token has traded into; a token with fewer than the max
+  right-aligns its candles flush to the right edge (the newest candle always
+  in the rightmost slot, the same convention every real trading chart uses)
+  rather than stretching a handful of bars to fill the width. Separately,
+  `.candleOverlay`'s height in `components/hoodlums-token-grid.module.css`
+  drops from 52% to 34% of the art region, closer to what the pump.fun
+  reference recording actually shows, addressing "covering half images".
+  **Tests changed, not only added (rule 8, stated plainly):** the
+  `token-grid-card-chart-ui` pin asserting `height: 52%` pinned the
+  now-corrected footprint and is rewritten to assert 34% and the absence of
+  52%. New coverage in `tests/token-grid-candle-chart.test.ts`: a
+  same-bodyWidth assertion across 1/3/20 (capped) candle counts (the
+  reported bug, reproduced and pinned closed) and a right-alignment
+  assertion (fixed slot spacing, newest candle in the rightmost slot, no
+  leading gap once a card reaches the full MAX_GRID_CANDLES window).
+  Verified this time with mock trade counts that deliberately span 1, 2, 3,
+  8, 20 and 60 trades across six cards in the same grid — the exact
+  real-world variance the first pass's uniform mocks missed — measuring each
+  card's rendered candle body width and x-position in the DOM (not just
+  eyeballing): every card's bars came back pixel-identical in width
+  (≈3.3px at both 1400px and 390px) and right-aligned to the same edge, and
+  the hover-expand (`scaleY(1) → scaleY(1.16)`) still engages correctly on
+  the new sizing. Not verified on a real mobile Safari device this pass
+  (rule 7) — the owner confirms on hoodlums.dev. Validated on the final
+  commit: `npm run test:app` — 340 test files / 3965 tests passing; `npm run
+  lint` — 0 errors (11 pre-existing warnings); `npm run build` — succeeds.
