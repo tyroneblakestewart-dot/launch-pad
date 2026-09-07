@@ -2989,11 +2989,11 @@ export function SocialHub() {
         <div className={styles.addTokenGrid}>
           <label className={styles.connectionField}>
             <span>Token name</span>
-            <input value={externalForm.name} maxLength={80} placeholder="Hoodlums" onChange={(event) => setExternalForm((current) => ({ ...current, name: event.target.value }))} />
+            <input value={externalForm.name} maxLength={80} placeholder="Token name" onChange={(event) => setExternalForm((current) => ({ ...current, name: event.target.value }))} />
           </label>
           <label className={styles.connectionField}>
             <span>Ticker</span>
-            <input value={externalForm.ticker} maxLength={13} placeholder="HOODS" onChange={(event) => setExternalForm((current) => ({ ...current, ticker: event.target.value }))} />
+            <input value={externalForm.ticker} maxLength={13} placeholder="TICKER" onChange={(event) => setExternalForm((current) => ({ ...current, ticker: event.target.value }))} />
           </label>
           <label className={styles.connectionField}>
             <span>Network</span>
@@ -3015,11 +3015,11 @@ export function SocialHub() {
           </label>
           <label className={styles.connectionField}>
             <span>X handle <em>optional · no @</em></span>
-            <input value={externalForm.xHandle} maxLength={60} placeholder="hoodlums" onChange={(event) => setExternalForm((current) => ({ ...current, xHandle: event.target.value }))} />
+            <input value={externalForm.xHandle} maxLength={60} placeholder="yourhandle" onChange={(event) => setExternalForm((current) => ({ ...current, xHandle: event.target.value }))} />
           </label>
           <label className={styles.connectionField}>
             <span>Telegram <em>optional · username only</em></span>
-            <input value={externalForm.telegram} maxLength={60} placeholder="hoodlums" onChange={(event) => setExternalForm((current) => ({ ...current, telegram: event.target.value }))} />
+            <input value={externalForm.telegram} maxLength={60} placeholder="yourchannel" onChange={(event) => setExternalForm((current) => ({ ...current, telegram: event.target.value }))} />
           </label>
           <label className={`${styles.connectionField} ${styles.addTokenWide}`}>
             <span>What is the token about?</span>

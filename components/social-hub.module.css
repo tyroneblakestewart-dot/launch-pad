@@ -1855,9 +1855,18 @@
   .twoColsTop,
   .composeGrid,
   .mascotGrid,
-  .calendarLayout,
   .botList,
   .metricGrid { grid-template-columns: 1fr; }
+  /* Calendar (owner recording, 7 Sep 2026: "outside of restraints, no full view").
+     A bare `1fr` track is minmax(auto, 1fr): its floor is the content's own
+     min-content width, and the scrolling week strip below holds ~30 cards of
+     132px, so the single column grew to that width and dragged the Add-to
+     card off the right edge of the phone. minmax(0, 1fr) plus min-width: 0 on
+     both children keeps the column at the panel's width; the strip then
+     scrolls inside itself as intended. */
+  .calendarLayout { grid-template-columns: minmax(0, 1fr); }
+  .calendarLayout > div,
+  .calendarLayout > aside { min-width: 0; max-width: 100%; }
   .connectionCardTop { grid-template-columns: 44px minmax(0, 1fr); }
   .connectionCardTop > button { grid-column: 1 / -1; width: 100%; }
   .connectionState,
@@ -1868,7 +1877,7 @@
   .publishBar { align-items: flex-start; flex-direction: column; }
   .publishBar button { width: 100%; }
   .desktopCalendar { display: none; }
-  .mobileWeek { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x mandatory; }
+  .mobileWeek { display: flex; gap: 8px; min-width: 0; max-width: 100%; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x mandatory; }
   .weekDay,
   .weekToday,
   .weekSelected { min-width: 132px; min-height: 96px; display: grid; gap: 5px; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; color: var(--text-sub); background: rgba(255, 255, 255, 0.018); text-align: left; scroll-snap-align: start; }
