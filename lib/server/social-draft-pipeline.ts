@@ -531,6 +531,43 @@ function directionBriefInstruction(directionBrief: string | null | undefined): s
 export const MAX_ANNOUNCEMENT_LENGTH = 1_000;
 
 /**
+ * Owner direction, 7 Sep 2026: the AI never puts a contract address into a
+ * post — the user adds it themselves if they want it. The only exception is
+ * an announcement the user wrote that already carries it, which announcement
+ * mode keeps word for word. The project's address is no longer shown to the
+ * model at all, and `checkDraftContractAddress` rejects one that appears
+ * anyway.
+ */
+export const NO_CONTRACT_ADDRESS_RULE =
+  "Never include a contract address, token address or wallet address in either draft — the user adds it themselves if they want it. The one exception: an address that the user's own announcement below already contains, which stays exactly as written.";
+
+const EVM_ADDRESS_PATTERN = /\b0x[0-9a-fA-F]{40}\b/g;
+const SOLANA_ADDRESS_PATTERN = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
+
+/** Every address-shaped token in the text (EVM 0x… and base58 Solana-length strings). */
+export function findAddressLikeStrings(text: string): string[] {
+  return [...(text.match(EVM_ADDRESS_PATTERN) ?? []), ...(text.match(SOLANA_ADDRESS_PATTERN) ?? [])];
+}
+
+/** Mechanical backstop for NO_CONTRACT_ADDRESS_RULE: an address in either draft is a violation unless the user's announcement itself carries that exact address. */
+export function checkDraftContractAddress(draft: SocialDraft, announcement?: string | null): DraftAngleComplianceResult {
+  const allowed = new Set(findAddressLikeStrings(announcement ?? "").map((value) => value.toLowerCase()));
+  for (const [field, text] of [
+    ["X", draft.xText],
+    ["Telegram", draft.telegramText],
+  ] as const) {
+    const stray = findAddressLikeStrings(text).find((value) => !allowed.has(value.toLowerCase()));
+    if (stray) {
+      return {
+        violated: true,
+        feedback: `The previous draft's ${field} post included an address ("${stray}"). Never include a contract, token or wallet address — the user adds it themselves. Remove it entirely.`,
+      };
+    }
+  }
+  return { violated: false };
+}
+
+/**
  * Announcement mode (owner direction, 7 Sep 2026: "the user puts his own
  * announcement and AI jazzes it up"). The user's own words are the source
  * of truth: the model rewrites them in the taught voice for each channel,
@@ -569,7 +606,6 @@ function allowedFactsLedgerInstruction(
     `- Ticker: ${project.ticker}`,
     `- Chain: ${chainLabel}`,
     `- Description: ${project.description || "No description supplied."}`,
-    `- Contract address: ${project.contractAddress || "not yet live."}`,
     `- Direction brief: ${trimmedBrief || "none supplied."}`,
     trimmedAnnouncement ? `- The user's announcement (their own words; every fact in it is true and must be kept): ${trimmedAnnouncement}` : "",
     "The description and direction brief above are source material for tone and subject matter only — they are not permission to infer or invent adjacent facts they don't explicitly state.",
@@ -662,6 +698,7 @@ export function buildDraftRequestBody(
               "The Telegram post may be longer and more conversational.",
               "Never include a link or URL of any kind (no http/https, no www., no bare domain like example.com, no shortener) in either draft. Assume the project's link already lives in the X profile bio and Telegram channel description — write copy that stands on its own without one. A link-bearing X post costs far more to publish through the API, so this is a hard rule, not a style preference.",
               "Never invent price predictions, guaranteed returns or financial advice.",
+              NO_CONTRACT_ADDRESS_RULE,
               wordsToAvoidInstruction(wordsToAvoid),
               ...toneDialInstructions(toneDials),
               "Both drafts are shown to the user for review and editing before they choose to post — do not claim they have already been posted.",
@@ -700,7 +737,6 @@ export function buildDraftRequestBody(
               `Ticker: ${input.project.ticker}`,
               `Chain: ${chain}`,
               `Project story: ${input.project.description || "No description supplied."}`,
-              input.project.contractAddress ? `Contract: ${input.project.contractAddress}` : "Contract not yet live.",
               themeLine,
               dayLine,
               announcementLine,
@@ -1100,6 +1136,8 @@ export function checkDraftCompliance(draft: SocialDraft, input: DraftComplianceC
   }
   const wordsResult = checkDraftWordsToAvoid(draft, input.wordsToAvoid);
   if (wordsResult.violated) return wordsResult;
+  const addressResult = checkDraftContractAddress(draft, input.announcement);
+  if (addressResult.violated) return addressResult;
   const toneResult = checkDraftToneRules(draft, input.toneDials);
   if (toneResult.violated) return toneResult;
   const recentDrafts = input.recentDrafts ?? [];

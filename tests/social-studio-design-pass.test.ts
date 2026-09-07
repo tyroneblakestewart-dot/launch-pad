@@ -122,18 +122,17 @@ describe("Social Studio design pass", () => {
     expect(theme).not.toContain("--studio-card-bg");
   });
 
-  it("orders Setup as the design does — connect, bots, voice, then the rest — with Compose left where it was", async () => {
+  it("orders Setup as the design does — connect, bots, voice, then the mascot (Compose now left for the Calendar's Post now tab, 7 Sep 2026)", async () => {
     const hub = await source("components", "social-hub.tsx");
     const connect = hub.indexOf("<h2>Connect your accounts</h2>");
     const bots = hub.indexOf("PICK A HOODLUMS BOT");
     const voice = hub.indexOf("<h2>Teach the AI your voice</h2>");
-    const compose = hub.indexOf("<h2>Compose now</h2>");
     const mascot = hub.indexOf("<h2>Your mascot</h2>");
     expect(connect).toBeGreaterThan(-1);
     expect(bots).toBeGreaterThan(connect);
     expect(voice).toBeGreaterThan(bots);
-    expect(compose).toBeGreaterThan(voice);
-    expect(mascot).toBeGreaterThan(compose);
+    expect(mascot).toBeGreaterThan(voice);
+    expect(hub).not.toContain("<h2>Compose now</h2>");
   });
 
   it("finishes the voice trainer to the design: lime primary pill in the paste box, a hint line under the bar, the ⓘ note", async () => {

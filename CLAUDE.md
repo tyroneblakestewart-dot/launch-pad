@@ -3328,3 +3328,74 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   final commit: `npm run test:app` — 336 test files / 3900 tests passing;
   `npm run lint` — 0 errors (11 warnings, none in files this PR touches);
   `npm run build` — succeeds.
+
+- Compose now removed from Setup, Post now added to the calendar, and the AI
+  never writes a contract address (owner direction, 7 Sep 2026: "remove the
+  Compose now section from the Setup tab — we've got the same on the calendar
+  schedule — just add a Post now tab; and can we avoid adding contract to
+  post, let users take care of that side, if they want they can add it from
+  the announcement"). **Setup** — the whole Compose now accordion goes:
+  the template picker, the X and Telegram composers, the artwork attach
+  panel, "Save draft" / "Copy" / "Open X composer" / "Download artwork" /
+  "Send to Telegram" / "Approve both destinations", the Setup-side
+  "Draft with AI" button, and their state (`DRAFT_STORAGE_KEY` and its
+  localStorage draft map, `composeOpen`, `templateId`, `message`,
+  `telegramMessage`, `attachedArtwork`, `status`, `setupDraftStatus`).
+  Everything it did now lives on the calendar card: a draft is written
+  there, edited in the Queue and approved, or posted immediately by the new
+  tab below. `generateDraft`'s composer branch is gone, so every AI draft
+  now lands in Ready to review, and the two quick-send statuses it used
+  were rerouted to the Queue and added-token status lines. The legacy
+  `TEMPLATES`/`buildTemplate` texts stay for one reason only — the Queue's
+  "Template" badge still recognises a pre-removal draft nobody edited —
+  and nothing composes from them any more. **Post now** — a third tab on
+  the announcement composer (My words / AI jazz-up / **Post now**) that
+  sends immediately instead of queueing: it opens prefilled from whatever is
+  written (the jazzed drafts when there are any, else the announcement as
+  typed) without overwriting text already edited there, offers an X field
+  with its own character count and a Telegram field, and carries the
+  artwork checkbox. X never goes through the paid API (issue #342): "Post to
+  X now" opens the free intent composer with the text filled in, refusing
+  anything over 280 before it opens. "Send to Telegram now" posts through
+  the existing `POST /api/social/telegram` to the verified channel connected
+  in Setup, with the token artwork when the box is ticked. Nothing is queued
+  or scheduled by posting now, and nothing is sent without the tap.
+  **No contract address in AI posts** — `lib/server/social-draft-pipeline.ts`
+  no longer shows the project's contract address to the model at all (the
+  allowed-facts ledger and the user message both drop their contract lines),
+  states `NO_CONTRACT_ADDRESS_RULE` in the prompt, and backs it with a
+  mechanical check: `findAddressLikeStrings` (EVM `0x…` and base58
+  Solana-length strings) plus `checkDraftContractAddress`, run inside
+  `checkDraftCompliance` for every draft, in announcement mode too. The one
+  exception is the user's own announcement — an address they wrote is theirs
+  to keep and passes, case-insensitively, while a different address in the
+  same draft is still a violation. A violation gets the existing single
+  corrective retry naming the offending address, and a retry that still
+  fails returns an error rather than the draft (#364's fail-closed rule).
+  `DraftProject.contractAddress` stays on the type (the route still accepts
+  it) so no caller breaks; it simply never reaches the prompt.
+  **Tests changed, not only added (rule 8, stated plainly):** the Compose
+  now pins in `social-studio-ui` (draft store, section heading, template
+  picker, composer buttons, `generateDraftFromSetup`, `setupDraftStatus`),
+  `social-studio-connections-sync`'s slice end marker, the Setup section
+  order in `social-studio-design-pass`, `social-studio-queue-action-row`'s
+  composer-row pin, and in `social-external-token` the prompt count (10 → 9),
+  a slice end marker and the composer preview line naming the project's
+  network — all pinned code this PR removes. New
+  `tests/social-post-now.test.ts` (12 tests) covers the prompt losing the
+  address, the rule's presence in both modes, the address finder, the check
+  on either channel, the announcement exception and the compliance chain,
+  plus the Setup removal and the Post now tab, handlers and Telegram body.
+  Rule 10 needs nothing (no route, page or integration added; the Telegram
+  publish route is the one already in the inventory). One CSS fix found in
+  the browser pass: every action on the announcement card (Add to Queue,
+  Jazz it up, and Post now's two sends) is now a 44px touch target under
+  `(pointer: coarse)`, where they were 38px. Checked in headless Chromium at
+  1400px and 390px with mocked routes: no Compose now on Setup, the three
+  tabs, Post now prefilled from the jazzed text, an over-limit X post
+  refused with nothing opened, the intent composer opening with the exact
+  text, the Telegram request carrying the edited body and channel, and no
+  horizontal scroll at 390px — not on a physical iPhone; the owner confirms
+  on device. Validated on the final commit: `npm run test:app` — 337 test
+  files / 3912 tests passing; `npm run lint` — 0 errors (11 pre-existing
+  warnings); `npm run build` — succeeds.
