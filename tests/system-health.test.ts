@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   checkClientErrorsHealth,
@@ -355,6 +357,26 @@ describe("checkClientErrorsHealth", () => {
   it("is amber when DATABASE_URL is not configured", async () => {
     const result = await checkClientErrorsHealth({ databaseUrl: "" });
     expect(result).toMatchObject({ id: "client-errors", status: "amber" });
+  });
+
+  /**
+   * Owner report, 7 Sep 2026: the "1 new client error group" tile had
+   * nothing to show for it in the Errors tab. Root cause — the "new group"
+   * count only checked how long ago a group first appeared, never whether
+   * it had since been resolved, while the Errors tab's own list
+   * (`ClientErrorStore.listGroups`) hides a resolved group. A resolved
+   * group would keep tripping this tile forever with nothing to click
+   * into. `countNewClientErrorGroups`'s SQL is a raw pool query with no
+   * JS-side seam to inject a fake resolution table, so this pins the SQL
+   * text itself against a regression, matching `listGroups`' own
+   * resolved-unless-reoccurred condition exactly.
+   */
+  it("excludes a resolved group from the new-group count, the same way the Errors tab hides it (the reported bug)", async () => {
+    const source = await readFile(path.join(process.cwd(), "lib/server/system-health.ts"), "utf8");
+    const fn = source.slice(source.indexOf("async function countNewClientErrorGroups"), source.indexOf("export const CLIENT_ERRORS_RED_THRESHOLD"));
+    expect(fn).toContain("LEFT JOIN client_error_resolutions r");
+    expect(fn).toContain("ON r.message = g.message AND r.route_path = g.route_path");
+    expect(fn).toContain("WHERE r.resolved_at IS NULL OR g.last_seen > r.resolved_at");
   });
 });
 
