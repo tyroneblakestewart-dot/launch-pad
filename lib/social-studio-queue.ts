@@ -6,6 +6,7 @@
 // directly instead of only through source-string assertions.
 
 import { truncateAccountAddress } from "@/lib/account-wallet-state";
+import { formatClockTime, parseClockTime } from "@/lib/social-quiet-hours";
 import {
   DEFAULT_POSTING_CADENCE,
   DEFAULT_QUEUE_TARGET,
@@ -185,6 +186,30 @@ export function parseCalendarDayIso(value: unknown): Date | null {
   const date = new Date(year, month, day);
   if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
   return date;
+}
+
+/** The local Date for a calendar day ("YYYY-MM-DD") at a clock time ("HH:MM"), or null when either is not well-formed. */
+export function calendarDayAtTime(dayIso: string, clock: string): Date | null {
+  const day = parseCalendarDayIso(dayIso);
+  const minutes = parseClockTime(clock);
+  if (!day || minutes === null) return null;
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(minutes / 60), minutes % 60, 0, 0);
+}
+
+/**
+ * The Calendar card's default "at" time for a day: the first waking slot,
+ * or — when the day is today and that slot has passed — the next quarter
+ * hour after now, so the default is never already in the past.
+ */
+export function defaultCalendarClockTime(dayIso: string, now: Date): string {
+  const day = parseCalendarDayIso(dayIso);
+  const firstSlot = CALENDAR_DAY_FIRST_SLOT_HOUR * 60;
+  if (!day) return formatClockTime(firstSlot);
+  const isToday = day.getFullYear() === now.getFullYear() && day.getMonth() === now.getMonth() && day.getDate() === now.getDate();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  if (!isToday || nowMinutes < firstSlot) return formatClockTime(firstSlot);
+  const nextQuarter = Math.min(Math.ceil((nowMinutes + 1) / 15) * 15, 23 * 60 + 45);
+  return formatClockTime(nextQuarter);
 }
 
 /** True when the calendar day is strictly before `now`'s local day — a day nothing can be scheduled on any more. */

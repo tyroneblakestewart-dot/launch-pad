@@ -33,7 +33,8 @@ describe("Calendar schedule card: quiet hours, own posts and live destination ch
     const card = hub.slice(hub.indexOf("<aside className={styles.scheduleCard}>"), hub.indexOf("</aside>", hub.indexOf("<aside className={styles.scheduleCard}>")));
     expect(card).toContain('onChange={(event) => setQuietHourBound("start", event.target.value)}');
     expect(card).toContain('onChange={(event) => setQuietHourBound("end", event.target.value)}');
-    expect(card.match(/type="time"/g)).toHaveLength(2);
+    // Two quiet-hours fields plus the "at" time beside the date (7 Sep 2026).
+    expect(card.match(/type="time"/g)).toHaveLength(3);
     expect(card).not.toContain("<select");
     const css = await source("components", "social-hub.module.css");
     expect(css).toContain('.quietHours input[type="time"] { width: auto; flex: 0 0 auto; min-width: 108px; height: 38px; padding: 0 10px; box-sizing: border-box; color-scheme: dark;');
@@ -57,24 +58,12 @@ describe("Calendar schedule card: quiet hours, own posts and live destination ch
     expect(approve).toContain("to stay out of quiet hours.");
   });
 
-  it("\"I'll post my own\" adds a manual draft pinned to the selected day through the ordinary Queue approve path", async () => {
+  it("the announcement composer (formerly \"I'll post my own\") is live and adds through the ordinary Queue approve path", async () => {
     const hub = await source("components", "social-hub.tsx");
-    const start = hub.indexOf("function addOwnPostForDay()");
-    const fn = hub.slice(start, hub.indexOf("\n  }\n", start));
-    expect(fn).toContain('source: "manual",');
-    expect(fn).toContain("dayLabel: selectedDayLabel,");
-    expect(fn).toContain("scheduledDay,");
-    expect(fn).toContain("if (isCalendarDayBeforeToday(scheduledDay, new Date())) {");
-    expect(fn).toContain("if (text.length > X_CHARACTER_LIMIT) {");
-    expect(fn).toContain("persistSocialStudio({ queue: next });");
-    // Never posts directly — no network call in the composer path.
-    expect(fn).not.toContain("fetch(");
-    expect(fn).not.toContain("publish");
+    expect(hub).toContain("aria-expanded={announcementOpen}");
+    expect(hub).toContain("<InlineStatus status={announcementStatus} />");
     expect(hub).toContain("const X_CHARACTER_LIMIT = 280;");
-    expect(hub).toContain("aria-expanded={ownPostOpen}");
-    expect(hub).toContain("<InlineStatus status={ownPostStatus} />");
-    // The Queue caption names the day for an own post.
-    expect(hub).toContain("? `Your own · ${item.dayLabel}`");
+    expect(hub).not.toContain("I'll post my own");
   });
 
   it("WHERE IT POSTS reflects the real connected platforms", async () => {

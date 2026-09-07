@@ -87,8 +87,8 @@ describe("Hoodlums AI Social Studio", () => {
     // Rules tab and the still out-of-scope calendar/bot controls stay coming soon.
     expect(social).toContain("Words to avoid");
     expect(social).toContain("Coming soon");
-    // "I'll post my own" is live since the Calendar wiring (7 Sep 2026): a composer toggle, no longer a disabled placeholder.
-    expect(social).toContain('aria-expanded={ownPostOpen}');
+    // The announcement composer (7 Sep 2026) is a live toggle, no longer a disabled "I'll post my own" placeholder.
+    expect(social).toContain('aria-expanded={announcementOpen}');
     expect(social).not.toContain('disabled className={styles.ownPostButton}');
     expect(social).toContain("Add to your channel");
   });
@@ -180,7 +180,7 @@ describe("Hoodlums AI Social Studio", () => {
     );
     expect(social).toContain('report({ tone: "error", message: error instanceof Error ? error.message : "The draft could not be generated." });');
     expect(social).toContain("await generateDraft({}, setSetupDraftStatus);");
-    expect(social).toContain("await generateDraft({ dayLabel: selectedDayLabel, scheduledDay }, setCalendarDraftStatus);");
+    expect(social).toContain("await generateDraft({ dayLabel: selectedDayLabel, scheduledDay, scheduledTime: calendarTime }, setCalendarDraftStatus);");
 
     // Each status renders next to the control that triggered it, not only inside the statusBar.
     expect(social).toContain("<InlineStatus status={voiceStatus} />");

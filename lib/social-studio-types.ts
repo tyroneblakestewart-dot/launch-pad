@@ -48,7 +48,7 @@ export type QueueItem = {
   xText: string;
   telegramText: string;
   artwork: string | null;
-  source: "setup-ai" | "calendar-ai" | "manual" | "auto-replenish";
+  source: "setup-ai" | "calendar-ai" | "manual" | "auto-replenish" | "announcement" | "announcement-ai";
   dayLabel: string | null;
   /**
    * The local calendar day ("YYYY-MM-DD") the user picked on the Calendar
@@ -58,6 +58,13 @@ export type QueueItem = {
    * calendar drafts, which fall back to the cadence spread as before).
    */
   scheduledDay?: string | null;
+  /**
+   * The time of day ("HH:MM", local) picked on the Calendar tab beside the
+   * date (owner direction, 7 Sep 2026) — with `scheduledDay`, the exact
+   * default the post is scheduled for at approval. Absent means the first
+   * waking slot logic applies.
+   */
+  scheduledTime?: string | null;
   createdAt: string;
   /** The angle the draft route wrote this post to (DRAFT_ANGLES key) — ranks it for an AI image. Absent on manual and pre-existing drafts. */
   angleKey?: string | null;

@@ -20,6 +20,7 @@ import {
   checkDraftContentFilter,
   extractRepeatedPhrases,
   parseDraftResponseDetailed,
+  MAX_ANNOUNCEMENT_LENGTH,
   MAX_PROJECT_NETWORK_LABEL_LENGTH,
   resolveChainLabel,
   resolveDraftAngle,
@@ -55,6 +56,7 @@ type DraftRequestBody = {
   angleIndex?: unknown;
   wordsToAvoid?: unknown;
   toneDials?: unknown;
+  announcement?: unknown;
 };
 
 const MAX_VOICE_EXAMPLES_ACCEPTED = 20;
@@ -199,6 +201,13 @@ export async function POST(request: Request) {
   // gets the design's defaults, which is exactly what generation did before.
   const wordsToAvoid = normaliseWordsToAvoid(body.wordsToAvoid);
   const toneDials = normaliseToneDials(body.toneDials);
+  // Announcement mode (7 Sep 2026): the user's own announcement, printable
+  // text only, bounded, screened like every other input below. Empty means
+  // ordinary drafting.
+  const announcement =
+    typeof body.announcement === "string"
+      ? body.announcement.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").trim().slice(0, MAX_ANNOUNCEMENT_LENGTH)
+      : "";
 
   const inputContentFilter = runContentFilterFailOpen({
     name: project.name,
@@ -207,6 +216,7 @@ export async function POST(request: Request) {
     network: project.network,
     directionBrief,
     theme,
+    announcement,
   });
   if (inputContentFilter.blocked) {
     void recordAdminActivityBestEffort({
@@ -259,6 +269,7 @@ export async function POST(request: Request) {
               correctiveFeedback,
               wordsToAvoid,
               toneDials,
+              announcement,
             },
             resolvedAi.model,
           ),
@@ -285,7 +296,10 @@ export async function POST(request: Request) {
 
     runAfterResponse(() =>
       recordTextOperationCostBestEffort({
-        featureKey: correctiveFeedback ? AI_FEATURE_KEYS.SOCIAL_DRAFT_RETRY : AI_FEATURE_KEYS.SOCIAL_DRAFT,
+        // Announcement jazz-ups meter under their own line in Operations (owner, 7 Sep 2026: "I can't measure costs").
+        featureKey: announcement
+          ? correctiveFeedback ? AI_FEATURE_KEYS.SOCIAL_ANNOUNCEMENT_RETRY : AI_FEATURE_KEYS.SOCIAL_ANNOUNCEMENT
+          : correctiveFeedback ? AI_FEATURE_KEYS.SOCIAL_DRAFT_RETRY : AI_FEATURE_KEYS.SOCIAL_DRAFT,
         walletAddress,
         accessSource,
         provider: resolvedAi.source,
@@ -342,11 +356,12 @@ export async function POST(request: Request) {
     recentTelegramDrafts,
     wordsToAvoid,
     toneDials,
+    announcement,
   };
   // The angle this draft was written to rides back with it (AI images on
   // approved posts, 6 Sep 2026): the client ranks drafts for an image by it.
-  // Purely informational; null when a theme overrode the rotating angle.
-  const angleKey = resolveDraftAngle(theme, angleIndex, Boolean(directionBrief?.trim()))?.key ?? null;
+  // Purely informational; null when a theme or an announcement overrode the rotating angle.
+  const angleKey = announcement ? null : (resolveDraftAngle(theme, angleIndex, Boolean(directionBrief?.trim()))?.key ?? null);
   const compliance = checkDraftCompliance(result.draft, complianceInput);
   const contentFilterResult = checkDraftContentFilter(result.draft);
   if (contentFilterResult.violated) {

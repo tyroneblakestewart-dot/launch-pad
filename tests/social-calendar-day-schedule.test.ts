@@ -20,7 +20,7 @@ describe("Calendar AI drafts keep their day, and scheduled posts load on the Cal
     expect(hub).toContain("scheduledDay?: string;");
     expect(hub).toContain("scheduledDay: options.scheduledDay ?? null,");
     expect(hub).toContain("const scheduledDay = toCalendarDayIso(selectedDay.year, selectedDay.month, selectedDay.day);");
-    expect(hub).toContain("await generateDraft({ dayLabel: selectedDayLabel, scheduledDay }, setCalendarDraftStatus);");
+    expect(hub).toContain("await generateDraft({ dayLabel: selectedDayLabel, scheduledDay, scheduledTime: calendarTime }, setCalendarDraftStatus);");
   });
 
   it("refuses a day already gone before any paid draft call", async () => {

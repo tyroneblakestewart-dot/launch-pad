@@ -73,6 +73,17 @@ export function describeCalendarDayMarks(marks: CalendarDayMarks | undefined, is
   return isToday ? `Today · ${summary}` : summary.charAt(0).toUpperCase() + summary.slice(1);
 }
 
+/** The plain label for a pinned draft's origin on the day list and the Queue row. */
+export function describeDraftSource(source: string | undefined): string {
+  switch (source) {
+    case "calendar-ai": return "Calendar AI";
+    case "announcement": return "Announcement";
+    case "announcement-ai": return "Announcement (AI)";
+    case "manual": return "Your own";
+    default: return "AI";
+  }
+}
+
 export type CalendarDayEntry =
   | { kind: "post"; id: string; at: string; timeLabel: string; status: string; platforms: string[]; body: string }
   | { kind: "draft"; id: string; source: string; body: string };

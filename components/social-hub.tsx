@@ -62,8 +62,10 @@ import {
   describePlanBadge,
   cadenceSpreadHoursMs,
   computeDefaultScheduledAt,
+  calendarDayAtTime,
   computeDefaultScheduledAtOnDay,
   connectedPlatforms,
+  defaultCalendarClockTime,
   describeWalletMismatch,
   isCalendarDayBeforeToday,
   toCalendarDayIso,
@@ -80,9 +82,10 @@ import {
   describeCalendarDayMarks,
   describeCalendarPostStatus,
   describeDetectedTimezone,
+  describeDraftSource,
   listCalendarDayEntries,
 } from "@/lib/social-calendar-days";
-import { DEFAULT_QUIET_HOURS, parseClockTime, shiftOutOfQuietHours, type QuietHours } from "@/lib/social-quiet-hours";
+import { DEFAULT_QUIET_HOURS, isInQuietHours, parseClockTime, shiftOutOfQuietHours, type QuietHours } from "@/lib/social-quiet-hours";
 import type {
   MascotVisualDNA,
   PostingCadence,
@@ -352,8 +355,10 @@ const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
-/** X's hard cap; the "I'll post my own" composer refuses longer text up front (the Queue's own count uses the same 280). */
+/** X's hard cap; the announcement composer refuses longer text up front (the Queue's own count uses the same 280). */
 const X_CHARACTER_LIMIT = 280;
+/** Mirrors lib/server/social-draft-pipeline.ts's MAX_ANNOUNCEMENT_LENGTH (a server-only module the client bundle must not import). */
+const ANNOUNCEMENT_MAX_LENGTH = 1_000;
 
 type MonthView = { year: number; month: number };
 type SelectedDay = { year: number; month: number; day: number };
@@ -596,10 +601,20 @@ export function SocialHub() {
   const [calendarAiBusy, setCalendarAiBusy] = useState(false);
   /** Calendar quiet hours (owner direction, 7 Sep 2026): per project, local time, null = off. Every default time and every approval is shifted out of it. */
   const [quietHours, setQuietHours] = useState<QuietHours | null>({ ...DEFAULT_QUIET_HOURS });
-  /** Calendar "I'll post my own": a composer that adds a manual draft pinned to the selected day. */
-  const [ownPostOpen, setOwnPostOpen] = useState(false);
-  const [ownPostText, setOwnPostText] = useState("");
-  const [ownPostStatus, setOwnPostStatus] = useState<PanelStatus>(null);
+  /** Calendar "Announcement post" (owner direction, 7 Sep 2026): the user's own announcement, posted as written or jazzed up by the AI, pinned to the selected day. */
+  const [announcementOpen, setAnnouncementOpen] = useState(false);
+  const [announcementMode, setAnnouncementMode] = useState<"own" | "ai">("own");
+  const [announcementText, setAnnouncementText] = useState("");
+  const [announcementAi, setAnnouncementAi] = useState<{ xText: string; telegramText: string } | null>(null);
+  const [announcementAiBusy, setAnnouncementAiBusy] = useState(false);
+  const [announcementStatus, setAnnouncementStatus] = useState<PanelStatus>(null);
+  /** The "at" time beside the date on the Calendar card ("HH:MM" local): every calendar draft and announcement is scheduled for the selected day at this time. */
+  const [calendarTime, setCalendarTime] = useState(() => {
+    const now = new Date();
+    return defaultCalendarClockTime(toCalendarDayIso(now.getFullYear(), now.getMonth(), now.getDate()), now);
+  });
+  /** Once the user has set the time themselves, switching days keeps it; until then each day gets its own sensible default. */
+  const calendarTimeTouchedRef = useRef(false);
   const mascotFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Per-panel status (issue #340): errors/progress render next to the
@@ -1031,9 +1046,10 @@ export function SocialHub() {
       setWordsToAvoid(record.wordsToAvoid);
       setToneDials(record.toneDials);
       setQuietHours(record.quietHours);
-      setOwnPostOpen(false);
-      setOwnPostText("");
-      setOwnPostStatus(null);
+      setAnnouncementOpen(false);
+      setAnnouncementText("");
+      setAnnouncementAi(null);
+      setAnnouncementStatus(null);
       setWordToAvoidDraft("");
       setWordsToAvoidStatus(null);
       setScheduledPosts([]);
@@ -1198,6 +1214,12 @@ export function SocialHub() {
     [monthGrid],
   );
   const selectedDayLabel = `${selectedDay.day} ${MONTH_NAMES[selectedDay.month]} ${selectedDay.year}`;
+  const selectedDayIso = toCalendarDayIso(selectedDay.year, selectedDay.month, selectedDay.day);
+  /** Said before the tap: a picked time inside quiet hours is moved to the window's end at approval. */
+  const calendarTimeQuietNote = useMemo(() => {
+    const at = calendarDayAtTime(selectedDayIso, calendarTime);
+    return quietHours && at && isInQuietHours(at, quietHours) ? `Inside quiet hours — it will go out at ${quietHours.end}.` : null;
+  }, [selectedDayIso, calendarTime, quietHours]);
   /** Day markers for the month in view, from the approved posts already loaded and the drafts pinned to a day (never a second fetch). */
   const calendarDayMarks = useMemo(
     () => buildCalendarDayMarks(scheduledPosts, queue, calendarView.year, calendarView.month),
@@ -1805,6 +1827,10 @@ export function SocialHub() {
       dayLabel?: string;
       /** The picked calendar day ("YYYY-MM-DD") a Calendar-tab draft is scheduled on at approval. */
       scheduledDay?: string;
+      /** The Calendar card's "at" time ("HH:MM") for that day. */
+      scheduledTime?: string;
+      /** Announcement mode: the user's own announcement to jazz up. The result is returned for review, never added to the Queue here. */
+      announcement?: string;
       theme?: string;
       replenish?: boolean;
       recentDraftsOverride?: string[];
@@ -1818,8 +1844,8 @@ export function SocialHub() {
       promptForTokenDetails("Add your token details before generating a draft.");
       return null;
     }
-    if (!project.description.trim()) {
-      // The AI only ever states facts from the description — with none, it has nothing to write from.
+    if (!project.description.trim() && !options.announcement) {
+      // The AI only ever states facts from the description — with none, it has nothing to write from (an announcement supplies its own).
       if (selectedProject && isExternalProject(selectedProject)) {
         report({ tone: "error", message: "Add a sentence about the token first — the AI drafts from it." });
         openEditTokenDetails(selectedProject, "Add a sentence about the token — the AI only ever states facts from here.");
@@ -1829,7 +1855,7 @@ export function SocialHub() {
       return null;
     }
 
-    report({ tone: "progress", message: "Writing a draft with AI…" });
+    report({ tone: "progress", message: options.announcement ? "Jazzing up your announcement…" : "Writing a draft with AI…" });
     try {
       const angleIndex = draftAngleCounterRef.current;
       draftAngleCounterRef.current += 1;
@@ -1844,6 +1870,7 @@ export function SocialHub() {
           voiceProfile,
           dayLabel: options.dayLabel ?? null,
           theme: options.theme ?? null,
+          announcement: options.announcement ?? null,
           likedSampleLines: likedReinforcementLines(sampleLineFeedback),
           directionBrief: directionBrief.trim() || null,
           voiceExamples: voiceExampleFilter.usable,
@@ -1864,6 +1891,11 @@ export function SocialHub() {
       }
       void loadSlotUsage();
 
+      if (options.announcement) {
+        report({ tone: "success", message: "Jazzed up — check it, edit it if you like, then add it to the Queue." });
+        return payload.draft;
+      }
+
       if (options.dayLabel || options.replenish) {
         const item: QueueItem = {
           id: newQueueItemId(),
@@ -1873,6 +1905,7 @@ export function SocialHub() {
           source: options.dayLabel ? "calendar-ai" : "auto-replenish",
           dayLabel: options.dayLabel ?? null,
           scheduledDay: options.scheduledDay ?? null,
+          scheduledTime: options.scheduledTime ?? null,
           createdAt: new Date().toISOString(),
           angleKey: payload.angleKey ?? null,
         };
@@ -1916,7 +1949,7 @@ export function SocialHub() {
       return;
     }
     setCalendarAiBusy(true);
-    await generateDraft({ dayLabel: selectedDayLabel, scheduledDay }, setCalendarDraftStatus);
+    await generateDraft({ dayLabel: selectedDayLabel, scheduledDay, scheduledTime: calendarTime }, setCalendarDraftStatus);
     setCalendarAiBusy(false);
   }
 
@@ -1928,9 +1961,10 @@ export function SocialHub() {
    * the time the row shows is the time approval uses.
    */
   function calendarDayScheduledAt(item: QueueItem, awaitingIso: string[], now: Date): Date | null {
-    return item.scheduledDay
-      ? computeDefaultScheduledAtOnDay(item.scheduledDay, awaitingIso, now, cadenceSpreadHoursMs(postingCadence))
-      : null;
+    if (!item.scheduledDay) return null;
+    // A time picked beside the date on the Calendar card is the exact default; otherwise the day's first free waking slot.
+    const pinned = item.scheduledTime ? calendarDayAtTime(item.scheduledDay, item.scheduledTime) : null;
+    return pinned ?? computeDefaultScheduledAtOnDay(item.scheduledDay, awaitingIso, now, cadenceSpreadHoursMs(postingCadence));
   }
 
   /** Calendar quiet hours: saved at once; a start equal to its end means off. */
@@ -1947,48 +1981,66 @@ export function SocialHub() {
   }
 
   /**
-   * "I'll post my own" (owner direction, 7 Sep 2026): the user's own words,
-   * pinned to the selected day as an ordinary manual draft — it then takes
-   * the same Queue approve path as every AI draft, so nothing goes out
-   * without the approve tap, and its default time lands on this day.
+   * "Announcement post" (owner direction, 7 Sep 2026): the user's own
+   * announcement, either as written ("My words") or rewritten by the AI in
+   * the taught voice ("AI jazz-up", reviewed and editable first). Either
+   * way it becomes an ordinary draft pinned to the selected day at the
+   * card's time and takes the same Queue approve path as every AI draft —
+   * nothing is sent from the calendar.
    */
-  function addOwnPostForDay() {
-    const text = ownPostText.trim();
-    if (!text) {
-      setOwnPostStatus({ tone: "error", message: "Write the post first." });
+  function addAnnouncementToQueue(mode: "own" | "ai") {
+    const xText = (mode === "own" ? announcementText : announcementAi?.xText ?? "").trim();
+    const telegramText = (mode === "own" ? announcementText : announcementAi?.telegramText ?? "").trim();
+    if (!xText && !telegramText) {
+      setAnnouncementStatus({ tone: "error", message: mode === "own" ? "Write the announcement first." : "Jazz it up first, or switch to My words." });
       return;
     }
-    if (text.length > X_CHARACTER_LIMIT) {
-      setOwnPostStatus({ tone: "error", message: `That is ${text.length} characters — X allows ${X_CHARACTER_LIMIT}. Shorten it here, or add it and edit the X version in the Queue.` });
+    if (xText.length > X_CHARACTER_LIMIT) {
+      setAnnouncementStatus({ tone: "error", message: `The X version is ${xText.length} characters — X allows ${X_CHARACTER_LIMIT}. Shorten it here, or add it and edit the X version in the Queue.` });
       return;
     }
-    const scheduledDay = toCalendarDayIso(selectedDay.year, selectedDay.month, selectedDay.day);
-    if (isCalendarDayBeforeToday(scheduledDay, new Date())) {
-      setOwnPostStatus({ tone: "error", message: `${selectedDayLabel} has already passed — pick today or a later day.` });
+    if (isCalendarDayBeforeToday(selectedDayIso, new Date())) {
+      setAnnouncementStatus({ tone: "error", message: `${selectedDayLabel} has already passed — pick today or a later day.` });
       return;
     }
     if (!selectedProject) {
-      promptForTokenDetails("Add your token details before adding a post.");
+      promptForTokenDetails("Add your token details before adding an announcement.");
       return;
     }
     const item: QueueItem = {
       id: newQueueItemId(),
-      xText: text,
-      telegramText: text,
+      xText,
+      telegramText,
       artwork: null,
-      source: "manual",
+      source: mode === "own" ? "announcement" : "announcement-ai",
       dayLabel: selectedDayLabel,
-      scheduledDay,
+      scheduledDay: selectedDayIso,
+      scheduledTime: calendarTime,
       createdAt: new Date().toISOString(),
+      angleKey: null,
     };
     setQueue((current) => {
       const next = [item, ...current];
       persistSocialStudio({ queue: next });
       return next;
     });
-    setOwnPostText("");
-    setOwnPostOpen(false);
-    setOwnPostStatus({ tone: "success", message: `Your post for ${selectedDayLabel} is in the Queue — approve it there and it goes out that day.` });
+    setAnnouncementText("");
+    setAnnouncementAi(null);
+    setAnnouncementOpen(false);
+    setAnnouncementStatus({ tone: "success", message: `Your announcement for ${selectedDayLabel} at ${calendarTime} is in the Queue — approve it there and it goes out then.` });
+  }
+
+  /** "AI jazz-up": one draft call with the announcement as the source of truth; the result is shown for editing, never queued or sent by itself. */
+  async function jazzUpAnnouncement() {
+    const text = announcementText.trim();
+    if (!text) {
+      setAnnouncementStatus({ tone: "error", message: "Write the announcement first — the AI rewrites your words, it doesn't invent them." });
+      return;
+    }
+    setAnnouncementAiBusy(true);
+    const draft = await generateDraft({ dayLabel: selectedDayLabel, announcement: text }, setAnnouncementStatus);
+    if (draft) setAnnouncementAi(draft);
+    setAnnouncementAiBusy(false);
   }
 
   /**
@@ -2951,10 +3003,18 @@ export function SocialHub() {
     const now = new Date();
     setCalendarView({ year: now.getFullYear(), month: now.getMonth() });
     setSelectedDay({ year: now.getFullYear(), month: now.getMonth(), day: now.getDate() });
+    if (!calendarTimeTouchedRef.current) setCalendarTime(defaultCalendarClockTime(toCalendarDayIso(now.getFullYear(), now.getMonth(), now.getDate()), now));
   }
 
   function selectDay(day: number) {
     setSelectedDay({ year: calendarView.year, month: calendarView.month, day });
+    if (!calendarTimeTouchedRef.current) setCalendarTime(defaultCalendarClockTime(toCalendarDayIso(calendarView.year, calendarView.month, day), new Date()));
+  }
+
+  function setCalendarTimeFromField(value: string) {
+    if (parseClockTime(value) === null) return;
+    calendarTimeTouchedRef.current = true;
+    setCalendarTime(value);
   }
 
   function renderProjectArtwork(className: string, alt: string) {
@@ -4227,6 +4287,16 @@ export function SocialHub() {
                         <div>
                           <span className={styles.eyebrow}>ADD TO</span>
                           <h3>{selectedDayLabel}</h3>
+                          <label className={styles.addToTime}>
+                            <span>at</span>
+                            <input
+                              type="time"
+                              aria-label="Time on this day"
+                              value={calendarTime}
+                              onChange={(event) => setCalendarTimeFromField(event.target.value)}
+                            />
+                            <small>{calendarTimeQuietNote ?? "your local time · quiet hours and the approve tap still apply"}</small>
+                          </label>
                         </div>
                         {selectedDayEntries.length > 0 ? (
                           <ul className={styles.dayEntries}>
@@ -4241,7 +4311,7 @@ export function SocialHub() {
                                   ) : (
                                     <>
                                       <b>Draft</b>
-                                      <span>Waiting for your approve tap · {entry.source === "calendar-ai" ? "Calendar AI" : entry.source === "manual" ? "Your own" : "AI"}</span>
+                                      <span>Waiting for your approve tap · {describeDraftSource(entry.source)}</span>
                                     </>
                                   )}
                                   <em>{entry.body}</em>
@@ -4258,35 +4328,98 @@ export function SocialHub() {
                         <button
                           type="button"
                           className={styles.ownPostButton}
-                          aria-expanded={ownPostOpen}
-                          onClick={() => { setOwnPostOpen((current) => !current); setOwnPostStatus(null); }}
+                          aria-expanded={announcementOpen}
+                          onClick={() => { setAnnouncementOpen((current) => !current); setAnnouncementStatus(null); }}
                         >
-                          <b>I&apos;ll post my own</b>
-                          <span>Write it yourself — it joins the Queue for this day and goes out once you approve it.</span>
+                          <b>Announcement post</b>
+                          <span>Write your announcement in your own words — post it as it is, or let the AI jazz it up. It joins the Queue for this day at the time above.</span>
                         </button>
-                        {ownPostOpen ? (
+                        {announcementOpen ? (
                           <div className={styles.ownPostComposer}>
-                            <textarea
-                              value={ownPostText}
-                              onChange={(event) => setOwnPostText(event.target.value)}
-                              placeholder={`Your post for ${selectedDayLabel}`}
-                              rows={4}
-                              maxLength={2000}
-                            />
-                            <div className={styles.ownPostMeta}>
-                              <span className={ownPostText.trim().length > X_CHARACTER_LIMIT ? styles.ownPostOver : undefined}>
-                                {ownPostText.trim().length}/{X_CHARACTER_LIMIT} for X · same text goes to Telegram (edit either in the Queue)
-                              </span>
-                            </div>
-                            <div className={styles.composerActions}>
-                              <button type="button" className={styles.ownPostAdd} onClick={addOwnPostForDay}>
-                                Add to Queue for {selectedDay.day} {MONTH_NAMES[selectedDay.month]}
+                            <div className={styles.announcementTabs} role="tablist" aria-label="Announcement mode">
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={announcementMode === "own"}
+                                className={announcementMode === "own" ? styles.announcementTabActive : styles.announcementTab}
+                                onClick={() => { setAnnouncementMode("own"); setAnnouncementStatus(null); }}
+                              >
+                                My words
                               </button>
-                              <button type="button" onClick={() => { setOwnPostOpen(false); setOwnPostStatus(null); }}>Cancel</button>
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={announcementMode === "ai"}
+                                className={announcementMode === "ai" ? styles.announcementTabActive : styles.announcementTab}
+                                onClick={() => { setAnnouncementMode("ai"); setAnnouncementStatus(null); }}
+                              >
+                                AI jazz-up
+                              </button>
                             </div>
+                            <textarea
+                              value={announcementText}
+                              onChange={(event) => setAnnouncementText(event.target.value)}
+                              placeholder={`Your announcement for ${selectedDayLabel}`}
+                              rows={4}
+                              maxLength={ANNOUNCEMENT_MAX_LENGTH}
+                            />
+                            {announcementMode === "own" ? (
+                              <>
+                                <div className={styles.ownPostMeta}>
+                                  <span className={announcementText.trim().length > X_CHARACTER_LIMIT ? styles.ownPostOver : undefined}>
+                                    {announcementText.trim().length}/{X_CHARACTER_LIMIT} for X · same text goes to Telegram (edit either in the Queue)
+                                  </span>
+                                </div>
+                                <div className={styles.composerActions}>
+                                  <button type="button" className={styles.ownPostAdd} onClick={() => addAnnouncementToQueue("own")}>
+                                    Add to Queue for {selectedDay.day} {MONTH_NAMES[selectedDay.month]}
+                                  </button>
+                                  <button type="button" onClick={() => { setAnnouncementOpen(false); setAnnouncementStatus(null); }}>Cancel</button>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className={styles.ownPostMeta}>
+                                  <span>The AI rewrites your announcement in your voice and keeps every fact you gave — it never adds one. Nothing goes out until you approve it in the Queue.</span>
+                                </div>
+                                {announcementAi ? (
+                                  <div className={styles.announcementResult}>
+                                    <label>
+                                      <span className={announcementAi.xText.length > X_CHARACTER_LIMIT ? styles.ownPostOver : undefined}>
+                                        X · {announcementAi.xText.length}/{X_CHARACTER_LIMIT}
+                                      </span>
+                                      <textarea
+                                        value={announcementAi.xText}
+                                        onChange={(event) => setAnnouncementAi((current) => (current ? { ...current, xText: event.target.value } : current))}
+                                        rows={3}
+                                      />
+                                    </label>
+                                    <label>
+                                      <span>Telegram</span>
+                                      <textarea
+                                        value={announcementAi.telegramText}
+                                        onChange={(event) => setAnnouncementAi((current) => (current ? { ...current, telegramText: event.target.value } : current))}
+                                        rows={4}
+                                      />
+                                    </label>
+                                  </div>
+                                ) : null}
+                                <div className={styles.composerActions}>
+                                  {announcementAi ? (
+                                    <button type="button" className={styles.ownPostAdd} onClick={() => addAnnouncementToQueue("ai")}>
+                                      Add to Queue for {selectedDay.day} {MONTH_NAMES[selectedDay.month]}
+                                    </button>
+                                  ) : null}
+                                  <button type="button" onClick={() => void jazzUpAnnouncement()} disabled={announcementAiBusy}>
+                                    {announcementAiBusy ? "Jazzing it up…" : announcementAi ? "Try again" : "Jazz it up with AI"}
+                                  </button>
+                                  <button type="button" onClick={() => { setAnnouncementOpen(false); setAnnouncementStatus(null); }}>Cancel</button>
+                                </div>
+                              </>
+                            )}
                           </div>
                         ) : null}
-                        <InlineStatus status={ownPostStatus} />
+                        <InlineStatus status={announcementStatus} />
                         <div className={styles.miniDivider} />
                         <span className={styles.eyebrow}>WHERE IT POSTS</span>
                         <div className={styles.destinationChips}>
@@ -4427,7 +4560,7 @@ export function SocialHub() {
                                           : item.source === "auto-replenish"
                                             ? "Auto-generated"
                                             : item.dayLabel
-                                              ? `Your own · ${item.dayLabel}`
+                                              ? `${describeDraftSource(item.source)} · ${item.dayLabel}`
                                               : "Manual"}
                                       {isTemplateItem ? <span className={styles.templateBadge}>Template</span> : null}
                                       {isPickedForImage ? (
