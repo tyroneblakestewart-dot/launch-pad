@@ -175,9 +175,12 @@ describe("Grid card styling", () => {
     expect(css).toContain("@media (max-width: 700px) {\n  .grid {\n    grid-template-columns: repeat(2, minmax(0, 1fr));");
   });
 
-  it("lays the candlesticks over the lower half of the art on a bottom-up wash, glowing, with a grow-in that respects reduced motion", async () => {
+  it("lays the candlesticks over the lower third of the art on a bottom-up wash, glowing, with a grow-in that respects reduced motion", async () => {
     const css = await source("components/hoodlums-token-grid.module.css");
-    expect(css).toMatch(/\.candleOverlay\s*\{[^}]*height:\s*52%;/);
+    // Owner bug report, 7 Sep 2026: the original 52% read as "covering half
+    // images" against pump.fun's own much more compact treatment.
+    expect(css).toMatch(/\.candleOverlay\s*\{[^}]*height:\s*34%;/);
+    expect(css).not.toMatch(/\.candleOverlay\s*\{[^}]*height:\s*52%;/);
     expect(css).toMatch(/\.candleOverlay\s*\{[^}]*background:\s*linear-gradient\(to top,/);
     expect(css).toMatch(/\.candleWick\s*\{[^}]*stroke:\s*currentColor;/);
     expect(css).toMatch(/\.candleBody\s*\{[^}]*fill:\s*currentColor;/);

@@ -65,6 +65,19 @@ export type GridCandleChartResult = {
  * small, legible handful of candles. Zero trades returns `hasData: false`
  * with no bars; an all-equal price range degrades to a midline of flat
  * (minimum-height) candles rather than dividing by zero.
+ *
+ * Owner bug report, 7 Sep 2026 (real production cards, not the uniform mocks
+ * this was first checked against): candles came out "different sizes …
+ * covering half images". Root cause — each card had previously divided the
+ * fixed viewBox width by ITS OWN `candles.length`, so a quiet token with two
+ * or three 5-minute buckets got a couple of enormous bars while an active one
+ * got many thin ones. Every slot is now a FIXED width
+ * (`GRID_CANDLE_CHART_WIDTH / MAX_GRID_CANDLES`), so a candle body is the
+ * same absolute size on every card regardless of how many buckets that
+ * specific token happens to have; a token with fewer than the max is
+ * right-aligned (most recent candle flush to the right edge, same convention
+ * as every real trading chart) rather than stretched to fill the width, with
+ * blank space to the left standing in for the history it doesn't have yet.
  */
 export function buildGridCandleChart(
   trades: TokenTrade[],
@@ -72,6 +85,7 @@ export function buildGridCandleChart(
 ): GridCandleChartResult {
   const width = options.width ?? GRID_CANDLE_CHART_WIDTH;
   const height = options.height ?? GRID_CANDLE_CHART_HEIGHT;
+  const slotWidth = width / MAX_GRID_CANDLES;
 
   const allCandles = bucketTradesIntoCandles(trades, "5m", DEFAULT_TOKEN_DECIMALS);
   const candles = allCandles.slice(-MAX_GRID_CANDLES);
@@ -86,8 +100,11 @@ export function buildGridCandleChart(
   const min = Math.min(...lows);
   const range = max - min;
 
-  const slotWidth = width / candles.length;
   const bodyWidth = Math.max(slotWidth * BODY_WIDTH_RATIO, 1);
+  // Right-align: the newest candle always sits in the rightmost slot, so a
+  // token with fewer than MAX_GRID_CANDLES leaves blank slots on the left
+  // instead of stretching its handful of candles across the full width.
+  const leadingEmptySlots = MAX_GRID_CANDLES - candles.length;
 
   function scaleY(price: number): number {
     if (range === 0) return height / 2;
@@ -95,7 +112,8 @@ export function buildGridCandleChart(
   }
 
   const bars: GridCandleBar[] = candles.map((candle, index) => {
-    const centerX = index * slotWidth + slotWidth / 2;
+    const slotIndex = leadingEmptySlots + index;
+    const centerX = slotIndex * slotWidth + slotWidth / 2;
     const openY = scaleY(candle.open);
     const closeY = scaleY(candle.close);
     const tone: GridCandleTone = candle.close >= candle.open ? "up" : "down";

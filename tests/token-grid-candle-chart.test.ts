@@ -134,6 +134,57 @@ describe("buildGridCandleChart", () => {
     }
   });
 
+  /**
+   * Owner bug report, 7 Sep 2026 (real production cards, not the uniform
+   * mocks first checked): "candel stick are different sizes still to big
+   * plus covering half images" — a quiet token with only a couple of
+   * 5-minute buckets rendered a couple of huge bars because body width was
+   * `width / candles.length`, a denominator that varied per token. It must
+   * now be a fixed absolute size on every card, however many candles that
+   * specific token happens to have.
+   */
+  it("keeps candle body width identical across cards with wildly different trade counts (the reported bug)", () => {
+    const single: TokenTrade[] = [trade({ blockTimestamp: 0 })];
+    const few: TokenTrade[] = [];
+    for (let i = 0; i < 3; i += 1) few.push(trade({ blockTimestamp: i * 300, logIndex: i }));
+    const many: TokenTrade[] = [];
+    for (let i = 0; i < 60; i += 1) many.push(trade({ blockTimestamp: i * 300, logIndex: i }));
+
+    const oneCandle = buildGridCandleChart(single);
+    const threeCandles = buildGridCandleChart(few);
+    const maxCandles = buildGridCandleChart(many);
+
+    expect(oneCandle.bars).toHaveLength(1);
+    expect(threeCandles.bars).toHaveLength(3);
+    expect(maxCandles.bars).toHaveLength(MAX_GRID_CANDLES);
+
+    const oneWidth = oneCandle.bars[0].bodyWidth;
+    for (const bar of threeCandles.bars) expect(bar.bodyWidth).toBeCloseTo(oneWidth, 10);
+    for (const bar of maxCandles.bars) expect(bar.bodyWidth).toBeCloseTo(oneWidth, 10);
+  });
+
+  it("right-aligns a token with fewer than MAX_GRID_CANDLES buckets, flush to the right edge, instead of stretching to fill the width", () => {
+    const trades: TokenTrade[] = [];
+    for (let i = 0; i < 4; i += 1) trades.push(trade({ blockTimestamp: i * 300, logIndex: i }));
+    const result = buildGridCandleChart(trades);
+    expect(result.bars).toHaveLength(4);
+
+    const slotWidth = GRID_CANDLE_CHART_WIDTH / MAX_GRID_CANDLES;
+    const lastBar = result.bars[result.bars.length - 1];
+    // The newest candle sits in the rightmost slot.
+    expect(lastBar.wickX).toBeCloseTo(GRID_CANDLE_CHART_WIDTH - slotWidth / 2, 10);
+    // Consecutive candles are exactly one fixed slot apart.
+    for (let i = 1; i < result.bars.length; i += 1) {
+      expect(result.bars[i].wickX - result.bars[i - 1].wickX).toBeCloseTo(slotWidth, 10);
+    }
+    // A card with a full MAX_GRID_CANDLES window has no leading gap: its
+    // first candle sits in the leftmost slot.
+    const fullTrades: TokenTrade[] = [];
+    for (let i = 0; i < MAX_GRID_CANDLES; i += 1) fullTrades.push(trade({ blockTimestamp: i * 300, logIndex: i }));
+    const full = buildGridCandleChart(fullTrades);
+    expect(full.bars[0].wickX).toBeCloseTo(slotWidth / 2, 10);
+  });
+
   it("degrades an all-equal price range to a midline of flat candles rather than dividing by zero", () => {
     const result = buildGridCandleChart([
       trade({ blockTimestamp: 0, logIndex: 0 }),
