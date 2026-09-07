@@ -1766,6 +1766,21 @@
 .destinationChips .chipConnected { border-color: rgba(198, 245, 62, 0.4); color: var(--accent-lime); background: rgba(198, 245, 62, 0.1); }
 .destinationChips .chipOff { color: var(--text-label); border-style: dashed; }
 .ownPostComposer { display: flex; flex-direction: column; gap: 10px; }
+.addToTime { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; color: var(--text-secondary); font-size: 12px; }
+.addToTime input[type="time"] { width: auto; flex: 0 0 auto; min-width: 108px; height: 38px; padding: 0 10px; box-sizing: border-box; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 10px; color: var(--text-primary); background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02)); color-scheme: dark; font: 700 12px var(--mono); font-variant-numeric: tabular-nums; }
+.addToTime small { flex-basis: 100%; color: var(--text-label); font: 600 10px var(--mono); letter-spacing: 0.02em; }
+.announcementTabs { display: flex; gap: 3px; padding: 4px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; background: rgba(0, 0, 0, 0.24); align-self: flex-start; }
+.announcementTab,
+.announcementTabActive { min-height: 32px; padding: 0 14px; border: 1px solid transparent; border-radius: 999px; color: var(--text-label); background: transparent; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.announcementTabActive { border-color: rgba(198, 245, 62, 0.5); color: var(--accent-lime); background: linear-gradient(180deg, rgba(198, 245, 62, 0.18), rgba(198, 245, 62, 0.04)); box-shadow: inset 0 1px rgba(198, 245, 62, 0.24); }
+.announcementResult { display: grid; gap: 10px; }
+.announcementResult label { display: grid; gap: 5px; }
+.announcementResult label > span { color: var(--text-label); font: 700 9.5px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; }
+@media (pointer: coarse) {
+  .addToTime input[type="time"] { height: 44px; }
+  .announcementTab,
+  .announcementTabActive { min-height: 44px; }
+}
 .ownPostComposer textarea {
   width: 100%;
   min-height: 110px;

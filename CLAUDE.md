@@ -3153,3 +3153,67 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   on device. Validated on the final commit: `npm run test:app` — 335 test
   files / 3887 tests passing; `npm run lint` — 0 errors (11 warnings, none
   in files this PR touches); `npm run build` — succeeds.
+
+- Calendar "Announcement post" with an AI jazz-up, and a time beside the date
+  (owner direction, 7 Sep 2026: "'I'll post my own' should change to
+  announcement post — the user puts his own announcement, with a tab for own
+  post and AI to jazz up the announcement — and at the top where it has the
+  date there should be a time feature"; and "that should be free AI, not
+  paid, as I can't measure costs"). **Announcement post** replaces the
+  same-day "I'll post my own" composer. Two tabs: *My words* adds the
+  announcement exactly as typed (X and Telegram both), and *AI jazz-up* sends
+  it through the existing `POST /api/social/draft` with a new bounded
+  `announcement` field — one call, only on the tap — and shows the result in
+  two editable fields before "Add to Queue". Either way it becomes an
+  ordinary draft (`QueueItem.source` gains `"announcement"` /
+  `"announcement-ai"`, captioned "Announcement · day" / "Announcement (AI) ·
+  day" via `describeDraftSource` in `lib/social-calendar-days.ts`) pinned
+  to the day, taking the same Queue approve path; nothing is sent from the
+  calendar. Server side (`lib/server/social-draft-pipeline.ts`):
+  announcement mode emits an ANNOUNCEMENT MODE instruction (rewrite in the
+  taught voice, keep every fact and essential detail, add nothing, never
+  turn a statement into a question), lists the announcement in the
+  allowed-facts ledger as the user's own true words, drops the rotating
+  angle, theme line and direction brief, and `checkDraftCompliance` skips
+  the angle and invented-fact checks — "listed on Dexscreener at 6pm" is
+  exactly what the user asked to say — while banned words, tone rules,
+  identity-opener, filler, repetition and the fail-closed content filter all
+  still run on the first response and the retry. The route strips control
+  characters, caps at `MAX_ANNOUNCEMENT_LENGTH` (1,000; the hub mirrors it as
+  `ANNOUNCEMENT_MAX_LENGTH`), screens it with the input content filter, and
+  returns `angleKey: null`. **Cost, stated plainly:** nothing is charged to
+  the user; Hoodlums pays the provider as for any draft. So the owner can
+  measure it, jazz-ups meter under their own `AI_FEATURE_KEYS.SOCIAL_ANNOUNCEMENT`
+  / `_RETRY` keys, shown as "Announcement jazz-up" in the Operations tab
+  (`lib/ai-feature-keys.ts`), separate from "Social draft". **Time beside
+  the date** — a native time field under ADD TO (`calendarTime`, the same
+  compact field/wheel picker as quiet hours) defaulting per day via
+  `defaultCalendarClockTime` (07:00, or the next quarter hour when today's
+  slot has passed) until the user sets it, after which it sticks across
+  days. Both "AI makes it" and the announcement carry it as a new optional
+  `QueueItem.scheduledTime`, and `calendarDayScheduledAt` uses
+  `calendarDayAtTime(day, time)` as the exact default for the Queue row and
+  approval, ahead of the first-free-slot logic; quiet hours still shift it
+  (a picked time inside the window says so under the field before the tap)
+  and the future clamp and approve tap still apply. **Tests changed, not
+  only added (rule 8, stated plainly):** today's own pins — the
+  `aria-expanded={ownPostOpen}` / "I'll post my own" pins in
+  `social-studio-ui` and `social-calendar-card-wiring` (now the
+  announcement toggle, and three time fields on the card, not two), #532's
+  `generateDraft({ dayLabel, scheduledDay })` call pin in `social-studio-ui`
+  and `social-calendar-day-schedule` (now carries `scheduledTime`), and
+  `social-external-token`'s `if (!project.description.trim()) {` pin (an
+  announcement supplies its own substance). New
+  `tests/social-announcement-post.test.ts` covers the prompt, the
+  compliance skip and what still runs, the route's bounding/passthrough and
+  null angle, the feature keys and label, the time helpers, and the hub
+  wiring. Rule 10: no new route or page; the new Operations line is the
+  admin-side change. Checked in headless Chromium at 1400px and 390px with
+  a mocked draft route: "at" defaults to 07:00 for a future day, 23:30
+  warns "Inside quiet hours", My words and the edited jazz-up both land in
+  the Queue captioned by origin with the Scheduled field at 14 September
+  18:30, an empty jazz-up is refused with no request, 281 characters is
+  refused — not on a physical iPhone; the owner confirms on device.
+  Validated on the final commit: `npm run test:app` — 336 test files / 3897
+  tests passing; `npm run lint` — 0 errors (11 warnings, none in files this
+  PR touches); `npm run build` — succeeds.

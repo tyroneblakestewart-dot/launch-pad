@@ -159,7 +159,8 @@ describe("Social Studio: add an existing token", () => {
     expect(hub).toContain("disabled={(Boolean(buyBotUnavailableReason) && Boolean(selectedProject)) || telegramConfigured === false}");
     expect(hub).not.toContain('"Choose a project before');
     const draft = hub.slice(hub.indexOf("async function generateDraft("), hub.indexOf("async function generateDraftFromSetup()"));
-    expect(draft).toContain("if (!project.description.trim()) {");
+    // An announcement supplies its own substance, so only ordinary drafting needs the description.
+    expect(draft).toContain("if (!project.description.trim() && !options.announcement) {");
     expect(draft).toContain('openEditTokenDetails(selectedProject, "Add a sentence about the token — the AI only ever states facts from here.");');
     expect(draft).toContain("Add its story in the launch studio (Saved launches → open it), then draft again.");
   });
