@@ -90,9 +90,8 @@ import {
   dateFromWallClock,
   detectTimezone,
   describeTimezone,
+  buildTimezoneOptions,
   listTimezones,
-  searchTimezones,
-  suggestedTimezones,
   timezoneOffsetLabel,
   wallClockIn,
 } from "@/lib/social-timezone";
@@ -1295,8 +1294,7 @@ export function SocialHub() {
    */
   const timezoneMatches = useMemo(() => {
     if (!timezoneEditing) return [];
-    if (!timezoneQuery.trim()) return suggestedTimezones(timezone, deviceTimezone);
-    return searchTimezones(listTimezones(timezone, deviceTimezone), timezoneQuery);
+    return buildTimezoneOptions(listTimezones(timezone, deviceTimezone), timezoneQuery, timezone, deviceTimezone);
   }, [timezoneEditing, timezoneQuery, timezone, deviceTimezone]);
 
   // The mobile week strip opens on the selected day (today on arrival)
@@ -3975,7 +3973,7 @@ export function SocialHub() {
                             <div className={styles.timezoneResults} role="listbox" aria-label="Time zones">
                               <button type="button" role="option" aria-selected={!timezone} onClick={() => updateTimezone("")}>
                                 <b>Follow this device</b>
-                                {deviceTimezone ? <em>{deviceTimezone}</em> : null}
+                                {deviceTimezone ? <em>{timezone ? deviceTimezone : `✓ ${deviceTimezone}`}</em> : null}
                               </button>
                               {timezoneMatches.map((zone) => (
                                 <button
@@ -3986,7 +3984,7 @@ export function SocialHub() {
                                   onClick={() => updateTimezone(zone)}
                                 >
                                   <b>{zone.replace(/_/g, " ")}</b>
-                                  <em>{timezoneOffsetLabel(zone)}</em>
+                                  <em>{zone === timezone ? `✓ ${timezoneOffsetLabel(zone)}` : timezoneOffsetLabel(zone)}</em>
                                 </button>
                               ))}
                               {timezoneQuery.trim() && timezoneMatches.length === 0 ? (

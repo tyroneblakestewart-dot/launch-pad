@@ -3568,3 +3568,39 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   white list ship. Validated on the final commit: `npm run test:app` — 339
   test files / 3958 tests passing; `npm run lint` — 0 errors (11 pre-existing
   warnings); `npm run build` — succeeds.
+
+- Zone picker: every zone browsable, country search, and the current zone no
+  longer reads as stuck (owner recording, 7 Sep 2026: "limited countries and
+  it's stuck highlighted on africa"). Two more defects in the #542/#543
+  picker, both visible in the recording. **(1) Only eight zones.** With
+  nothing typed the list showed `suggestedTimezones` alone — the zone in
+  force, the device's, then six common ones — and that was the whole list, so
+  a zone nobody had suggested could only be reached by already knowing what
+  to type. A new pure `buildTimezoneOptions` returns the suggestions followed
+  by every remaining zone (419 on this runtime), still inside the same fixed
+  box that scrolls internally; typing still narrows to matches, and the match
+  cap rose from 8 to 40. **(2) Country names found nothing.** IANA zones are
+  named after cities, so "uk", "usa" or "japan" matched nothing at all —
+  which is what "limited countries" meant. `TIMEZONE_ALIASES` maps ~45
+  country and region words to their zones (the list's own order ranks ahead
+  of the alphabetical sort, so "usa" lands on America/New_York, not
+  America/Chicago), matched on a prefix so it works while typing ("germ" →
+  Europe/Berlin). Cities still win a city query. **(3) Two rows looked
+  pressed at once.** The zone in force had the same lime border and
+  background as the hovered row, so the owner's chosen African zone read as
+  permanently stuck. It is now lime text plus a ✓ beside its offset, with no
+  block of its own — only the row under the pointer has a background.
+  **Tests changed, not only added (rule 8, stated plainly):** the day-old
+  `social-timezone` cases "returns a short list, never the whole world"
+  (renamed, since the un-typed list is now the whole world by design) and the
+  row-recipe pin on the `[aria-selected="true"]` background block, which this
+  PR deliberately removes; the hub pin on the matches memo now names
+  `buildTimezoneOptions`. New coverage: country search across eleven
+  countries (India accepts Asia/Kolkata or Asia/Calcutta, the same zone under
+  two ICU names), partial country words, cities still winning, and the
+  full-list contract. Checked by looking, at 1400px and 390px: 419 rows
+  scrolling inside a 260×232 (328×208 on the phone) box, "uk" landing on
+  Europe/London, and the chosen zone marked with a lime tick while only the
+  hovered row is filled. Validated on the final commit: `npm run test:app` —
+  339 test files / 3960 tests passing; `npm run lint` — 0 errors (11
+  pre-existing warnings); `npm run build` — succeeds.
