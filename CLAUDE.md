@@ -3466,3 +3466,68 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Validated on the final commit: `npm run test:app` — 338 test files / 3934
   tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
   `npm run build` — succeeds.
+
+- "What time should your posts start each day?", and a compact zone picker
+  (owner direction, 7 Sep 2026: "all users should be prompted when do you want
+  your first post to start, maybe not in those words, and space posts out in
+  accordance with the first initial post that's been set" — then, on the
+  deployed zone picker from #541, "it's too big, can we find a way [to] make
+  it compacted and add type[-to-find] for them to find"). Two things in one
+  PR because they are the same control area and the second is a defect in
+  what the first builds on. **The start time** — a per-project
+  `SocialStudioProjectRecord.dailyStartTime` ("HH:MM" on the chosen zone's
+  clock; `null` means not asked yet, with the usual migrate-on-read). It is
+  asked once as a slim row above the tabs, in the same slot and shape as the
+  token-details reminder — a time field defaulting to 07:00, "Set this time"
+  and "Not now" (remembered per wallet in sessionStorage under
+  `hoodlums.social.dailyStartLater.v1`, so it never nags but returns next
+  visit) — and can be set or changed at any time from a new POSTS START AT
+  block on the Calendar card, above quiet hours. **The spacing** —
+  `computeDefaultScheduledAt` (`lib/social-studio-queue.ts`) gained optional
+  `dailyStartClock` and `timeZone` arguments: without a start time it is
+  exactly what it was ("now", or one spread past the latest pending post),
+  and with one the day has a grid instead — it begins at that time and steps
+  one cadence spread at a time (`nextDailyGridSlotMs`), an approval takes the
+  next free slot on it, and once the day's waking window is full the next
+  post is tomorrow's first rather than the middle of the night. So nothing
+  changes for anyone who taps "Not now", and everyone who answers gets a
+  steady daily rhythm instead of posts landing wherever the approve tap fell.
+  `computeDefaultScheduledAtOnDay` and `defaultCalendarClockTime` take the
+  same start time (falling back to `CALENDAR_DAY_FIRST_SLOT_HOUR` when unset),
+  so a calendar-pinned draft and the card's "at" field start there too; a new
+  `describeSpreadHours` states the gap in plain words ("about 3 hours apart").
+  **The zone picker** — #541 shipped the full IANA list as a native
+  `<select>`, which on the owner's screen filled the window top to bottom and
+  was mis-tapped onto Africa/Abidjan. It is now a compact type-to-find box:
+  a search input plus at most eight results in a 260×232px absolutely
+  positioned list that scrolls inside itself, with each match's current
+  offset beside it. `searchTimezones` (`lib/social-timezone.ts`) ranks a city
+  that starts with the query first, then a zone that starts with it, then
+  anything containing it, and treats `_` and `/` as spaces so "new york"
+  finds `America/New_York`; `suggestedTimezones` offers the zone in force,
+  the device's own, then common ones before anything is typed — never an
+  alphabetical wall. Enter takes the top match, Escape closes, choosing
+  closes and saves. `groupTimezones` is gone with the `<select>` it existed
+  for. **Tests changed, not only added (rule 8, stated plainly):**
+  `social-studio-db`'s record fixture and three legacy expectations gained
+  `dailyStartTime`; the source pins carrying the new scheduling arguments
+  moved in `social-approval-session` (1), `social-studio-approval-confirmation`
+  (1), `social-calendar-day-schedule` (3) and `social-calendar-card-wiring`
+  (3, including the card's time-field count, now four); and in the day-old
+  `social-timezone` the grouped-`<select>` cases were rewritten for the
+  search box. New `tests/social-daily-start-time.test.ts` (16 tests) covers
+  the normaliser, the unchanged no-start-time behaviour, the grid (first
+  slot, stepping, next slot when the start has passed, rolling to tomorrow,
+  every slot inside the waking window), the zone it is read on, and the
+  prompt/card wiring; `social-timezone` gained the search ranking,
+  suggestions, offset labels and the compact-list CSS. Rule 10 needs nothing
+  (no route, page or integration; neither setting leaves the browser).
+  Checked in headless Chromium at 1400px and 390px (30 checks): the question
+  appears on arrival and goes away for the tab on "Not now", the card sets it
+  afterwards and says the spacing, an unset start still schedules from the
+  approve tap, two approvals land on the 09:00 grid one spread apart, the
+  picker opens at 260×232 with the device zone suggested first, "tokyo" finds
+  Asia/Tokyo, and no horizontal scroll at 390px — not on a physical iPhone.
+  Validated on the final commit: `npm run test:app` — 339 test files / 3955
+  tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
+  `npm run build` — succeeds.

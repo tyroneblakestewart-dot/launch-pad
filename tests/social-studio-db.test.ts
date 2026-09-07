@@ -61,6 +61,7 @@ const RECORD: SocialStudioProjectRecord = {
   toneDials: { humour: "dry", emoji: "none", hashtags: "never", postLength: "short" },
   quietHours: { start: "22:00", end: "08:00" },
   timezone: "Europe/London",
+  dailyStartTime: "09:00",
 };
 
 describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
@@ -116,6 +117,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         toneDials: DEFAULT_TONE_DIALS,
         quietHours: DEFAULT_QUIET_HOURS,
         timezone: null,
+        dailyStartTime: null,
       });
     });
 
@@ -141,6 +143,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         toneDials: DEFAULT_TONE_DIALS,
         quietHours: DEFAULT_QUIET_HOURS,
         timezone: null,
+        dailyStartTime: null,
       });
     });
 
@@ -166,6 +169,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         toneDials: DEFAULT_TONE_DIALS,
         quietHours: DEFAULT_QUIET_HOURS,
         timezone: null,
+        dailyStartTime: null,
       });
     });
 

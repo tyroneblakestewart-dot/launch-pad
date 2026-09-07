@@ -1675,6 +1675,67 @@
   text-transform: uppercase;
 }
 .timezoneControl select { max-width: 100%; }
+/* A compact type-to-find picker, not the full zone list as a native dropdown
+   (owner report, 7 Sep 2026: that filled the whole screen and was mis-tapped). */
+.timezonePicker { position: relative; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.timezonePicker > input {
+  min-height: 34px;
+  width: 220px;
+  max-width: 100%;
+  padding: 0 12px;
+  border: 1px solid rgba(198, 245, 62, 0.4);
+  border-radius: 10px;
+  color: var(--text-primary);
+  background: var(--well-bg);
+  font: 600 12px var(--sans);
+}
+.timezonePicker > input::placeholder { color: var(--text-faint); }
+.timezoneResults {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  max-width: 86vw;
+  max-height: 232px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: var(--panel-bg, #14171a);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+}
+.timezoneResults button {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-align: left;
+}
+.timezoneResults button:hover,
+.timezoneResults button[aria-selected="true"] { color: var(--text-primary); background: rgba(198, 245, 62, 0.12); }
+.timezoneResults button b { font: 600 12px var(--sans); }
+.timezoneResults button em { color: var(--text-label); font: 600 10px var(--mono); font-style: normal; }
+.timezoneResults p { margin: 0; padding: 8px 10px; color: var(--text-label); font-size: 11.5px; }
+/* The "what time should your posts start" question above the tabs (owner direction, 7 Sep 2026). */
+.startTimeAsk { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.startTimeAsk input[type="time"] {
+  min-height: 38px;
+  min-width: 108px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  color: var(--text-primary);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02));
+  color-scheme: dark;
+  font: 700 12px var(--mono);
+}
 .timezoneControl > span:first-child { color: var(--text-label); font: 700 10px var(--mono); letter-spacing: 0.1em; }
 .timezoneControl b { color: var(--text-secondary); font: 700 11px var(--mono); }
 .timezoneControl select,
@@ -1817,7 +1878,11 @@
 @media (pointer: coarse) {
   .quietHoursToggle,
   .timezoneEdit,
+  .timezonePicker > input,
+  .timezoneResults button,
   .timezoneControl select,
+  .startTimeAsk button,
+  .startTimeAsk input[type="time"],
   .quietHours select,
   .quietHours input[type="time"] { min-height: 44px; }
   .quietHours input[type="time"] { height: 44px; }
