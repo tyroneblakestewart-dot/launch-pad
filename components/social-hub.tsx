@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { createWalletClient, custom, isAddress } from "viem";
 import {
@@ -102,6 +102,8 @@ import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./social-hub.module.css";
 
 const DRAFT_STORAGE_KEY = "private-meme-token-studio-social-drafts-v1";
+/** How long a mouse may be outside the saved-examples box before it closes (crossing the pill→box gap takes a few frames). */
+const VOICE_EXAMPLES_HOVER_CLOSE_DELAY_MS = 220;
 const MAX_MASCOT_IMAGE_BYTES = 3_000_000;
 
 type TemplateId = "launch" | "countdown" | "contract" | "community" | "custom";
@@ -552,6 +554,8 @@ export function SocialHub() {
   const [voiceDraftText, setVoiceDraftText] = useState("");
   /** The saved-examples hover box: a mouse opens it on hover and closes it on leave; touch and keyboard toggle it through the trigger. */
   const [voiceExamplesOpen, setVoiceExamplesOpen] = useState(false);
+  /** Pending hover-close, so a cursor crossing the pill→box gap (or briefly overshooting) never snaps the box shut. */
+  const voiceExamplesCloseTimerRef = useRef<number | null>(null);
   const [voiceAddStatus, setVoiceAddStatus] = useState<PanelStatus>(null);
   const voiceExamplesText = useMemo(() => voiceExamples.join("\n"), [voiceExamples]);
   const [voiceProfile, setVoiceProfile] = useState<VoiceProfile | null>(null);
@@ -1655,6 +1659,32 @@ export function SocialHub() {
       message: describeAddVoiceExamplesResult(result),
     });
   }
+
+  function cancelVoiceExamplesClose() {
+    if (voiceExamplesCloseTimerRef.current !== null) {
+      window.clearTimeout(voiceExamplesCloseTimerRef.current);
+      voiceExamplesCloseTimerRef.current = null;
+    }
+  }
+
+  /** Mouse only — a touch tap must never open or close the box through hover (it toggles through the trigger). */
+  function openVoiceExamplesFromPointer(event: ReactPointerEvent<HTMLElement>) {
+    if (event.pointerType !== "mouse") return;
+    cancelVoiceExamplesClose();
+    setVoiceExamplesOpen(true);
+  }
+
+  /** Mouse only, and delayed: the owner's recording showed the box vanishing mid-travel, before a × could be clicked. */
+  function closeVoiceExamplesFromPointer(event: ReactPointerEvent<HTMLElement>) {
+    if (event.pointerType !== "mouse") return;
+    cancelVoiceExamplesClose();
+    voiceExamplesCloseTimerRef.current = window.setTimeout(() => {
+      voiceExamplesCloseTimerRef.current = null;
+      setVoiceExamplesOpen(false);
+    }, VOICE_EXAMPLES_HOVER_CLOSE_DELAY_MS);
+  }
+
+  useEffect(() => cancelVoiceExamplesClose, []);
 
   /** The × on an example row. */
   function removeVoiceExample(index: number) {
@@ -3506,12 +3536,8 @@ export function SocialHub() {
                       {voiceExamples.length > 0 ? (
                         <div
                           className={`${styles.exampleDrawer} ${voiceExamplesOpen ? styles.exampleDrawerOpen : ""}`}
-                          onPointerEnter={(event) => {
-                            if (event.pointerType === "mouse") setVoiceExamplesOpen(true);
-                          }}
-                          onPointerLeave={(event) => {
-                            if (event.pointerType === "mouse") setVoiceExamplesOpen(false);
-                          }}
+                          onPointerEnter={openVoiceExamplesFromPointer}
+                          onPointerLeave={closeVoiceExamplesFromPointer}
                         >
                           <button
                             type="button"

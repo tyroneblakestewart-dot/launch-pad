@@ -2868,3 +2868,31 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Validated on the final commit: `npm run test:app` — 329 test files / 3844
   tests passing; `npm run lint` — 0 errors (10 pre-existing warnings);
   `npm run build` — succeeds.
+
+- Saved-examples hover box no longer vanishes mid-travel (owner recording,
+  7 Sep 2026, desktop Chrome: "disappears and won't allow me to click it").
+  Cause: `.exampleDrawerBox` sits `8px` below the pill, and the wrapper's
+  hit-test area was only the pill's line box — so a mouse travelling from the
+  pill down into the box crossed 8px of nothing, fired `pointerleave`, and
+  the box was gone before a × could be reached (the frames show it flickering
+  open and shut). Two-part fix in `components/social-hub.tsx` /
+  `components/social-hub.module.css`. (1) A hover bridge: while open,
+  `.exampleDrawerOpen::after` covers exactly that 8px strip, so crossing it is
+  not a leave at all. (2) The hover-close is delayed
+  (`VOICE_EXAMPLES_HOVER_CLOSE_DELAY_MS` = 220) through a `useRef` timer that
+  `openVoiceExamplesFromPointer` cancels on re-entry and an unmount effect
+  clears; the pointer-type filter (mouse only) from the first pass is
+  unchanged, so touch still toggles through the pill. **Tests changed, not
+  only added (rule 8, stated plainly):** the day-old
+  `tests/social-voice-examples-drawer.test.ts` pinned the synchronous
+  `setVoiceExamplesOpen(true/false)` bodies and now pins the named handlers,
+  the delayed close (the only close in the leave handler sits inside the
+  `setTimeout`), the cancel-on-enter and the bridge rule. Verified in headless
+  Chromium at 1400px by driving the mouse 2px at a time from the pill through
+  the gap into the box (never hidden on any step), across to the first × and
+  clicking it (count drops to 2, box stays open), then away (still open at
+  100ms, closed at 400ms), and an overshoot-and-return inside the delay
+  (stays open) — not on the owner's machine; the owner confirms on
+  hoodlums.dev. Validated on the final commit: `npm run test:app` — 329 test
+  files / 3845 tests passing; `npm run lint` — 0 errors (10 pre-existing
+  warnings); `npm run build` — succeeds.
