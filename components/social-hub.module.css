@@ -1063,6 +1063,16 @@
    never CSS :hover — a touch tap leaves a sticky :hover behind on hybrid devices, so the box could not collapse).
    Touch / keyboard: the trigger toggles it (aria-expanded state). The rows and their × are unchanged inside. */
 .exampleDrawer { position: relative; }
+/* Hover bridge: while open, the wrapper also covers the 8px gap under the pill, so a mouse travelling
+   from the pill into the box never leaves the wrapper (the owner's recording showed the box vanishing there). */
+.exampleDrawerOpen::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 8px;
+}
 .exampleDrawerToggle {
   display: inline-flex;
   align-items: center;

@@ -19,8 +19,9 @@ describe("Setup tab: saved examples hover box and the trimmed Voice preview", ()
     expect(hub).toContain("const [voiceExamplesOpen, setVoiceExamplesOpen] = useState(false);");
     // A mouse opens on hover and closes on leave; a touch pointer never does (a tap would leave a sticky
     // :hover behind on hybrid devices and the box could not collapse) — touch and keyboard toggle it.
-    expect(hub).toContain('if (event.pointerType === "mouse") setVoiceExamplesOpen(true);');
-    expect(hub).toContain('if (event.pointerType === "mouse") setVoiceExamplesOpen(false);');
+    expect(hub).toContain("onPointerEnter={openVoiceExamplesFromPointer}");
+    expect(hub).toContain("onPointerLeave={closeVoiceExamplesFromPointer}");
+    expect(hub).toContain('if (event.pointerType !== "mouse") return;\n    cancelVoiceExamplesClose();\n    setVoiceExamplesOpen(true);');
     expect(hub).not.toContain("onMouseEnter={() => setVoiceExamplesOpen");
     expect(hub).not.toContain("onMouseLeave={() => setVoiceExamplesOpen");
     expect(hub).toContain("aria-expanded={voiceExamplesOpen}");
@@ -37,6 +38,25 @@ describe("Setup tab: saved examples hover box and the trimmed Voice preview", ()
     // The box only renders while there is something to show, and deleting the last row closes it.
     expect(hub).toContain("{voiceExamples.length > 0 ? (\n                        <div\n                          className={`${styles.exampleDrawer} ${voiceExamplesOpen ? styles.exampleDrawerOpen : \"\"}`}");
     expect(hub).toContain("if (next.length === 0) setVoiceExamplesOpen(false);");
+  });
+
+  it("never snaps shut mid-travel: leaving is delayed, re-entering cancels the delay, and unmount clears it (owner recording, 7 Sep)", async () => {
+    const hub = await source("components", "social-hub.tsx");
+    expect(hub).toContain("const VOICE_EXAMPLES_HOVER_CLOSE_DELAY_MS = 220;");
+    expect(hub).toContain("const voiceExamplesCloseTimerRef = useRef<number | null>(null);");
+    expect(hub).toContain(
+      "voiceExamplesCloseTimerRef.current = window.setTimeout(() => {\n      voiceExamplesCloseTimerRef.current = null;\n      setVoiceExamplesOpen(false);\n    }, VOICE_EXAMPLES_HOVER_CLOSE_DELAY_MS);",
+    );
+    // Leave never closes synchronously: the only close in the handler sits inside the setTimeout callback.
+    const leave = hub.slice(hub.indexOf("function closeVoiceExamplesFromPointer"), hub.indexOf("useEffect(() => cancelVoiceExamplesClose, []);"));
+    expect(leave.match(/setVoiceExamplesOpen\(false\)/g)?.length).toBe(1);
+    expect(leave.indexOf("setVoiceExamplesOpen(false)")).toBeGreaterThan(leave.indexOf("window.setTimeout(() => {"));
+    expect(leave).toContain("cancelVoiceExamplesClose();");
+    expect(hub).toContain("useEffect(() => cancelVoiceExamplesClose, []);");
+    // And the wrapper bridges the gap under the pill while open, so crossing it is not a leave at all.
+    const css = await source("components", "social-hub.module.css");
+    expect(css).toMatch(/\.exampleDrawerOpen::after \{\s*content: "";\s*position: absolute;\s*top: 100%;\s*left: 0;\s*right: 0;\s*height: 8px;/);
+    expect(css).toContain("top: calc(100% + 8px);");
   });
 
   it("styles the box as a popover driven only by the open state (no CSS :hover), with a 44px trigger on touch", async () => {
