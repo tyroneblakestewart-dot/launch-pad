@@ -550,6 +550,8 @@ export function SocialHub() {
   // persist and API call reads.
   const [voiceExamples, setVoiceExamples] = useState<string[]>([]);
   const [voiceDraftText, setVoiceDraftText] = useState("");
+  /** The saved-examples hover box: a mouse opens it on hover and closes it on leave; touch and keyboard toggle it through the trigger. */
+  const [voiceExamplesOpen, setVoiceExamplesOpen] = useState(false);
   const [voiceAddStatus, setVoiceAddStatus] = useState<PanelStatus>(null);
   const voiceExamplesText = useMemo(() => voiceExamples.join("\n"), [voiceExamples]);
   const [voiceProfile, setVoiceProfile] = useState<VoiceProfile | null>(null);
@@ -1660,6 +1662,7 @@ export function SocialHub() {
     setVoiceExamples(next);
     persistSocialStudio({ voiceExamples: next });
     setVoiceAddStatus(null);
+    if (next.length === 0) setVoiceExamplesOpen(false);
   }
 
   async function buildVoiceProfile() {
@@ -3501,20 +3504,43 @@ export function SocialHub() {
                       </div>
                       <InlineStatus status={voiceAddStatus} />
                       {voiceExamples.length > 0 ? (
-                        <ul className={styles.exampleList}>
-                          {voiceExamples.map((example, index) => (
-                            <li className={styles.exampleRow} key={`${index}-${example.slice(0, 24)}`}>
-                              <p>{example}</p>
-                              <button
-                                type="button"
-                                aria-label={`Delete example ${index + 1}`}
-                                onClick={() => removeVoiceExample(index)}
-                              >
-                                ×
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
+                        <div
+                          className={`${styles.exampleDrawer} ${voiceExamplesOpen ? styles.exampleDrawerOpen : ""}`}
+                          onPointerEnter={(event) => {
+                            if (event.pointerType === "mouse") setVoiceExamplesOpen(true);
+                          }}
+                          onPointerLeave={(event) => {
+                            if (event.pointerType === "mouse") setVoiceExamplesOpen(false);
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className={styles.exampleDrawerToggle}
+                            aria-expanded={voiceExamplesOpen}
+                            aria-controls="voice-saved-examples"
+                            onClick={() => setVoiceExamplesOpen((open) => !open)}
+                          >
+                            <span>Saved examples</span>
+                            <b>{voiceExamples.length}</b>
+                            <i aria-hidden="true">{voiceExamplesOpen ? "▴" : "▾"}</i>
+                          </button>
+                          <div className={styles.exampleDrawerBox} id="voice-saved-examples">
+                            <ul className={styles.exampleList}>
+                              {voiceExamples.map((example, index) => (
+                                <li className={styles.exampleRow} key={`${index}-${example.slice(0, 24)}`}>
+                                  <p>{example}</p>
+                                  <button
+                                    type="button"
+                                    aria-label={`Delete example ${index + 1}`}
+                                    onClick={() => removeVoiceExample(index)}
+                                  >
+                                    ×
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
                       ) : null}
                       {voiceExampleFilter.rejectedCount > 0 ? (
                         <p className={styles.exampleLabel}>
@@ -3559,14 +3585,8 @@ export function SocialHub() {
                       <div className={styles.sectionHeading}>
                         <div>
                           <h2>Voice preview</h2>
-                          <p>Here&apos;s how it would sound writing about your project.</p>
                         </div>
                       </div>
-                      {voiceProfile ? (
-                        <p className={styles.exampleLabel}>
-                          Tone: {voiceProfile.tone} · Vocabulary: {voiceProfile.vocabulary} · Cadence: {voiceProfile.cadence} · Emoji: {voiceProfile.emojiHabits}
-                        </p>
-                      ) : null}
 
                       <div className={styles.bankBar}>
                         <div className={styles.bankMeta}>

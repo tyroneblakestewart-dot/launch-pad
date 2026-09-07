@@ -2807,3 +2807,32 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Chromium at 1400px and 390px with mocked routes in every card state
   (not configured, ready, connected, needs reconnecting, and both return
   cases) — not on a physical iPhone.
+
+- Setup tab declutter (owner direction, 7 Sep 2026: "remove this how you
+  sound … and saved post if edit or access make it hover box then collapses").
+  `components/social-hub.tsx`'s Voice preview heading loses its subtitle
+  ("Here's how it would sound writing about your project.") and the
+  Tone / Vocabulary / Cadence / Emoji `voiceProfile` paragraph — the profile
+  itself still drives generation and persists unchanged. The saved example
+  posts no longer list inline under the paste box: a compact
+  `Saved examples · N` trigger opens a popover (`.exampleDrawer` /
+  `.exampleDrawerBox`, absolutely positioned under the trigger, master-panel
+  background, 320px max height with its own scroll) that holds the unchanged
+  `<ul className={styles.exampleList}>` rows and their × delete buttons. A
+  mouse opens it on hover and closes it on leave through `onPointerEnter` /
+  `onPointerLeave` filtered to `pointerType === "mouse"`; touch and keyboard
+  toggle it through the trigger (`aria-expanded`/`aria-controls`), and
+  deleting the last row closes it. Stated plainly why not CSS `:hover`: a
+  touch tap leaves a sticky `:hover` behind on any device that reports a fine
+  pointer (emulated Chromium did exactly this — the second tap set the state
+  closed but the box stayed painted), so the box could never collapse there;
+  pointer events make the behaviour deterministic on every device. Trigger is
+  44px tall under `(pointer: coarse)`. New
+  `tests/social-voice-examples-drawer.test.ts` pins the state, the pointer
+  filters, the rows inside the box, the CSS recipe and the removed copy; no
+  existing assertion was changed. Rule 10 needs nothing (layout/copy only).
+  Checked in headless Chromium at 1400px (hover opens, leave closes) and 390px
+  (tap opens, tap closes, delete inside keeps it open) — not on a physical
+  iPhone; the owner confirms on device. Validated on the final commit:
+  `npm run test:app` — 328 test files / 3835 tests passing; `npm run lint` —
+  0 errors (10 pre-existing warnings); `npm run build` — succeeds.
