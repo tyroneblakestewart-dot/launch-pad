@@ -3807,3 +3807,33 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   existing test assertion was changed. Validated on the final commit:
   `npm run test:app` — 340 test files / 3966 tests passing; `npm run lint` —
   0 errors (11 pre-existing warnings); `npm run build` — succeeds.
+
+- Homepage grid's `token_launches` read explicitly scoped to Robinhood Chain
+  Testnet (owner request, 7 Sep 2026, after confirming the grid was already
+  Robinhood-Chain-only in practice). Confirmed first, stated plainly: this
+  was not an active bug — `lib/server/token-launch-reconciliation.ts`'s
+  `verifyTokenLaunchOnChain` already refuses any `chainId` other than
+  `ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL` (46630) before a row is ever inserted,
+  and the only two client callers of `POST /api/token-launches`
+  (`testnet-launcher.tsx`, `robinhood-testnet-deployment-controller.tsx`)
+  both hardcode that same chain ID; `monad-testnet-launcher.tsx` never calls
+  this route at all. So `token_launches` could only ever hold Robinhood
+  Chain rows today. But `lib/server/token-launches-store.ts`'s `list()` —
+  the homepage grid's data source via `GET /api/token-launches` — had no
+  explicit `chain_id` filter of its own; it relied entirely on that
+  insert-time gate holding forever. Added `WHERE chain_id = $1` (both the
+  "all" and graduation-state branches) against
+  `ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL`, as a read-time safety net: if a
+  second chain's launches are ever independently verified and inserted in
+  the future, this grid — whose card links are hardcoded to
+  `/token/robinhood/<address>` — can never silently start mixing chains
+  without this filter also being touched. `listForAdmin()` is left
+  unfiltered on purpose, since the admin Launches section is a monitoring
+  view that should show every recorded launch regardless of chain. New test
+  in `tests/token-launches-store.test.ts` pins the SQL text (the Postgres
+  implementation queries a real `pg.Pool` with no JS-side seam to inject a
+  fake table, matching the same source-pattern-test approach used for the
+  client-errors fix above). No existing test assertion was changed.
+  Validated on the final commit: `npm run test:app` — 340 test files / 3967
+  tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
+  `npm run build` — succeeds.

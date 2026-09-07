@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getTokenLaunchesStore,
@@ -191,6 +193,30 @@ describe("TokenLaunchesStore contract (via in-memory double)", () => {
 
     const [launch] = await store.list("graduated", 10);
     expect(launch.graduatedAt).toBe(firstGraduatedAt.toISOString());
+  });
+});
+
+/**
+ * Owner request, 7 Sep 2026: scope the homepage grid's data source
+ * (`list()`) to Robinhood Chain Testnet explicitly, as a safety net
+ * alongside the insert-time gate in `token-launch-reconciliation.ts` (which
+ * already refuses any other chain ID before a row is ever inserted, so this
+ * is not fixing an active bug — it's guarding against the grid silently
+ * mixing chains if a second verifiable chain is ever added later). The
+ * Postgres implementation queries a real `pg.Pool` with no JS-side seam to
+ * inject a fake table, so — matching this codebase's existing style for
+ * this kind of check — this pins the SQL text itself against a regression.
+ */
+describe("createPostgresTokenLaunchesStore list() chain scoping", () => {
+  it("filters both the 'all' and graduation-state branches by Robinhood Chain Testnet's chain ID", async () => {
+    const source = await readFile(path.join(process.cwd(), "lib/server/token-launches-store.ts"), "utf8");
+    const start = source.indexOf("async list(filter, limit)");
+    const fn = source.slice(start, source.indexOf("async listForAdmin()", start));
+    expect(fn).toContain("WHERE chain_id = $1");
+    expect(fn).toContain("WHERE chain_id = $1 AND graduated = $2");
+    expect(fn).toContain("[ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, bounded]");
+    expect(fn).toContain("[ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, filter === \"graduated\", bounded]");
+    expect(source).toContain('import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";');
   });
 });
 
