@@ -275,6 +275,49 @@ describe("the picker and what it changes", () => {
     expect(css).toContain("  position: absolute;");
   });
 
+  /**
+   * Owner recording, 7 Sep 2026: every row rendered as a white pill. A button
+   * with no background of its own falls back to the browser's light default,
+   * and nothing else in this app hits that because every other button states
+   * one. The row must state its own.
+   */
+  it("gives every row its own dark background, never the browser's default", async () => {
+    const css = await source("components", "social-hub.module.css");
+    const block = css.slice(css.indexOf(".timezoneResults button {"), css.indexOf(".timezoneResults p {"));
+    expect(block).toContain("background: transparent;");
+    expect(block).toContain("color: var(--text-primary);");
+    expect(block).toContain("border: 1px solid transparent;");
+    // Hover and the current zone are lime, not a light block.
+    expect(block).toContain("background: rgba(198, 245, 62, 0.13);");
+    expect(block).toContain('.timezoneResults button[aria-selected="true"] {');
+    // The app-wide hover lift would jitter a list row.
+    expect(block).toContain(".timezoneResults button:hover:not(:disabled) { transform: none; }");
+  });
+
+  it("closes when the user taps anywhere else", async () => {
+    const hub = await source("components", "social-hub.tsx");
+    expect(hub).toContain("const timezonePickerRef = useRef<HTMLDivElement | null>(null);");
+    expect(hub).toContain("const closeOnOutsideClick = (event: PointerEvent) => {");
+    expect(hub).toContain("if (picker && event.target instanceof Node && !picker.contains(event.target)) setTimezoneEditing(false);");
+    expect(hub).toContain('document.addEventListener("pointerdown", closeOnOutsideClick);');
+    expect(hub).toContain('return () => document.removeEventListener("pointerdown", closeOnOutsideClick);');
+    expect(hub).toContain("<div className={styles.timezonePicker} ref={timezonePickerRef}>");
+  });
+
+  /**
+   * On a phone the floating list ran under the fixed bottom nav (its own
+   * breakpoint is 1099px), which covered the lower rows.
+   */
+  it("sits in flow on a phone instead of under the fixed bottom nav", async () => {
+    const css = await source("components", "social-hub.module.css");
+    const block = css.slice(css.indexOf("@media (max-width: 1099px) {\n  .timezonePicker"));
+    expect(block).toContain("  .timezoneResults {\n    order: 3;\n    position: static;");
+    expect(block).toContain("    width: 100%;");
+    expect(block).toContain("  .timezonePicker > .timezoneEdit { order: 2; }");
+    const hub = await source("components", "social-hub.tsx");
+    expect(hub).toContain('timezonePickerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });');
+  });
+
   it("shows and reads the schedule pickers in the chosen zone", async () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("function toDateTimeLocalValue(date: Date, timeZone?: string | null): string {");

@@ -1707,22 +1707,57 @@
   background: var(--panel-bg, #14171a);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
 }
+/* Every row states its own background: a button with none falls back to the
+   browser's light default, which rendered the list as white pills on the dark
+   theme (owner recording, 7 Sep 2026). */
 .timezoneResults button {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
+  width: 100%;
   min-height: 34px;
   padding: 0 10px;
+  border: 1px solid transparent;
   border-radius: 8px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  background: transparent;
   text-align: left;
 }
 .timezoneResults button:hover,
-.timezoneResults button[aria-selected="true"] { color: var(--text-primary); background: rgba(198, 245, 62, 0.12); }
-.timezoneResults button b { font: 600 12px var(--sans); }
+.timezoneResults button:focus-visible {
+  border-color: rgba(198, 245, 62, 0.34);
+  background: rgba(198, 245, 62, 0.13);
+}
+.timezoneResults button[aria-selected="true"] {
+  border-color: rgba(198, 245, 62, 0.5);
+  background: rgba(198, 245, 62, 0.1);
+}
+.timezoneResults button[aria-selected="true"] b { color: var(--accent-lime); }
+/* The row lifts on hover everywhere else in the app; inside a list it just jitters. */
+.timezoneResults button:hover:not(:disabled) { transform: none; }
+.timezoneResults button b { color: inherit; font: 600 12px var(--sans); }
 .timezoneResults button em { color: var(--text-label); font: 600 10px var(--mono); font-style: normal; }
 .timezoneResults p { margin: 0; padding: 8px 10px; color: var(--text-label); font-size: 11.5px; }
+/* On a phone the floating list ran under the fixed bottom nav, which covered
+   its lower rows (owner recording, 7 Sep 2026). Below the nav's own 1099px
+   breakpoint the list sits in flow instead: it pushes the calendar down while
+   open, so every row stays reachable. */
+@media (max-width: 1099px) {
+  .timezonePicker { width: 100%; }
+  .timezonePicker > input { flex: 1 1 160px; width: auto; min-width: 0; }
+  /* Cancel stays beside the search box; the list opens under both. */
+  .timezonePicker > .timezoneEdit { order: 2; }
+  .timezoneResults {
+    order: 3;
+    position: static;
+    width: 100%;
+    max-width: 100%;
+    max-height: 208px;
+    margin-top: 2px;
+    box-shadow: none;
+  }
+}
 /* The "what time should your posts start" question above the tabs (owner direction, 7 Sep 2026). */
 .startTimeAsk { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .startTimeAsk input[type="time"] {

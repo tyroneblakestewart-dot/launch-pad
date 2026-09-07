@@ -3531,3 +3531,40 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Validated on the final commit: `npm run test:app` — 339 test files / 3955
   tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
   `npm run build` — succeeds.
+
+- Zone picker: white rows, no outside-click close, and the phone's bottom nav
+  over it (owner recording, 7 Sep 2026, on the deployed #542 picker: "still
+  not right"). Three defects, all in the picker that PR added, found by
+  watching the recording frame by frame rather than by any assertion — the
+  #542 pass checked behaviour and box size and never looked at the result.
+  **(1) White pills.** `.timezoneResults button` set colour, layout and a
+  hover/selected background but no resting background, so each unhovered row
+  fell back to the browser's own light default and the list rendered as white
+  blocks with grey text on the dark theme; the hovered row looked right,
+  which is why the size/behaviour checks all passed. Nothing else in the app
+  hits this because every other button states its own background. The row now
+  states `background: transparent`, `color: var(--text-primary)` and a
+  transparent border, with lime for hover/focus and for the zone in force
+  (its name in `--accent-lime`), and cancels the app-wide
+  `button:hover { transform: translateY(-1px) }` lift, which jitters inside a
+  list. **(2) It never closed.** Only Cancel, Escape or choosing a zone
+  closed the list, so it sat over the calendar while the owner clicked
+  around. A `pointerdown` listener (added only while the picker is open,
+  removed on close) closes it when the tap lands outside
+  `timezonePickerRef`. **(3) The bottom nav covered it.** On a phone the
+  absolutely-positioned list ran under `.bottomNav` (fixed, `z-index: 1000`,
+  its own `max-width: 1099px` breakpoint), hiding its lower rows. Below that
+  same breakpoint the list is now `position: static` in flow, full width,
+  208px tall, with Cancel ordered up beside the search box, so it pushes the
+  calendar down while open and every row is reachable; `openTimezonePicker`
+  also scrolls the picker into view (`block: "center"`) so it never opens
+  half off screen. Desktop keeps the floating 260×232 list. No behaviour
+  outside the picker changed. Three new cases in
+  `tests/social-timezone.test.ts` pin the row background recipe, the
+  outside-click listener and the in-flow mobile rule; no existing assertion
+  was changed. **Checked by looking this time:** screenshots of the open
+  picker at 1400px and 390px (default, hovered, typed and after an outside
+  click) were read back, not just asserted — the earlier pass is what let a
+  white list ship. Validated on the final commit: `npm run test:app` — 339
+  test files / 3958 tests passing; `npm run lint` — 0 errors (11 pre-existing
+  warnings); `npm run build` — succeeds.
