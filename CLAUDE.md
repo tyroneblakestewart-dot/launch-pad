@@ -2836,3 +2836,35 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   iPhone; the owner confirms on device. Validated on the final commit:
   `npm run test:app` — 328 test files / 3835 tests passing; `npm run lint` —
   0 errors (10 pre-existing warnings); `npm run build` — succeeds.
+
+- MetaMask mobile could not connect from the Account panel (owner report,
+  7 Sep 2026, screenshot from MetaMask's in-app browser: MetaMask's own
+  "Permissions updated" toast, then our status line reading "Wallet account
+  selection was cancelled."). Root cause in
+  `components/account-wallet-bridge.tsx`'s `requestAccountChoice`: for
+  MetaMask it called `wallet_requestPermissions` (which succeeded — that is
+  the toast), threw the result away, and immediately prompted a second time
+  with `eth_requestAccounts`; that second call failed on mobile, and because
+  wallets reject with plain objects rather than `Error` instances, the
+  `error instanceof Error` fallback printed a cancellation nobody had made.
+  Fix: the EIP-2255 grant already names the accounts the user picked, so a
+  new pure `lib/wallet-connect-helpers.ts` (`accountsFromPermissionGrant`)
+  reads them from the grant's `restrictReturnedAccounts` caveat and the flow
+  returns them — one prompt, not two; if the grant carries no addresses the
+  now-permitted accounts are read silently with `eth_accounts`, and only if
+  that is empty too does `eth_requestAccounts` run (still the path for
+  wallets without the permissions method, pinned by `account-overlay.test.ts`).
+  `describeWalletConnectError` replaces the `instanceof` fallback: "cancelled"
+  is claimed only for a real 4001, -32002 becomes "already has a request
+  open", any other failure shows the wallet's own message (including one
+  nested under `data`), and a reason-less failure never blames the user.
+  New `tests/wallet-connect-helpers.test.ts` (unit + source pins); no
+  existing assertion was changed. Rule 10 needs nothing (client-only wallet
+  flow). Checked in headless Chromium at 390px against four fake MetaMask
+  providers (grant-then-reject as the phone did → connects on the first call;
+  grant without addresses → silent `eth_accounts`; plain-object 4001 →
+  cancelled wording; -32603 → the wallet's message) — not on a physical
+  iPhone; the owner retries Connect in the MetaMask mobile browser.
+  Validated on the final commit: `npm run test:app` — 329 test files / 3844
+  tests passing; `npm run lint` — 0 errors (10 pre-existing warnings);
+  `npm run build` — succeeds.
