@@ -1,4 +1,5 @@
 import { DEFAULT_TONE_DIALS, DEFAULT_WORDS_TO_AVOID } from "@/lib/social-tone-rules";
+import { DEFAULT_QUIET_HOURS } from "@/lib/social-quiet-hours";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteSocialStudioRecord, getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
 import {
@@ -57,6 +58,7 @@ const RECORD: SocialStudioProjectRecord = {
   sortedVoiceSourceKeys: [],
   wordsToAvoid: ["rug", "guaranteed"],
   toneDials: { humour: "dry", emoji: "none", hashtags: "never", postLength: "short" },
+  quietHours: { startHour: 22, endHour: 8 },
 };
 
 describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
@@ -109,6 +111,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         sortedVoiceSourceKeys: [],
         wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
         toneDials: DEFAULT_TONE_DIALS,
+        quietHours: DEFAULT_QUIET_HOURS,
       });
     });
 
@@ -131,6 +134,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         sortedVoiceSourceKeys: [],
         wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
         toneDials: DEFAULT_TONE_DIALS,
+        quietHours: DEFAULT_QUIET_HOURS,
       });
     });
 
@@ -153,6 +157,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         sortedVoiceSourceKeys: [],
         wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
         toneDials: DEFAULT_TONE_DIALS,
+        quietHours: DEFAULT_QUIET_HOURS,
       });
     });
 
@@ -211,6 +216,22 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         wordsToAvoid: ["ok", "spaced out"],
         toneDials: { ...DEFAULT_TONE_DIALS, emoji: "plenty" },
       });
+    });
+
+    it("fills in the design's 23:00 → 07:00 quiet hours when a pre-Calendar-wiring record has no such key, keeps an explicit off, and repairs a corrupt window (7 Sep 2026)", async () => {
+      const legacy = { ...RECORD } as Record<string, unknown>;
+      delete legacy.quietHours;
+      await putSocialStudioRecord("legacy-quiet", legacy as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("legacy-quiet")).resolves.toEqual({ ...RECORD, quietHours: DEFAULT_QUIET_HOURS });
+
+      await putSocialStudioRecord("quiet-off", { ...RECORD, quietHours: null });
+      await expect(getSocialStudioRecord("quiet-off")).resolves.toMatchObject({ quietHours: null });
+
+      await putSocialStudioRecord("quiet-corrupt", { ...RECORD, quietHours: { startHour: 25, endHour: "7" } } as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("quiet-corrupt")).resolves.toMatchObject({ quietHours: DEFAULT_QUIET_HOURS });
+
+      await putSocialStudioRecord("quiet-empty-window", { ...RECORD, quietHours: { startHour: 9, endHour: 9 } });
+      await expect(getSocialStudioRecord("quiet-empty-window")).resolves.toMatchObject({ quietHours: null });
     });
 
     it("coerces non-array sampleLineFeedback, voiceExamples and queue to empty arrays instead of throwing", async () => {

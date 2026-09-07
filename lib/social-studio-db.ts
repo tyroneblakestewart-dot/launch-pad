@@ -5,6 +5,7 @@
 // in localStorage or long-lived React state (CLAUDE.md rule 7).
 
 import { normaliseToneDials, normaliseWordsToAvoid } from "./social-tone-rules";
+import { normaliseQuietHours } from "./social-quiet-hours";
 import {
   DEFAULT_POSTING_CADENCE,
   DEFAULT_QUEUE_TARGET,
@@ -112,6 +113,9 @@ function normaliseSocialStudioRecord(
     // every axis — exactly what the disabled mock-up always showed.
     wordsToAvoid: normaliseWordsToAvoid(merged.wordsToAvoid),
     toneDials: normaliseToneDials(merged.toneDials),
+    // Calendar quiet hours (7 Sep 2026): a record saved before the field
+    // existed gets the design's 23:00 → 07:00; an explicit null stays off.
+    quietHours: normaliseQuietHours(merged.quietHours),
   };
 }
 

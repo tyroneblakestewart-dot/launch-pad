@@ -39,7 +39,7 @@ describe("Calendar AI drafts keep their day, and scheduled posts load on the Cal
     expect(hub).toContain("computeDefaultScheduledAtOnDay(item.scheduledDay, awaitingIso, now, cadenceSpreadHoursMs(postingCadence))");
     // Shown default (the Queue row's Scheduled input).
     expect(hub).toContain(
-      "calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence)),",
+      "const base = calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));",
     );
     // Approval — still behind the user's own pick, still through the future clamp.
     const approve = hub.slice(hub.indexOf("async function approveQueueItem("));

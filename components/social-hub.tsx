@@ -75,6 +75,13 @@ import {
   approvalDestinations,
   ensureFutureScheduledAt,
 } from "@/lib/social-studio-queue";
+import {
+  DEFAULT_QUIET_HOURS,
+  QUIET_HOUR_OPTIONS,
+  formatQuietHour,
+  shiftOutOfQuietHours,
+  type QuietHours,
+} from "@/lib/social-quiet-hours";
 import type {
   MascotVisualDNA,
   PostingCadence,
@@ -350,6 +357,9 @@ const TIMEZONES = [
   { id: "singapore", label: "Singapore (GMT+8)" },
 ];
 
+/** X's hard cap; the "I'll post my own" composer refuses longer text up front (the Queue's own count uses the same 280). */
+const X_CHARACTER_LIMIT = 280;
+
 type MonthView = { year: number; month: number };
 type SelectedDay = { year: number; month: number; day: number };
 
@@ -587,6 +597,12 @@ export function SocialHub() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [draftBusy, setDraftBusy] = useState(false);
   const [calendarAiBusy, setCalendarAiBusy] = useState(false);
+  /** Calendar quiet hours (owner direction, 7 Sep 2026): per project, local time, null = off. Every default time and every approval is shifted out of it. */
+  const [quietHours, setQuietHours] = useState<QuietHours | null>({ ...DEFAULT_QUIET_HOURS });
+  /** Calendar "I'll post my own": a composer that adds a manual draft pinned to the selected day. */
+  const [ownPostOpen, setOwnPostOpen] = useState(false);
+  const [ownPostText, setOwnPostText] = useState("");
+  const [ownPostStatus, setOwnPostStatus] = useState<PanelStatus>(null);
   const mascotFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Per-panel status (issue #340): errors/progress render next to the
@@ -1017,6 +1033,10 @@ export function SocialHub() {
       setPostingCadence(record.postingCadence);
       setWordsToAvoid(record.wordsToAvoid);
       setToneDials(record.toneDials);
+      setQuietHours(record.quietHours);
+      setOwnPostOpen(false);
+      setOwnPostText("");
+      setOwnPostStatus(null);
       setWordToAvoidDraft("");
       setWordsToAvoidStatus(null);
       setScheduledPosts([]);
@@ -1045,6 +1065,7 @@ export function SocialHub() {
       sampleLineFeedback,
       wordsToAvoid,
       toneDials,
+      quietHours,
       sortedVoiceSourceKeys,
       ...overrides,
     };
@@ -1890,6 +1911,62 @@ export function SocialHub() {
       : null;
   }
 
+  /** Calendar quiet hours: saved at once; a start equal to its end means off. */
+  function updateQuietHours(next: QuietHours | null) {
+    setQuietHours(next);
+    persistSocialStudio({ quietHours: next });
+  }
+
+  function setQuietHourBound(bound: keyof QuietHours, hour: number) {
+    const next = { ...(quietHours ?? DEFAULT_QUIET_HOURS), [bound]: hour };
+    updateQuietHours(next.startHour === next.endHour ? null : next);
+  }
+
+  /**
+   * "I'll post my own" (owner direction, 7 Sep 2026): the user's own words,
+   * pinned to the selected day as an ordinary manual draft — it then takes
+   * the same Queue approve path as every AI draft, so nothing goes out
+   * without the approve tap, and its default time lands on this day.
+   */
+  function addOwnPostForDay() {
+    const text = ownPostText.trim();
+    if (!text) {
+      setOwnPostStatus({ tone: "error", message: "Write the post first." });
+      return;
+    }
+    if (text.length > X_CHARACTER_LIMIT) {
+      setOwnPostStatus({ tone: "error", message: `That is ${text.length} characters — X allows ${X_CHARACTER_LIMIT}. Shorten it here, or add it and edit the X version in the Queue.` });
+      return;
+    }
+    const scheduledDay = toCalendarDayIso(selectedDay.year, selectedDay.month, selectedDay.day);
+    if (isCalendarDayBeforeToday(scheduledDay, new Date())) {
+      setOwnPostStatus({ tone: "error", message: `${selectedDayLabel} has already passed — pick today or a later day.` });
+      return;
+    }
+    if (!selectedProject) {
+      promptForTokenDetails("Add your token details before adding a post.");
+      return;
+    }
+    const item: QueueItem = {
+      id: newQueueItemId(),
+      xText: text,
+      telegramText: text,
+      artwork: null,
+      source: "manual",
+      dayLabel: selectedDayLabel,
+      scheduledDay,
+      createdAt: new Date().toISOString(),
+    };
+    setQueue((current) => {
+      const next = [item, ...current];
+      persistSocialStudio({ queue: next });
+      return next;
+    });
+    setOwnPostText("");
+    setOwnPostOpen(false);
+    setOwnPostStatus({ tone: "success", message: `Your post for ${selectedDayLabel} is in the Queue — approve it there and it goes out that day.` });
+  }
+
   /**
    * Client-side "always something loaded" replenish (issue #352). Generates
    * exactly the shortfall computed once at call time — never re-checks the
@@ -2333,6 +2410,8 @@ export function SocialHub() {
     let approvedAny = false;
     let replacedAny = false;
     let failureMessage = "";
+    /** Set when quiet hours moved the approval time, so the success line says where it went. */
+    let quietHoursMovedTo = "";
     try {
       let artwork = item.artwork;
       if (postImageCandidateIds.has(item.id) && !artwork && !item.imageDeclined) {
@@ -2347,11 +2426,16 @@ export function SocialHub() {
       // is pending right now — and never earlier than two minutes from now.
       const now = new Date();
       const awaitingIso = scheduledPosts.filter((post) => isPendingSendStatus(post.status)).map((post) => post.scheduledAt);
-      const picked =
+      const rawPicked =
         scheduleManuallySet[item.id] && itemScheduledAt[item.id]
           ? new Date(itemScheduledAt[item.id])
           : calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));
+      // Quiet hours apply to every approval, the user's own pick included:
+      // the future clamp runs first so a lifted past time can't land back
+      // inside the window, and the clamp below is then a no-op.
+      const picked = shiftOutOfQuietHours(ensureFutureScheduledAt(rawPicked, now), quietHours);
       const scheduledAtIso = ensureFutureScheduledAt(picked, now).toISOString();
+      if (picked.getTime() !== ensureFutureScheduledAt(rawPicked, now).getTime()) quietHoursMovedTo = formatScheduledAt(scheduledAtIso);
 
       let authMode: "session" | "signature";
       try {
@@ -2414,7 +2498,9 @@ export function SocialHub() {
     }
     const approvedMessage = replacedAny
       ? "Approved — replaced an already-pending duplicate of this exact draft instead of sending twice."
-      : "Approved and scheduled.";
+      : quietHoursMovedTo
+        ? `Approved and scheduled — moved to ${quietHoursMovedTo} to stay out of quiet hours.`
+        : "Approved and scheduled.";
     setPostsStatus(
       approvedAny
         ? { tone: "success", message: failureMessage ? `Approved, but ${failureMessage.charAt(0).toLowerCase()}${failureMessage.slice(1)}` : approvedMessage }
@@ -2518,15 +2604,14 @@ export function SocialHub() {
       for (const item of queue) {
         if (next[item.id] === undefined) {
           const now = new Date();
-          next[item.id] = toDateTimeLocalValue(
-            calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence)),
-          );
+          const base = calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));
+          next[item.id] = toDateTimeLocalValue(shiftOutOfQuietHours(base, quietHours));
           changed = true;
         }
       }
       return changed ? next : current;
     });
-  }, [queue, scheduledPosts, postingCadence]);
+  }, [queue, scheduledPosts, postingCadence, quietHours]);
 
   // Queue tab data is fetched client-side only (never in the background) on
   // tab open, on window/tab focus while the tab is active, and after
@@ -4117,29 +4202,88 @@ export function SocialHub() {
                           <span>Drafts a post for this day and adds it to the Queue — approve it there and it goes out on this day.</span>
                         </button>
                         <InlineStatus status={calendarDraftStatus} />
-                        <button type="button" disabled className={styles.ownPostButton}>
+                        <button
+                          type="button"
+                          className={styles.ownPostButton}
+                          aria-expanded={ownPostOpen}
+                          onClick={() => { setOwnPostOpen((current) => !current); setOwnPostStatus(null); }}
+                        >
                           <b>I&apos;ll post my own</b>
-                          <span>Upload or write it yourself — we&apos;ll publish it on time.</span>
+                          <span>Write it yourself — it joins the Queue for this day and goes out once you approve it.</span>
                         </button>
+                        {ownPostOpen ? (
+                          <div className={styles.ownPostComposer}>
+                            <textarea
+                              value={ownPostText}
+                              onChange={(event) => setOwnPostText(event.target.value)}
+                              placeholder={`Your post for ${selectedDayLabel}`}
+                              rows={4}
+                              maxLength={2000}
+                            />
+                            <div className={styles.ownPostMeta}>
+                              <span className={ownPostText.trim().length > X_CHARACTER_LIMIT ? styles.ownPostOver : undefined}>
+                                {ownPostText.trim().length}/{X_CHARACTER_LIMIT} for X · same text goes to Telegram (edit either in the Queue)
+                              </span>
+                            </div>
+                            <div className={styles.composerActions}>
+                              <button type="button" className={styles.ownPostAdd} onClick={addOwnPostForDay}>
+                                Add to Queue for {selectedDay.day} {MONTH_NAMES[selectedDay.month]}
+                              </button>
+                              <button type="button" onClick={() => { setOwnPostOpen(false); setOwnPostStatus(null); }}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : null}
+                        <InlineStatus status={ownPostStatus} />
                         <div className={styles.miniDivider} />
                         <span className={styles.eyebrow}>WHERE IT POSTS</span>
                         <div className={styles.destinationChips}>
-                          <span><XMark /> X</span>
-                          <span><TelegramMark /> Telegram</span>
+                          <span className={myConnectedPlatforms.includes("x") ? styles.chipConnected : styles.chipOff}>
+                            <XMark /> X{myConnectedPlatforms.includes("x") ? "" : " · not connected"}
+                          </span>
+                          <span className={myConnectedPlatforms.includes("telegram") ? styles.chipConnected : styles.chipOff}>
+                            <TelegramMark /> Telegram{myConnectedPlatforms.includes("telegram") ? "" : " · not connected"}
+                          </span>
                         </div>
-                        <p>Posting to Telegram keeps the community talking between announcements.</p>
+                        <p>
+                          {myConnectedPlatforms.length === 0
+                            ? "Nothing is connected yet — connect X or Telegram in Setup and approved posts go there."
+                            : "Approved posts go to every connected platform that has text for it. Connect the other in Setup to post to both."}
+                        </p>
                         <div className={styles.miniDivider} />
                         <span className={styles.eyebrow}>QUIET HOURS</span>
                         <div className={styles.quietHours}>
                           <span>Never post between</span>
-                          <select disabled><option>23:00</option></select>
+                          <select
+                            aria-label="Quiet hours start"
+                            value={(quietHours ?? DEFAULT_QUIET_HOURS).startHour}
+                            disabled={!quietHours}
+                            onChange={(event) => setQuietHourBound("startHour", Number(event.target.value))}
+                          >
+                            {QUIET_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{formatQuietHour(hour)}</option>)}
+                          </select>
                           <span>and</span>
-                          <select disabled><option>07:00</option></select>
+                          <select
+                            aria-label="Quiet hours end"
+                            value={(quietHours ?? DEFAULT_QUIET_HOURS).endHour}
+                            disabled={!quietHours}
+                            onChange={(event) => setQuietHourBound("endHour", Number(event.target.value))}
+                          >
+                            {QUIET_HOUR_OPTIONS.map((hour) => <option key={hour} value={hour}>{formatQuietHour(hour)}</option>)}
+                          </select>
+                          <button
+                            type="button"
+                            className={styles.quietHoursToggle}
+                            onClick={() => updateQuietHours(quietHours ? null : { ...DEFAULT_QUIET_HOURS })}
+                          >
+                            {quietHours ? "Turn off" : "Turn on"}
+                          </button>
                         </div>
                         <p className={styles.exampleLabel}>
-                          Automatic scheduling, quiet hours and &quot;I&apos;ll post my own&quot; are not built yet — every AI draft still needs a manual approve tap in the Queue.
+                          {quietHours
+                            ? "Your local time. Any post that would land in this window is moved to the end of it when you approve — the time is decided at approval, so nothing is ever sent inside it."
+                            : "Quiet hours are off — posts can be scheduled at any hour."}
+                          {" "}Every post still needs your approve tap in the Queue before it goes out.
                         </p>
-                        <ComingSoon compact />
                       </aside>
                     </div>
                   </section>
@@ -4230,7 +4374,9 @@ export function SocialHub() {
                                           ? "Setup AI"
                                           : item.source === "auto-replenish"
                                             ? "Auto-generated"
-                                            : "Manual"}
+                                            : item.dayLabel
+                                              ? `Your own · ${item.dayLabel}`
+                                              : "Manual"}
                                       {isTemplateItem ? <span className={styles.templateBadge}>Template</span> : null}
                                       {isPickedForImage ? (
                                         <>

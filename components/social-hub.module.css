@@ -1737,6 +1737,32 @@
 .destinationChips span { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; padding: 0 13px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; color: var(--text-secondary); background: rgba(255, 255, 255, 0.025); font-size: 12px; font-weight: 700; }
 .destinationChips svg { width: 13px; height: 13px; fill: currentColor; }
 .quietHours { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--text-secondary); font-size: 12px; }
+.quietHoursToggle { min-height: 38px; padding: 0 14px; border: 1px solid rgba(198, 245, 62, 0.3); border-radius: 999px; color: var(--accent-lime); background: rgba(198, 245, 62, 0.08); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.destinationChips .chipConnected { border-color: rgba(198, 245, 62, 0.4); color: var(--accent-lime); background: rgba(198, 245, 62, 0.1); }
+.destinationChips .chipOff { color: var(--text-label); border-style: dashed; }
+.ownPostComposer { display: flex; flex-direction: column; gap: 10px; }
+.ownPostComposer textarea {
+  width: 100%;
+  min-height: 110px;
+  padding: 13px 14px;
+  resize: vertical;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  outline: none;
+  color: var(--text-primary);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.38), rgba(255, 255, 255, 0.022)), #0a0f0c;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.ownPostComposer textarea:focus { border-color: rgba(198, 245, 62, 0.46); box-shadow: 0 0 0 3px rgba(198, 245, 62, 0.06), inset 0 2px 6px rgba(0, 0, 0, 0.5); }
+.ownPostMeta { color: var(--text-label); font: 600 10.5px var(--mono); letter-spacing: 0.02em; }
+.ownPostOver { color: var(--accent-red); }
+.composerActions .ownPostAdd { border-color: rgba(198, 245, 62, 0.5); color: #0a0b09; background: var(--cta-bg); }
+@media (pointer: coarse) {
+  .quietHoursToggle,
+  .quietHours select { min-height: 44px; }
+}
 
 .segmentedDisabled { display: flex; gap: 3px; padding: 4px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; background: rgba(0, 0, 0, 0.24); }
 .segmentedDisabled span { padding: 9px 14px; border-radius: 999px; color: var(--text-faint); font-size: 11px; font-weight: 700; }
