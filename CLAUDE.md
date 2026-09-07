@@ -3664,3 +3664,78 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Validated on the final commit: `npm run test:app` — 340 test files / 3964
   tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
   `npm run build` — succeeds.
+
+- Homepage grid cards get thin/slim glowing candlesticks, replacing the
+  single performance line (owner direction, 7 Sep 2026, against the
+  "Hoodlums Charts" desktop flagship candlestick design and a pump.fun
+  recording: "I want candle stick just like [that] example, thin slim,
+  smaller as it's gonna go in each panel like pump fun, make sure glow so
+  it can be seen on top of all content, and just like pump fun it can
+  expand not too much" — then "5m candles"). Issue #440/#489 had explicitly
+  decided against candles on the grid card ("never a chart-library instance
+  per card … never candles, and never a floating hover preview") and drawn
+  a single lime/grey performance line instead (`lib/token-sparkline.ts`);
+  this is a direct, later owner reversal of that specific call, not a
+  contradiction to leave standing in the old comment. New
+  `lib/token-grid-candle-chart.ts` restores the deleted issue #440
+  `lib/token-candle-geometry.ts`'s pure, dependency-free bar-geometry
+  approach (still no chart-library instance per card) but fixes the bucket
+  interval at 5 minutes rather than auto-picking a coarser one per token,
+  keeps only the most recent `MAX_GRID_CANDLES` (20) buckets, and thins the
+  body-to-slot ratio for a genuinely slim look; it reuses the same
+  `bucketTradesIntoCandles` the full token-page chart already calls, so a
+  mini card and the real chart can never disagree about where a candle's
+  open/close sits. `components/token-grid-card-chart.tsx` now maps
+  `chart.bars` into small SVG `<line>`/`<rect>` groups (wick + body) instead
+  of a single `buildSparkline` path, keeping every existing contract
+  unchanged: still gated on `useInView`, still no chart at all with zero
+  trades, still driving the real market cap/change-pill/flash from the same
+  live 60s-polled trades. Each bar's `.candleUp`/`.candleDown` class carries
+  its own `filter: drop-shadow(0 0 3px currentColor)` (lime/grey, matching
+  the settled up/down ruling exactly — same literal hex values as
+  `--accent-lime`/`--accent-down`) so the glow reads over any artwork
+  brightness, and a `candleGrow` keyframe staggers each bar's first paint in
+  by its index (capped at 300ms total) for a lively but bounded entrance.
+  "Expand, not too much, like pump.fun": `.candleOverlay` (the lower-52%
+  chart layer, unchanged in position) now scales to `1.16` on `.card:hover`
+  — gated behind `(hover: hover) and (pointer: fine)`, the same guard the
+  card's own existing lift-on-hover already uses, so a touch tap can never
+  leave it stuck grown — clipped by the art frame's own `overflow: hidden`
+  rounded corners rather than a floating popup, which stays explicitly
+  ruled out. `lib/token-sparkline.ts` and its test are deleted outright
+  (zero remaining importers once the card stopped calling `buildSparkline`)
+  rather than left as dead code alongside the new module. **Tests changed,
+  not only added (rule 8, stated plainly):** the #440/#489 pin asserting the
+  card "draws one performance line … never candles … or a floating hover
+  preview" and the parallel CSS pin "has no floating hover preview or candle
+  overlay left" both encoded the decision this PR reverses by direct owner
+  instruction, and are rewritten to assert the new candle contract (a
+  floating *popup* preview is still, and remains, ruled out — only the
+  in-place overlay grows); the sparkline-era CSS/colour-constant pins in the
+  same file and in `tests/hoodlums-premium-theme.test.ts` are updated to the
+  new `.candleUp`/`.candleDown`/`GRID_CANDLE_UP_COLOR`/`GRID_CANDLE_DOWN_COLOR`
+  names (same literal hex values, unchanged); the obsolete
+  "redraws the line only when the path actually changes, by keying it on the
+  path" test is removed (bars are keyed by index with a per-bar CSS
+  animation instead of one recomputed path); and the trending-panel pin
+  checking for no `buildSparkline` call now checks for no `buildGridCandleChart`
+  call, since the function it names no longer exists either way. New
+  `tests/token-grid-candle-chart.test.ts` covers zero/one/many trades, the
+  fixed 5-minute bucketing (a same-bucket vs. cross-bucket pair of trades),
+  the `MAX_GRID_CANDLES` cap keeping only the most recent candles, up/down
+  colouring, the thin body-to-slot ratio, and the degenerate equal-price
+  case. Checked in headless Chromium at 1400px and 390px with mocked
+  launches/trades (mixed up/down 5-minute candles over a real artwork
+  image): candles sit correctly within the lower ~52% of the art (measured
+  against the DOM, not just eyeballed — an initial glance against a
+  no-artwork letter-fallback card had looked like an overflow but the real
+  geometry was already correct, an artefact of testing with no image behind
+  it), the glow is visible on both tones, the hover scale is confirmed via
+  computed style (`matrix(1, 0, 0, 1.16, 0, 0)`) and reads as a modest
+  in-place growth in the screenshots, two-across mobile cards remain legible
+  at the smaller size, and there were no console errors. Not verified on a
+  real mobile Safari device this pass (rule 7) — the touch/no-hover guard
+  was checked by reading the CSS media query, not on-device. Validated on
+  the final commit: `npm run test:app` — 340 test files / 3963 tests
+  passing; `npm run lint` — 0 errors (11 pre-existing warnings); `npm run
+  build` — succeeds.

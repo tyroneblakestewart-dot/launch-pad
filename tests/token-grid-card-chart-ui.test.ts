@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { SPARKLINE_DOWN_COLOR, SPARKLINE_FLAT_COLOR, SPARKLINE_UP_COLOR } from "@/lib/token-sparkline";
+import { GRID_CANDLE_DOWN_COLOR, GRID_CANDLE_UP_COLOR } from "@/lib/token-grid-candle-chart";
 
 // This repo's Vitest suite runs in a plain Node environment (no jsdom), so
 // interactive client components/hooks are covered by source-pattern
@@ -80,38 +80,38 @@ describe("TokenGridCardChart — the pump.fun card (owner direction, 4 Sep 2026)
     expect(component).toContain("useGridTokenTrades(curveAddress, inView)");
   });
 
-  it("draws one performance line from a single pure buildSparkline call, never candles, a chart library or a floating preview", async () => {
+  it("draws thin/slim candlesticks from a single pure buildGridCandleChart call, never a chart library or a floating preview (owner direction, 7 Sep 2026)", async () => {
     const component = await source("components/token-grid-card-chart.tsx");
-    expect(component).toContain('import { buildSparkline, SPARKLINE_HEIGHT, SPARKLINE_WIDTH } from "@/lib/token-sparkline"');
-    expect(component.match(/buildSparkline\(/g) ?? []).toHaveLength(1);
+    expect(component).toContain('import { buildGridCandleChart, GRID_CANDLE_CHART_HEIGHT, GRID_CANDLE_CHART_WIDTH } from "@/lib/token-grid-candle-chart"');
+    expect(component.match(/buildGridCandleChart\(/g) ?? []).toHaveLength(1);
     expect(component).not.toMatch(/from ["']lightweight-charts["']/);
-    expect(component).not.toContain("buildCandleGeometry");
     expect(component).not.toContain("styles.preview");
     expect(component).not.toContain("computePreviewPosition");
-    expect(component).toContain('<path className={styles.sparkArea} d={sparkline.areaPath} />');
-    expect(component).toContain("d={sparkline.linePath}");
+    expect(component).toContain("{chart.bars.map((bar, index) => (");
+    expect(component).toContain('className={bar.tone === "up" ? styles.candleUp : styles.candleDown}');
+    expect(component).toContain("<line");
+    expect(component).toContain("<rect");
   });
 
-  it("renders nothing over the art when there are no trades — no flat line, no empty box", async () => {
+  it("renders nothing over the art when there are no trades — no candles, no empty box", async () => {
     const component = await source("components/token-grid-card-chart.tsx");
-    expect(component).toContain("{sparkline.hasData && (");
-    expect(component).toContain("<div className={`${styles.sparkOverlay} ${tone}`} aria-hidden=\"true\">");
+    expect(component).toContain("{chart.hasData && (");
+    expect(component).toContain('<div className={styles.candleOverlay} aria-hidden="true">');
   });
 
-  it("redraws the line only when the path actually changes, by keying it on the path", async () => {
+  it("staggers each candle's grow-in by its index via an inline animation-delay, capped so a card with many bars never waits long", async () => {
     const component = await source("components/token-grid-card-chart.tsx");
-    expect(component).toContain("key={sparkline.linePath}");
-    expect(component).toContain("pathLength={100}");
+    expect(component).toContain('style={{ animationDelay: `${Math.min(index * 20, 300)}ms` }}');
   });
 
   it("shows a real market cap (newest spot price × recorded supply) that remounts — and so flashes — on change, and a change pill plus launch age", async () => {
     const component = await source("components/token-grid-card-chart.tsx");
-    expect(component).toContain("formatGridMarketCap(computeGridMarketCapNative(sparkline.lastPrice, wholeTokenSupply))");
+    expect(component).toContain("formatGridMarketCap(computeGridMarketCapNative(chart.lastPrice, wholeTokenSupply))");
     // Flash only on a genuine change after first paint: the figure is keyed by a change count, never by its label.
     expect(component).toContain("const flashKey = useMarketCapFlash(marketCap);");
     expect(component).toContain("if (previous.current !== null && previous.current !== marketCap) {");
     expect(component).toContain("<b key={flashKey} className={flashKey > 0 ? `${styles.cardCap} ${styles.cardCapFlash}` : styles.cardCap}>");
-    expect(component).toContain("buildGridChangePill(sparkline.changePercent)");
+    expect(component).toContain("buildGridChangePill(chart.changePercent)");
     expect(component).toContain("formatGridAge(launchedAt)");
     expect(component).toContain("MCAP");
   });
@@ -175,27 +175,35 @@ describe("Grid card styling", () => {
     expect(css).toContain("@media (max-width: 700px) {\n  .grid {\n    grid-template-columns: repeat(2, minmax(0, 1fr));");
   });
 
-  it("lays the performance line over the lower half of the art on a bottom-up wash, with a draw-in that respects reduced motion", async () => {
+  it("lays the candlesticks over the lower half of the art on a bottom-up wash, glowing, with a grow-in that respects reduced motion", async () => {
     const css = await source("components/hoodlums-token-grid.module.css");
-    expect(css).toMatch(/\.sparkOverlay\s*\{[^}]*height:\s*52%;/);
-    expect(css).toMatch(/\.sparkOverlay\s*\{[^}]*background:\s*linear-gradient\(to top,/);
-    expect(css).toMatch(/\.sparkLine\s*\{[^}]*stroke:\s*currentColor;/);
-    expect(css).toMatch(/\.sparkLine\s*\{[^}]*animation:\s*sparkDraw/);
-    expect(css).toMatch(/\.sparkArea\s*\{[^}]*fill:\s*currentColor;/);
+    expect(css).toMatch(/\.candleOverlay\s*\{[^}]*height:\s*52%;/);
+    expect(css).toMatch(/\.candleOverlay\s*\{[^}]*background:\s*linear-gradient\(to top,/);
+    expect(css).toMatch(/\.candleWick\s*\{[^}]*stroke:\s*currentColor;/);
+    expect(css).toMatch(/\.candleBody\s*\{[^}]*fill:\s*currentColor;/);
+    expect(css).toContain("filter: drop-shadow(0 0 3px currentColor);");
+    expect(css).toMatch(/animation:\s*candleGrow/);
     const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce) {"));
-    expect(reduced).toContain(".sparkLine {\n    animation: none;");
+    expect(reduced).toContain(".candleUp,\n  .candleDown {\n    animation: none;");
     expect(reduced).toContain(".cardCapFlash {\n    animation: none;");
   });
 
-  it("colours the line lime up and the design's grey down — the token page's ruling — never red", async () => {
+  it("grows the chart a little on hover, only on a device with real hover, clipped by the art frame — never a floating preview (owner direction, 7 Sep 2026: \"expand, not too much, like pump.fun\")", async () => {
     const css = await source("components/hoodlums-token-grid.module.css");
-    expect(css).toContain(".sparklineUp {\n  color: var(--accent-lime);\n}");
-    expect(css).toContain(".sparklineDown {\n  color: var(--accent-down);\n}");
+    expect(css).toMatch(/@media \(hover: hover\) and \(pointer: fine\) \{\s*\.card:hover \.candleOverlay \{\s*transform: scaleY\(1\.16\);/);
+    expect(css).toMatch(/\.candleOverlay\s*\{[^}]*transition:\s*transform 0\.22s ease;/);
+    expect(css).not.toContain(".preview {");
+    expect(css).not.toContain("floating");
+  });
+
+  it("colours candles lime up and the design's grey down — the token page's ruling — never red", async () => {
+    const css = await source("components/hoodlums-token-grid.module.css");
+    expect(css).toContain(".candleUp {\n  color: var(--accent-lime);\n}");
+    expect(css).toContain(".candleDown {\n  color: var(--accent-down);\n}");
     expect(css).not.toContain("#ff5f56");
     expect(css).not.toContain("#91f0b6");
-    expect(SPARKLINE_UP_COLOR).toBe("#c6f53e");
-    expect(SPARKLINE_DOWN_COLOR).toBe("#8d918c");
-    expect(SPARKLINE_FLAT_COLOR).toBe("#6f746e");
+    expect(GRID_CANDLE_UP_COLOR).toBe("#c6f53e");
+    expect(GRID_CANDLE_DOWN_COLOR).toBe("#8d918c");
   });
 
   it("flashes the market cap on change and keeps it the boldest number on the card, with the ticker secondary", async () => {
@@ -208,10 +216,10 @@ describe("Grid card styling", () => {
     expect(css).toMatch(/\.cardTicker\s*\{[^}]*color:\s*var\(--text-label\);/);
   });
 
-  it("has no floating hover preview or candle overlay left", async () => {
+  it("has no floating hover preview — the candle overlay itself is the only chart layer, growing in place", async () => {
     const css = await source("components/hoodlums-token-grid.module.css");
-    expect(css).not.toContain(".preview");
-    expect(css).not.toContain(".candleOverlay");
+    expect(css).not.toContain(".preview {");
+    expect(css).toContain(".candleOverlay {");
   });
 });
 
@@ -241,9 +249,9 @@ describe("Trending banner (the moving strip across the top)", () => {
     expect(component).toContain("via Dexscreener · 60s");
   });
 
-  it("never draws a performance line for third-party tokens — the feed carries no trade series", async () => {
+  it("never draws a candle chart for third-party tokens — the feed carries no trade series", async () => {
     const component = await source("components/robinhood-trending-panel.tsx");
-    expect(component).not.toContain("buildSparkline");
+    expect(component).not.toContain("buildGridCandleChart");
     expect(component).not.toContain("useGridTokenTrades");
   });
 });
