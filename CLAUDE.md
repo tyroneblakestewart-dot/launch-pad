@@ -2936,3 +2936,33 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   "switch network" prompt. Validated on the final commit: `npm run test:app`
   — 329 test files / 3849 tests passing; `npm run lint` — 0 errors (10
   pre-existing warnings); `npm run build` — succeeds.
+
+- Social Studio Calendar tab fits the phone, and the token-details form stops
+  looking pre-filled (owner recording + screenshot, 7 Sep 2026: "calendar tab
+  is outside of restraints, no full view"; "the prefix over other token saved
+  in fields"). **Calendar:** at ≤860px `.calendarLayout` collapsed to a bare
+  `1fr` column — which is `minmax(auto, 1fr)`, floored at the content's own
+  min-content width — and the mobile week strip below it holds ~30 cards of
+  132px, so the single column grew to that width and dragged the Add-to card,
+  its buttons and the Telegram note off the right edge of the phone (clipped,
+  not scrollable). `components/social-hub.module.css` now gives that
+  breakpoint `.calendarLayout { grid-template-columns: minmax(0, 1fr); }`,
+  `min-width: 0; max-width: 100%` on both grid children, and the same on
+  `.mobileWeek`, so the strip scrolls inside itself as intended and the
+  column stays at the panel's width; the other stacked grids in that shared
+  rule are unchanged, and desktop is untouched. **Form:** the
+  Tell-us-about-your-token / Add-an-existing-token fields carried
+  `Hoodlums` / `HOODS` / `hoodlums` as placeholders, which on a fresh wallet
+  read as another token's details already saved in the fields; they are now
+  the launch studio's own generic hints (`Token name`, `TICKER`,
+  `yourhandle`, `yourchannel`), the decision `tests/new-project-blank-identity.test.ts`
+  already pinned for the studio. New `tests/social-calendar-mobile-fit.test.ts`
+  pins the breakpoint rules, the untouched desktop grid and the placeholders;
+  no existing assertion was changed. Rule 10 needs nothing (layout/copy).
+  Checked in headless Chromium at 390px: the calendar layout's right edge is
+  inside the viewport (359px of 390), the document has no horizontal
+  scroll, and the week strip reports a 4192px scroll width inside a 328px
+  box — not on a physical iPhone; the owner confirms on device. Validated on
+  the final commit: `npm run test:app` — 330 test files / 3852 tests passing;
+  `npm run lint` — 0 errors (10 pre-existing warnings); `npm run build` —
+  succeeds.
