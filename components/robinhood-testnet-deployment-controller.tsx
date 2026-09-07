@@ -35,6 +35,7 @@ import { describeWalletMismatch } from "@/lib/social-studio-queue";
 import { captureTokenArtworkThumbnail } from "@/lib/token-artwork-thumbnail";
 import { notifyTokenLaunchCompleted } from "@/lib/token-launch-events";
 import { isExternalProject, readProjectIndex, writeProjectIndex } from "@/lib/token-project-storage";
+import { getProjectBlob } from "@/lib/token-project-db";
 import type { TokenProject } from "@/lib/types";
 import styles from "./robinhood-testnet-deployment-controller.module.css";
 
@@ -57,6 +58,18 @@ type DeploymentResult = {
   curveAddress?: Address;
   curveFunded?: boolean;
   recordWarning?: string;
+};
+
+/** Everything the homepage listing request needs, kept after a failed attempt so "Record listing" can resubmit it with one signature and no on-chain step (owner report, 7 Sep 2026). */
+type PendingRecord = {
+  projectId: string;
+  tokenAddress: Address;
+  curveAddress: Address;
+  tokenName: string;
+  ticker: string;
+  decimals: number;
+  wholeTokenSupply: string;
+  graduationTargetWei: bigint;
 };
 
 type WalletMismatch = {
@@ -162,6 +175,9 @@ export function RobinhoodTestnetDeploymentController() {
   const [result, setResult] = useState<DeploymentResult | null>(null);
   const [mismatch, setMismatch] = useState<WalletMismatch | null>(null);
   const [bypassMismatch, setBypassMismatch] = useState(false);
+  /** Set before every listing request and cleared only once the server has recorded it — a failed attempt leaves it in place for the retry. */
+  const [pendingRecord, setPendingRecord] = useState<PendingRecord | null>(null);
+  const [recordRetryBusy, setRecordRetryBusy] = useState(false);
 
   useEffect(() => {
     let activeHost: HTMLElement | null = null;
@@ -280,15 +296,7 @@ export function RobinhoodTestnetDeploymentController() {
   async function recordTokenLaunch(
     walletClient: ReturnType<typeof createWalletClient>,
     account: Address,
-    launch: {
-      tokenAddress: Address;
-      curveAddress: Address;
-      tokenName: string;
-      ticker: string;
-      decimals: number;
-      wholeTokenSupply: string;
-      graduationTargetWei: bigint;
-    },
+    launch: PendingRecord,
     artworkThumbnail: string | null,
   ): Promise<void> {
     const walletChainId = await walletClient.getChainId();
@@ -413,31 +421,37 @@ export function RobinhoodTestnetDeploymentController() {
     setStatus(`Step 3 of 3 submitted: ${shortAddress(fundHash)}`);
     await publicClient.waitForTransactionReceipt({ hash: fundHash });
 
-    // Downscaled and discarded here — never stored in React state or
+    // Loaded, downscaled and discarded here — never stored in React state or
     // threaded through props (CLAUDE.md's PR #118 iPhone Safari memory
-    // rule; issue #438).
-    const artworkThumbnail = await captureTokenArtworkThumbnail(currentProject.heroImage).catch(() => null);
+    // rule; issue #438). The project index has carried no heroImage since
+    // issue #307 moved it into IndexedDB, so it must be read from there
+    // (owner report, 7 Sep 2026: no launch ever showed its artwork).
+    const artworkThumbnail = await captureProjectArtworkThumbnail(currentProject);
+
+    const pending: PendingRecord = {
+      projectId: currentProject.id,
+      tokenAddress,
+      curveAddress,
+      tokenName: currentProject.name.trim(),
+      ticker: currentProject.ticker.trim().toUpperCase(),
+      decimals: currentProject.decimals,
+      wholeTokenSupply: currentProject.supply,
+      graduationTargetWei: curveParams.graduationTargetWei,
+    };
+    setPendingRecord(pending);
 
     let recordWarning: string | undefined;
     try {
-      await recordTokenLaunch(
-        walletClient,
-        account,
-        {
-          tokenAddress,
-          curveAddress,
-          tokenName: currentProject.name.trim(),
-          ticker: currentProject.ticker.trim().toUpperCase(),
-          decimals: currentProject.decimals,
-          wholeTokenSupply: currentProject.supply,
-          graduationTargetWei: curveParams.graduationTargetWei,
-        },
-        artworkThumbnail,
-      );
+      await recordTokenLaunch(walletClient, account, pending, artworkThumbnail);
+      setPendingRecord(null);
     } catch (recordError) {
       // Never fail the launch over this — the token and curve are already
-      // live on-chain. Surfaced only in the result panel, not a thrown error.
+      // live on-chain. Surfaced in the result panel with a retry, not a
+      // thrown error; pendingRecord stays set so the retry needs no
+      // on-chain step. The reason is also reported to /admin's client
+      // errors, so a failure seen once is not lost with the modal.
       recordWarning = readError(recordError);
+      reportListingFailure(recordWarning, tokenAddress);
     }
 
     return {
@@ -447,6 +461,60 @@ export function RobinhoodTestnetDeploymentController() {
       curveFunded: true,
       recordWarning,
     };
+  }
+
+  /** The hero image lives in IndexedDB (issue #307); the index entry this modal reads never carries it. */
+  async function captureProjectArtworkThumbnail(currentProject: TokenProject): Promise<string | null> {
+    const heroImage =
+      currentProject.heroImage || (await getProjectBlob(currentProject.id).catch(() => null))?.heroImage || "";
+    return captureTokenArtworkThumbnail(heroImage).catch(() => null);
+  }
+
+  /** Best-effort: the reason a listing could not be recorded, into the same store /admin's client-errors section reads. Never throws, never blocks. */
+  function reportListingFailure(reason: string, tokenAddress: Address): void {
+    try {
+      void fetch("/api/client-errors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        keepalive: true,
+        body: JSON.stringify({
+          message: `Token launch listing could not be recorded (${tokenAddress}): ${reason}`,
+          stack: null,
+          routePath: window.location.pathname || "/",
+        }),
+      }).catch(() => undefined);
+    } catch {
+      // Reporting is a courtesy; the retry below is the real recovery.
+    }
+  }
+
+  /**
+   * Resubmits the listing request for the launch already live on-chain —
+   * one wallet signature, no deployment step (mirrors /testnet's "Record
+   * listing", issue #425). The artwork is read again from IndexedDB, since
+   * the first capture was discarded rather than kept in state.
+   */
+  async function retryRecordListing() {
+    if (!pendingRecord || recordRetryBusy) return;
+    setRecordRetryBusy(true);
+    try {
+      const provider = getProvider();
+      if (!provider) throw new Error("Reconnect MetaMask from the builder first.");
+      const walletClient = createWalletClient({ chain: robinhoodTestnet, transport: custom(provider) });
+      const [account] = await walletClient.getAddresses();
+      if (!account) throw new Error("The selected wallet returned no account.");
+      const artworkThumbnail = project ? await captureProjectArtworkThumbnail(project) : null;
+      await recordTokenLaunch(walletClient, account, pendingRecord, artworkThumbnail);
+      setPendingRecord(null);
+      setResult((previous) => (previous ? { ...previous, recordWarning: undefined } : previous));
+      setStatus("Listing recorded — your token is on the homepage now.");
+    } catch (error) {
+      const reason = readError(error);
+      reportListingFailure(reason, pendingRecord.tokenAddress);
+      setResult((previous) => (previous ? { ...previous, recordWarning: reason } : previous));
+    } finally {
+      setRecordRetryBusy(false);
+    }
   }
 
   async function deploy() {
@@ -460,6 +528,7 @@ export function RobinhoodTestnetDeploymentController() {
     setBusy(true);
     setResult(null);
     setMismatch(null);
+    setPendingRecord(null);
     try {
       const currentChainId = normaliseChainId(
         await provider.request({ method: "eth_chainId" }),
@@ -630,9 +699,25 @@ export function RobinhoodTestnetDeploymentController() {
             </>
           )}
           {result.recordWarning && (
-            <p className={styles.recordWarning}>
-              Launched on-chain, but the homepage listing could not be recorded yet: {result.recordWarning}
-            </p>
+            <div className={styles.recordWarningBox}>
+              <p className={styles.recordWarning}>
+                Launched on-chain, but the homepage listing could not be recorded yet: {result.recordWarning}
+              </p>
+              <p className={styles.recordWarning}>
+                Your token is live. Record the listing now — one signature, no new deployment.
+              </p>
+              <button
+                type="button"
+                className={styles.recordRetryButton}
+                onClick={retryRecordListing}
+                disabled={!pendingRecord || recordRetryBusy}
+              >
+                {recordRetryBusy ? "CHECK YOUR WALLET…" : "RECORD LISTING"}
+              </button>
+              <a href="/testnet" target="_blank" rel="noreferrer">
+                Or record it later from the test lab ↗
+              </a>
+            </div>
           )}
         </div>
       ) : (

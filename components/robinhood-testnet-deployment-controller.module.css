@@ -203,6 +203,38 @@
   overflow-wrap: anywhere;
 }
 
+/* A failed listing is loud and recoverable (owner report, 7 Sep 2026): the
+   reason, a one-signature retry, and the test lab as the fallback. */
+.recordWarningBox {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 10px;
+  border: 1px solid rgba(241, 207, 85, 0.35);
+  border-radius: 7px;
+  background: rgba(241, 207, 85, 0.06);
+}
+
+.recordRetryButton {
+  width: 100%;
+  min-height: 40px;
+  color: #061008;
+  border: 0;
+  border-radius: 7px;
+  background: #f1cf55;
+  font: 800 10px "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+}
+
+.recordRetryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+@media (pointer: coarse) {
+  .recordRetryButton { min-height: 44px; }
+}
+
 .panel footer {
   color: #68736a;
   font: 8px/1.5 "IBM Plex Mono", monospace;

@@ -3604,3 +3604,63 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   hovered row is filled. Validated on the final commit: `npm run test:app` —
   339 test files / 3960 tests passing; `npm run lint` — 0 errors (11
   pre-existing warnings); `npm run build` — succeeds.
+
+- A studio launch that fails to record is loud and recoverable, and its
+  artwork is finally captured (owner report, 7 Sep 2026: "I just launched a
+  token, nothing came up on the main page … I refreshed and still nothing,
+  along with the uploaded image on the panel"). Production could not be
+  queried from this session (the egress proxy denies hoodlums.dev), so the
+  exact reason that one listing failed is not established here — it is
+  whatever the modal printed after "could not be recorded yet:", which the
+  owner is asked for. What IS established from the code: a recorded launch
+  always renders (`enrichLaunchesWithProgress` nulls a failed curve read
+  rather than dropping the row), so the token was never recorded; the
+  `POST /api/token-launches` request had one attempt, and its failure was a
+  one-line warning in `components/robinhood-testnet-deployment-controller.tsx`
+  with no retry — a token live on-chain, simply lost to the grid. And the
+  artwork bug is definite: the modal reads `readProjectIndex()`, whose
+  entries have carried no `heroImage` since issue #307 moved it into
+  IndexedDB, so `captureTokenArtworkThumbnail(currentProject.heroImage)` has
+  been capturing `""` on every launch since #438 — every card falls back to
+  its letter initial. Fix: a new `captureProjectArtworkThumbnail` loads the
+  hero image via `getProjectBlob(project.id)` at capture time, downscales it
+  and discards it (the PR #118 memory rule still holds — nothing enters React
+  state); the same fix Hoodlums Social needed for the same reason on 6 Sep.
+  Recording now mirrors `/testnet`'s issue #425 pattern: the request is kept
+  as `pendingRecord` before the attempt and cleared only once the server has
+  recorded it, so the result panel's new **RECORD LISTING** button resubmits
+  it with one wallet signature and no on-chain step (re-reading the artwork
+  from IndexedDB, since the first capture was discarded); the panel also
+  links to `/testnet`'s "Record an existing launch" as the fallback, and a
+  fresh deploy clears any earlier pending request. Every failure — the first
+  attempt and a failed retry — is reported best-effort to
+  `POST /api/client-errors` (`Token launch listing could not be recorded
+  (0x…): reason`), so the next time this happens the reason is in `/admin`'s
+  existing client-errors section instead of dying with the modal.
+  **Rule 10:** no new route, page or integration — the report lands in the
+  client-errors store `/admin` already shows. **Tests changed, not only
+  added (rule 8, stated plainly):** `tests/token-launch-artwork-capture.test.ts`'s
+  two pins on `captureTokenArtworkThumbnail(currentProject.heroImage)` pinned
+  the defect itself and now pin the IndexedDB load and the new call. New
+  `tests/studio-launch-record-retry.test.ts` (4 tests) pins the pending
+  request's lifecycle, the retry (one signature, no `deployContract`/
+  `writeContract`, artwork re-read, never in state), the error report and
+  the panel/CSS. Not verified in a browser: the post-deploy panel only
+  renders after a real three-signature launch against the chain, which this
+  session cannot drive — the owner sees it on the next launch. **Named
+  follow-up, not built:** every wallet-signed action here (token launches,
+  Hoodchat, Social, Support) holds its challenge in a `globalThis` Map
+  (`lib/server/chat-auth.ts`) — per serverless instance memory, while the
+  challenge and the action are two different routes; the durable
+  `wallet_nonces` table exists for publishing precisely to avoid this. If the
+  owner's reported reason turns out to be "Wallet authorisation failed" or
+  "challenge expired", that is the cause and the fix is a durable challenge
+  table; it is not built here because the cause is unproven. **Recovery for
+  the token already launched:** `/testnet` → connect the same wallet →
+  "Record an existing launch" → paste the token address → sign; it reads the
+  pipeline's own on-chain record, so it works for studio launches. That path
+  sends no artwork, so already-recorded launches keep their letter initial
+  — artwork applies to launches recorded from the studio from here on.
+  Validated on the final commit: `npm run test:app` — 340 test files / 3964
+  tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
+  `npm run build` — succeeds.

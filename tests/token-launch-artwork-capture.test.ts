@@ -14,7 +14,12 @@ describe("studio launch artwork thumbnail capture (issue #438)", () => {
     expect(controller).toContain(
       'import { captureTokenArtworkThumbnail } from "@/lib/token-artwork-thumbnail";',
     );
-    expect(controller).toContain("captureTokenArtworkThumbnail(currentProject.heroImage)");
+    // The index entry this modal reads has carried no heroImage since issue
+    // #307 moved it into IndexedDB, so it is loaded from there at capture
+    // time (owner report, 7 Sep 2026: no launch ever showed its artwork).
+    expect(controller).toContain('import { getProjectBlob } from "@/lib/token-project-db";');
+    expect(controller).toContain("(await getProjectBlob(currentProject.id).catch(() => null))?.heroImage");
+    expect(controller).toContain("return captureTokenArtworkThumbnail(heroImage).catch(() => null);");
     // Never threaded into a useState setter alongside the deployment's own
     // React state (CLAUDE.md's PR #118 iPhone Safari memory rule).
     expect(controller).not.toMatch(/setArtwork\w*\(/);
@@ -35,7 +40,7 @@ describe("studio launch artwork thumbnail capture (issue #438)", () => {
 
   it("passes the captured artwork through to recordTokenLaunch when funding the curve", async () => {
     const controller = await source("components/robinhood-testnet-deployment-controller.tsx");
-    expect(controller).toContain("const artworkThumbnail = await captureTokenArtworkThumbnail(currentProject.heroImage).catch(() => null);");
-    expect(controller).toContain("artworkThumbnail,\n      );");
+    expect(controller).toContain("const artworkThumbnail = await captureProjectArtworkThumbnail(currentProject);");
+    expect(controller).toContain("await recordTokenLaunch(walletClient, account, pending, artworkThumbnail);");
   });
 });
