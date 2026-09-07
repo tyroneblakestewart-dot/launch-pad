@@ -3837,3 +3837,27 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Validated on the final commit: `npm run test:app` — 340 test files / 3967
   tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
   `npm run build` — succeeds.
+
+- X outreach bot: first-touch drafting raised to a 75% graduation-progress
+  floor (owner request, 7 Sep 2026: "pull from graduating tokens twitter
+  handles to give to my twitter bot ... preferably 75% graduating"). The
+  dormant outreach cron (issue #298, still gated off entirely by
+  `OUTREACH_QUEUE_ENABLED` in production) previously drafted a first-touch
+  congratulations tweet — pulling the token's own opt-in `creatorXHandle`
+  from the "GRADUATING NOW" pump.fun feed — for any token the feed showed at
+  all, i.e. anywhere in that feed's own 60-99% window
+  (`lib/server/pumpfun-graduating.ts`'s `MIN_PROGRESS_PERCENT`). A new
+  `OUTREACH_FIRST_TOUCH_PROGRESS_THRESHOLD = 75` in
+  `lib/server/outreach-cron.ts` filters the feed to 75%+ before drafting any
+  first-touch item, so outreach only starts once a token is a stronger bet
+  to actually graduate, rather than the moment it enters the feed at all.
+  This is deliberately scoped to the outreach cron alone — the public
+  "GRADUATING NOW" homepage row and its underlying 60-99% feed window are
+  unchanged, since they're a different consumer of the same feed. The 95%
+  follow-up threshold (`OUTREACH_FOLLOWUP_PROGRESS_THRESHOLD`) is untouched.
+  No existing test assertion was changed — every existing fixture token
+  already used a progress percent above 75, so nothing needed correcting;
+  new coverage in `tests/outreach-cron.test.ts` pins the exact boundary
+  (60/74 excluded, 75/91 included). Validated on the final commit: `npm run
+  test:app` — 340 test files / 3968 tests passing; `npm run lint` — 0 errors
+  (11 pre-existing warnings); `npm run build` — succeeds.
