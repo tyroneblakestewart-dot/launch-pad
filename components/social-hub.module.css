@@ -1328,6 +1328,8 @@
   align-items: start;
 }
 
+/* The mascot card is upload-only (7 Sep 2026): one panel, no second column. */
+.mascotSingle { max-width: 560px; }
 .mascotOptions { display: flex; flex-direction: column; gap: 16px; }
 .mascotOptions > div { display: flex; flex-direction: column; gap: 9px; }
 .mascotOptions p { font-size: 12.5px; }
