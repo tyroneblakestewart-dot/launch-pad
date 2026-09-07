@@ -19,8 +19,6 @@ import {
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import {
   describeMascotImageAllowance,
-  describeMascotImageAllowanceDetail,
-  isMascotImageAllowanceUsed,
   type MascotImageUsage,
 } from "@/lib/mascot-image-allowance";
 import {
@@ -348,8 +346,6 @@ const BOTS = [
   },
 ] as const;
 
-const MASCOT_ACTIONS = ["trading", "celebrating", "chilling", "building", "gym", "gaming", "cooking"];
-const MASCOT_PLACES = ["city streets", "beach", "space", "office", "casino", "nature"];
 const BUY_ALERT_THRESHOLDS = ["0.01 ETH", "0.05 ETH", "0.1 ETH"] as const;
 const CALENDAR_DAY_NAMES = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const MONTH_NAMES = [
@@ -589,12 +585,6 @@ export function SocialHub() {
   const [mascotVisualDNA, setMascotVisualDNA] = useState<MascotVisualDNA | null>(null);
   const [mascotReferenceImage, setMascotReferenceImage] = useState<string | null>(null);
   const [mascotBusy, setMascotBusy] = useState(false);
-  const [selectedMascotAction, setSelectedMascotAction] = useState("");
-  const [selectedMascotPlace, setSelectedMascotPlace] = useState("");
-  const [customActionEntry, setCustomActionEntry] = useState<string | null>(null);
-  const [customPlaceEntry, setCustomPlaceEntry] = useState<string | null>(null);
-  const [generatedMascotImage, setGeneratedMascotImage] = useState<string | null>(null);
-  const [mascotImageBusy, setMascotImageBusy] = useState(false);
   const [telegramMessage, setTelegramMessage] = useState("");
   const [attachedArtwork, setAttachedArtwork] = useState<string | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -633,7 +623,6 @@ export function SocialHub() {
   const postImageSkipResolversRef = useRef<Map<string, () => void>>(new Map());
   // Best-results read-out for the last uploaded reference — advice only, the upload proceeds regardless.
   const [mascotReferenceAssessment, setMascotReferenceAssessment] = useState<MascotReferenceAssessment | null>(null);
-  const [mascotSceneStatus, setMascotSceneStatus] = useState<PanelStatus>(null);
   const [setupDraftStatus, setSetupDraftStatus] = useState<PanelStatus>(null);
   const [telegramStatus, setTelegramStatus] = useState<PanelStatus>(null);
 
@@ -1293,15 +1282,9 @@ export function SocialHub() {
     setMessage(drafts[id] || buildTemplate(project, "launch"));
     setTelegramMessage("");
     setAttachedArtwork(null);
-    setGeneratedMascotImage(null);
-    setSelectedMascotAction("");
-    setSelectedMascotPlace("");
-    setCustomActionEntry(null);
-    setCustomPlaceEntry(null);
     setProjectMenuOpen(false);
     setVoiceStatus(null);
     setMascotUploadStatus(null);
-    setMascotSceneStatus(null);
     setSetupDraftStatus(null);
     setPostsStatus(null);
     setReplenishStatus(null);
@@ -2734,23 +2717,6 @@ export function SocialHub() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, selectedProjectId, walletAddress, loadedRecordProjectId]);
 
-  function toggleMascotAction(label: string) {
-    setCustomActionEntry(null);
-    setSelectedMascotAction((current) => (current === label ? "" : label));
-  }
-
-  function toggleMascotPlace(label: string) {
-    setCustomPlaceEntry(null);
-    setSelectedMascotPlace((current) => (current === label ? "" : label));
-  }
-
-  function composeSceneInput(): string {
-    const action = (customActionEntry ?? selectedMascotAction).trim();
-    const place = (customPlaceEntry ?? selectedMascotPlace).trim();
-    if (action && place) return `${action} at ${place}`;
-    return action || place;
-  }
-
   async function handleMascotFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -2790,8 +2756,8 @@ export function SocialHub() {
         tone: "success",
         message:
           assessment.verdict === "great"
-            ? "Mascot identity locked in. Choose a scene to generate artwork."
-            : `Mascot identity locked in — ${assessment.summary} Choose a scene to generate artwork.`,
+            ? "Mascot identity locked in. Your post images will feature them."
+            : `Mascot identity locked in — ${assessment.summary} Your post images will feature them.`,
       });
     } catch (error) {
       setMascotUploadStatus({ tone: "error", message: error instanceof Error ? error.message : "The mascot artwork could not be analysed." });
@@ -2800,83 +2766,6 @@ export function SocialHub() {
     }
   }
 
-  async function generateMascotScene() {
-    const project = draftProjectPayload();
-    const sceneInput = composeSceneInput();
-    if (!project) {
-      setMascotSceneStatus({ tone: "error", message: "Add your token details before generating a mascot scene." });
-      promptForTokenDetails("Add your token details before generating a mascot scene.");
-      return;
-    }
-    if (!mascotVisualDNA) {
-      setMascotSceneStatus({ tone: "error", message: "Upload mascot artwork first so its visual identity can be locked in." });
-      return;
-    }
-    if (!sceneInput) {
-      setMascotSceneStatus({ tone: "error", message: "Choose or describe a scene for the mascot." });
-      return;
-    }
-
-    setMascotImageBusy(true);
-    setMascotSceneStatus({ tone: "progress", message: "Generating mascot scene artwork…" });
-    try {
-      const response = await fetch("/api/social/mascot/image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress, projectId: selectedProject?.id, displayName: selectedProject?.name, project, mascotVisualDNA, sceneInput }),
-      });
-      const payload = (await response.json()) as { imageDataUrl?: string; error?: string; usage?: MascotImageUsage };
-      if (payload.usage) setMascotImageUsage(payload.usage);
-      if (!response.ok || !payload.imageDataUrl) {
-        throw new Error(payload.error || "The mascot scene image could not be generated.");
-      }
-      void loadSlotUsage();
-      setGeneratedMascotImage(payload.imageDataUrl);
-      setMascotSceneStatus({ tone: "success", message: "Mascot artwork ready — attach it to Telegram, download it, or add it to the Queue." });
-    } catch (error) {
-      setMascotSceneStatus({ tone: "error", message: error instanceof Error ? error.message : "The mascot scene image could not be generated." });
-    } finally {
-      setMascotImageBusy(false);
-    }
-  }
-
-  function attachGeneratedArtwork() {
-    if (!generatedMascotImage) return;
-    setAttachedArtwork(generatedMascotImage);
-    setIncludeArtwork(true);
-    setMascotSceneStatus({ tone: "success", message: "Mascot artwork attached — it will be included the next time you post to Telegram." });
-  }
-
-  function downloadGeneratedArtwork() {
-    if (!generatedMascotImage || !selectedProject) {
-      setMascotSceneStatus({ tone: "error", message: "Generate mascot artwork before downloading it." });
-      return;
-    }
-    const anchor = document.createElement("a");
-    anchor.href = generatedMascotImage;
-    anchor.download = `${selectedProject.websiteSlug || selectedProject.ticker || "token"}-mascot-scene.png`;
-    anchor.click();
-    setMascotSceneStatus({ tone: "success", message: "Mascot artwork downloaded. Attach it manually inside the X composer." });
-  }
-
-  function addGeneratedArtworkToQueue() {
-    if (!generatedMascotImage) return;
-    const item: QueueItem = {
-      id: newQueueItemId(),
-      xText: message,
-      telegramText: telegramMessage || message,
-      artwork: generatedMascotImage,
-      source: "setup-ai",
-      dayLabel: null,
-      createdAt: new Date().toISOString(),
-    };
-    setQueue((current) => {
-      const next = [item, ...current];
-      persistSocialStudio({ queue: next });
-      return next;
-    });
-    setMascotSceneStatus({ tone: "success", message: "Added to the Queue with its artwork." });
-  }
 
   /** Clears a stale approval or quick-send confirmation (issue #380, extended #382) — any edit to what will be sent must be re-reviewed before it can be approved or quick-sent. */
   function clearApprovalConfirmation(id: string) {
@@ -4030,98 +3919,14 @@ export function SocialHub() {
                     <div className={styles.sectionHeading}>
                       <div>
                         <h2>Your mascot</h2>
-                        <p>Upload your character once. Every image we make features them — and only them.</p>
+                        <p>
+                          {mascotVisualDNA
+                            ? "Locked in. Every image made for an approved post features this character — and only them."
+                            : "Upload once. Every image made for an approved post will feature this character — and only them. Nothing is generated here."}
+                        </p>
                       </div>
                     </div>
-                    <div className={styles.mascotGrid}>
-                      <div className={styles.mascotOptions}>
-                        <div>
-                          <span className={styles.eyebrow}>WHAT SHOULD YOUR MASCOT BE DOING?</span>
-                          <div className={styles.chips}>
-                            {MASCOT_ACTIONS.map((label) => (
-                              <button
-                                type="button"
-                                key={label}
-                                className={selectedMascotAction === label ? styles.chipSelected : undefined}
-                                onClick={() => toggleMascotAction(label)}
-                              >
-                                {label}
-                              </button>
-                            ))}
-                            {customActionEntry === null ? (
-                              <button type="button" className={styles.dashedChip} onClick={() => setCustomActionEntry("")}>
-                                add your own…
-                              </button>
-                            ) : (
-                              <input
-                                autoFocus
-                                value={customActionEntry}
-                                onChange={(event) => setCustomActionEntry(event.target.value)}
-                                onBlur={() => { if (!customActionEntry.trim()) setCustomActionEntry(null); }}
-                                placeholder="e.g. skateboarding"
-                                className={styles.chipInput}
-                              />
-                            )}
-                          </div>
-                        </div>
-                        <div>
-                          <span className={styles.eyebrow}>WHERE SHOULD YOUR MASCOT SHOW UP?</span>
-                          <div className={styles.chips}>
-                            {MASCOT_PLACES.map((label) => (
-                              <button
-                                type="button"
-                                key={label}
-                                className={selectedMascotPlace === label ? styles.chipSelected : undefined}
-                                onClick={() => toggleMascotPlace(label)}
-                              >
-                                {label}
-                              </button>
-                            ))}
-                            {customPlaceEntry === null ? (
-                              <button type="button" className={styles.dashedChip} onClick={() => setCustomPlaceEntry("")}>
-                                add your own…
-                              </button>
-                            ) : (
-                              <input
-                                autoFocus
-                                value={customPlaceEntry}
-                                onChange={(event) => setCustomPlaceEntry(event.target.value)}
-                                onBlur={() => { if (!customPlaceEntry.trim()) setCustomPlaceEntry(null); }}
-                                placeholder="e.g. rooftop"
-                                className={styles.chipInput}
-                              />
-                            )}
-                          </div>
-                        </div>
-                        <p>Your mascot is always the only character in generated images.</p>
-                        <button
-                          type="button"
-                          className={styles.aiMakeButton}
-                          onClick={generateMascotScene}
-                          disabled={mascotImageBusy || !mascotVisualDNA || !composeSceneInput() || isMascotImageAllowanceUsed(mascotImageUsage)}
-                        >
-                          <b>
-                            {mascotImageBusy
-                              ? "Generating…"
-                              : isMascotImageAllowanceUsed(mascotImageUsage)
-                                ? "Daily image allowance used"
-                                : "Generate mascot image"}
-                          </b>
-                          <span>{describeMascotImageAllowanceDetail(mascotImageUsage)}</span>
-                        </button>
-                        {generatedMascotImage ? (
-                          <div className={styles.insetPanel}>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img className={styles.summaryImage} src={generatedMascotImage} alt="Generated mascot scene" />
-                            <div className={styles.composerActions}>
-                              <button type="button" onClick={attachGeneratedArtwork}>Attach to Telegram</button>
-                              <button type="button" onClick={downloadGeneratedArtwork}>Download image</button>
-                              <button type="button" onClick={addGeneratedArtworkToQueue}>Add to Queue</button>
-                            </div>
-                          </div>
-                        ) : null}
-                        <InlineStatus status={mascotSceneStatus} />
-                      </div>
+                    <div className={styles.mascotSingle}>
                       <div className={styles.mascotDrop}>
                         {mascotReferenceImage ? (
                           // eslint-disable-next-line @next/next/no-img-element

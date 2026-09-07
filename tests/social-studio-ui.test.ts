@@ -71,10 +71,11 @@ describe("Hoodlums AI Social Studio", () => {
 
     expect(social).toContain("Your mascot");
     expect(social).toContain('fetch("/api/social/mascot/visual-dna"');
-    expect(social).toContain('fetch("/api/social/mascot/image"');
-    expect(social).toContain("toggleMascotAction");
-    expect(social).toContain("toggleMascotPlace");
-    expect(social).not.toContain("{MASCOT_ACTIONS.map((label) => <button type=\"button\" disabled key={label}>{label}</button>)}");
+    // The mascot scene maker is gone (owner decision, 7 Sep 2026): the mascot is uploaded once and only ever appears on approved-post images.
+    expect(social).toContain("`/api/social/mascot/image?walletAddress=");
+    expect(social).not.toContain("toggleMascotAction");
+    expect(social).not.toContain("MASCOT_ACTIONS");
+    expect(social).not.toContain("Generate mascot image");
 
     expect(social).toContain("MONTH_NAMES[calendarView.month]");
     expect(social).not.toContain("AI makes it");
@@ -167,7 +168,6 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain("styles.inlineStatusProgress");
     expect(social).toContain("const [voiceStatus, setVoiceStatus] = useState<PanelStatus>(null);");
     expect(social).toContain("const [mascotUploadStatus, setMascotUploadStatus] = useState<PanelStatus>(null);");
-    expect(social).toContain("const [mascotSceneStatus, setMascotSceneStatus] = useState<PanelStatus>(null);");
     expect(social).toContain("const [setupDraftStatus, setSetupDraftStatus] = useState<PanelStatus>(null);");
     expect(social).toContain("const [announcementStatus, setAnnouncementStatus] = useState<PanelStatus>(null);");
 
@@ -177,7 +177,6 @@ describe("Hoodlums AI Social Studio", () => {
       'setMascotUploadStatus({ tone: "error", message: error instanceof Error ? error.message : "The mascot artwork could not be analysed." });',
     );
     expect(social).toContain(
-      'setMascotSceneStatus({ tone: "error", message: error instanceof Error ? error.message : "The mascot scene image could not be generated." });',
     );
     expect(social).toContain('report({ tone: "error", message: error instanceof Error ? error.message : "The draft could not be generated." });');
     expect(social).toContain("await generateDraft({}, setSetupDraftStatus);");
@@ -186,7 +185,6 @@ describe("Hoodlums AI Social Studio", () => {
     // Each status renders next to the control that triggered it, not only inside the statusBar.
     expect(social).toContain("<InlineStatus status={voiceStatus} />");
     expect(social).toContain("<InlineStatus status={mascotUploadStatus} />");
-    expect(social).toContain("<InlineStatus status={mascotSceneStatus} />");
     expect(social).toContain("<InlineStatus status={setupDraftStatus} />");
     expect(social).toContain("<InlineStatus status={announcementStatus} />");
 
@@ -196,10 +194,6 @@ describe("Hoodlums AI Social Studio", () => {
     expect(voiceInlineStatusIndex).toBeGreaterThan(learnVoiceButtonIndex);
     expect(voiceInlineStatusIndex - learnVoiceButtonIndex).toBeLessThan(600);
 
-    const generateMascotButtonIndex = social.indexOf("Generate mascot image");
-    const mascotSceneInlineStatusIndex = social.indexOf("<InlineStatus status={mascotSceneStatus} />");
-    expect(mascotSceneInlineStatusIndex).toBeGreaterThan(generateMascotButtonIndex);
-    expect(mascotSceneInlineStatusIndex - generateMascotButtonIndex).toBeLessThan(1200);
   });
 
   it("shows an honest, diagnosable Telegram configuration state and reconciles Setup with the real wallet-signed connect flow (issue #340)", async () => {
@@ -380,7 +374,6 @@ describe("AI Social Studio project-slot usage and release (issue #407)", () => {
     expect(social).toContain('fetch("/api/social/voice-profile"');
     expect(social).toContain('fetch("/api/social/draft"');
     expect(social).toContain('fetch("/api/social/mascot/visual-dna"');
-    expect(social).toContain('fetch("/api/social/mascot/image"');
     expect(social).toContain('fetch("/api/social/posts"');
   });
 

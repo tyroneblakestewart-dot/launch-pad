@@ -3296,3 +3296,35 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   integration). Validated on the final commit: `npm run test:app` — 336
   test files / 3900 tests passing; `npm run lint` — 0 errors (11 warnings,
   none in files this PR touches); `npm run build` — succeeds.
+
+- Mascot scene maker removed; the mascot card is upload-only (owner
+  decision, 7 Sep 2026: the on-demand "what should your mascot be doing /
+  where should it show up" scenes drew from the same two-images-a-day
+  allowance as the images made on approved posts, and had no place in the
+  flow once those existed). `components/social-hub.tsx` drops the action
+  and place chips, the custom entries, "Generate mascot image", the
+  generated-scene panel (attach / download / add to Queue) and their state
+  and handlers; the card keeps the upload (visual DNA lock, reference tips,
+  quality notes, Replace image) and one line saying every image made for
+  an approved post features this character and only them, with nothing
+  generated from the card. The locked visual DNA still drives approved-post
+  images exactly as before (`lib/server/post-image-prompt.ts`), and the
+  daily allowance is now spent only there; the allowance read
+  (`GET /api/social/mascot/image`) and the rail pill are unchanged. The
+  `POST /api/social/mascot/image` route and its tests are left in place
+  (server-side, still protected, no longer called by the UI) rather than
+  widening this PR — removing it is a named follow-up. **Tests changed,
+  not only added (rule 8, stated plainly):** the #332 pins on
+  `toggleMascotAction`/`toggleMascotPlace`, the `fetch("/api/social/mascot/image"`
+  POST, `mascotSceneStatus` and the Generate-button placement in
+  `social-studio-ui`; the #500 allowance pin in `social-studio-design-pass`
+  (now pins the approved-post pick as the allowance's only consumer); and
+  `social-external-token`'s prompt count (11 → 10). Rule 10 needs nothing
+  (no route added; the `image-allowance` health stage's rule still names
+  approved-post images). Checked in headless Chromium at 1400px and 390px:
+  no chips or Generate button on the card, the upload button present — not
+  on a physical iPhone. The card is single-column (`.mascotSingle`, max
+  560px) now that nothing sits beside the upload panel. Validated on the
+  final commit: `npm run test:app` — 336 test files / 3900 tests passing;
+  `npm run lint` — 0 errors (11 warnings, none in files this PR touches);
+  `npm run build` — succeeds.

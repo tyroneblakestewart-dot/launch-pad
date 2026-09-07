@@ -154,8 +154,9 @@ describe("Social Studio: add an existing token", () => {
     const prompts = hub.match(/promptForTokenDetails\("Add your token details before /g) ?? [];
     // saveDraft, postTelegram, buildVoiceProfile, generateDraft, enableBuyBot, approveQueueItem, mascot upload, mascot scene, queue → Telegram
     // …plus the Buy Bot card's own button, which stays tappable with no project so it can ask instead of sitting disabled,
-    // and the Calendar's "I'll post my own" composer (7 Sep 2026), whose draft has no project to be saved under.
-    expect(prompts.length).toBe(11);
+    // and the Calendar's announcement composer (7 Sep 2026), whose draft has no project to be saved under.
+    // The mascot scene maker's own prompt went with the scene maker (7 Sep 2026).
+    expect(prompts.length).toBe(10);
     expect(hub).toContain("disabled={(Boolean(buyBotUnavailableReason) && Boolean(selectedProject)) || telegramConfigured === false}");
     expect(hub).not.toContain('"Choose a project before');
     const draft = hub.slice(hub.indexOf("async function generateDraft("), hub.indexOf("async function generateDraftFromSetup()"));
