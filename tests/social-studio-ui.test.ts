@@ -106,7 +106,9 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain('aria-label="Next month"');
     expect(social).toContain("isToday && styles.calendarToday");
     expect(social).toContain("isSelected ? styles.weekSelected : isToday ? styles.weekToday : styles.weekDay");
-    expect(social).toContain("TIMEZONES.map((timezone)");
+    // The three-option timezone select nothing read is a detected-zone label since the Calendar wiring (7 Sep 2026).
+    expect(social).toContain("<b>{detectedTimezone}</b>");
+    expect(social).not.toContain("TIMEZONES");
   });
 
   it("fits under the existing 72px mobile header and above the fixed bottom nav", async () => {
