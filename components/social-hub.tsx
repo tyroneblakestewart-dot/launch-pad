@@ -53,6 +53,7 @@ import {
   DEFAULT_WORDS_TO_AVOID,
   addWordToAvoid,
   type ToneDials,
+  WORDS_TO_AVOID_SEED_VERSION,
 } from "@/lib/social-tone-rules";
 import {
   advanceRollingRecentDrafts,
@@ -757,6 +758,8 @@ export function SocialHub() {
   // project alongside the Direction brief and ride into every AI draft.
   const [wordsToAvoid, setWordsToAvoid] = useState<string[]>([...DEFAULT_WORDS_TO_AVOID]);
   const [toneDials, setToneDials] = useState<ToneDials>({ ...DEFAULT_TONE_DIALS });
+  /** Carried from the loaded record so a save never drops the seed version (which is what stops removed subject words coming back). */
+  const [wordsToAvoidSeed, setWordsToAvoidSeed] = useState(WORDS_TO_AVOID_SEED_VERSION);
   const [wordToAvoidDraft, setWordToAvoidDraft] = useState("");
   const [wordsToAvoidStatus, setWordsToAvoidStatus] = useState<PanelStatus>(null);
 
@@ -1041,6 +1044,7 @@ export function SocialHub() {
       setDirectionBrief(record.directionBrief);
       setPostingCadence(record.postingCadence);
       setWordsToAvoid(record.wordsToAvoid);
+      setWordsToAvoidSeed(record.wordsToAvoidSeed);
       setToneDials(record.toneDials);
       setQuietHours(record.quietHours);
       setAnnouncementText("");
@@ -1073,6 +1077,7 @@ export function SocialHub() {
       directionBrief,
       sampleLineFeedback,
       wordsToAvoid,
+      wordsToAvoidSeed,
       toneDials,
       quietHours,
       sortedVoiceSourceKeys,
@@ -4882,7 +4887,7 @@ export function SocialHub() {
                       <div className={styles.sectionHeading}>
                         <div>
                           <h2>Words to avoid</h2>
-                          <p>The AI will never use these in a draft — and a draft that slips one in is thrown out and redone.</p>
+                          <p>The AI will never use these, or go near the subjects they name — a draft that slips one in is thrown out and redone.</p>
                         </div>
                       </div>
                       <div className={styles.bannedPanel}>

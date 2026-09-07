@@ -1,4 +1,4 @@
-import { DEFAULT_TONE_DIALS, DEFAULT_WORDS_TO_AVOID, type ToneDials } from "./social-tone-rules";
+import { DEFAULT_TONE_DIALS, DEFAULT_WORDS_TO_AVOID, WORDS_TO_AVOID_SEED_VERSION, type ToneDials } from "./social-tone-rules";
 import { DEFAULT_QUIET_HOURS, type QuietHours } from "./social-quiet-hours";
 // Client-safe types shared between components/social-hub.tsx and the new
 // AI Social Studio server routes. Kept separate from lib/server/* so the
@@ -124,6 +124,8 @@ export type SocialStudioProjectRecord = {
   sortedVoiceSourceKeys: string[];
   /** Settings & Rules "Words to avoid" (owner direction, 6 Sep 2026) — every AI draft is forbidden these and mechanically rejected if one slips through. */
   wordsToAvoid: string[];
+  /** Which default-word seed this record has received (7 Sep 2026): a record below WORDS_TO_AVOID_SEED_VERSION gets the subject words added once on read, and never again once saved. */
+  wordsToAvoidSeed: number;
   /** Settings & Rules "How it should sound" dials (owner direction, 6 Sep 2026) — fed into every AI draft as tone instructions. */
   toneDials: ToneDials;
   /** Calendar "Quiet hours" (owner direction, 7 Sep 2026): no post is ever scheduled inside this local-time window; `null` is off. */
@@ -142,6 +144,7 @@ export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
   directionBrief: "",
   sortedVoiceSourceKeys: [],
   wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+  wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
   toneDials: { ...DEFAULT_TONE_DIALS },
   quietHours: { ...DEFAULT_QUIET_HOURS },
 };

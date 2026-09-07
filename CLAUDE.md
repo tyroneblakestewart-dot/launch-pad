@@ -3251,3 +3251,48 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   final commit: `npm run test:app` — 336 test files / 3897 tests passing;
   `npm run lint` — 0 errors (11 warnings, none in files this PR touches);
   `npm run build` — succeeds.
+
+- Settings & Rules wiring check, and four subject words the AI steers clear
+  of (owner direction, 7 Sep 2026: "check backend functions; add a few
+  crucial words — racism, homophobia, religion etc — the user can remove
+  them but at least we set the tone; make sure these words and anything
+  around them are avoided; check wiring of all tabs"). **Wiring verified**
+  in headless Chromium at 1400px and 390px (`rules-test.js`, 22 checks):
+  words to avoid (remove, add, cap text), the four dials, the Direction
+  brief (saved on blur, as it already was) and the posting cadence all
+  persist across a reload; Conservative drops the Queue target to 2 and the
+  replenish makes exactly that many; and every `POST /api/social/draft`
+  request carries the edited words, dials and brief — nothing was found
+  unwired. **Subject words** — `lib/social-tone-rules.ts` gains
+  `TOPIC_WORDS_TO_AVOID` (`racism`, `homophobia`, `religion`, `politics`),
+  appended to `DEFAULT_WORDS_TO_AVOID` (now nine). Listing one bans its
+  family: `findAvoidedWords` matches a subject word through
+  `TOPIC_WORD_FAMILIES` (`racism` also catches racist/racial/race-baiting,
+  `homophobia` homophobic/anti-gay, `religion` religious, `politics`
+  political/politician; `sexism` and `transphobia` families are ready for a
+  user who adds them), still boundary-aware ("race", "policy", "relic" never
+  fire) while ordinary words stay exact ("rug" never fires on "rugby");
+  `wordsToAvoidInstruction` adds, for subject words only, "stay away from
+  the subject itself, not just the word: no jokes, comparisons, nods, slang
+  or coded references around it". Both the draft route's compliance check
+  and the voice-sample route's 422 use the same matcher, so a family match
+  triggers the corrective retry and the fail-closed error like any banned
+  word. **Existing projects get them once:** a new
+  `SocialStudioProjectRecord.wordsToAvoidSeed` (`WORDS_TO_AVOID_SEED_VERSION`
+  = 2) is read by `lib/social-studio-db.ts` — a record that saved its own
+  list before this gets the four added on read (`seedWordsToAvoid`,
+  respecting the 30 cap) and the version saved with it, so a user who
+  removes one is never re-seeded; the hub carries the version through
+  `currentSocialStudioRecord`. The Rules tab copy reads "never use these,
+  or go near the subjects they name". The content filter (#392) is
+  untouched and still the floor beneath this. **Tests changed, not only
+  added (rule 8, stated plainly):** `tests/social-tone-rules.test.ts`'s pin
+  on the five default words now pins the nine; `tests/social-rules-wiring.test.ts`'s
+  pin on the prompt ban line now includes the subject words and the new
+  clause; `tests/social-studio-db.test.ts`'s fixture and four legacy
+  expectations gained `wordsToAvoidSeed`, plus a seed-once migration case.
+  New coverage: the families, the boundary non-matches, the prompt clause,
+  and the seed maths. Rule 10 needs nothing (no route, page or
+  integration). Validated on the final commit: `npm run test:app` — 336
+  test files / 3900 tests passing; `npm run lint` — 0 errors (11 warnings,
+  none in files this PR touches); `npm run build` — succeeds.

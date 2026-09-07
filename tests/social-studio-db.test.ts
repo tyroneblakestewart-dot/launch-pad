@@ -1,4 +1,4 @@
-import { DEFAULT_TONE_DIALS, DEFAULT_WORDS_TO_AVOID } from "@/lib/social-tone-rules";
+import { DEFAULT_TONE_DIALS, DEFAULT_WORDS_TO_AVOID, WORDS_TO_AVOID_SEED_VERSION } from "@/lib/social-tone-rules";
 import { DEFAULT_QUIET_HOURS } from "@/lib/social-quiet-hours";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteSocialStudioRecord, getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
@@ -57,6 +57,7 @@ const RECORD: SocialStudioProjectRecord = {
   directionBrief: "Push the community angle, big announcement coming Friday",
   sortedVoiceSourceKeys: [],
   wordsToAvoid: ["rug", "guaranteed"],
+  wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
   toneDials: { humour: "dry", emoji: "none", hashtags: "never", postLength: "short" },
   quietHours: { start: "22:00", end: "08:00" },
 };
@@ -110,6 +111,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         directionBrief: "",
         sortedVoiceSourceKeys: [],
         wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+        wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
         toneDials: DEFAULT_TONE_DIALS,
         quietHours: DEFAULT_QUIET_HOURS,
       });
@@ -133,6 +135,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         directionBrief: "",
         sortedVoiceSourceKeys: [],
         wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+        wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
         toneDials: DEFAULT_TONE_DIALS,
         quietHours: DEFAULT_QUIET_HOURS,
       });
@@ -156,6 +159,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         directionBrief: "",
         sortedVoiceSourceKeys: [],
         wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+        wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
         toneDials: DEFAULT_TONE_DIALS,
         quietHours: DEFAULT_QUIET_HOURS,
       });
@@ -204,6 +208,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
       await expect(getSocialStudioRecord("legacy-project-rules")).resolves.toEqual({
         ...RECORD,
         wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+        wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
         toneDials: DEFAULT_TONE_DIALS,
       });
 
@@ -216,6 +221,20 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         wordsToAvoid: ["ok", "spaced out"],
         toneDials: { ...DEFAULT_TONE_DIALS, emoji: "plenty" },
       });
+    });
+
+    it("adds the four subject words once to a record that saved its own list before they existed, and not again after the user removes one (7 Sep 2026)", async () => {
+      const legacy = { ...RECORD, wordsToAvoid: ["rug", "guaranteed"] } as Record<string, unknown>;
+      delete legacy.wordsToAvoidSeed;
+      await putSocialStudioRecord("legacy-topics", legacy as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("legacy-topics")).resolves.toMatchObject({
+        wordsToAvoid: ["rug", "guaranteed", "racism", "homophobia", "religion", "politics"],
+        wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
+      });
+
+      // Saved with the version after removing "religion": it stays removed.
+      await putSocialStudioRecord("seeded-removed", { ...RECORD, wordsToAvoid: ["rug", "racism", "homophobia", "politics"], wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION });
+      await expect(getSocialStudioRecord("seeded-removed")).resolves.toMatchObject({ wordsToAvoid: ["rug", "racism", "homophobia", "politics"] });
     });
 
     it("fills in the design's 23:00 → 07:00 quiet hours when a pre-Calendar-wiring record has no such key, keeps an explicit off, and repairs a corrupt window (7 Sep 2026)", async () => {
