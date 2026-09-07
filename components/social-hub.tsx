@@ -76,6 +76,13 @@ import {
   ensureFutureScheduledAt,
 } from "@/lib/social-studio-queue";
 import {
+  buildCalendarDayMarks,
+  describeCalendarDayMarks,
+  describeCalendarPostStatus,
+  describeDetectedTimezone,
+  listCalendarDayEntries,
+} from "@/lib/social-calendar-days";
+import {
   DEFAULT_QUIET_HOURS,
   QUIET_HOUR_OPTIONS,
   formatQuietHour,
@@ -351,12 +358,6 @@ const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
-const TIMEZONES = [
-  { id: "london", label: "London (GMT+1)" },
-  { id: "newyork", label: "New York (GMT-4)" },
-  { id: "singapore", label: "Singapore (GMT+8)" },
-];
-
 /** X's hard cap; the "I'll post my own" composer refuses longer text up front (the Queue's own count uses the same 280). */
 const X_CHARACTER_LIMIT = 280;
 
@@ -555,7 +556,9 @@ export function SocialHub() {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth(), day: now.getDate() };
   });
-  const [timezoneId, setTimezoneId] = useState(TIMEZONES[0].id);
+  /** The browser's own zone, read after mount (Intl on the server would print UTC and mismatch on hydration) — the only zone any time on this page is shown in. */
+  const [detectedTimezone, setDetectedTimezone] = useState("your local time");
+  const mobileWeekRef = useRef<HTMLDivElement | null>(null);
 
   const [walletAddress, setWalletAddress] = useState("");
   // The examples are a LIST (owner spec, 5 Sep 2026): the box holds one post
@@ -1201,6 +1204,31 @@ export function SocialHub() {
     [monthGrid],
   );
   const selectedDayLabel = `${selectedDay.day} ${MONTH_NAMES[selectedDay.month]} ${selectedDay.year}`;
+  /** Day markers for the month in view, from the approved posts already loaded and the drafts pinned to a day (never a second fetch). */
+  const calendarDayMarks = useMemo(
+    () => buildCalendarDayMarks(scheduledPosts, queue, calendarView.year, calendarView.month),
+    [scheduledPosts, queue, calendarView.year, calendarView.month],
+  );
+  const selectedDayEntries = useMemo(
+    () => listCalendarDayEntries(scheduledPosts, queue, selectedDay.year, selectedDay.month, selectedDay.day),
+    [scheduledPosts, queue, selectedDay],
+  );
+
+  useEffect(() => {
+    setDetectedTimezone(describeDetectedTimezone());
+  }, []);
+
+  // The mobile week strip opens on the selected day (today on arrival)
+  // instead of the 1st, which put today off-screen for most of the month
+  // (owner test, 7 Sep 2026). Scrolls the strip only, never the page.
+  useEffect(() => {
+    if (activeTab !== "calendar") return;
+    const strip = mobileWeekRef.current;
+    if (!strip || strip.clientWidth === 0) return;
+    const target = strip.querySelector<HTMLElement>(`[data-day="${selectedDay.day}"]`);
+    if (!target) return;
+    strip.scrollTo({ left: Math.max(0, target.offsetLeft - strip.offsetLeft - 8), behavior: "auto" });
+  }, [activeTab, calendarView.year, calendarView.month, selectedDay]);
 
   /** The current project's canned template outputs (issue #380), used to detect an unedited-template Ready-to-review draft — "custom" is excluded since it's always empty. */
   const templateOutputs = useMemo(
@@ -4123,15 +4151,11 @@ export function SocialHub() {
                             </button>
                           ) : null}
                         </div>
-                        <p>Tap a day to add something. Lime days will hold launches or announcements.</p>
+                        <p>Tap a day to add something. Lime marks scheduled posts, hollow marks drafts waiting for your approve tap.</p>
                       </div>
                       <div className={styles.timezoneControl}>
                         <span>ALL TIMES SHOWN IN</span>
-                        <select value={timezoneId} onChange={(event) => setTimezoneId(event.target.value)}>
-                          {TIMEZONES.map((timezone) => (
-                            <option key={timezone.id} value={timezone.id}>{timezone.label}</option>
-                          ))}
-                        </select>
+                        <b>{detectedTimezone}</b>
                       </div>
                     </div>
 
@@ -4151,20 +4175,29 @@ export function SocialHub() {
                               : [styles.calendarDay, isToday && styles.calendarToday, isSelected && styles.calendarSelected]
                                   .filter(Boolean)
                                   .join(" ");
+                            const marks = day !== null ? calendarDayMarks.get(day) : undefined;
                             return (
                               <button
                                 type="button"
                                 disabled={day === null}
                                 key={`${calendarView.year}-${calendarView.month}-${day ?? "blank"}-${index}`}
                                 className={className}
+                                title={day !== null ? describeCalendarDayMarks(marks, isToday) : undefined}
                                 onClick={day !== null ? () => selectDay(day) : undefined}
                               >
                                 {day}
+                                {marks ? (
+                                  <span className={styles.dayMarks} aria-hidden="true">
+                                    {marks.scheduled ? <i className={styles.limeDot} /> : null}
+                                    {marks.drafts ? <i className={styles.draftDot} /> : null}
+                                    {marks.sent || marks.failed ? <i className={styles.greyDot} /> : null}
+                                  </span>
+                                ) : null}
                               </button>
                             );
                           })}
                         </div>
-                        <div className={styles.mobileWeek}>
+                        <div className={styles.mobileWeek} ref={mobileWeekRef}>
                           {monthDays.map((day) => {
                             const weekdayIndex = (new Date(calendarView.year, calendarView.month, day).getDay() + 6) % 7;
                             const isToday = isCurrentMonthView && day === now.getDate();
@@ -4176,19 +4209,21 @@ export function SocialHub() {
                               <button
                                 type="button"
                                 key={day}
+                                data-day={day}
                                 onClick={() => selectDay(day)}
                                 className={isSelected ? styles.weekSelected : isToday ? styles.weekToday : styles.weekDay}
                               >
                                 <span>{CALENDAR_DAY_NAMES[weekdayIndex]}</span>
                                 <b>{day}</b>
-                                <small>{isToday ? "Today" : "No scheduled posts"}</small>
+                                <small>{describeCalendarDayMarks(calendarDayMarks.get(day), isToday)}</small>
                               </button>
                             );
                           })}
                         </div>
                         <div className={styles.calendarLegend}>
-                          <span><i className={styles.limeDot} />Announcement or launch</span>
-                          <span><i className={styles.greyDot} />Scheduled post</span>
+                          <span><i className={styles.limeDot} />Scheduled</span>
+                          <span><i className={styles.draftDot} />Draft to approve</span>
+                          <span><i className={styles.greyDot} />Sent</span>
                         </div>
                       </div>
 
@@ -4197,6 +4232,28 @@ export function SocialHub() {
                           <span className={styles.eyebrow}>ADD TO</span>
                           <h3>{selectedDayLabel}</h3>
                         </div>
+                        {selectedDayEntries.length > 0 ? (
+                          <ul className={styles.dayEntries}>
+                            {selectedDayEntries.map((entry) => (
+                              <li key={`${entry.kind}-${entry.id}`}>
+                                <button type="button" onClick={() => setActiveTab("queue")} title="Open in the Queue">
+                                  {entry.kind === "post" ? (
+                                    <>
+                                      <b>{entry.timeLabel}</b>
+                                      <span>{entry.platforms.join(" + ") || "no destination"} · {describeCalendarPostStatus(entry.status)}</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <b>Draft</b>
+                                      <span>Waiting for your approve tap · {entry.source === "calendar-ai" ? "Calendar AI" : entry.source === "manual" ? "Your own" : "AI"}</span>
+                                    </>
+                                  )}
+                                  <em>{entry.body}</em>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
                         <button type="button" className={styles.aiMakeButton} onClick={generateDraftForDay} disabled={calendarAiBusy}>
                           <b>{calendarAiBusy ? "Making it…" : "AI makes it"}</b>
                           <span>Drafts a post for this day and adds it to the Queue — approve it there and it goes out on this day.</span>

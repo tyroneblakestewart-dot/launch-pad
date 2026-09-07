@@ -3068,3 +3068,56 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   Validated on the final commit: `npm run test:app` — 333 test files / 3878
   tests passing; `npm run lint` — 0 errors (11 warnings, none in files this
   PR touches); `npm run build` — succeeds.
+
+- Calendar grid wired: day markers, the day list, the mobile strip opens
+  on today, and an honest timezone line (owner direction, 7 Sep 2026, the
+  last of the Calendar test-pass items). **Markers** — a new pure,
+  client-safe `lib/social-calendar-days.ts` (`buildCalendarDayMarks`)
+  counts, per local day of the month in view, approved posts waiting to
+  send (`scheduled`/`needs_composer`), posts that went out
+  (`sent`/`partially_sent`), failed sends, and Ready-to-review drafts
+  pinned to a day (PR #532's `scheduledDay`) — from the posts and queue the
+  hub already holds, never a second fetch; canceled posts, other months and
+  bad dates never count. The desktop cell draws a lime dot (scheduled), a
+  hollow lime ring (draft to approve) and a grey dot (sent/failed) under
+  the number with the same words in its `title`; the mobile week card's
+  line reads "Today · 1 scheduled", "2 scheduled · 1 draft to approve",
+  "Nothing yet" (`describeCalendarDayMarks`) instead of the constant "No
+  scheduled posts"; the legend and subtitle now describe what is drawn
+  ("Scheduled / Draft to approve / Sent" — there is no launch data on this
+  page, so "Announcement or launch" is gone). **Day list** — the schedule
+  card lists the selected day's posts by time (platforms, plain status
+  words via `describeCalendarPostStatus`) and its pinned drafts ("Waiting
+  for your approve tap · Calendar AI / Your own"), each a button into the
+  Queue (`listCalendarDayEntries`). **Mobile strip** — a `ref` + effect
+  scrolls the strip (never the page: `strip.scrollTo`, not
+  `scrollIntoView`) to the selected day's `data-day` card whenever the
+  Calendar tab opens or the selection/month changes, skipped on desktop
+  where the strip has no width; the selected card is the same lime-tinted
+  recipe as the desktop selected day instead of a solid lime block.
+  **Timezone** — the three-option select (London/New York/Singapore with
+  hardcoded offsets that nothing read and that would have been wrong after
+  the clocks change) is replaced by the browser's own detected zone and
+  current offset ("Europe/London · GMT+1", `describeDetectedTimezone`, via
+  `Intl` with `shortOffset`), resolved after mount so server rendering
+  never prints UTC into the hydration; it is the one zone every time on
+  the page is actually shown in (datetime-local inputs and
+  `toLocaleString` are browser-local by nature). **Tests changed, not only
+  added (rule 8, stated plainly):** `tests/social-studio-ui.test.ts`'s pin
+  on `TIMEZONES.map((timezone)` now pins the detected-zone label and the
+  constant's absence. New `tests/social-calendar-days.test.ts` (markers,
+  wording, day list, zone/offset across DST) and
+  `tests/social-calendar-grid-wiring.test.ts` (source pins). Rule 10 needs
+  nothing (no route, page or integration). Checked in headless Chromium at
+  1400px and 390px with mocked posts on the 3rd (sent), 7th and 12th
+  (scheduled): the 12th carries one marker, the 13th none, the 3rd a grey
+  one; the 390px strip opens scrolled with today visible and its card
+  reading "Today · 1 scheduled"; the card lists "4:00 PM telegram ·
+  scheduled" for today and the new draft for the 14th as waiting for
+  approval; the timezone line reads "Europe/London · GMT+1" — not on a
+  physical iPhone; the owner confirms on device. The TODAY x/5 pill is
+  not rendered at 390px by the owner's own mobile-only layout decision
+  (confirmed 7 Sep 2026) and is untouched.
+  Validated on the final commit: `npm run test:app` — 335 test files / 3886
+  tests passing; `npm run lint` — 0 errors (11 warnings, none in files this
+  PR touches); `npm run build` — succeeds.
