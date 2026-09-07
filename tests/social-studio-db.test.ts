@@ -60,6 +60,7 @@ const RECORD: SocialStudioProjectRecord = {
   wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
   toneDials: { humour: "dry", emoji: "none", hashtags: "never", postLength: "short" },
   quietHours: { start: "22:00", end: "08:00" },
+  timezone: "Europe/London",
 };
 
 describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
@@ -114,6 +115,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
         toneDials: DEFAULT_TONE_DIALS,
         quietHours: DEFAULT_QUIET_HOURS,
+        timezone: null,
       });
     });
 
@@ -138,6 +140,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
         toneDials: DEFAULT_TONE_DIALS,
         quietHours: DEFAULT_QUIET_HOURS,
+        timezone: null,
       });
     });
 
@@ -162,6 +165,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
         toneDials: DEFAULT_TONE_DIALS,
         quietHours: DEFAULT_QUIET_HOURS,
+        timezone: null,
       });
     });
 
@@ -255,6 +259,19 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
       // Saved between the two Calendar PRs on 7 Sep 2026: whole hours, read as clock strings.
       await putSocialStudioRecord("quiet-whole-hours", { ...RECORD, quietHours: { startHour: 22, endHour: 8 } } as unknown as SocialStudioProjectRecord);
       await expect(getSocialStudioRecord("quiet-whole-hours")).resolves.toMatchObject({ quietHours: { start: "22:00", end: "08:00" } });
+    });
+
+    it("follows the device when a record has no zone, or names one this runtime does not know (7 Sep 2026)", async () => {
+      const legacy = { ...RECORD } as Partial<SocialStudioProjectRecord>;
+      delete legacy.timezone;
+      await putSocialStudioRecord("legacy-zone", legacy as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("legacy-zone")).resolves.toMatchObject({ timezone: null });
+
+      await putSocialStudioRecord("bad-zone", { ...RECORD, timezone: "Not/AZone" });
+      await expect(getSocialStudioRecord("bad-zone")).resolves.toMatchObject({ timezone: null });
+
+      await putSocialStudioRecord("good-zone", { ...RECORD, timezone: "Asia/Tokyo" });
+      await expect(getSocialStudioRecord("good-zone")).resolves.toMatchObject({ timezone: "Asia/Tokyo" });
     });
 
     it("coerces non-array sampleLineFeedback, voiceExamples and queue to empty arrays instead of throwing", async () => {

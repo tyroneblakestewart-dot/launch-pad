@@ -10,7 +10,7 @@ async function source(...parts: string[]): Promise<string> {
 describe("Calendar grid: day markers, the day list, the mobile strip and the timezone label", () => {
   it("marks days from the loaded posts and pinned drafts, on both the desktop grid and the mobile strip", async () => {
     const hub = await source("components", "social-hub.tsx");
-    expect(hub).toContain("() => buildCalendarDayMarks(scheduledPosts, queue, calendarView.year, calendarView.month),");
+    expect(hub).toContain("() => buildCalendarDayMarks(scheduledPosts, queue, calendarView.year, calendarView.month, timezone),");
     expect(hub).toContain("const marks = day !== null ? calendarDayMarks.get(day) : undefined;");
     expect(hub).toContain("{marks.scheduled ? <i className={styles.limeDot} /> : null}");
     expect(hub).toContain("{marks.drafts ? <i className={styles.draftDot} /> : null}");
@@ -26,7 +26,7 @@ describe("Calendar grid: day markers, the day list, the mobile strip and the tim
 
   it("lists the selected day's posts and drafts on the card, each opening the Queue", async () => {
     const hub = await source("components", "social-hub.tsx");
-    expect(hub).toContain("() => listCalendarDayEntries(scheduledPosts, queue, selectedDay.year, selectedDay.month, selectedDay.day),");
+    expect(hub).toContain("() => listCalendarDayEntries(scheduledPosts, queue, selectedDay.year, selectedDay.month, selectedDay.day, timezone),");
     const list = hub.slice(hub.indexOf("<ul className={styles.dayEntries}>"), hub.indexOf("</ul>", hub.indexOf("<ul className={styles.dayEntries}>")));
     expect(list).toContain('onClick={() => setActiveTab("queue")}');
     expect(list).toContain("{describeCalendarPostStatus(entry.status)}");
@@ -49,11 +49,12 @@ describe("Calendar grid: day markers, the day list, the mobile strip and the tim
     expect(css).not.toContain(".weekSelected { border-color: var(--accent-lime); background: var(--cta-bg); }");
   });
 
-  it("shows the browser's detected zone instead of a select nothing read, resolved after mount", async () => {
+  it("names the zone in force — the device's, or the one the user picked — resolved after mount", async () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain('const [detectedTimezone, setDetectedTimezone] = useState("your local time");');
-    expect(hub).toContain("setDetectedTimezone(describeDetectedTimezone());");
+    expect(hub).toContain("setDetectedTimezone(describeTimezone(timezone));");
     expect(hub).toContain("<b>{detectedTimezone}</b>");
+    // Never the three hardcoded offsets PR #534 removed.
     expect(hub).not.toContain("timezoneId");
     expect(hub).not.toContain("TIMEZONES");
   });

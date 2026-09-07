@@ -3399,3 +3399,70 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   on device. Validated on the final commit: `npm run test:app` — 337 test
   files / 3912 tests passing; `npm run lint` — 0 errors (11 pre-existing
   warnings); `npm run build` — succeeds.
+
+- The time zone is choosable again, and every Calendar and Queue time is
+  computed in it (owner direction, 7 Sep 2026: "what happened to time zones,
+  that needs to come back … and have an edit local time tab"). PR #534 had
+  replaced the old three-option select — whose hardcoded offsets nothing ever
+  read — with an honest read-only line naming the browser's own zone, on the
+  true observation that `datetime-local` inputs and `toLocaleString` are
+  browser-local by nature. This makes a *chosen* zone real instead.
+  `lib/social-timezone.ts` is the one pure, unit-tested definition:
+  `detectTimezone` / `isValidTimezone` / `normaliseTimezone` (an unknown name
+  falls back to the device, never a wrong clock), `describeTimezone`
+  ("Europe/London · GMT+1"), `listTimezones` (`Intl.supportedValuesOf`, with
+  a curated fallback and any zone already in play) and `groupTimezones` for
+  the picker, and the conversion pair everything else rests on —
+  `wallClockIn(date, zone)` and `dateFromWallClock(wall, zone)`, the latter
+  solving the offset in two passes so it stays correct across a
+  daylight-saving change (the skipped spring-forward hour resolves to the
+  instant the clock jumps to, an hour that happens twice to its first
+  occurrence). Every helper takes the zone as an OPTIONAL last argument and,
+  when it is absent, uses `Date`'s own local getters exactly as before — so
+  nothing about the default experience changed, which is why only source
+  pins, not behaviour assertions, had to move. Threaded through
+  `lib/social-quiet-hours.ts` (`isInQuietHours`, `shiftOutOfQuietHours`),
+  `lib/social-studio-queue.ts` (`countPostsScheduledToday`,
+  `calendarDayAtTime`, `defaultCalendarClockTime`, `isCalendarDayBeforeToday`,
+  `computeDefaultScheduledAtOnDay`, plus a new `parseCalendarDayParts` that
+  separates "is this a real calendar day" from "what instant is its midnight",
+  which is now zone-dependent) and `lib/social-calendar-days.ts` (day markers,
+  the day list and its time labels; `describeDetectedTimezone` now delegates
+  to `describeTimezone`, so the label and the scheduling maths can never name
+  different zones). In `components/social-hub.tsx`, `todayInZone` replaces
+  the device's `new Date()` for what "today" means on the grid, the strip and
+  Jump to today; `toDateTimeLocalValue` gained the zone and a new
+  `fromDateTimeLocalValue` reads the picker back — the input carries no zone
+  of its own, so feeding it the chosen zone's wall clock is what makes it
+  speak that zone. The choice persists per project
+  (`SocialStudioProjectRecord.timezone`, `null` = follow the device, with the
+  usual migrate-on-read) and the control is one "Edit local time" / "Change"
+  button beside the label that opens a region-grouped `<select>` — built only
+  once opened, so a few hundred zone names never render otherwise — with
+  "Follow this device · Europe/London" as its first option. **Nothing already
+  approved moves:** a scheduled post is stored as an instant, so changing the
+  zone changes only the clock it is read on. **Tests changed, not only added
+  (rule 8, stated plainly):** `social-studio-db`'s record fixture and three
+  legacy `toEqual` expectations gained `timezone`; source pins carrying the
+  new argument were updated in `social-calendar-day-schedule` (2),
+  `social-calendar-card-wiring` (4), `social-calendar-grid-wiring` (3, one
+  renamed) and `social-announcement-post` (2); and
+  `social-calendar-days`'s "an unrecognised zone reads 'your local time'"
+  assertion pinned a fallback this PR deliberately improves — an unknown zone
+  now names the device's own zone, so the user always sees the clock actually
+  in force ("your local time" remains for a runtime that can resolve no zone
+  at all). New `tests/social-timezone.test.ts` (21 tests) covers validation,
+  the label across DST, the list and grouping, the wall-clock round trip over
+  four zones and four seasons, offsets either side of a DST change, day
+  comparison, the device fallback being bit-identical, and each threaded
+  helper behaving differently in Tokyo and New York — plus the picker, the
+  record field and the "today in zone" wiring. Rule 10 needs nothing (no
+  route, page or integration; the choice never leaves the browser). Checked
+  in headless Chromium at 1400px and 390px (25 checks): a post at 22:30 UTC
+  marks the 7th and reads 23:30 in London, then the 8th and 07:30 in Tokyo
+  after switching; a time picked on the card reaches the Queue picker as the
+  same Tokyo wall clock; the choice survives a reload; "Follow this device"
+  puts it back; no horizontal scroll at 390px — not on a physical iPhone.
+  Validated on the final commit: `npm run test:app` — 338 test files / 3934
+  tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
+  `npm run build` — succeeds.

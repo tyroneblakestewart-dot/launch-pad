@@ -142,7 +142,7 @@ describe("Calendar card wiring for announcements and the time field", () => {
     expect(hub).toContain("if (parseClockTime(value) === null) return;\n    calendarTimeTouchedRef.current = true;");
     expect(hub).toContain("Inside quiet hours — it will go out at ${quietHours.end}.");
     // The picked time is the exact default at approval and in the Queue row.
-    expect(hub).toContain("const pinned = item.scheduledTime ? calendarDayAtTime(item.scheduledDay, item.scheduledTime) : null;");
+    expect(hub).toContain("const pinned = item.scheduledTime ? calendarDayAtTime(item.scheduledDay, item.scheduledTime, timezone) : null;");
     expect(hub).toContain("scheduledTime: options.scheduledTime ?? null,");
     const types = await source("lib", "social-studio-types.ts");
     expect(types).toContain("scheduledTime?: string | null;");
@@ -161,7 +161,7 @@ describe("Calendar card wiring for announcements and the time field", () => {
     expect(fn).toContain('source: mode === "own" ? "announcement" : "announcement-ai",');
     expect(fn).toContain("scheduledDay: selectedDayIso,");
     expect(fn).toContain("scheduledTime: calendarTime,");
-    expect(fn).toContain("if (isCalendarDayBeforeToday(selectedDayIso, new Date())) {");
+    expect(fn).toContain("if (isCalendarDayBeforeToday(selectedDayIso, new Date(), timezone)) {");
     expect(fn).toContain("if (xText.length > X_CHARACTER_LIMIT) {");
     expect(fn).not.toContain("fetch(");
     // The jazz-up is one draft call with the announcement as the source, returned for editing rather than queued.

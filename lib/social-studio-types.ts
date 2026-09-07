@@ -130,6 +130,8 @@ export type SocialStudioProjectRecord = {
   toneDials: ToneDials;
   /** Calendar "Quiet hours" (owner direction, 7 Sep 2026): no post is ever scheduled inside this local-time window; `null` is off. */
   quietHours: QuietHours | null;
+  /** The zone every time on the Calendar and Queue is shown and scheduled in (owner direction, 7 Sep 2026). `null` follows the device, which is what the line said before it could be changed. */
+  timezone: string | null;
 };
 
 export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
@@ -147,4 +149,5 @@ export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
   wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
   toneDials: { ...DEFAULT_TONE_DIALS },
   quietHours: { ...DEFAULT_QUIET_HOURS },
+  timezone: null,
 };

@@ -7,6 +7,7 @@
 
 import { truncateAccountAddress } from "@/lib/account-wallet-state";
 import { formatClockTime, parseClockTime } from "@/lib/social-quiet-hours";
+import { dateFromWallClock, isSameZonedDay, wallClockIn } from "@/lib/social-timezone";
 import {
   DEFAULT_POSTING_CADENCE,
   DEFAULT_QUEUE_TARGET,
@@ -144,18 +145,12 @@ export function cadenceQueueTarget(cadence: PostingCadence): number {
  * UTC, because the number describes the user's own day; an unparseable
  * timestamp is ignored rather than counted.
  */
-export function countPostsScheduledToday(scheduledAtIso: readonly string[], now: Date): number {
+export function countPostsScheduledToday(scheduledAtIso: readonly string[], now: Date, timeZone?: string | null): number {
   let count = 0;
   for (const iso of scheduledAtIso) {
     const at = new Date(iso);
     if (Number.isNaN(at.getTime())) continue;
-    if (
-      at.getFullYear() === now.getFullYear() &&
-      at.getMonth() === now.getMonth() &&
-      at.getDate() === now.getDate()
-    ) {
-      count += 1;
-    }
+    if (isSameZonedDay(at, now, timeZone)) count += 1;
   }
   return count;
 }
@@ -175,25 +170,32 @@ export function toCalendarDayIso(year: number, month: number, day: number): stri
   return `${year}-${pad(month + 1)}-${pad(day)}`;
 }
 
-/** Parses "YYYY-MM-DD" into the local-midnight Date of that day, or null for anything that is not exactly a real calendar day. */
-export function parseCalendarDayIso(value: unknown): Date | null {
+/** The calendar-day parts of "YYYY-MM-DD", or null for anything that is not exactly a real calendar day. */
+export function parseCalendarDayParts(value: unknown): { year: number; month: number; day: number } | null {
   if (typeof value !== "string") return null;
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]) - 1;
   const day = Number(match[3]);
-  const date = new Date(year, month, day);
-  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
-  return date;
+  const probe = new Date(Date.UTC(year, month, day));
+  if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== month || probe.getUTCDate() !== day) return null;
+  return { year, month, day };
 }
 
-/** The local Date for a calendar day ("YYYY-MM-DD") at a clock time ("HH:MM"), or null when either is not well-formed. */
-export function calendarDayAtTime(dayIso: string, clock: string): Date | null {
-  const day = parseCalendarDayIso(dayIso);
+/** Parses "YYYY-MM-DD" into the midnight Date of that day in `timeZone` (the device's own zone when none is given), or null for anything that is not exactly a real calendar day. */
+export function parseCalendarDayIso(value: unknown, timeZone?: string | null): Date | null {
+  const parts = parseCalendarDayParts(value);
+  if (!parts) return null;
+  return dateFromWallClock({ ...parts, hour: 0, minute: 0 }, timeZone);
+}
+
+/** The instant a clock in `timeZone` reads this calendar day ("YYYY-MM-DD") at this clock time ("HH:MM"), or null when either is not well-formed. */
+export function calendarDayAtTime(dayIso: string, clock: string, timeZone?: string | null): Date | null {
+  const day = parseCalendarDayParts(dayIso);
   const minutes = parseClockTime(clock);
   if (!day || minutes === null) return null;
-  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return dateFromWallClock({ ...day, hour: Math.floor(minutes / 60), minute: minutes % 60 }, timeZone);
 }
 
 /**
@@ -201,23 +203,25 @@ export function calendarDayAtTime(dayIso: string, clock: string): Date | null {
  * or — when the day is today and that slot has passed — the next quarter
  * hour after now, so the default is never already in the past.
  */
-export function defaultCalendarClockTime(dayIso: string, now: Date): string {
-  const day = parseCalendarDayIso(dayIso);
+export function defaultCalendarClockTime(dayIso: string, now: Date, timeZone?: string | null): string {
+  const day = parseCalendarDayParts(dayIso);
   const firstSlot = CALENDAR_DAY_FIRST_SLOT_HOUR * 60;
   if (!day) return formatClockTime(firstSlot);
-  const isToday = day.getFullYear() === now.getFullYear() && day.getMonth() === now.getMonth() && day.getDate() === now.getDate();
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const today = wallClockIn(now, timeZone);
+  const isToday = day.year === today.year && day.month === today.month && day.day === today.day;
+  const nowMinutes = today.hour * 60 + today.minute;
   if (!isToday || nowMinutes < firstSlot) return formatClockTime(firstSlot);
   const nextQuarter = Math.min(Math.ceil((nowMinutes + 1) / 15) * 15, 23 * 60 + 45);
   return formatClockTime(nextQuarter);
 }
 
-/** True when the calendar day is strictly before `now`'s local day — a day nothing can be scheduled on any more. */
-export function isCalendarDayBeforeToday(dayIso: string, now: Date): boolean {
-  const day = parseCalendarDayIso(dayIso);
+/** True when the calendar day is strictly before `now`'s day in `timeZone` — a day nothing can be scheduled on any more. */
+export function isCalendarDayBeforeToday(dayIso: string, now: Date, timeZone?: string | null): boolean {
+  const day = parseCalendarDayParts(dayIso);
   if (!day) return false;
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return day.getTime() < today.getTime();
+  const today = wallClockIn(now, timeZone);
+  const dayKey = day.year * 10000 + day.month * 100 + day.day;
+  return dayKey < today.year * 10000 + today.month * 100 + today.day;
 }
 
 /**
@@ -239,13 +243,16 @@ export function computeDefaultScheduledAtOnDay(
   existingScheduledAtIso: readonly string[],
   now: Date,
   spreadHoursMs: number,
+  timeZone?: string | null,
 ): Date | null {
-  const day = parseCalendarDayIso(dayIso);
+  const day = parseCalendarDayParts(dayIso);
   if (!day) return null;
-  const firstSlotMs = new Date(day.getFullYear(), day.getMonth(), day.getDate(), CALENDAR_DAY_FIRST_SLOT_HOUR).getTime();
-  const lastSlotMs = new Date(day.getFullYear(), day.getMonth(), day.getDate(), CALENDAR_DAY_LAST_SLOT_HOUR).getTime();
-  const dayStartMs = day.getTime();
-  const dayEndMs = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime();
+  const atHour = (hour: number, dayOffset = 0) =>
+    dateFromWallClock({ year: day.year, month: day.month, day: day.day + dayOffset, hour, minute: 0 }, timeZone).getTime();
+  const firstSlotMs = atHour(CALENDAR_DAY_FIRST_SLOT_HOUR);
+  const lastSlotMs = atHour(CALENDAR_DAY_LAST_SLOT_HOUR);
+  const dayStartMs = atHour(0);
+  const dayEndMs = atHour(0, 1);
   const latestOnDayMs = existingScheduledAtIso
     .map((iso) => new Date(iso).getTime())
     .filter((value) => Number.isFinite(value) && value >= dayStartMs && value < dayEndMs)
