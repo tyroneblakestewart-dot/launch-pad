@@ -1,11 +1,14 @@
 import {
   ARTWORK_PLACEHOLDER,
+  type GeneratedPageAcceptanceProfile,
+  type GeneratedPagePayloadRejection,
+  type GeneratedPageRejectionReason,
   OPTIONAL_PAGE_SECTIONS,
   REQUIRED_PAGE_SECTIONS,
   describeGeneratedPageRejection,
+  describeGeneratedPageRejectionDetail,
+  formatCount,
   parseGeneratedPagePayload,
-  type GeneratedPageAcceptanceProfile,
-  type GeneratedPageRejectionReason,
 } from "@/lib/generated-site-page";
 import { buildBespokeLinkRules } from "@/lib/bespoke-site-links";
 import {
@@ -170,7 +173,7 @@ export function buildGeneratedSitePageRequestBody(
     "- Choose the composition, rhythm, motion and personality of this page yourself — there is no house style to follow beyond the rules on this list. Editorial, playful, brutalist, luxurious, retro, minimal, maximal: pick whatever the artwork and the inspiration brief genuinely call for, and commit to it fully rather than hedging toward a generic crypto landing page.",
     "- Let the artwork's palette, subject and mood drive the whole page; let the inspiration brief shape how content is organised and paced. Surprise is welcome where it serves the reader; every section still has to be usable and readable.",
     "- If a section is styled as a card, ticket, receipt, ledger or panel, its surface and ink colours must come from the page's own palette with readable contrast — never a hardcoded white card that ignores the theme.",
-    "- Use the output budget for design and copy that matter; do not repeat large blocks of CSS or copy. The finished HTML document must stay under 85,000 characters — published sites are stored with a hard 90,000-byte limit.",
+    "- Use the output budget for design and copy that matter; do not repeat large blocks of CSS or copy. Aim for 50,000–70,000 characters of HTML in total and never exceed 80,000 — published sites are stored with a hard 90,000-byte limit and a longer document is rejected outright. Prefer fewer, richer sections and compact CSS over length.",
     "",
     "RESPONSIVE & LAYOUT QUALITY REQUIREMENTS (NON-NEGOTIABLE):",
     '- Include exactly one <meta name="viewport" content="width=device-width, initial-scale=1"> tag in <head>.',
@@ -260,6 +263,37 @@ export function describeGeneratedSitePageRejection(
   } catch {
     return "other";
   }
+}
+
+/** Same checks as `describeGeneratedSitePageRejection`, with the rule that fired named (owner report, 11 Sep 2026). */
+export function describeGeneratedSitePageRejectionDetail(
+  response: OpenAIResponse,
+  expectedIds: FusionBriefIds,
+  acceptance: GeneratedPageAcceptanceProfile = {},
+): GeneratedPagePayloadRejection {
+  const text = extractOutputText(response);
+  if (!text) return { reason: "other", code: "invalid-payload", message: "The AI returned no page text.", htmlBytes: null };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    return {
+      reason: "other",
+      code: "invalid-payload",
+      message: `The AI's answer was not valid JSON (${formatCount(text.length)} characters).`,
+      htmlBytes: null,
+    };
+  }
+  return describeGeneratedPageRejectionDetail(parsed, expectedIds, acceptance);
+}
+
+/**
+ * Corrective feedback for the one automatic retry when the only problem was
+ * size: the model cannot count characters, so it is told how far over it was
+ * and what to cut, in the same slot the layout retry uses.
+ */
+export function buildOversizeRetryCorrectiveFeedback(htmlBytes: number): string {
+  return `The previous attempt was rejected only because the finished HTML document was ${formatCount(htmlBytes)} bytes, over the hard 90,000-byte storage limit. Deliver the same design at no more than 70,000 characters: keep every required section, but remove repeated CSS rules, duplicated markup, decorative filler copy and any section the story does not need. Do not truncate mid-document — finish the page properly under the limit.`;
 }
 
 export function parseGeneratedSitePageResponse(

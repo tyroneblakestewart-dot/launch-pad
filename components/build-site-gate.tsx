@@ -5,7 +5,7 @@ import { STUDIO_FIELD_PLAN_ATTRIBUTE, offersWebsiteBuild, studioFieldsForLaunchP
 import { REOPEN_GENERATED_SITE_EVENT } from "@/components/full-website-generator";
 import { FREE_SITE_SECTION_KEYS, type FreeSiteSections } from "@/lib/free-site-sections";
 import {
-  SITE_GENERATION_TIMEOUT_MS,
+  siteGenerationTimeoutMs,
   failSitePreviewGeneration,
   finishSitePreviewGeneration,
   previewFailureMessage,
@@ -202,7 +202,7 @@ export function BuildSiteGate() {
             generating = timedOut.generating;
             if (hint) hint.textContent = previewTimeoutMessage(false);
             refresh();
-          }, SITE_GENERATION_TIMEOUT_MS);
+          }, siteGenerationTimeoutMs(mode)); // free: SITE_GENERATION_TIMEOUT_MS (65s); bespoke: BESPOKE_SITE_GENERATION_TIMEOUT_MS (800s, matching the route)
 
           window.dispatchEvent(new CustomEvent("launchpad:generate-site", { detail }));
         }

@@ -99,8 +99,8 @@ describe("POST /api/generate-site-page", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses a route timeout large enough for the whole streamed generation", () => {
-    expect(maxDuration).toBe(120);
+  it("uses a route timeout large enough for the whole streamed generation — gpt-5 at medium reasoning plus one retry, on Vercel Pro's 800s ceiling", () => {
+    expect(maxDuration).toBe(800);
   });
 
   it("returns the streamed response as no-store application/x-ndjson", async () => {
@@ -187,7 +187,7 @@ describe("POST /api/generate-site-page", () => {
     expect(finalRequest.input[0].content[0].text).toContain("Artwork owns the page identity");
     expect(finalRequest.input[0].content[0].text).toContain("CREATIVE DIRECTION IS YOURS");
     expect(finalRequest.input[0].content[0].text).not.toContain("bright, spacious discovery experience");
-    expect(finalRequest.input[0].content[0].text).toContain("must stay under 85,000 characters");
+    expect(finalRequest.input[0].content[0].text).toContain("never exceed 80,000");
     // Desktop + mobile responsiveness, smooth scroll and layout-quality
     // requirements are non-negotiable in the developer prompt (issue #303).
     expect(finalRequest.input[0].content[0].text).toContain(
@@ -377,7 +377,8 @@ describe("POST /api/generate-site-page", () => {
     const events = await readNdjsonEvents(response);
     const errorEvent = events.at(-1) as { type: string; error: string };
     expect(errorEvent.type).toBe("error");
-    expect(errorEvent.error).toContain("incomplete, unsafe");
+    // Since 11 Sep 2026 the error names the rule that fired instead of the generic list.
+    expect(errorEvent.error).toBe("The AI's answer was not a usable page: The AI did not echo the supplied artwork and inspiration brief IDs. Try again.");
   });
 
   describe("content filter (issue #392)", () => {
@@ -615,7 +616,7 @@ describe("POST /api/generate-site-page", () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(3);
       expect(errorEvent.type).toBe("error");
-      expect(errorEvent.error).toContain("incomplete, unsafe");
+      expect(errorEvent.error).toBe("The AI's page failed the responsive-layout check even after one corrective retry. Try again.");
     });
   });
 

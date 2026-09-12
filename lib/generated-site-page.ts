@@ -300,62 +300,163 @@ function hasRetailMarketplacePresentation(html: string): boolean {
 // isGeneratedPageRejectedForLayoutOnly below — never a silent full-page
 // failure. New content (freshly generated or freshly (re)published) still
 // goes through the strict isCompleteGeneratedPageHtml gate below.
-export function isStructurallyCompleteGeneratedPageHtml(
+/** Why a generated page was refused — one code per rule, so the route, the admin
+ *  Activity log and the studio's error line can all say which rule fired
+ *  (owner report, 11 Sep 2026: every bespoke attempt ended in "incomplete,
+ *  unsafe, still resembled the legacy terminal fallback, or did not apply the
+ *  inspiration structure" with no record of which). */
+export type GeneratedPageRejectionCode =
+  | "not-a-string"
+  | "too-short"
+  | "too-long"
+  | "missing-doctype"
+  | "missing-head-or-body"
+  | "missing-style-or-script"
+  | "missing-viewport"
+  | "missing-artwork-placeholder"
+  | "missing-section"
+  | "external-script"
+  | "object-or-embed"
+  | "iframe"
+  | "javascript-url"
+  | "forbidden-template-marker"
+  | "terminal-aesthetic"
+  | "retail-presentation"
+  | "layout";
+
+export type GeneratedPageRejectionDetail = {
+  code: GeneratedPageRejectionCode;
+  message: string;
+};
+
+export type GeneratedPageRejectionOptions = {
+  /** Measure the size limit in UTF-8 bytes (what publishing enforces) rather than characters. */
+  measureBytes?: boolean;
+  /** Also run the responsive-layout baseline, reporting "layout" when it is the only failure. */
+  checkLayout?: boolean;
+};
+
+/** The ceiling a published site is stored under (`MAX_PUBLISHED_HTML_BYTES`); acceptance measures against the same number. */
+export const MAX_GENERATED_HTML_BYTES = MAX_GENERATED_HTML_LENGTH;
+
+// `javascript:` is only dangerous where a browser would treat it as a URL — an
+// href/src-style attribute or a CSS url(). A free-rein page that says
+// "// JavaScript: menu toggle" in a comment is not an attack, and rejecting it
+// threw away paid gpt-5 pages (owner report, 11 Sep 2026). Entity-obfuscated
+// forms are handled by the publish-time sanitiser.
+const JAVASCRIPT_URL_PATTERN =
+  /(?:\b(?:href|src|action|formaction|xlink:href|data|poster|srcdoc)\s*=\s*["']?\s*|url\(\s*["']?\s*)javascript\s*:/i;
+
+export function formatCount(value: number): string {
+  return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
+
+export function explainGeneratedPageHtmlRejection(
   value: unknown,
   acceptance: GeneratedPageAcceptanceProfile = {},
-): value is string {
-  if (typeof value !== "string") return false;
+  options: GeneratedPageRejectionOptions = {},
+): GeneratedPageRejectionDetail | null {
+  if (typeof value !== "string") return { code: "not-a-string", message: "The page was not a string of HTML." };
   const html = value.trim();
-  if (html.length < MIN_GENERATED_HTML_LENGTH || html.length > MAX_GENERATED_HTML_LENGTH) {
-    return false;
+  if (html.length < MIN_GENERATED_HTML_LENGTH) {
+    return {
+      code: "too-short",
+      message: `The page is only ${formatCount(html.length)} characters; a finished page is at least ${formatCount(MIN_GENERATED_HTML_LENGTH)}.`,
+    };
+  }
+  const size = options.measureBytes ? utf8ByteLength(html) : html.length;
+  if (size > MAX_GENERATED_HTML_LENGTH) {
+    return {
+      code: "too-long",
+      message: `The page is ${formatCount(size)} ${options.measureBytes ? "bytes" : "characters"}, over the ${formatCount(MAX_GENERATED_HTML_LENGTH)}-byte limit published sites are stored under.`,
+    };
   }
 
   const lower = html.toLowerCase();
-  if (!lower.includes("<!doctype html") || !lower.includes("<html")) return false;
-  if (!lower.includes("<head") || !lower.includes("<body")) return false;
-  if (!lower.includes("<style") || !lower.includes("<script")) return false;
-  if (!lower.includes('name="viewport"') && !lower.includes("name='viewport'")) return false;
-  if (!html.includes(ARTWORK_PLACEHOLDER)) return false;
-
-  for (const section of REQUIRED_PAGE_SECTIONS) {
-    if (!lower.includes(`id="${section}"`) && !lower.includes(`id='${section}'`)) return false;
+  if (!lower.includes("<!doctype html") || !lower.includes("<html")) {
+    return { code: "missing-doctype", message: "The page is not a complete HTML document (no doctype or <html>)." };
+  }
+  if (!lower.includes("<head") || !lower.includes("<body")) {
+    return { code: "missing-head-or-body", message: "The page has no <head> or no <body>." };
+  }
+  if (!lower.includes("<style") || !lower.includes("<script")) {
+    return { code: "missing-style-or-script", message: "The page has no inline <style> or no inline <script>." };
+  }
+  if (!lower.includes('name="viewport"') && !lower.includes("name='viewport'")) {
+    return { code: "missing-viewport", message: "The page has no viewport meta tag." };
+  }
+  if (!html.includes(ARTWORK_PLACEHOLDER)) {
+    return { code: "missing-artwork-placeholder", message: `The page never uses the uploaded artwork placeholder ${ARTWORK_PLACEHOLDER}.` };
   }
 
-  if (/<script\b[^>]*\bsrc\s*=/i.test(html)) return false;
-  if (/<(?:object|embed)\b/i.test(html)) return false;
+  for (const section of REQUIRED_PAGE_SECTIONS) {
+    if (!lower.includes(`id="${section}"`) && !lower.includes(`id='${section}'`)) {
+      return { code: "missing-section", message: `The page has no element with the required id "${section}".` };
+    }
+  }
+
+  if (/<script\b[^>]*\bsrc\s*=/i.test(html)) {
+    return { code: "external-script", message: "The page loads an external script; only inline scripts are allowed." };
+  }
+  if (/<(?:object|embed)\b/i.test(html)) {
+    return { code: "object-or-embed", message: "The page contains an <object> or <embed>." };
+  }
   const iframeTags = html.match(/<iframe\b[^>]*>/gi) || [];
   for (const tag of iframeTags) {
     const srcMatch = tag.match(/\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
     const src = srcMatch ? srcMatch[1] ?? srcMatch[2] ?? "" : "";
     const isAllowedDexscreenerEmbed =
       src === CHART_EMBED_PLACEHOLDER || src.startsWith(DEXSCREENER_EMBED_ORIGIN);
-    if (!isAllowedDexscreenerEmbed) return false;
+    if (!isAllowedDexscreenerEmbed) {
+      return { code: "iframe", message: "The page embeds an iframe that is not the Dexscreener chart." };
+    }
   }
-  if (/javascript\s*:/i.test(html)) return false;
-  if (FORBIDDEN_TEMPLATE_MARKERS.some((marker) => lower.includes(marker))) return false;
+  if (JAVASCRIPT_URL_PATTERN.test(html)) {
+    return { code: "javascript-url", message: "The page uses a javascript: URL." };
+  }
+  if (FORBIDDEN_TEMPLATE_MARKERS.some((marker) => lower.includes(marker))) {
+    return { code: "forbidden-template-marker", message: "The page reuses wording from the Hoodlums terminal template." };
+  }
   if (
     acceptance.forbidTerminalAesthetic &&
     TERMINAL_AESTHETIC_MARKERS.some((marker) => lower.includes(marker))
   ) {
-    return false;
+    return { code: "terminal-aesthetic", message: "The page fell back to the terminal aesthetic the brief forbids." };
   }
   if (
     acceptance.requireRetailMarketplacePresentation &&
     !hasRetailMarketplacePresentation(html)
   ) {
-    return false;
+    return { code: "retail-presentation", message: "The page did not apply the retail presentation the brief requires." };
   }
-
-  return true;
+  if (options.checkLayout && !hasResponsiveBaseline(html)) {
+    return {
+      code: "layout",
+      message: "The page failed the responsive-layout check (no mobile stacking, a fixed wide container, or no responsive CSS).",
+    };
+  }
+  return null;
 }
 
+export function isStructurallyCompleteGeneratedPageHtml(
+  value: unknown,
+  acceptance: GeneratedPageAcceptanceProfile = {},
+): value is string {
+  return explainGeneratedPageHtmlRejection(value, acceptance) === null;
+}
+
+// Acceptance of NEW content: structure, the size limit measured in UTF-8 bytes
+// (exactly what publishing enforces — a page of 88,000 characters with emoji
+// used to pass here and then fail at publish), and the responsive baseline.
 export function isCompleteGeneratedPageHtml(
   value: unknown,
   acceptance: GeneratedPageAcceptanceProfile = {},
 ): value is string {
-  return (
-    isStructurallyCompleteGeneratedPageHtml(value, acceptance) && hasResponsiveBaseline(value as string)
-  );
+  return explainGeneratedPageHtmlRejection(value, acceptance, { measureBytes: true, checkLayout: true }) === null;
 }
 
 // True only when a page is otherwise complete, safe and evidence-matched,
@@ -391,6 +492,39 @@ export function parseGeneratedPagePayload(
 }
 
 export type GeneratedPageRejectionReason = "ok" | "layout" | "other";
+
+export type GeneratedPagePayloadRejection = {
+  reason: GeneratedPageRejectionReason;
+  /** null when the page was accepted. */
+  code: GeneratedPageRejectionCode | "invalid-payload" | "evidence-mismatch" | null;
+  message: string | null;
+  /** UTF-8 size of the html field when it was a string, else null. */
+  htmlBytes: number | null;
+};
+
+/** The full story behind a rejected payload, for logs, the Activity log and the user's error line. */
+export function describeGeneratedPageRejectionDetail(
+  value: unknown,
+  expected: GeneratedPageEvidence,
+  acceptance: GeneratedPageAcceptanceProfile = {},
+): GeneratedPagePayloadRejection {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { reason: "other", code: "invalid-payload", message: "The AI's answer was not the expected page object.", htmlBytes: null };
+  }
+  const item = value as Record<string, unknown>;
+  const htmlBytes = typeof item.html === "string" ? utf8ByteLength(item.html.trim()) : null;
+  if (item.artworkBriefId !== expected.artworkBriefId || item.inspirationBriefId !== expected.inspirationBriefId) {
+    return {
+      reason: "other",
+      code: "evidence-mismatch",
+      message: "The AI did not echo the supplied artwork and inspiration brief IDs.",
+      htmlBytes,
+    };
+  }
+  const detail = explainGeneratedPageHtmlRejection(item.html, acceptance, { measureBytes: true, checkLayout: true });
+  if (!detail) return { reason: "ok", code: null, message: null, htmlBytes };
+  return { reason: detail.code === "layout" ? "layout" : "other", code: detail.code, message: detail.message, htmlBytes };
+}
 
 // Same evidence/shape checks as parseGeneratedPagePayload, but reports why a
 // rejected page failed instead of only null, so the one-retry-on-layout flow

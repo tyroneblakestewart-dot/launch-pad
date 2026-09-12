@@ -2966,3 +2966,72 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   the final commit: `npm run test:app` — 330 test files / 3852 tests passing;
   `npm run lint` — 0 errors (10 pre-existing warnings); `npm run build` —
   succeeds.
+
+- Bespoke sites stopped generating; the refusal now names its rule, and the
+  two rules most likely to refuse a good gpt-5 page are fixed (owner report,
+  11 Sep 2026: "bespoke ain't generating websites" — the studio read "AI
+  returned a website that was incomplete, unsafe, still resembled the legacy
+  terminal fallback, or did not apply the inspiration structure", and
+  `/admin`'s "Last generation outcome" read "Not recorded"). That message is
+  `parseGeneratedSitePageResponse` returning null: gpt-5 had answered in time
+  and our own acceptance gate refused the page, and nothing anywhere said
+  which rule fired. Stated plainly: with no log of the rule, this session
+  could not prove which one it was; the change makes the next refusal
+  self-explaining and removes the two rules that a free-rein gpt-5 page trips
+  most easily. **Diagnostics** — `lib/generated-site-page.ts` gains
+  `explainGeneratedPageHtmlRejection` (one code per rule: too-short,
+  too-long, missing-section, missing-artwork-placeholder, external-script,
+  iframe, javascript-url, forbidden-template-marker, terminal-aesthetic,
+  retail-presentation, layout, …) and `describeGeneratedPageRejectionDetail`
+  (adds invalid-payload and evidence-mismatch plus the page's byte size);
+  `isStructurallyCompleteGeneratedPageHtml` / `isCompleteGeneratedPageHtml`
+  are now thin wrappers over it, so the booleans and the explanation can
+  never drift. `lib/site-page-openai-pipeline.ts` gains
+  `describeGeneratedSitePageRejectionDetail` (also names a non-JSON answer).
+  The route logs the code, records a new `bespoke-page-rejected` Activity
+  entry ("Bespoke page rejected (<code>): <message> … Model, wallet"), and
+  sends the studio a sentence naming the rule (`bespokeRejectionUserMessage`)
+  with the code in `providerError.detail`; `/admin`'s "Last generation
+  outcome" and "Response validation" stages now read those entries (latest
+  rejection with age and rule, a 7-day breakdown by rule; amber within 24h,
+  green after, amber with no `observedAt` when nothing is recorded or the log
+  is unreadable — the existing "never fakes a green" pin holds). **Rule 1 —
+  size.** The gate refused any page over 90,000 characters, and the prompt's
+  "stay under 85,000 characters" is a number the model cannot count; #519's
+  32,000-token budget makes overshooting easy. The prompt now gives a target
+  ("Aim for 50,000–70,000 … never exceed 80,000 … a longer document is
+  rejected outright"), a `too-long` first attempt gets the one automatic
+  retry (the same single slot the layout retry uses, same cost-cap guard)
+  with `buildOversizeRetryCorrectiveFeedback` naming the byte count and what
+  to cut, and acceptance measures UTF-8 bytes — exactly what publishing
+  enforces (`MAX_PUBLISHED_HTML_BYTES`), closing the gap where an emoji-heavy
+  page passed generation and failed publish; display of stored content keeps
+  the looser character measure. **Rule 2 — `javascript:`.** The gate rejected
+  the string anywhere in the page, so "// JavaScript: menu toggle" in a
+  comment threw a paid page away; the scan is now limited to URL positions
+  (href/src/action/formaction/xlink:href/data/poster/srcdoc attributes and
+  CSS `url(`), with the publish-time sanitiser still covering obfuscated
+  forms. **Time.** The route's own ceiling was 120s (`vercel.json` said 180)
+  while the page stage runs gpt-5 at medium reasoning with a 32,000-token
+  budget; both are now 800 (Vercel Pro with Fluid Compute, plan confirmed by
+  the owner), and any retry is skipped once 45% of that budget is spent
+  (`RETRY_TIME_BUDGET_SHARE`, logged as a retry note on the rejection). The
+  studio gate's "taking too long" timer stays 65s for the free site and is
+  800s for bespoke (`siteGenerationTimeoutMs(mode)` in
+  `lib/site-preview-state.ts`), so it no longer declares defeat at 65s while
+  gpt-5 is still writing. **Tests changed, not only added (rule 8, stated
+  plainly):** the route pin `maxDuration` 120 → 800, the `vercel.json` pin
+  180 → 800, the two prompt pins on "must stay under 85,000 characters", and
+  two route pins on the generic "incomplete, unsafe" wording (now the
+  specific evidence-mismatch and layout sentences). New
+  `tests/bespoke-rejection-diagnostics.test.ts` (15 tests: every code, byte
+  vs character size, the javascript: positions, the payload/JSON detail, the
+  prompt target and retry feedback, the route's oversize retry and named
+  error, the two health stages, the gate timeouts). Rule 10: the new Activity
+  kind and the two rewritten health stages are the admin counterpart. Not
+  reproduced against the live provider (no OpenAI key in this session) — the
+  owner retries a bespoke generation after deploy; if it still fails, the
+  status line and `/admin` → Website generation → Last generation outcome
+  now name the exact rule. Validated on the final commit: `npm run test:app`
+  — 331 test files / 3867 tests passing; `npm run lint` — 0 errors (10
+  pre-existing warnings); `npm run build` — succeeds.
