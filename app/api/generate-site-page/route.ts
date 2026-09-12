@@ -18,6 +18,7 @@ import {
 import {
   FREE_REIN_ACCEPTANCE_PROFILE,
   NO_URL_PRESENTATION_BRIEF,
+  buildEmptyPageRetryCorrectiveFeedback,
   buildGeneratedSitePageRequestBody,
   buildOversizeRetryCorrectiveFeedback,
   buildPageArtworkIdentityRequestBody,
@@ -62,7 +63,7 @@ import type { GenerateSitePageStreamEvent } from "@/lib/generate-site-page-strea
 export const runtime = "nodejs";
 // Vercel Pro with Fluid Compute allows up to 800s (owner confirmed the plan,
 // 11 Sep 2026). The paid page stage runs gpt-5 at medium reasoning with a
-// 32,000-token budget, and the old 120s ceiling left no room for a slow
+// 64,000-token budget, and the old 120s ceiling left no room for a slow
 // answer, let alone the one automatic retry.
 export const maxDuration = 800;
 const ROUTE_BUDGET_MS = maxDuration * 1_000;
@@ -190,6 +191,8 @@ function generationFailureMessage(generation: Extract<StreamedFullPageOutcome, {
 /** One honest sentence for the studio when our own checks refuse the AI's page — naming the rule, never the generic list. */
 function bespokeRejectionUserMessage(rejection: GeneratedPagePayloadRejection): string {
   switch (rejection.code) {
+    case "too-short":
+      return `The AI returned an empty or unfinished page (${formatCount(rejection.htmlBytes ?? 0)} characters) and its retry did not deliver one either. Try again.`;
     case "too-long":
       return `The AI wrote a page of ${formatCount(rejection.htmlBytes ?? 0)} bytes, over the 90,000-byte limit published sites are stored under, and a shorter retry did not land under it either. Try again — every attempt is told to keep the page compact.`;
     case "layout":
@@ -524,9 +527,11 @@ export async function POST(request: Request) {
               ? LAYOUT_RETRY_CORRECTIVE_FEEDBACK
               : firstRejection.code === "too-long"
                 ? buildOversizeRetryCorrectiveFeedback(firstRejection.htmlBytes ?? 0)
-                : null;
+                : firstRejection.code === "too-short"
+                  ? buildEmptyPageRetryCorrectiveFeedback(firstRejection.htmlBytes ?? 0)
+                  : null;
           if (retryFeedback) {
-            const retryLabel = firstRejection.reason === "layout" ? "layout" : "oversize";
+            const retryLabel = firstRejection.reason === "layout" ? "layout" : firstRejection.code === "too-long" ? "oversize" : "empty-page";
             const firstAttemptCost = fullPageAttemptCostUsd(generation.payload);
             const retryWouldPassCap = firstAttemptCost !== null && firstAttemptCost * 2 > bespokeCostCapUsd;
             const elapsedMs = Date.now() - startedAt;
@@ -584,14 +589,23 @@ export async function POST(request: Request) {
               : retrySkippedReason === "time-budget"
                 ? " Retry skipped: time budget."
                 : "";
+          // The provider's own token counts tell an empty page apart from a
+          // starved one: many reasoning tokens and few output tokens means the
+          // budget ran out before the document, few of both means the model
+          // simply did not write it.
+          const usage = generation.payload.usage;
+          const usageNote =
+            usage && typeof usage.output_tokens === "number"
+              ? ` Output tokens ${formatCount(usage.output_tokens)} (reasoning ${formatCount(usage.output_tokens_details?.reasoning_tokens ?? 0)}), input ${formatCount(usage.input_tokens ?? 0)}.`
+              : "";
           console.warn(
             "Bespoke page rejected by the acceptance checks",
-            JSON.stringify({ code: rejection.code, message: rejection.message, htmlBytes: rejection.htmlBytes, pageModel, retrySkippedReason }),
+            JSON.stringify({ code: rejection.code, message: rejection.message, htmlBytes: rejection.htmlBytes, pageModel, retrySkippedReason, usage: usage ?? null }),
           );
           void recordAdminActivityBestEffort({
             kind: "bespoke-page-rejected",
             serviceKey: "website-generation",
-            message: `Bespoke page rejected (${rejection.code ?? "unknown"}): ${rejection.message ?? "no detail."}${retryNote} Model ${pageModel}, wallet ${walletAddress}.`,
+            message: `Bespoke page rejected (${rejection.code ?? "unknown"}): ${rejection.message ?? "no detail."}${retryNote}${usageNote} Model ${pageModel}, wallet ${walletAddress}.`,
           });
           send({
             type: "error",

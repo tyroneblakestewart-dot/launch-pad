@@ -101,12 +101,12 @@ describe("free-rein bespoke prompt", () => {
     NO_URL_PRESENTATION_BRIEF,
   );
 
-  it("runs gpt-5 at medium reasoning with a 32k output budget", () => {
+  it("runs gpt-5 at medium reasoning with a 64k output budget (raised 12 Sep 2026 so reasoning can never starve the page)", () => {
     expect(BESPOKE_PAGE_REASONING_EFFORT).toBe("medium");
-    expect(BESPOKE_PAGE_MAX_OUTPUT_TOKENS).toBe(32_000);
+    expect(BESPOKE_PAGE_MAX_OUTPUT_TOKENS).toBe(64_000);
     expect(body.model).toBe("gpt-5");
     expect(body.reasoning).toEqual({ effort: "medium" });
-    expect(body.max_output_tokens).toBe(32_000);
+    expect(body.max_output_tokens).toBe(64_000);
   });
 
   it("hands the model the creative direction and drops the prescriptive design recipes", () => {
@@ -189,7 +189,7 @@ describe("website-generation health stage for the bespoke model", () => {
     });
     const stage = pipeline.stages.find((entry) => entry.id === "bespoke-page-model");
     expect(stage?.status).toBe("green");
-    expect(stage?.message).toContain("Full page on gpt-5 (medium reasoning, 32,000-token output budget)");
+    expect(stage?.message).toContain("Full page on gpt-5 (medium reasoning, 64,000-token output budget)");
     expect(stage?.message).toContain("$1.25/M in, $10/M out");
     expect(stage?.message).toContain("per-site cost cap $1.50");
   });
