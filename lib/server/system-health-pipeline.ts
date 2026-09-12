@@ -5,6 +5,7 @@ import type {
   AdminServiceKey,
   AdminServicePipeline,
   SystemHealthCheckId,
+  AdminActivityItem,
 } from "@/lib/admin-operations";
 import { getBondingCurveAddress, HOODLUMS_BONDING_CURVE_READ_ABI } from "@/lib/bonding-curve-config";
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
@@ -83,6 +84,9 @@ function stage(
 
 export type WebsiteGenerationPipelineDeps = {
   getBespokeGenerationsStore?: () => BespokeSiteGenerationsStore;
+  /** Reads the admin Activity log for bespoke rejection outcomes; defaults to the operations store. */
+  listActivity?: (limit: number) => Promise<AdminActivityItem[]>;
+  now?: Date;
   env?: Record<string, string | undefined>;
   requestOidcToken?: string;
   getServiceControl?: (key: AdminServiceKey) => Promise<AdminServiceControl>;
@@ -234,21 +238,105 @@ async function providerReachableStage(
   }
 }
 
-function lastGenerationOutcomeStage(): AdminPipelineStage {
+// Since 11 Sep 2026 the generate-site-page route records every page our own
+// acceptance checks refuse as a `bespoke-page-rejected` Activity entry naming
+// the rule (delivered pages are counted in the stage above), so these two
+// stages read real outcomes instead of saying nothing is persisted.
+const GENERATION_OUTCOME_ACTIVITY_LIMIT = 200;
+const GENERATION_OUTCOME_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const GENERATION_OUTCOME_RECENT_MS = 24 * 60 * 60 * 1000;
+
+type GenerationOutcomeReadout = {
+  rejections: AdminActivityItem[];
+  unreadable: boolean;
+};
+
+async function readGenerationOutcomes(
+  listActivity: (limit: number) => Promise<AdminActivityItem[]>,
+  now: Date,
+): Promise<GenerationOutcomeReadout> {
+  try {
+    const items = await withTimeout(listActivity(GENERATION_OUTCOME_ACTIVITY_LIMIT), HEALTH_CHECK_TIMEOUT_MS, "timed out");
+    const since = now.getTime() - GENERATION_OUTCOME_WINDOW_MS;
+    const rejections = items
+      .filter((item) => item.kind === "bespoke-page-rejected" && Date.parse(item.createdAt) >= since)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    return { rejections, unreadable: false };
+  } catch {
+    return { rejections: [], unreadable: true };
+  }
+}
+
+function describeAge(from: string, now: Date): string {
+  const minutes = Math.max(0, Math.round((now.getTime() - Date.parse(from)) / 60_000));
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} d ago`;
+}
+
+/** The "(code)" the route writes into every rejection message. */
+export function rejectionCodeFromMessage(message: string): string {
+  const match = /^Bespoke page rejected \(([a-z-]+)\)/i.exec(message);
+  return match ? match[1] : "unknown";
+}
+
+function lastGenerationOutcomeStage(readout: GenerationOutcomeReadout, now: Date): AdminPipelineStage {
+  const id = "last-generation-outcome";
+  const label = "Last generation outcome";
+  if (readout.unreadable) {
+    return stage(id, label, "amber", "The Activity log could not be read, so the last bespoke outcome is unknown.");
+  }
+  const latest = readout.rejections[0];
+  if (!latest) {
+    return stage(
+      id,
+      label,
+      "amber",
+      "No bespoke page has been rejected by the acceptance checks in the last 7 days; delivered pages are counted in the stage above. A rejection will show here with the rule that fired.",
+    );
+  }
+  const recent = now.getTime() - Date.parse(latest.createdAt) <= GENERATION_OUTCOME_RECENT_MS;
   return stage(
-    "last-generation-outcome",
-    "Last generation outcome",
-    "amber",
-    "Not recorded. Individual generation outcomes are not persisted to logs or the database yet.",
+    id,
+    label,
+    recent ? "amber" : "green",
+    `${recent ? "Last bespoke page was rejected" : "Last bespoke rejection was"} ${describeAge(latest.createdAt, now)}: ${latest.message}`,
+    latest.createdAt,
   );
 }
 
-function responseValidationStage(): AdminPipelineStage {
+function responseValidationStage(readout: GenerationOutcomeReadout, now: Date): AdminPipelineStage {
+  const id = "response-validation";
+  const label = "Response validation";
+  if (readout.unreadable) {
+    return stage(id, label, "amber", "The Activity log could not be read, so validation outcomes are unknown.");
+  }
+  if (readout.rejections.length === 0) {
+    return stage(
+      id,
+      label,
+      "amber",
+      "No validation rejections recorded in the last 7 days. Every attempt still runs the completeness, safety, size and layout checks; a rejection is logged with the rule that fired.",
+    );
+  }
+  const counts = new Map<string, number>();
+  for (const item of readout.rejections) {
+    const code = rejectionCodeFromMessage(item.message);
+    counts.set(code, (counts.get(code) ?? 0) + 1);
+  }
+  const breakdown = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([code, count]) => `${code} ×${count}`)
+    .join(", ");
+  const latest = readout.rejections[0];
+  const recent = now.getTime() - Date.parse(latest.createdAt) <= GENERATION_OUTCOME_RECENT_MS;
   return stage(
-    "response-validation",
-    "Response validation",
-    "amber",
-    "Not recorded. Validation runs in-process for every generation attempt, but outcomes are not persisted yet.",
+    id,
+    label,
+    recent ? "amber" : "green",
+    `${readout.rejections.length} validation rejection${readout.rejections.length === 1 ? "" : "s"} in the last 7 days: ${breakdown}.`,
+    latest.createdAt,
   );
 }
 
@@ -261,9 +349,12 @@ export async function buildWebsiteGenerationPipeline(
     deps.getServiceControl ?? ((key: AdminServiceKey) => getAdminOperationsStore().getServiceControl(key));
   const fetchImpl = deps.fetchImpl ?? fetch;
 
-  const [endpointReachable, providerReachable] = await Promise.all([
+  const listActivity = deps.listActivity ?? ((limit: number) => getAdminOperationsStore().listActivity(limit));
+  const now = deps.now ?? new Date();
+  const [endpointReachable, providerReachable, outcomes] = await Promise.all([
     endpointReachableStage(getServiceControl),
     providerReachableStage(env, requestOidcToken, fetchImpl),
+    readGenerationOutcomes(listActivity, now),
   ]);
 
   return {
@@ -277,8 +368,8 @@ export async function buildWebsiteGenerationPipeline(
       providerReachable,
       bespokePageModelStage(env, requestOidcToken),
       await bespokeGenerationsStage(env, deps.getBespokeGenerationsStore),
-      lastGenerationOutcomeStage(),
-      responseValidationStage(),
+      lastGenerationOutcomeStage(outcomes, now),
+      responseValidationStage(outcomes, now),
     ],
   };
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AI_FEATURE_KEYS } from "@/lib/ai-feature-keys";
 import { enforceBespokeLinks } from "@/lib/bespoke-site-links";
+import { formatCount, type GeneratedPagePayloadRejection } from "@/lib/generated-site-page";
 import {
   getInspirationDomain,
   isValidImageDataUrl,
@@ -15,11 +16,12 @@ import {
   getFusionBriefIds,
 } from "@/lib/site-style-openai-pipeline";
 import {
-  NO_URL_PRESENTATION_BRIEF,
   FREE_REIN_ACCEPTANCE_PROFILE,
+  NO_URL_PRESENTATION_BRIEF,
   buildGeneratedSitePageRequestBody,
+  buildOversizeRetryCorrectiveFeedback,
   buildPageArtworkIdentityRequestBody,
-  describeGeneratedSitePageRejection,
+  describeGeneratedSitePageRejectionDetail,
   parseGeneratedSitePageResponse,
 } from "@/lib/site-page-openai-pipeline";
 import {
@@ -58,7 +60,15 @@ import { getServiceIsolationResponse } from "@/lib/server/service-isolation";
 import type { GenerateSitePageStreamEvent } from "@/lib/generate-site-page-stream-protocol";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+// Vercel Pro with Fluid Compute allows up to 800s (owner confirmed the plan,
+// 11 Sep 2026). The paid page stage runs gpt-5 at medium reasoning with a
+// 32,000-token budget, and the old 120s ceiling left no room for a slow
+// answer, let alone the one automatic retry.
+export const maxDuration = 800;
+const ROUTE_BUDGET_MS = maxDuration * 1_000;
+// A retry takes about as long as the first attempt, so it only starts while
+// less than this share of the budget has been spent.
+const RETRY_TIME_BUDGET_SHARE = 0.45;
 
 // Only the short artwork/inspiration analysis calls need a bounded timeout;
 // the single large full-page-generation call is streamed and relies on the
@@ -174,6 +184,26 @@ function generationFailureMessage(generation: Extract<StreamedFullPageOutcome, {
       return "AI returned an invalid website document. Try generating again.";
     default:
       return "The artwork and inspiration were analysed, but the standalone website could not be generated. Try again.";
+  }
+}
+
+/** One honest sentence for the studio when our own checks refuse the AI's page — naming the rule, never the generic list. */
+function bespokeRejectionUserMessage(rejection: GeneratedPagePayloadRejection): string {
+  switch (rejection.code) {
+    case "too-long":
+      return `The AI wrote a page of ${formatCount(rejection.htmlBytes ?? 0)} bytes, over the 90,000-byte limit published sites are stored under, and a shorter retry did not land under it either. Try again — every attempt is told to keep the page compact.`;
+    case "layout":
+      return "The AI's page failed the responsive-layout check even after one corrective retry. Try again.";
+    case "missing-section":
+    case "missing-artwork-placeholder":
+    case "missing-viewport":
+    case "missing-style-or-script":
+      return `The AI left the page incomplete: ${rejection.message} Try again.`;
+    case "evidence-mismatch":
+    case "invalid-payload":
+      return `The AI's answer was not a usable page: ${rejection.message} Try again.`;
+    default:
+      return `The AI's page failed our safety check: ${rejection.message ?? "unknown reason."} Try again.`;
   }
 }
 
@@ -330,6 +360,7 @@ export async function POST(request: Request) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false;
+      const startedAt = Date.now();
       const recordBespokeCost = (featureKey: string, response: OpenAIResponse | undefined, stageModel = model) => {
         runAfterResponse(() =>
           recordTextOperationCostBestEffort({
@@ -476,40 +507,56 @@ export async function POST(request: Request) {
         recordBespokeCost(AI_FEATURE_KEYS.BESPOKE_FULL_PAGE, generation.ok ? generation.payload : generation.usageMetadata, pageModel);
 
         // One automatic retry with corrective feedback when the only problem
-        // was the responsive-layout baseline (issue #323) — every other
-        // rejection reason (missing section, unsafe embed, wrong evidence
-        // id) still fails on the first attempt. The retry is the only
-        // multiplier on a single sale, so it is skipped when this attempt plus
-        // a like-sized second one would pass the per-site cost cap (owner
-        // decision, 6 Sep 2026) — the user sees the same layout failure and
-        // decides whether to try again.
-        if (generation.ok && describeGeneratedSitePageRejection(generation.payload, briefIds, acceptance) === "layout") {
-          const firstAttemptCost = fullPageAttemptCostUsd(generation.payload);
-          const retryWouldPassCap = firstAttemptCost !== null && firstAttemptCost * 2 > bespokeCostCapUsd;
-          if (retryWouldPassCap) {
-            console.warn(
-              "Bespoke layout retry skipped: two attempts would pass the per-site cost cap",
-              JSON.stringify({ firstAttemptCost, bespokeCostCapUsd, pageModel }),
-            );
-            void recordAdminActivityBestEffort({
-              kind: "bespoke-cost-cap-held",
-              serviceKey: "website-generation",
-              message: `Bespoke layout retry skipped for wallet ${walletAddress}: first attempt ~$${firstAttemptCost.toFixed(3)}, cap $${bespokeCostCapUsd.toFixed(2)}.`,
-            });
-          } else {
-            generation = await requestStreamedFullPageGeneration(
-              ai,
-              buildGeneratedSitePageRequestBody(
-                input,
-                pageModel,
-                artworkIdentity,
-                inspirationAnalysis,
-                LAYOUT_RETRY_CORRECTIVE_FEEDBACK,
-              ),
-              request.signal,
-              onBuildingPageProgress,
-            );
-            recordBespokeCost(AI_FEATURE_KEYS.BESPOKE_FULL_PAGE_LAYOUT_RETRY, generation.ok ? generation.payload : generation.usageMetadata, pageModel);
+        // was the responsive-layout baseline (issue #323) or, since 11 Sep
+        // 2026, the size limit (a free-rein gpt-5 page overshooting 90,000
+        // bytes — the model cannot count characters). Every other rejection
+        // reason (missing section, unsafe embed, wrong evidence id) still
+        // fails on the first attempt. The retry is the only multiplier on a
+        // single sale, so it is skipped when this attempt plus a like-sized
+        // second one would pass the per-site cost cap (owner decision, 6 Sep
+        // 2026) or the route's own time budget — the user sees the same
+        // failure, named, and decides whether to try again.
+        let retrySkippedReason: "cost-cap" | "time-budget" | null = null;
+        if (generation.ok) {
+          const firstRejection = describeGeneratedSitePageRejectionDetail(generation.payload, briefIds, acceptance);
+          const retryFeedback =
+            firstRejection.reason === "layout"
+              ? LAYOUT_RETRY_CORRECTIVE_FEEDBACK
+              : firstRejection.code === "too-long"
+                ? buildOversizeRetryCorrectiveFeedback(firstRejection.htmlBytes ?? 0)
+                : null;
+          if (retryFeedback) {
+            const retryLabel = firstRejection.reason === "layout" ? "layout" : "oversize";
+            const firstAttemptCost = fullPageAttemptCostUsd(generation.payload);
+            const retryWouldPassCap = firstAttemptCost !== null && firstAttemptCost * 2 > bespokeCostCapUsd;
+            const elapsedMs = Date.now() - startedAt;
+            const retryWouldPassTimeBudget = elapsedMs > ROUTE_BUDGET_MS * RETRY_TIME_BUDGET_SHARE;
+            if (retryWouldPassCap) {
+              retrySkippedReason = "cost-cap";
+              console.warn(
+                `Bespoke ${retryLabel} retry skipped: two attempts would pass the per-site cost cap`,
+                JSON.stringify({ firstAttemptCost, bespokeCostCapUsd, pageModel }),
+              );
+              void recordAdminActivityBestEffort({
+                kind: "bespoke-cost-cap-held",
+                serviceKey: "website-generation",
+                message: `Bespoke ${retryLabel} retry skipped for wallet ${walletAddress}: first attempt ~$${firstAttemptCost.toFixed(3)}, cap $${bespokeCostCapUsd.toFixed(2)}.`,
+              });
+            } else if (retryWouldPassTimeBudget) {
+              retrySkippedReason = "time-budget";
+              console.warn(
+                `Bespoke ${retryLabel} retry skipped: not enough of the route's time budget remains for a second attempt`,
+                JSON.stringify({ elapsedMs, routeBudgetMs: ROUTE_BUDGET_MS, pageModel }),
+              );
+            } else {
+              generation = await requestStreamedFullPageGeneration(
+                ai,
+                buildGeneratedSitePageRequestBody(input, pageModel, artworkIdentity, inspirationAnalysis, retryFeedback),
+                request.signal,
+                onBuildingPageProgress,
+              );
+              recordBespokeCost(AI_FEATURE_KEYS.BESPOKE_FULL_PAGE_LAYOUT_RETRY, generation.ok ? generation.payload : generation.usageMetadata, pageModel);
+            }
           }
         }
 
@@ -527,16 +574,34 @@ export async function POST(request: Request) {
 
         const page = parseGeneratedSitePageResponse(generation.payload, briefIds, acceptance);
         if (!page) {
+          // Name the rule that fired — in the server log, the admin Activity
+          // log (so /admin's "Last generation outcome" is no longer blank) and
+          // the studio's own error line (owner report, 11 Sep 2026).
+          const rejection = describeGeneratedSitePageRejectionDetail(generation.payload, briefIds, acceptance);
+          const retryNote =
+            retrySkippedReason === "cost-cap"
+              ? " Retry skipped: cost cap."
+              : retrySkippedReason === "time-budget"
+                ? " Retry skipped: time budget."
+                : "";
+          console.warn(
+            "Bespoke page rejected by the acceptance checks",
+            JSON.stringify({ code: rejection.code, message: rejection.message, htmlBytes: rejection.htmlBytes, pageModel, retrySkippedReason }),
+          );
+          void recordAdminActivityBestEffort({
+            kind: "bespoke-page-rejected",
+            serviceKey: "website-generation",
+            message: `Bespoke page rejected (${rejection.code ?? "unknown"}): ${rejection.message ?? "no detail."}${retryNote} Model ${pageModel}, wallet ${walletAddress}.`,
+          });
           send({
             type: "error",
-            error:
-              "AI returned a website that was incomplete, unsafe, still resembled the legacy terminal fallback, or did not apply the inspiration structure. Try again.",
+            error: bespokeRejectionUserMessage(rejection),
             providerError: {
               stage: "full-page-generation-parse",
               provider: ai.source,
               kind: "invalid",
               status: null,
-              detail: "The generated document failed the server-side completeness, safety, evidence, or inspiration acceptance checks.",
+              detail: `${rejection.code ?? "unknown"}: ${rejection.message ?? "The generated document failed the server-side checks."}`,
             },
           });
           close();

@@ -1,4 +1,14 @@
 export const SITE_GENERATION_TIMEOUT_MS = 65_000;
+/**
+ * The bespoke (gpt-5) page can legitimately take several minutes; the route
+ * allows 800s. Before this, the gate declared "taking too long" at 65s while
+ * the paid generation was still running (owner report, 11 Sep 2026).
+ */
+export const BESPOKE_SITE_GENERATION_TIMEOUT_MS = 800_000;
+
+export function siteGenerationTimeoutMs(mode: "free" | "bespoke"): number {
+  return mode === "bespoke" ? BESPOKE_SITE_GENERATION_TIMEOUT_MS : SITE_GENERATION_TIMEOUT_MS;
+}
 
 export type SitePreviewState = {
   unlocked: boolean;

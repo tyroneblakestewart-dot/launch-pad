@@ -15,6 +15,6 @@ describe("Vercel AI Gateway production configuration", () => {
     expect(config.env?.AI_GATEWAY_MODEL).toBe("openai/gpt-5-nano");
     expect(
       config.functions?.["app/api/generate-site-page/route.ts"]?.maxDuration,
-    ).toBe(180);
+    ).toBe(800);
   });
 });

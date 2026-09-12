@@ -152,7 +152,8 @@ export type AdminActivityKind =
   | "social-approvals-unlocked"
   | "social-approvals-locked"
   | "bespoke-cost-cap-held"
-  | "bespoke-attempts-used";
+  | "bespoke-attempts-used"
+  | "bespoke-page-rejected";
 
 export type AdminActivityItem = {
   id: string;

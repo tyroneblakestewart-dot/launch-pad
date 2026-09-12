@@ -128,7 +128,7 @@ describe("free-rein bespoke prompt", () => {
     expect(text).toContain("Never reproduce the inspiration website's name, logo, product copy, proprietary assets, exact trade dress or source code.");
     expect(text).toContain("Never reuse the Hoodlums launchpad's black terminal dashboard");
     expect(text).toContain("never a hardcoded white card that ignores the theme");
-    expect(text).toContain("must stay under 85,000 characters");
+    expect(text).toContain("Aim for 50,000–70,000 characters of HTML in total and never exceed 80,000");
   });
 
   it("requires only hero, how-to-buy and community; the rest are the model's call", () => {
