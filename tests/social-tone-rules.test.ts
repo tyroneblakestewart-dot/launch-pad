@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TONE_DIALS,
   DEFAULT_WORDS_TO_AVOID,
+  TOPIC_WORDS_TO_AVOID,
+  WORDS_TO_AVOID_SEED_VERSION,
+  seedWordsToAvoid,
+  topicWordFamily,
   MAX_WORDS_TO_AVOID,
   TONE_DIAL_OPTIONS,
   X_LENGTH_CEILING,
@@ -51,7 +55,9 @@ describe("tone dials (Settings & Rules, 6 Sep 2026)", () => {
 describe("words to avoid", () => {
   it("defaults a record without the field to the design's five words, and cleans a real list (trim, collapse, case-insensitive dedupe, cap)", () => {
     expect(normaliseWordsToAvoid(undefined)).toEqual([...DEFAULT_WORDS_TO_AVOID]);
-    expect(DEFAULT_WORDS_TO_AVOID).toEqual(["guaranteed", "financial advice", "to the moon", "rug", "100x"]);
+    // The design's five plus the four subject words (owner direction, 7 Sep 2026).
+    expect(DEFAULT_WORDS_TO_AVOID).toEqual(["guaranteed", "financial advice", "to the moon", "rug", "100x", "racism", "homophobia", "religion", "politics"]);
+    expect(TOPIC_WORDS_TO_AVOID).toEqual(["racism", "homophobia", "religion", "politics"]);
     expect(normaliseWordsToAvoid(["  Rug ", "rug", "RUG", 4, "", "to   the  moon"])).toEqual(["Rug", "to the moon"]);
     expect(normaliseWordsToAvoid([])).toEqual([]);
     expect(normaliseWordsToAvoid(Array.from({ length: 50 }, (_, index) => `w${index}`))).toHaveLength(MAX_WORDS_TO_AVOID);
@@ -74,9 +80,41 @@ describe("words to avoid", () => {
     expect(findAvoidedWords("anything", [])).toEqual([]);
   });
 
-  it("writes the prompt ban line only when there is something to ban", () => {
+  it("writes the prompt ban line only when there is something to ban, and tells the model to avoid a subject word's whole subject", () => {
     expect(wordsToAvoidInstruction([])).toBe("");
-    expect(wordsToAvoidInstruction(["rug", "100x"])).toContain('never use any of them, in any form, in either draft: "rug", "100x".');
+    const plain = wordsToAvoidInstruction(["rug", "100x"]);
+    expect(plain).toContain('never use any of them, in any form, in either draft: "rug", "100x".');
+    expect(plain).not.toContain("stay away from the subject itself");
+    const withTopics = wordsToAvoidInstruction(["rug", "racism", "religion"]);
+    expect(withTopics).toContain('Where a banned word names a subject ("racism", "religion"), stay away from the subject itself, not just the word');
+    expect(withTopics).toContain("no jokes, comparisons, nods, slang or coded references around it");
+  });
+
+  it("a subject word bans its whole family — and anything around it — while ordinary words stay boundary-exact", () => {
+    expect(findAvoidedWords("that racist take was bad", ["racism"])).toEqual(["racism"]);
+    expect(findAvoidedWords("racial tension, race-baiting again", ["racism"])).toEqual(["racism"]);
+    expect(findAvoidedWords("a homophobic comment", ["homophobia"])).toEqual(["homophobia"]);
+    expect(findAvoidedWords("deeply religious folks", ["religion"])).toEqual(["religion"]);
+    expect(findAvoidedWords("politicians and political takes", ["politics"])).toEqual(["politics"]);
+    expect(findAvoidedWords("sexist joke", ["sexism"])).toEqual(["sexism"]);
+    expect(findAvoidedWords("transphobic remark", ["transphobia"])).toEqual(["transphobia"]);
+    // Listing a family member bans the family too.
+    expect(findAvoidedWords("racism is bad", ["racist"])).toEqual(["racist"]);
+    // Families never fire inside unrelated words, and never for words that are not subjects.
+    expect(findAvoidedWords("a race to the finish, the policy paper, the relic", ["racism", "politics", "religion"])).toEqual([]);
+    expect(findAvoidedWords("Rugby season", ["rug"])).toEqual([]);
+    expect(topicWordFamily("Racism")).not.toBeNull();
+    expect(topicWordFamily("rug")).toBeNull();
+  });
+
+  it("seeds the subject words once into a record saved before they existed, and never again once the record carries the version", () => {
+    expect(seedWordsToAvoid(["rug", "100x"], undefined)).toEqual({ words: ["rug", "100x", "racism", "homophobia", "religion", "politics"], seedVersion: WORDS_TO_AVOID_SEED_VERSION });
+    expect(seedWordsToAvoid(["rug", "Racism"], 1)).toEqual({ words: ["rug", "Racism", "homophobia", "religion", "politics"], seedVersion: WORDS_TO_AVOID_SEED_VERSION });
+    // Already seeded: a removed subject word stays removed.
+    expect(seedWordsToAvoid(["rug"], WORDS_TO_AVOID_SEED_VERSION)).toEqual({ words: ["rug"], seedVersion: WORDS_TO_AVOID_SEED_VERSION });
+    // The cap is respected.
+    const full = Array.from({ length: MAX_WORDS_TO_AVOID }, (_, index) => `w${index}`);
+    expect(seedWordsToAvoid(full, 1).words).toHaveLength(MAX_WORDS_TO_AVOID);
   });
 });
 

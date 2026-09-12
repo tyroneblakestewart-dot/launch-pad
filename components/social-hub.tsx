@@ -19,8 +19,6 @@ import {
 import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import {
   describeMascotImageAllowance,
-  describeMascotImageAllowanceDetail,
-  isMascotImageAllowanceUsed,
   type MascotImageUsage,
 } from "@/lib/mascot-image-allowance";
 import {
@@ -53,6 +51,7 @@ import {
   DEFAULT_WORDS_TO_AVOID,
   addWordToAvoid,
   type ToneDials,
+  WORDS_TO_AVOID_SEED_VERSION,
 } from "@/lib/social-tone-rules";
 import {
   advanceRollingRecentDrafts,
@@ -61,9 +60,16 @@ import {
   countPostsScheduledToday,
   describePlanBadge,
   cadenceSpreadHoursMs,
+  DEFAULT_DAILY_START_CLOCK,
   computeDefaultScheduledAt,
+  describeSpreadHours,
+  calendarDayAtTime,
+  computeDefaultScheduledAtOnDay,
   connectedPlatforms,
+  defaultCalendarClockTime,
   describeWalletMismatch,
+  isCalendarDayBeforeToday,
+  toCalendarDayIso,
   isAwaitingSend,
   isHistoryStatus,
   isPendingSendStatus,
@@ -72,6 +78,23 @@ import {
   approvalDestinations,
   ensureFutureScheduledAt,
 } from "@/lib/social-studio-queue";
+import {
+  buildCalendarDayMarks,
+  describeCalendarDayMarks,
+  describeCalendarPostStatus,
+  describeDraftSource,
+  listCalendarDayEntries,
+} from "@/lib/social-calendar-days";
+import { DEFAULT_QUIET_HOURS, isInQuietHours, parseClockTime, shiftOutOfQuietHours, type QuietHours } from "@/lib/social-quiet-hours";
+import {
+  dateFromWallClock,
+  detectTimezone,
+  describeTimezone,
+  buildTimezoneOptions,
+  listTimezones,
+  timezoneOffsetLabel,
+  wallClockIn,
+} from "@/lib/social-timezone";
 import type {
   MascotVisualDNA,
   PostingCadence,
@@ -101,14 +124,12 @@ import type { TokenProject } from "@/lib/types";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import styles from "./social-hub.module.css";
 
-const DRAFT_STORAGE_KEY = "private-meme-token-studio-social-drafts-v1";
 /** How long a mouse may be outside the saved-examples box before it closes (crossing the pill→box gap takes a few frames). */
 const VOICE_EXAMPLES_HOVER_CLOSE_DELAY_MS = 220;
 const MAX_MASCOT_IMAGE_BYTES = 3_000_000;
 
 type TemplateId = "launch" | "countdown" | "contract" | "community" | "custom";
 type StudioTab = "setup" | "calendar" | "queue" | "rules";
-type DraftMap = Record<string, string>;
 
 // Per-panel status shown inline next to the control that triggered it, instead of one status bar far below the fold.
 type PanelStatus = { tone: "progress" | "success" | "error"; message: string } | null;
@@ -149,6 +170,8 @@ type ExternalTokenForm = {
 };
 /** "Fill out later" on the token-details box, remembered per wallet for this tab only. Never throws. */
 const TOKEN_DETAILS_LATER_KEY = "hoodlums.social.tokenDetailsLater.v1";
+/** "Not now" on the start-time question, remembered for this tab only — the same shape as the token-details reminder (7 Sep 2026). */
+const DAILY_START_LATER_KEY = "hoodlums.social.dailyStartLater.v1";
 function readTokenDetailsLater(owner: string | null): boolean {
   if (!owner) return false;
   try {
@@ -163,6 +186,23 @@ function writeTokenDetailsLater(owner: string | null, later: boolean): void {
     else sessionStorage.removeItem(TOKEN_DETAILS_LATER_KEY);
   } catch {
     // Without session storage the box simply shows again next time.
+  }
+}
+
+function readDailyStartLater(owner: string | null): boolean {
+  if (!owner) return false;
+  try {
+    return sessionStorage.getItem(DAILY_START_LATER_KEY) === owner;
+  } catch {
+    return false;
+  }
+}
+function writeDailyStartLater(owner: string | null, later: boolean): void {
+  try {
+    if (later && owner) sessionStorage.setItem(DAILY_START_LATER_KEY, owner);
+    else sessionStorage.removeItem(DAILY_START_LATER_KEY);
+  } catch {
+    // Without session storage the question simply asks again next time.
   }
 }
 
@@ -258,16 +298,34 @@ function newQueueItemId(): string {
   return `queue-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 }
 
-/** Formats a Date for an <input type="datetime-local"> value, in the browser's local time zone. */
-function toDateTimeLocalValue(date: Date): string {
+/**
+ * Formats a Date for an <input type="datetime-local"> value. The input has
+ * no zone of its own — it shows and returns a bare wall clock — so feeding
+ * it the chosen zone's wall clock is what makes the picker speak that zone
+ * (owner direction, 7 Sep 2026).
+ */
+function toDateTimeLocalValue(date: Date, timeZone?: string | null): string {
   const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const wall = wallClockIn(date, timeZone);
+  return `${wall.year}-${pad(wall.month + 1)}-${pad(wall.day)}T${pad(wall.hour)}:${pad(wall.minute)}`;
 }
 
-function formatScheduledAt(iso: string): string {
+/** Reads an <input type="datetime-local"> value back as the instant that wall clock names in the chosen zone. */
+function fromDateTimeLocalValue(value: string, timeZone?: string | null): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value);
+  if (!match) return new Date(value);
+  return dateFromWallClock(
+    { year: Number(match[1]), month: Number(match[2]) - 1, day: Number(match[3]), hour: Number(match[4]), minute: Number(match[5]) },
+    timeZone,
+  );
+}
+
+function formatScheduledAt(iso: string, timeZone?: string | null): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
+  if (timeZone) options.timeZone = timeZone;
+  return date.toLocaleString(undefined, options);
 }
 
 function storedWalletAddress(): string {
@@ -333,19 +391,16 @@ const BOTS = [
   },
 ] as const;
 
-const MASCOT_ACTIONS = ["trading", "celebrating", "chilling", "building", "gym", "gaming", "cooking"];
-const MASCOT_PLACES = ["city streets", "beach", "space", "office", "casino", "nature"];
 const BUY_ALERT_THRESHOLDS = ["0.01 ETH", "0.05 ETH", "0.1 ETH"] as const;
 const CALENDAR_DAY_NAMES = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
-const TIMEZONES = [
-  { id: "london", label: "London (GMT+1)" },
-  { id: "newyork", label: "New York (GMT-4)" },
-  { id: "singapore", label: "Singapore (GMT+8)" },
-];
+/** X's hard cap; the announcement composer refuses longer text up front (the Queue's own count uses the same 280). */
+const X_CHARACTER_LIMIT = 280;
+/** Mirrors lib/server/social-draft-pipeline.ts's MAX_ANNOUNCEMENT_LENGTH (a server-only module the client bundle must not import). */
+const ANNOUNCEMENT_MAX_LENGTH = 1_000;
 
 type MonthView = { year: number; month: number };
 type SelectedDay = { year: number; month: number; day: number };
@@ -388,15 +443,6 @@ function safeProjects(entries: readonly SavedProjectIndexEntry[]): TokenProject[
   }
 }
 
-function safeMap(raw: string | null): Record<string, string> {
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw) as Record<string, string>;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
 
 function cleanHandle(value: string): string {
   const trimmed = value.trim();
@@ -526,13 +572,7 @@ export function SocialHub() {
   // heroImage out of the localStorage index, so the entries here carry none).
   const [selectedProjectArtwork, setSelectedProjectArtwork] = useState("");
   const [activeTab, setActiveTab] = useState<StudioTab>("setup");
-  const [composeOpen, setComposeOpen] = useState(false);
-  const [templateId, setTemplateId] = useState<TemplateId>("launch");
-  const [message, setMessage] = useState("");
   const [includeArtwork, setIncludeArtwork] = useState(true);
-  const [status, setStatus] = useState(
-    "Choose a saved project, review the post and approve each destination.",
-  );
   const [busy, setBusy] = useState(false);
   const [calendarView, setCalendarView] = useState<MonthView>(() => {
     const now = new Date();
@@ -542,7 +582,11 @@ export function SocialHub() {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth(), day: now.getDate() };
   });
-  const [timezoneId, setTimezoneId] = useState(TIMEZONES[0].id);
+  /** The label for the zone in force, read after mount (Intl on the server would print UTC and mismatch on hydration) — the chosen zone, else the device's. */
+  const [detectedTimezone, setDetectedTimezone] = useState("your local time");
+  /** The device's own zone, read after mount — the "follow this device" option's label and the reset target. */
+  const [deviceTimezone, setDeviceTimezone] = useState("");
+  const mobileWeekRef = useRef<HTMLDivElement | null>(null);
 
   const [walletAddress, setWalletAddress] = useState("");
   // The examples are a LIST (owner spec, 5 Sep 2026): the box holds one post
@@ -573,17 +617,38 @@ export function SocialHub() {
   const [mascotVisualDNA, setMascotVisualDNA] = useState<MascotVisualDNA | null>(null);
   const [mascotReferenceImage, setMascotReferenceImage] = useState<string | null>(null);
   const [mascotBusy, setMascotBusy] = useState(false);
-  const [selectedMascotAction, setSelectedMascotAction] = useState("");
-  const [selectedMascotPlace, setSelectedMascotPlace] = useState("");
-  const [customActionEntry, setCustomActionEntry] = useState<string | null>(null);
-  const [customPlaceEntry, setCustomPlaceEntry] = useState<string | null>(null);
-  const [generatedMascotImage, setGeneratedMascotImage] = useState<string | null>(null);
-  const [mascotImageBusy, setMascotImageBusy] = useState(false);
-  const [telegramMessage, setTelegramMessage] = useState("");
-  const [attachedArtwork, setAttachedArtwork] = useState<string | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [draftBusy, setDraftBusy] = useState(false);
-  const [calendarAiBusy, setCalendarAiBusy] = useState(false);
+  /** Calendar quiet hours (owner direction, 7 Sep 2026): per project, local time, null = off. Every default time and every approval is shifted out of it. */
+  const [quietHours, setQuietHours] = useState<QuietHours | null>({ ...DEFAULT_QUIET_HOURS });
+  /** The zone every Calendar and Queue time is shown and scheduled in; `null` follows the device (owner direction, 7 Sep 2026). */
+  const [timezone, setTimezone] = useState<string | null>(null);
+  const [timezoneEditing, setTimezoneEditing] = useState(false);
+  /** What the user has typed into the zone search (owner report, 7 Sep 2026: the full list as a dropdown filled the screen). */
+  const [timezoneQuery, setTimezoneQuery] = useState("");
+  const timezonePickerRef = useRef<HTMLDivElement | null>(null);
+  /** When the day's first post goes out; `null` until the user answers, and until then everything schedules exactly as it did before (owner direction, 7 Sep 2026). */
+  const [dailyStartTime, setDailyStartTime] = useState<string | null>(null);
+  /** The answer in the prompt's own field, before it is saved. */
+  const [dailyStartDraft, setDailyStartDraft] = useState(DEFAULT_DAILY_START_CLOCK);
+  const [dailyStartLater, setDailyStartLater] = useState(false);
+  /** Calendar "Announcement post" (owner direction, 7 Sep 2026): the user's own announcement, posted as written or jazzed up by the AI, pinned to the selected day. */
+  const [announcementMode, setAnnouncementMode] = useState<"own" | "ai" | "now">("own");
+  /** "Post now" (7 Sep 2026, replacing Setup's Compose now): the text that goes out immediately — X through its own composer, Telegram through the bot. */
+  const [postNowX, setPostNowX] = useState("");
+  const [postNowTelegram, setPostNowTelegram] = useState("");
+  const [announcementText, setAnnouncementText] = useState("");
+  const [announcementAi, setAnnouncementAi] = useState<{ xText: string; telegramText: string } | null>(null);
+  const [announcementAiBusy, setAnnouncementAiBusy] = useState(false);
+  const [announcementStatus, setAnnouncementStatus] = useState<PanelStatus>(null);
+  /** The "at" time beside the date on the Calendar card ("HH:MM" local): every calendar draft and announcement is scheduled for the selected day at this time. */
+  const [calendarTime, setCalendarTime] = useState(() => {
+    const now = new Date();
+    return defaultCalendarClockTime(toCalendarDayIso(now.getFullYear(), now.getMonth(), now.getDate()), now);
+  });
+  /** Today, on the chosen zone's clock — what "today" means everywhere on the calendar. */
+  const todayInZone = wallClockIn(new Date(), timezone);
+  /** Once the user has set the time themselves, switching days keeps it; until then each day gets its own sensible default. */
+  const calendarTimeTouchedRef = useRef(false);
   const mascotFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Per-panel status (issue #340): errors/progress render next to the
@@ -603,9 +668,6 @@ export function SocialHub() {
   const postImageSkipResolversRef = useRef<Map<string, () => void>>(new Map());
   // Best-results read-out for the last uploaded reference — advice only, the upload proceeds regardless.
   const [mascotReferenceAssessment, setMascotReferenceAssessment] = useState<MascotReferenceAssessment | null>(null);
-  const [mascotSceneStatus, setMascotSceneStatus] = useState<PanelStatus>(null);
-  const [setupDraftStatus, setSetupDraftStatus] = useState<PanelStatus>(null);
-  const [calendarDraftStatus, setCalendarDraftStatus] = useState<PanelStatus>(null);
   const [telegramStatus, setTelegramStatus] = useState<PanelStatus>(null);
 
   // Real Telegram connect flow (issue #340): reconciles the Setup card with
@@ -729,6 +791,8 @@ export function SocialHub() {
   // project alongside the Direction brief and ride into every AI draft.
   const [wordsToAvoid, setWordsToAvoid] = useState<string[]>([...DEFAULT_WORDS_TO_AVOID]);
   const [toneDials, setToneDials] = useState<ToneDials>({ ...DEFAULT_TONE_DIALS });
+  /** Carried from the loaded record so a save never drops the seed version (which is what stops removed subject words coming back). */
+  const [wordsToAvoidSeed, setWordsToAvoidSeed] = useState(WORDS_TO_AVOID_SEED_VERSION);
   const [wordToAvoidDraft, setWordToAvoidDraft] = useState("");
   const [wordsToAvoidStatus, setWordsToAvoidStatus] = useState<PanelStatus>(null);
 
@@ -748,17 +812,14 @@ export function SocialHub() {
   const projectOwner = useProjectOwner();
   useEffect(() => {
     const loadedProjects = safeProjects(readProjectIndex(projectOwner));
-    const drafts = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
     setProjects(loadedProjects);
     setWalletAddress(storedWalletAddress());
     setDetailsLater(readTokenDetailsLater(projectOwner));
+    setDailyStartLater(readDailyStartLater(projectOwner));
     setEditingProjectId(null);
 
     const first = loadedProjects[0];
     setSelectedProjectId(first ? first.id : "");
-    if (first) {
-      setMessage(drafts[first.id] || buildTemplate(first, "launch"));
-    }
   }, [projectOwner]);
 
   // Re-confirming the wallet from the Account panel in another tab only
@@ -1013,7 +1074,15 @@ export function SocialHub() {
       setDirectionBrief(record.directionBrief);
       setPostingCadence(record.postingCadence);
       setWordsToAvoid(record.wordsToAvoid);
+      setWordsToAvoidSeed(record.wordsToAvoidSeed);
       setToneDials(record.toneDials);
+      setQuietHours(record.quietHours);
+      setTimezone(record.timezone);
+      setDailyStartTime(record.dailyStartTime);
+      setDailyStartDraft(record.dailyStartTime ?? DEFAULT_DAILY_START_CLOCK);
+      setAnnouncementText("");
+      setAnnouncementAi(null);
+      setAnnouncementStatus(null);
       setWordToAvoidDraft("");
       setWordsToAvoidStatus(null);
       setScheduledPosts([]);
@@ -1041,7 +1110,11 @@ export function SocialHub() {
       directionBrief,
       sampleLineFeedback,
       wordsToAvoid,
+      wordsToAvoidSeed,
       toneDials,
+      quietHours,
+      timezone,
+      dailyStartTime,
       sortedVoiceSourceKeys,
       ...overrides,
     };
@@ -1151,11 +1224,6 @@ export function SocialHub() {
           ? "Launch this token on Robinhood Chain Testnet first — the Buy Bot watches its curve."
           : null;
 
-  const xCharacterCount = message.length;
-  const xReady = xCharacterCount > 0 && xCharacterCount <= 280;
-  const telegramReady = Boolean(
-    selectedProject && telegramConnection?.status === "connected" && (telegramMessage || message).trim(),
-  );
   const voiceExampleFilter = useMemo(() => filterUsableVoiceExamples(voiceExamplesText), [voiceExamplesText]);
   const voiceExampleCount = voiceExampleFilter.usable.length;
   const voiceProgressPercent = Math.min(100, Math.round((voiceExampleCount / VOICE_EXAMPLE_TARGET) * 100));
@@ -1166,8 +1234,7 @@ export function SocialHub() {
     ? selectedProject.ticker?.trim().toUpperCase() || selectedProject.name?.trim().toUpperCase().slice(0, 14) || "UNTITLED"
     : "PROJECT";
   const xHandle = selectedProject?.xHandle ? cleanHandle(selectedProject.xHandle) : "";
-  const now = new Date();
-  const isCurrentMonthView = calendarView.year === now.getFullYear() && calendarView.month === now.getMonth();
+  const isCurrentMonthView = calendarView.year === todayInZone.year && calendarView.month === todayInZone.month;
   const monthGrid = useMemo(
     () => buildMonthGrid(calendarView.year, calendarView.month),
     [calendarView.year, calendarView.month],
@@ -1177,6 +1244,70 @@ export function SocialHub() {
     [monthGrid],
   );
   const selectedDayLabel = `${selectedDay.day} ${MONTH_NAMES[selectedDay.month]} ${selectedDay.year}`;
+  const selectedDayIso = toCalendarDayIso(selectedDay.year, selectedDay.month, selectedDay.day);
+  /** Said before the tap: a picked time inside quiet hours is moved to the window's end at approval. */
+  const calendarTimeQuietNote = useMemo(() => {
+    const at = calendarDayAtTime(selectedDayIso, calendarTime, timezone);
+    return quietHours && at && isInQuietHours(at, quietHours, timezone) ? `Inside quiet hours — it will go out at ${quietHours.end}.` : null;
+  }, [selectedDayIso, calendarTime, quietHours, timezone]);
+  /** Day markers for the month in view, from the approved posts already loaded and the drafts pinned to a day (never a second fetch). */
+  const calendarDayMarks = useMemo(
+    () => buildCalendarDayMarks(scheduledPosts, queue, calendarView.year, calendarView.month, timezone),
+    [scheduledPosts, queue, calendarView.year, calendarView.month, timezone],
+  );
+  const selectedDayEntries = useMemo(
+    () => listCalendarDayEntries(scheduledPosts, queue, selectedDay.year, selectedDay.month, selectedDay.day, timezone),
+    [scheduledPosts, queue, selectedDay, timezone],
+  );
+
+  useEffect(() => {
+    setDetectedTimezone(describeTimezone(timezone));
+  }, [timezone]);
+
+  useEffect(() => {
+    setDeviceTimezone(detectTimezone());
+  }, []);
+
+  // A tap anywhere else closes the zone picker (owner recording, 7 Sep 2026:
+  // it stayed open over the calendar until Cancel was pressed).
+  useEffect(() => {
+    if (!timezoneEditing) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const picker = timezonePickerRef.current;
+      if (picker && event.target instanceof Node && !picker.contains(event.target)) setTimezoneEditing(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [timezoneEditing]);
+
+  // The record loads after mount, so an untouched "at" field follows the
+  // start time (and zone) once they arrive.
+  useEffect(() => {
+    if (calendarTimeTouchedRef.current) return;
+    setCalendarTime(defaultCalendarClockTime(selectedDayIso, new Date(), timezone, dailyStartTime));
+  }, [dailyStartTime, timezone, selectedDayIso]);
+
+  /**
+   * The handful of zones the picker actually shows: what the user typed
+   * matched against every zone, or a short suggestion list before they type.
+   * Built only while the picker is open, so a few hundred names never render.
+   */
+  const timezoneMatches = useMemo(() => {
+    if (!timezoneEditing) return [];
+    return buildTimezoneOptions(listTimezones(timezone, deviceTimezone), timezoneQuery, timezone, deviceTimezone);
+  }, [timezoneEditing, timezoneQuery, timezone, deviceTimezone]);
+
+  // The mobile week strip opens on the selected day (today on arrival)
+  // instead of the 1st, which put today off-screen for most of the month
+  // (owner test, 7 Sep 2026). Scrolls the strip only, never the page.
+  useEffect(() => {
+    if (activeTab !== "calendar") return;
+    const strip = mobileWeekRef.current;
+    if (!strip || strip.clientWidth === 0) return;
+    const target = strip.querySelector<HTMLElement>(`[data-day="${selectedDay.day}"]`);
+    if (!target) return;
+    strip.scrollTo({ left: Math.max(0, target.offsetLeft - strip.offsetLeft - 8), behavior: "auto" });
+  }, [activeTab, calendarView.year, calendarView.month, selectedDay]);
 
   /** The current project's canned template outputs (issue #380), used to detect an unedited-template Ready-to-review draft — "custom" is excluded since it's always empty. */
   const templateOutputs = useMemo(
@@ -1197,8 +1328,9 @@ export function SocialHub() {
       countPostsScheduledToday(
         scheduledPosts.filter((post) => post.status !== "canceled").map((post) => post.scheduledAt),
         new Date(),
+        timezone,
       ),
-    [scheduledPosts],
+    [scheduledPosts, timezone],
   );
   const cadencePostsPerDay = cadenceQueueTarget(postingCadence);
 
@@ -1218,33 +1350,12 @@ export function SocialHub() {
   function selectProject(id: string) {
     const project = projects.find((item) => item.id === id);
     if (!project) return;
-    const drafts = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
     setSelectedProjectId(id);
-    setTemplateId("launch");
-    setMessage(drafts[id] || buildTemplate(project, "launch"));
-    setTelegramMessage("");
-    setAttachedArtwork(null);
-    setGeneratedMascotImage(null);
-    setSelectedMascotAction("");
-    setSelectedMascotPlace("");
-    setCustomActionEntry(null);
-    setCustomPlaceEntry(null);
     setProjectMenuOpen(false);
     setVoiceStatus(null);
     setMascotUploadStatus(null);
-    setMascotSceneStatus(null);
-    setSetupDraftStatus(null);
-    setCalendarDraftStatus(null);
     setPostsStatus(null);
     setReplenishStatus(null);
-    setStatus(`${project.name || "Project"} loaded into Hoodlums Social.`);
-  }
-
-  function chooseTemplate(id: TemplateId) {
-    setTemplateId(id);
-    if (!selectedProject) return;
-    setMessage(buildTemplate(selectedProject, id));
-    setStatus(`${TEMPLATES.find((item) => item.id === id)?.label || "Template"} loaded.`);
   }
 
   // Opens the token-details box with a reason — every tool that needs a
@@ -1255,62 +1366,9 @@ export function SocialHub() {
     setEditingProjectId(null);
     setAddTokenOpen(true);
     setExternalStatus({ tone: "progress", message: reason });
-    setStatus(reason);
     window.requestAnimationFrame(() => {
       document.querySelector("[data-add-token-form]")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
-  }
-
-  function saveDraft() {
-    if (!selectedProject) {
-      promptForTokenDetails("Add your token details before saving a draft.");
-      return;
-    }
-    const drafts: DraftMap = safeMap(localStorage.getItem(DRAFT_STORAGE_KEY));
-    drafts[selectedProject.id] = message;
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(drafts));
-    setStatus("Draft saved privately in this browser.");
-  }
-
-  async function copyPost() {
-    if (!message.trim()) {
-      setStatus("Write a post before copying it.");
-      return;
-    }
-    await navigator.clipboard.writeText(message);
-    setStatus("Post copied to the clipboard.");
-  }
-
-  function openXComposer() {
-    if (!message.trim()) {
-      setStatus("Write a post before opening X.");
-      return false;
-    }
-    if (!xReady) {
-      setStatus(`X posts must be 280 characters or fewer. Remove ${xCharacterCount - 280} characters.`);
-      return false;
-    }
-    const url = `https://x.com/intent/post?text=${encodeURIComponent(message)}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-    setStatus("X composer opened with the post filled in. Review it and press Post on X.");
-    return true;
-  }
-
-  function downloadArtwork() {
-    if (!selectedProject || !projectArtwork) {
-      setStatus("This project has no artwork to download.");
-      return;
-    }
-    const extension = projectArtwork.startsWith("data:image/png")
-      ? "png"
-      : projectArtwork.startsWith("data:image/webp")
-        ? "webp"
-        : "jpg";
-    const anchor = document.createElement("a");
-    anchor.href = projectArtwork;
-    anchor.download = `${selectedProject.websiteSlug || selectedProject.ticker || "token"}-social-artwork.${extension}`;
-    anchor.click();
-    setStatus("Artwork downloaded. Attach it manually inside the X composer.");
   }
 
   async function connectX() {
@@ -1480,48 +1538,6 @@ export function SocialHub() {
     } finally {
       setTelegramConnectBusy(false);
     }
-  }
-
-  async function postTelegram() {
-    if (!selectedProject) {
-      promptForTokenDetails("Add your token details before publishing.");
-      return false;
-    }
-    if (!telegramReady || !telegramConnection || telegramConnection.status !== "connected") {
-      setStatus("Connect a verified Telegram channel in Setup and add post text first.");
-      return false;
-    }
-
-    setBusy(true);
-    setStatus("Sending the approved post through the Hoodlums Telegram bot…");
-    try {
-      const response = await fetch("/api/social/telegram", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chatId: telegramConnection.externalId,
-          text: (telegramMessage || message).trim(),
-          artwork: includeArtwork ? attachedArtwork || projectArtwork : "",
-        }),
-      });
-      const payload = (await response.json()) as { ok?: boolean; error?: string };
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "Telegram rejected the post.");
-      }
-
-      setStatus("Telegram post published through the Hoodlums bot.");
-      return true;
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Telegram publishing failed.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function publishBoth() {
-    if (!openXComposer()) return;
-    await postTelegram();
   }
 
   function draftProjectPayload() {
@@ -1757,6 +1773,12 @@ export function SocialHub() {
   async function generateDraft(
     options: {
       dayLabel?: string;
+      /** The picked calendar day ("YYYY-MM-DD") a Calendar-tab draft is scheduled on at approval. */
+      scheduledDay?: string;
+      /** The Calendar card's "at" time ("HH:MM") for that day. */
+      scheduledTime?: string;
+      /** Announcement mode: the user's own announcement to jazz up. The result is returned for review, never added to the Queue here. */
+      announcement?: string;
       theme?: string;
       replenish?: boolean;
       recentDraftsOverride?: string[];
@@ -1770,8 +1792,8 @@ export function SocialHub() {
       promptForTokenDetails("Add your token details before generating a draft.");
       return null;
     }
-    if (!project.description.trim()) {
-      // The AI only ever states facts from the description — with none, it has nothing to write from.
+    if (!project.description.trim() && !options.announcement) {
+      // The AI only ever states facts from the description — with none, it has nothing to write from (an announcement supplies its own).
       if (selectedProject && isExternalProject(selectedProject)) {
         report({ tone: "error", message: "Add a sentence about the token first — the AI drafts from it." });
         openEditTokenDetails(selectedProject, "Add a sentence about the token — the AI only ever states facts from here.");
@@ -1781,7 +1803,7 @@ export function SocialHub() {
       return null;
     }
 
-    report({ tone: "progress", message: "Writing a draft with AI…" });
+    report({ tone: "progress", message: options.announcement ? "Jazzing up your announcement…" : "Writing a draft with AI…" });
     try {
       const angleIndex = draftAngleCounterRef.current;
       draftAngleCounterRef.current += 1;
@@ -1796,6 +1818,7 @@ export function SocialHub() {
           voiceProfile,
           dayLabel: options.dayLabel ?? null,
           theme: options.theme ?? null,
+          announcement: options.announcement ?? null,
           likedSampleLines: likedReinforcementLines(sampleLineFeedback),
           directionBrief: directionBrief.trim() || null,
           voiceExamples: voiceExampleFilter.usable,
@@ -1816,7 +1839,12 @@ export function SocialHub() {
       }
       void loadSlotUsage();
 
-      if (options.dayLabel || options.replenish) {
+      if (options.announcement) {
+        report({ tone: "success", message: "Jazzed up — check it, edit it if you like, then add it to the Queue." });
+        return payload.draft;
+      }
+
+      {
         const item: QueueItem = {
           id: newQueueItemId(),
           xText: payload.draft.xText,
@@ -1824,6 +1852,8 @@ export function SocialHub() {
           artwork: null,
           source: options.dayLabel ? "calendar-ai" : "auto-replenish",
           dayLabel: options.dayLabel ?? null,
+          scheduledDay: options.scheduledDay ?? null,
+          scheduledTime: options.scheduledTime ?? null,
           createdAt: new Date().toISOString(),
           angleKey: payload.angleKey ?? null,
         };
@@ -1837,11 +1867,6 @@ export function SocialHub() {
             ? { tone: "success", message: `AI draft for ${options.dayLabel} added to the Queue.` }
             : { tone: "success", message: "New draft added to Ready to review." },
         );
-      } else {
-        setMessage(payload.draft.xText);
-        setTelegramMessage(payload.draft.telegramText);
-        setComposeOpen(true);
-        report({ tone: "success", message: "AI draft ready. Review it below before posting." });
       }
       return payload.draft;
     } catch (error) {
@@ -1850,16 +1875,203 @@ export function SocialHub() {
     }
   }
 
-  async function generateDraftFromSetup() {
-    setDraftBusy(true);
-    await generateDraft({}, setSetupDraftStatus);
-    setDraftBusy(false);
+  /**
+   * The default time for a Calendar-tab draft: on its picked day (first
+   * waking slot, one cadence spread past anything already pending that day),
+   * or null for every other draft so the caller falls back to the ordinary
+   * cadence spread from now. Used by the shown default and by approval, so
+   * the time the row shows is the time approval uses.
+   */
+  function calendarDayScheduledAt(item: QueueItem, awaitingIso: string[], now: Date): Date | null {
+    if (!item.scheduledDay) return null;
+    // A time picked beside the date on the Calendar card is the exact default; otherwise the day's first free waking slot.
+    const pinned = item.scheduledTime ? calendarDayAtTime(item.scheduledDay, item.scheduledTime, timezone) : null;
+    return pinned ?? computeDefaultScheduledAtOnDay(item.scheduledDay, awaitingIso, now, cadenceSpreadHoursMs(postingCadence), timezone, dailyStartTime);
   }
 
-  async function generateDraftForDay() {
-    setCalendarAiBusy(true);
-    await generateDraft({ dayLabel: selectedDayLabel }, setCalendarDraftStatus);
-    setCalendarAiBusy(false);
+  /** Calendar quiet hours: saved at once; a start equal to its end means off. */
+  function updateQuietHours(next: QuietHours | null) {
+    setQuietHours(next);
+    persistSocialStudio({ quietHours: next });
+  }
+
+  /**
+   * The zone every Calendar and Queue time is shown and scheduled in
+   * (owner direction, 7 Sep 2026). Saved at once; "" means follow the
+   * device, which is what the read-only line said before it could be
+   * changed. Only the clock changes — no already-approved post moves,
+   * since a scheduled post is stored as an instant.
+   */
+  function updateTimezone(next: string) {
+    const chosen = next.trim() ? next : null;
+    setTimezone(chosen);
+    setTimezoneEditing(false);
+    setTimezoneQuery("");
+    persistSocialStudio({ timezone: chosen });
+  }
+
+  function openTimezonePicker() {
+    setTimezoneQuery("");
+    setTimezoneEditing(true);
+    // On a phone the list opens in flow under the search box, so bring the
+    // whole picker into view rather than leaving it behind the bottom nav.
+    window.requestAnimationFrame(() => {
+      timezonePickerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
+  /**
+   * When the day's first post goes out (owner direction, 7 Sep 2026: "all
+   * users should be prompted when do you want your first post to start …
+   * and space posts out in accordance with the first initial post"). Saved
+   * at once; every later post on that day steps one cadence spread from it.
+   */
+  function updateDailyStartTime(next: string) {
+    if (parseClockTime(next) === null) return;
+    setDailyStartTime(next);
+    setDailyStartDraft(next);
+    writeDailyStartLater(projectOwner, false);
+    setDailyStartLater(false);
+    persistSocialStudio({ dailyStartTime: next });
+  }
+
+  /** "Not now" leaves the question unanswered: scheduling keeps the behaviour it had before, and the row returns next visit. */
+  function askDailyStartLater() {
+    writeDailyStartLater(projectOwner, true);
+    setDailyStartLater(true);
+  }
+
+  /** A native time field's "HH:MM" (a cleared field is ignored, never saved as off). */
+  function setQuietHourBound(bound: keyof QuietHours, value: string) {
+    if (parseClockTime(value) === null) return;
+    const next = { ...(quietHours ?? DEFAULT_QUIET_HOURS), [bound]: value };
+    updateQuietHours(next.start === next.end ? null : next);
+  }
+
+  /**
+   * "Announcement post" (owner direction, 7 Sep 2026): the user's own
+   * announcement, either as written ("My words") or rewritten by the AI in
+   * the taught voice ("AI jazz-up", reviewed and editable first). Either
+   * way it becomes an ordinary draft pinned to the selected day at the
+   * card's time and takes the same Queue approve path as every AI draft —
+   * nothing is sent from the calendar.
+   */
+  function addAnnouncementToQueue(mode: "own" | "ai") {
+    const xText = (mode === "own" ? announcementText : announcementAi?.xText ?? "").trim();
+    const telegramText = (mode === "own" ? announcementText : announcementAi?.telegramText ?? "").trim();
+    if (!xText && !telegramText) {
+      setAnnouncementStatus({ tone: "error", message: mode === "own" ? "Write the announcement first." : "Jazz it up first, or switch to My words." });
+      return;
+    }
+    if (xText.length > X_CHARACTER_LIMIT) {
+      setAnnouncementStatus({ tone: "error", message: `The X version is ${xText.length} characters — X allows ${X_CHARACTER_LIMIT}. Shorten it here, or add it and edit the X version in the Queue.` });
+      return;
+    }
+    if (isCalendarDayBeforeToday(selectedDayIso, new Date(), timezone)) {
+      setAnnouncementStatus({ tone: "error", message: `${selectedDayLabel} has already passed — pick today or a later day.` });
+      return;
+    }
+    if (!selectedProject) {
+      promptForTokenDetails("Add your token details before adding an announcement.");
+      return;
+    }
+    const item: QueueItem = {
+      id: newQueueItemId(),
+      xText,
+      telegramText,
+      artwork: null,
+      source: mode === "own" ? "announcement" : "announcement-ai",
+      dayLabel: selectedDayLabel,
+      scheduledDay: selectedDayIso,
+      scheduledTime: calendarTime,
+      createdAt: new Date().toISOString(),
+      angleKey: null,
+    };
+    setQueue((current) => {
+      const next = [item, ...current];
+      persistSocialStudio({ queue: next });
+      return next;
+    });
+    setAnnouncementText("");
+    setAnnouncementAi(null);
+    setAnnouncementStatus({ tone: "success", message: `In the Queue for ${selectedDayLabel} at ${calendarTime} — approve it there.` });
+  }
+
+  /** "AI jazz-up": one draft call with the announcement as the source of truth; the result is shown for editing, never queued or sent by itself. */
+  async function jazzUpAnnouncement() {
+    const text = announcementText.trim();
+    if (!text) {
+      setAnnouncementStatus({ tone: "error", message: "Write the announcement first — the AI rewrites your words, it doesn't invent them." });
+      return;
+    }
+    if (isCalendarDayBeforeToday(selectedDayIso, new Date(), timezone)) {
+      setAnnouncementStatus({ tone: "error", message: `${selectedDayLabel} has already passed — pick today or a later day.` });
+      return;
+    }
+    setAnnouncementAiBusy(true);
+    const draft = await generateDraft({ dayLabel: selectedDayLabel, announcement: text }, setAnnouncementStatus);
+    if (draft) setAnnouncementAi(draft);
+    setAnnouncementAiBusy(false);
+  }
+
+  /** Entering the Post now tab starts from whatever is written — the jazzed version when there is one, else the announcement as typed — without overwriting text already edited there. */
+  function openPostNow() {
+    setAnnouncementMode("now");
+    setAnnouncementStatus(null);
+    if (!postNowX.trim() && !postNowTelegram.trim()) {
+      setPostNowX(announcementAi?.xText ?? announcementText);
+      setPostNowTelegram(announcementAi?.telegramText ?? announcementText);
+    }
+  }
+
+  /** X never posts through the API from here (issue #342 cost control): the free intent composer opens with the text filled in, and the user presses Post on X. */
+  function postNowToX() {
+    const text = postNowX.trim();
+    if (!text) {
+      setAnnouncementStatus({ tone: "error", message: "Write the X post first." });
+      return;
+    }
+    if (text.length > X_CHARACTER_LIMIT) {
+      setAnnouncementStatus({ tone: "error", message: `X posts must be ${X_CHARACTER_LIMIT} characters or fewer. Remove ${text.length - X_CHARACTER_LIMIT} characters.` });
+      return;
+    }
+    window.open(`https://x.com/intent/post?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+    setAnnouncementStatus({ tone: "success", message: "X composer opened with the post filled in. Review it and press Post on X." });
+  }
+
+  /** Telegram goes out immediately through the Hoodlums bot, to the verified channel connected in Setup. */
+  async function postNowToTelegram() {
+    if (!selectedProject) {
+      promptForTokenDetails("Add your token details before publishing.");
+      return;
+    }
+    const text = postNowTelegram.trim();
+    if (!telegramConnection || telegramConnection.status !== "connected" || !text) {
+      setAnnouncementStatus({ tone: "error", message: "Connect a verified Telegram channel in Setup and write the Telegram post first." });
+      return;
+    }
+    setBusy(true);
+    setAnnouncementStatus({ tone: "progress", message: "Sending through the Hoodlums Telegram bot…" });
+    try {
+      const response = await fetch("/api/social/telegram", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chatId: telegramConnection.externalId,
+          text,
+          artwork: includeArtwork ? projectArtwork : "",
+        }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Telegram rejected the post.");
+      }
+      setAnnouncementStatus({ tone: "success", message: "Posted to Telegram through the Hoodlums bot." });
+    } catch (error) {
+      setAnnouncementStatus({ tone: "error", message: error instanceof Error ? error.message : "Telegram publishing failed." });
+    } finally {
+      setBusy(false);
+    }
   }
 
   /**
@@ -2305,6 +2517,8 @@ export function SocialHub() {
     let approvedAny = false;
     let replacedAny = false;
     let failureMessage = "";
+    /** Set when quiet hours moved the approval time, so the success line says where it went. */
+    let quietHoursMovedTo = "";
     try {
       let artwork = item.artwork;
       if (postImageCandidateIds.has(item.id) && !artwork && !item.imageDeclined) {
@@ -2319,11 +2533,16 @@ export function SocialHub() {
       // is pending right now — and never earlier than two minutes from now.
       const now = new Date();
       const awaitingIso = scheduledPosts.filter((post) => isPendingSendStatus(post.status)).map((post) => post.scheduledAt);
-      const picked =
+      const rawPicked =
         scheduleManuallySet[item.id] && itemScheduledAt[item.id]
-          ? new Date(itemScheduledAt[item.id])
-          : computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));
+          ? fromDateTimeLocalValue(itemScheduledAt[item.id], timezone)
+          : calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence), dailyStartTime, timezone);
+      // Quiet hours apply to every approval, the user's own pick included:
+      // the future clamp runs first so a lifted past time can't land back
+      // inside the window, and the clamp below is then a no-op.
+      const picked = shiftOutOfQuietHours(ensureFutureScheduledAt(rawPicked, now), quietHours, timezone);
       const scheduledAtIso = ensureFutureScheduledAt(picked, now).toISOString();
+      if (picked.getTime() !== ensureFutureScheduledAt(rawPicked, now).getTime()) quietHoursMovedTo = formatScheduledAt(scheduledAtIso, timezone);
 
       let authMode: "session" | "signature";
       try {
@@ -2386,7 +2605,9 @@ export function SocialHub() {
     }
     const approvedMessage = replacedAny
       ? "Approved — replaced an already-pending duplicate of this exact draft instead of sending twice."
-      : "Approved and scheduled.";
+      : quietHoursMovedTo
+        ? `Approved and scheduled — moved to ${quietHoursMovedTo} to stay out of quiet hours.`
+        : "Approved and scheduled.";
     setPostsStatus(
       approvedAny
         ? { tone: "success", message: failureMessage ? `Approved, but ${failureMessage.charAt(0).toLowerCase()}${failureMessage.slice(1)}` : approvedMessage }
@@ -2416,7 +2637,7 @@ export function SocialHub() {
 
   function openComposerForPost(post: ScheduledPostSummary) {
     window.open(buildXIntentUrl(post.body), "_blank", "noopener,noreferrer");
-    setStatus("X composer opened with the approved post filled in.");
+    setPostsStatus({ tone: "success", message: "X composer opened with the approved post filled in." });
   }
 
   function setReschedulePostValue(postId: string, value: string) {
@@ -2489,15 +2710,15 @@ export function SocialHub() {
       const next = { ...current };
       for (const item of queue) {
         if (next[item.id] === undefined) {
-          next[item.id] = toDateTimeLocalValue(
-            computeDefaultScheduledAt(awaitingIso, new Date(), cadenceSpreadHoursMs(postingCadence)),
-          );
+          const now = new Date();
+          const base = calendarDayScheduledAt(item, awaitingIso, now) ?? computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence), dailyStartTime, timezone);
+          next[item.id] = toDateTimeLocalValue(shiftOutOfQuietHours(base, quietHours, timezone), timezone);
           changed = true;
         }
       }
       return changed ? next : current;
     });
-  }, [queue, scheduledPosts, postingCadence]);
+  }, [queue, scheduledPosts, postingCadence, quietHours, timezone, dailyStartTime]);
 
   // Queue tab data is fetched client-side only (never in the background) on
   // tab open, on window/tab focus while the tab is active, and after
@@ -2512,6 +2733,20 @@ export function SocialHub() {
     selectedProjectIdRef.current = selectedProjectId;
     queueTabActionsRef.current = { loadScheduledPosts, loadConnections, replenishQueue };
   });
+
+  // Scheduled posts used to load only when the Queue tab opened, so the
+  // header's TODAY x/5 pill read 0/5 on every other tab until then (owner
+  // test, 7 Sep 2026). Load once per wallet on arrival and again whenever
+  // the Calendar tab opens; the Queue tab keeps its own load below.
+  const postsLoadedForWalletRef = useRef("");
+  useEffect(() => {
+    if (!walletAddress) return;
+    const firstLoadForWallet = postsLoadedForWalletRef.current !== walletAddress;
+    postsLoadedForWalletRef.current = walletAddress;
+    if (activeTab === "queue") return;
+    if (!firstLoadForWallet && activeTab !== "calendar") return;
+    void queueTabActionsRef.current.loadScheduledPosts();
+  }, [activeTab, walletAddress]);
 
   useEffect(() => {
     if (activeTab !== "queue") return;
@@ -2540,23 +2775,6 @@ export function SocialHub() {
     // Re-runs when the Queue tab is opened, the active project/wallet changes, or the project's saved queue finishes loading (so the first replenish sees the real count); the activation calls close over that render's fresh state, and the focus handler reads the latest functions through queueTabActionsRef.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, selectedProjectId, walletAddress, loadedRecordProjectId]);
-
-  function toggleMascotAction(label: string) {
-    setCustomActionEntry(null);
-    setSelectedMascotAction((current) => (current === label ? "" : label));
-  }
-
-  function toggleMascotPlace(label: string) {
-    setCustomPlaceEntry(null);
-    setSelectedMascotPlace((current) => (current === label ? "" : label));
-  }
-
-  function composeSceneInput(): string {
-    const action = (customActionEntry ?? selectedMascotAction).trim();
-    const place = (customPlaceEntry ?? selectedMascotPlace).trim();
-    if (action && place) return `${action} at ${place}`;
-    return action || place;
-  }
 
   async function handleMascotFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -2597,8 +2815,8 @@ export function SocialHub() {
         tone: "success",
         message:
           assessment.verdict === "great"
-            ? "Mascot identity locked in. Choose a scene to generate artwork."
-            : `Mascot identity locked in — ${assessment.summary} Choose a scene to generate artwork.`,
+            ? "Mascot identity locked in. Your post images will feature them."
+            : `Mascot identity locked in — ${assessment.summary} Your post images will feature them.`,
       });
     } catch (error) {
       setMascotUploadStatus({ tone: "error", message: error instanceof Error ? error.message : "The mascot artwork could not be analysed." });
@@ -2607,83 +2825,6 @@ export function SocialHub() {
     }
   }
 
-  async function generateMascotScene() {
-    const project = draftProjectPayload();
-    const sceneInput = composeSceneInput();
-    if (!project) {
-      setMascotSceneStatus({ tone: "error", message: "Add your token details before generating a mascot scene." });
-      promptForTokenDetails("Add your token details before generating a mascot scene.");
-      return;
-    }
-    if (!mascotVisualDNA) {
-      setMascotSceneStatus({ tone: "error", message: "Upload mascot artwork first so its visual identity can be locked in." });
-      return;
-    }
-    if (!sceneInput) {
-      setMascotSceneStatus({ tone: "error", message: "Choose or describe a scene for the mascot." });
-      return;
-    }
-
-    setMascotImageBusy(true);
-    setMascotSceneStatus({ tone: "progress", message: "Generating mascot scene artwork…" });
-    try {
-      const response = await fetch("/api/social/mascot/image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress, projectId: selectedProject?.id, displayName: selectedProject?.name, project, mascotVisualDNA, sceneInput }),
-      });
-      const payload = (await response.json()) as { imageDataUrl?: string; error?: string; usage?: MascotImageUsage };
-      if (payload.usage) setMascotImageUsage(payload.usage);
-      if (!response.ok || !payload.imageDataUrl) {
-        throw new Error(payload.error || "The mascot scene image could not be generated.");
-      }
-      void loadSlotUsage();
-      setGeneratedMascotImage(payload.imageDataUrl);
-      setMascotSceneStatus({ tone: "success", message: "Mascot artwork ready — attach it to Telegram, download it, or add it to the Queue." });
-    } catch (error) {
-      setMascotSceneStatus({ tone: "error", message: error instanceof Error ? error.message : "The mascot scene image could not be generated." });
-    } finally {
-      setMascotImageBusy(false);
-    }
-  }
-
-  function attachGeneratedArtwork() {
-    if (!generatedMascotImage) return;
-    setAttachedArtwork(generatedMascotImage);
-    setIncludeArtwork(true);
-    setMascotSceneStatus({ tone: "success", message: "Mascot artwork attached — it will be included the next time you post to Telegram." });
-  }
-
-  function downloadGeneratedArtwork() {
-    if (!generatedMascotImage || !selectedProject) {
-      setMascotSceneStatus({ tone: "error", message: "Generate mascot artwork before downloading it." });
-      return;
-    }
-    const anchor = document.createElement("a");
-    anchor.href = generatedMascotImage;
-    anchor.download = `${selectedProject.websiteSlug || selectedProject.ticker || "token"}-mascot-scene.png`;
-    anchor.click();
-    setMascotSceneStatus({ tone: "success", message: "Mascot artwork downloaded. Attach it manually inside the X composer." });
-  }
-
-  function addGeneratedArtworkToQueue() {
-    if (!generatedMascotImage) return;
-    const item: QueueItem = {
-      id: newQueueItemId(),
-      xText: message,
-      telegramText: telegramMessage || message,
-      artwork: generatedMascotImage,
-      source: "setup-ai",
-      dayLabel: null,
-      createdAt: new Date().toISOString(),
-    };
-    setQueue((current) => {
-      const next = [item, ...current];
-      persistSocialStudio({ queue: next });
-      return next;
-    });
-    setMascotSceneStatus({ tone: "success", message: "Added to the Queue with its artwork." });
-  }
 
   /** Clears a stale approval or quick-send confirmation (issue #380, extended #382) — any edit to what will be sent must be re-reviewed before it can be approved or quick-sent. */
   function clearApprovalConfirmation(id: string) {
@@ -2713,23 +2854,23 @@ export function SocialHub() {
       return next;
     });
     if (!options.silent) {
-      setStatus("Removed from Ready to review.");
+      setPostsStatus({ tone: "success", message: "Removed from Ready to review." });
       void replenishQueue();
     }
   }
 
   function postQueueItemToX(item: QueueItem) {
     if (!item.xText.trim()) {
-      setStatus("Write the X text before posting.");
+      setPostsStatus({ tone: "error", message: "Write the X text before posting." });
       return;
     }
     if (item.xText.length > 280) {
-      setStatus(`X posts must be 280 characters or fewer. Remove ${item.xText.length - 280} characters.`);
+      setPostsStatus({ tone: "error", message: `X posts must be 280 characters or fewer. Remove ${item.xText.length - 280} characters.` });
       return;
     }
     const url = `https://x.com/intent/post?text=${encodeURIComponent(item.xText)}`;
     window.open(url, "_blank", "noopener,noreferrer");
-    setStatus("X composer opened with the queued post filled in.");
+    setPostsStatus({ tone: "success", message: "X composer opened with the queued post filled in." });
   }
 
   async function sendQueueItemToTelegram(item: QueueItem) {
@@ -2738,12 +2879,12 @@ export function SocialHub() {
       return;
     }
     if (!telegramConnection || telegramConnection.status !== "connected" || !item.telegramText.trim()) {
-      setStatus("Connect a verified Telegram channel in Setup and add post text first.");
+      setPostsStatus({ tone: "error", message: "Connect a verified Telegram channel in Setup and add post text first." });
       return;
     }
 
     setBusy(true);
-    setStatus("Sending the queued post through the Hoodlums Telegram bot…");
+    setPostsStatus({ tone: "progress", message: "Sending the queued post through the Hoodlums Telegram bot…" });
     try {
       const response = await fetch("/api/social/telegram", {
         method: "POST",
@@ -2758,9 +2899,9 @@ export function SocialHub() {
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error || "Telegram rejected the post.");
       }
-      setStatus("Queued post published through the Hoodlums Telegram bot.");
+      setPostsStatus({ tone: "success", message: "Queued post published through the Hoodlums Telegram bot." });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Telegram publishing failed.");
+      setPostsStatus({ tone: "error", message: error instanceof Error ? error.message : "Telegram publishing failed." });
     } finally {
       setBusy(false);
     }
@@ -2797,23 +2938,22 @@ export function SocialHub() {
 
   function jumpToToday() {
     const now = new Date();
-    setCalendarView({ year: now.getFullYear(), month: now.getMonth() });
-    setSelectedDay({ year: now.getFullYear(), month: now.getMonth(), day: now.getDate() });
+    setCalendarView({ year: todayInZone.year, month: todayInZone.month });
+    setSelectedDay({ year: todayInZone.year, month: todayInZone.month, day: todayInZone.day });
+    if (!calendarTimeTouchedRef.current) setCalendarTime(defaultCalendarClockTime(toCalendarDayIso(todayInZone.year, todayInZone.month, todayInZone.day), now, timezone, dailyStartTime));
   }
 
   function selectDay(day: number) {
     setSelectedDay({ year: calendarView.year, month: calendarView.month, day });
+    if (!calendarTimeTouchedRef.current) setCalendarTime(defaultCalendarClockTime(toCalendarDayIso(calendarView.year, calendarView.month, day), new Date(), timezone, dailyStartTime));
   }
 
-  function renderProjectArtwork(className: string, alt: string) {
-    if (projectArtwork) {
-      return (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img className={className} src={projectArtwork} alt={alt} />
-      );
-    }
-    return <span className={styles.artworkFallback}>{projectInitial}</span>;
+  function setCalendarTimeFromField(value: string) {
+    if (parseClockTime(value) === null) return;
+    calendarTimeTouchedRef.current = true;
+    setCalendarTime(value);
   }
+
 
   async function handleExternalArtwork(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -2842,7 +2982,6 @@ export function SocialHub() {
     setAddTokenOpen(false);
     setEditingProjectId(null);
     setExternalStatus(null);
-    setStatus("No problem — any tool that needs your token details will ask for them when you use it.");
   }
 
   function closeTokenDetails() {
@@ -2954,10 +3093,6 @@ export function SocialHub() {
       setProjects(safeProjects(readProjectIndex(projectOwner)));
       setSelectedProjectId(project.id);
       if (!editing) {
-        setTemplateId("launch");
-        setMessage(buildTemplate(project, "launch"));
-        setTelegramMessage("");
-        setAttachedArtwork(null);
       }
       setExternalForm(EMPTY_EXTERNAL_FORM);
       setEditingProjectId(null);
@@ -2965,7 +3100,7 @@ export function SocialHub() {
       setExternalStatus(null);
       writeTokenDetailsLater(projectOwner, false);
       setDetailsLater(false);
-      setStatus(editing ? `${name} updated.` : `${name} added to Hoodlums Social. Only wallet ${shortAddress(projectOwner)} sees it.`);
+      setExternalStatus({ tone: "success", message: editing ? `${name} updated.` : `${name} added to Hoodlums Social. Only wallet ${shortAddress(projectOwner)} sees it.` });
     } finally {
       setExternalSaving(false);
     }
@@ -3179,6 +3314,27 @@ export function SocialHub() {
           return (
           <section className={styles.studioPanel}>
             {showDetailsBox ? <div className={styles.addTokenPanel}>{renderAddTokenForm()}</div> : null}
+            {selectedProjectId && !dailyStartTime && !dailyStartLater && !showDetailsBox ? (
+              <div className={styles.detailsReminder}>
+                <span>
+                  <b>What time should your posts start each day?</b> The day&apos;s first post goes out then, and the rest space out from it.
+                </span>
+                <div className={styles.startTimeAsk}>
+                  <input
+                    type="time"
+                    aria-label="Daily start time"
+                    value={dailyStartDraft}
+                    onChange={(event) => setDailyStartDraft(event.target.value)}
+                  />
+                  <button type="button" className={styles.connectionAction} onClick={() => updateDailyStartTime(dailyStartDraft)}>
+                    Set this time
+                  </button>
+                  <button type="button" className={styles.quietHoursToggle} onClick={askDailyStartLater}>
+                    Not now
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {projects.length === 0 && !showDetailsBox ? (
               <div className={styles.detailsReminder}>
                 <span>
@@ -3710,217 +3866,17 @@ export function SocialHub() {
                   <div className={styles.divider} />
 
                   <section className={styles.block}>
-                    <button
-                      type="button"
-                      className={styles.accordionHeader}
-                      onClick={() => setComposeOpen((current) => !current)}
-                      aria-expanded={composeOpen}
-                      aria-controls="compose-panel"
-                    >
-                      <div>
-                        <h2>Compose now</h2>
-                        <p>Choose a post type, review it, then approve X and/or Telegram.</p>
-                      </div>
-                      <div className={styles.accordionHeaderRight}>
-                        <span className={xReady ? styles.characterReady : styles.characterWarning}>{xCharacterCount}/280</span>
-                        <span className={composeOpen ? styles.accordionChevronOpen : styles.accordionChevron}>▼</span>
-                      </div>
-                    </button>
-
-                    {composeOpen ? (
-                      <div id="compose-panel" className={styles.accordionBody}>
-                        <div className={styles.composeGrid}>
-                          <aside className={styles.templatePanel}>
-                            <span className={styles.eyebrow}>POST TYPE</span>
-                            <div className={styles.templateList}>
-                              {TEMPLATES.map((template) => (
-                                <button
-                                  type="button"
-                                  key={template.id}
-                                  className={template.id === templateId ? styles.templateActive : styles.template}
-                                  onClick={() => chooseTemplate(template.id)}
-                                >
-                                  <b>{template.label}</b>
-                                  <span>{template.description}</span>
-                                </button>
-                              ))}
-                            </div>
-                          </aside>
-
-                          <div className={styles.composerPanel}>
-                            <div className={styles.projectSummary}>
-                              <span className={styles.summaryArtwork}>
-                                {renderProjectArtwork(styles.summaryImage, `${selectedProject?.name || "Token"} artwork`)}
-                              </span>
-                              <span>
-                                <b>{selectedProject?.name || "Untitled project"}</b>
-                                <small>
-                                  ${projectTicker} · {selectedProject ? projectNetworkLabel(selectedProject) : ""}
-                                  {selectedProject?.contractAddress
-                                    ? ` · ${shortAddress(selectedProject.contractAddress)}`
-                                    : " · contract pending"}
-                                </small>
-                              </span>
-                            </div>
-                            <textarea
-                              value={message}
-                              onChange={(event) => setMessage(event.target.value)}
-                              placeholder="Write the announcement…"
-                              rows={9}
-                            />
-                            <label className={styles.connectionField}>
-                              <span>Telegram version (optional — defaults to the same text)</span>
-                              <textarea
-                                value={telegramMessage}
-                                onChange={(event) => setTelegramMessage(event.target.value)}
-                                placeholder="Leave blank to send the same text to Telegram"
-                                rows={3}
-                              />
-                            </label>
-                            <div className={styles.composerActions}>
-                              <button type="button" onClick={saveDraft}>Save draft</button>
-                              <button type="button" onClick={copyPost}>Copy post</button>
-                              <button type="button" onClick={downloadArtwork} disabled={!projectArtwork}>
-                                Download artwork
-                              </button>
-                              <button type="button" onClick={generateDraftFromSetup} disabled={draftBusy}>
-                                {draftBusy ? "Drafting…" : "Draft with AI"}
-                              </button>
-                            </div>
-                            <InlineStatus status={setupDraftStatus} />
-                          </div>
-                        </div>
-
-                        <div className={styles.postActions}>
-                          <button type="button" className={styles.xButton} onClick={openXComposer} disabled={!xReady}>
-                            <XMark /> Approve &amp; open X composer
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.telegramButton}
-                            onClick={postTelegram}
-                            disabled={!telegramReady || busy}
-                          >
-                            <TelegramMark /> {busy ? "Publishing…" : "Approve & post to Telegram"}
-                          </button>
-                        </div>
-
-                        <div className={styles.publishBar}>
-                          <div>
-                            <b>Publish to both</b>
-                            <span>Opens X for your final click, then sends the approved Telegram post.</span>
-                          </div>
-                          <button type="button" onClick={publishBoth} disabled={!xReady || !telegramReady || busy}>
-                            APPROVE BOTH DESTINATIONS
-                          </button>
-                        </div>
-
-                        <div className={styles.statusBar} role="status" aria-live="polite">
-                          <span>●</span>
-                          <p>{status}</p>
-                        </div>
-                      </div>
-                    ) : null}
-                  </section>
-
-                  <div className={styles.divider} />
-
-                  <section className={styles.block}>
                     <div className={styles.sectionHeading}>
                       <div>
                         <h2>Your mascot</h2>
-                        <p>Upload your character once. Every image we make features them — and only them.</p>
+                        <p>
+                          {mascotVisualDNA
+                            ? "Locked in. Every image made for an approved post features this character — and only them."
+                            : "Upload once. Every image made for an approved post will feature this character — and only them. Nothing is generated here."}
+                        </p>
                       </div>
                     </div>
-                    <div className={styles.mascotGrid}>
-                      <div className={styles.mascotOptions}>
-                        <div>
-                          <span className={styles.eyebrow}>WHAT SHOULD YOUR MASCOT BE DOING?</span>
-                          <div className={styles.chips}>
-                            {MASCOT_ACTIONS.map((label) => (
-                              <button
-                                type="button"
-                                key={label}
-                                className={selectedMascotAction === label ? styles.chipSelected : undefined}
-                                onClick={() => toggleMascotAction(label)}
-                              >
-                                {label}
-                              </button>
-                            ))}
-                            {customActionEntry === null ? (
-                              <button type="button" className={styles.dashedChip} onClick={() => setCustomActionEntry("")}>
-                                add your own…
-                              </button>
-                            ) : (
-                              <input
-                                autoFocus
-                                value={customActionEntry}
-                                onChange={(event) => setCustomActionEntry(event.target.value)}
-                                onBlur={() => { if (!customActionEntry.trim()) setCustomActionEntry(null); }}
-                                placeholder="e.g. skateboarding"
-                                className={styles.chipInput}
-                              />
-                            )}
-                          </div>
-                        </div>
-                        <div>
-                          <span className={styles.eyebrow}>WHERE SHOULD YOUR MASCOT SHOW UP?</span>
-                          <div className={styles.chips}>
-                            {MASCOT_PLACES.map((label) => (
-                              <button
-                                type="button"
-                                key={label}
-                                className={selectedMascotPlace === label ? styles.chipSelected : undefined}
-                                onClick={() => toggleMascotPlace(label)}
-                              >
-                                {label}
-                              </button>
-                            ))}
-                            {customPlaceEntry === null ? (
-                              <button type="button" className={styles.dashedChip} onClick={() => setCustomPlaceEntry("")}>
-                                add your own…
-                              </button>
-                            ) : (
-                              <input
-                                autoFocus
-                                value={customPlaceEntry}
-                                onChange={(event) => setCustomPlaceEntry(event.target.value)}
-                                onBlur={() => { if (!customPlaceEntry.trim()) setCustomPlaceEntry(null); }}
-                                placeholder="e.g. rooftop"
-                                className={styles.chipInput}
-                              />
-                            )}
-                          </div>
-                        </div>
-                        <p>Your mascot is always the only character in generated images.</p>
-                        <button
-                          type="button"
-                          className={styles.aiMakeButton}
-                          onClick={generateMascotScene}
-                          disabled={mascotImageBusy || !mascotVisualDNA || !composeSceneInput() || isMascotImageAllowanceUsed(mascotImageUsage)}
-                        >
-                          <b>
-                            {mascotImageBusy
-                              ? "Generating…"
-                              : isMascotImageAllowanceUsed(mascotImageUsage)
-                                ? "Daily image allowance used"
-                                : "Generate mascot image"}
-                          </b>
-                          <span>{describeMascotImageAllowanceDetail(mascotImageUsage)}</span>
-                        </button>
-                        {generatedMascotImage ? (
-                          <div className={styles.insetPanel}>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img className={styles.summaryImage} src={generatedMascotImage} alt="Generated mascot scene" />
-                            <div className={styles.composerActions}>
-                              <button type="button" onClick={attachGeneratedArtwork}>Attach to Telegram</button>
-                              <button type="button" onClick={downloadGeneratedArtwork}>Download image</button>
-                              <button type="button" onClick={addGeneratedArtworkToQueue}>Add to Queue</button>
-                            </div>
-                          </div>
-                        ) : null}
-                        <InlineStatus status={mascotSceneStatus} />
-                      </div>
+                    <div className={styles.mascotSingle}>
                       <div className={styles.mascotDrop}>
                         {mascotReferenceImage ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -3995,15 +3951,55 @@ export function SocialHub() {
                             </button>
                           ) : null}
                         </div>
-                        <p>Tap a day to add something. Lime days will hold launches or announcements.</p>
+                        <p>Tap a day to add something. Lime marks scheduled posts, hollow marks drafts waiting for your approve tap.</p>
                       </div>
                       <div className={styles.timezoneControl}>
                         <span>ALL TIMES SHOWN IN</span>
-                        <select value={timezoneId} onChange={(event) => setTimezoneId(event.target.value)}>
-                          {TIMEZONES.map((timezone) => (
-                            <option key={timezone.id} value={timezone.id}>{timezone.label}</option>
-                          ))}
-                        </select>
+                        <b>{detectedTimezone}</b>
+                        {timezoneEditing ? (
+                          <div className={styles.timezonePicker} ref={timezonePickerRef}>
+                            <input
+                              type="text"
+                              autoFocus
+                              value={timezoneQuery}
+                              aria-label="Search time zones"
+                              placeholder="Type a city — London, New York…"
+                              onChange={(event) => setTimezoneQuery(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" && timezoneMatches[0]) updateTimezone(timezoneMatches[0]);
+                                if (event.key === "Escape") setTimezoneEditing(false);
+                              }}
+                            />
+                            <div className={styles.timezoneResults} role="listbox" aria-label="Time zones">
+                              <button type="button" role="option" aria-selected={!timezone} onClick={() => updateTimezone("")}>
+                                <b>Follow this device</b>
+                                {deviceTimezone ? <em>{timezone ? deviceTimezone : `✓ ${deviceTimezone}`}</em> : null}
+                              </button>
+                              {timezoneMatches.map((zone) => (
+                                <button
+                                  type="button"
+                                  key={zone}
+                                  role="option"
+                                  aria-selected={zone === timezone}
+                                  onClick={() => updateTimezone(zone)}
+                                >
+                                  <b>{zone.replace(/_/g, " ")}</b>
+                                  <em>{zone === timezone ? `✓ ${timezoneOffsetLabel(zone)}` : timezoneOffsetLabel(zone)}</em>
+                                </button>
+                              ))}
+                              {timezoneQuery.trim() && timezoneMatches.length === 0 ? (
+                                <p>No zone matches that. Try a city name.</p>
+                              ) : null}
+                            </div>
+                            <button type="button" className={styles.timezoneEdit} onClick={() => setTimezoneEditing(false)}>
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button type="button" className={styles.timezoneEdit} onClick={openTimezonePicker}>
+                            {timezone ? "Change" : "Edit local time"}
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -4012,7 +4008,7 @@ export function SocialHub() {
                         <div className={styles.desktopCalendar}>
                           {CALENDAR_DAY_NAMES.map((day) => <span key={day}>{day}</span>)}
                           {monthGrid.map((day, index) => {
-                            const isToday = day !== null && isCurrentMonthView && day === now.getDate();
+                            const isToday = day !== null && isCurrentMonthView && day === todayInZone.day;
                             const isSelected =
                               day !== null &&
                               selectedDay.year === calendarView.year &&
@@ -4023,23 +4019,32 @@ export function SocialHub() {
                               : [styles.calendarDay, isToday && styles.calendarToday, isSelected && styles.calendarSelected]
                                   .filter(Boolean)
                                   .join(" ");
+                            const marks = day !== null ? calendarDayMarks.get(day) : undefined;
                             return (
                               <button
                                 type="button"
                                 disabled={day === null}
                                 key={`${calendarView.year}-${calendarView.month}-${day ?? "blank"}-${index}`}
                                 className={className}
+                                title={day !== null ? describeCalendarDayMarks(marks, isToday) : undefined}
                                 onClick={day !== null ? () => selectDay(day) : undefined}
                               >
                                 {day}
+                                {marks ? (
+                                  <span className={styles.dayMarks} aria-hidden="true">
+                                    {marks.scheduled ? <i className={styles.limeDot} /> : null}
+                                    {marks.drafts ? <i className={styles.draftDot} /> : null}
+                                    {marks.sent || marks.failed ? <i className={styles.greyDot} /> : null}
+                                  </span>
+                                ) : null}
                               </button>
                             );
                           })}
                         </div>
-                        <div className={styles.mobileWeek}>
+                        <div className={styles.mobileWeek} ref={mobileWeekRef}>
                           {monthDays.map((day) => {
                             const weekdayIndex = (new Date(calendarView.year, calendarView.month, day).getDay() + 6) % 7;
-                            const isToday = isCurrentMonthView && day === now.getDate();
+                            const isToday = isCurrentMonthView && day === todayInZone.day;
                             const isSelected =
                               selectedDay.year === calendarView.year &&
                               selectedDay.month === calendarView.month &&
@@ -4048,19 +4053,21 @@ export function SocialHub() {
                               <button
                                 type="button"
                                 key={day}
+                                data-day={day}
                                 onClick={() => selectDay(day)}
                                 className={isSelected ? styles.weekSelected : isToday ? styles.weekToday : styles.weekDay}
                               >
                                 <span>{CALENDAR_DAY_NAMES[weekdayIndex]}</span>
                                 <b>{day}</b>
-                                <small>{isToday ? "Today" : "No scheduled posts"}</small>
+                                <small>{describeCalendarDayMarks(calendarDayMarks.get(day), isToday)}</small>
                               </button>
                             );
                           })}
                         </div>
                         <div className={styles.calendarLegend}>
-                          <span><i className={styles.limeDot} />Announcement or launch</span>
-                          <span><i className={styles.greyDot} />Scheduled post</span>
+                          <span><i className={styles.limeDot} />Scheduled</span>
+                          <span><i className={styles.draftDot} />Draft to approve</span>
+                          <span><i className={styles.greyDot} />Sent</span>
                         </div>
                       </div>
 
@@ -4068,35 +4075,213 @@ export function SocialHub() {
                         <div>
                           <span className={styles.eyebrow}>ADD TO</span>
                           <h3>{selectedDayLabel}</h3>
+                          <label className={styles.addToTime}>
+                            <span>at</span>
+                            <input
+                              type="time"
+                              aria-label="Time on this day"
+                              value={calendarTime}
+                              onChange={(event) => setCalendarTimeFromField(event.target.value)}
+                            />
+                            {calendarTimeQuietNote ? <small>{calendarTimeQuietNote}</small> : null}
+                          </label>
                         </div>
-                        <button type="button" className={styles.aiMakeButton} onClick={generateDraftForDay} disabled={calendarAiBusy}>
-                          <b>{calendarAiBusy ? "Making it…" : "AI makes it"}</b>
-                          <span>Generates a voice-aware draft for this day and adds it to the Queue.</span>
-                        </button>
-                        <InlineStatus status={calendarDraftStatus} />
-                        <button type="button" disabled className={styles.ownPostButton}>
-                          <b>I&apos;ll post my own</b>
-                          <span>Upload or write it yourself — we&apos;ll publish it on time.</span>
-                        </button>
+                        {selectedDayEntries.length > 0 ? (
+                          <ul className={styles.dayEntries}>
+                            {selectedDayEntries.map((entry) => (
+                              <li key={`${entry.kind}-${entry.id}`}>
+                                <button type="button" onClick={() => setActiveTab("queue")} title="Open in the Queue">
+                                  {entry.kind === "post" ? (
+                                    <>
+                                      <b>{entry.timeLabel}</b>
+                                      <span>{entry.platforms.join(" + ") || "no destination"} · {describeCalendarPostStatus(entry.status)}</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <b>Draft</b>
+                                      <span>Waiting for your approve tap · {describeDraftSource(entry.source)}</span>
+                                    </>
+                                  )}
+                                  <em>{entry.body}</em>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        <span className={styles.eyebrow}>ANNOUNCEMENT</span>
+                        <div className={styles.ownPostComposer}>
+                            <div className={styles.announcementTabs} role="tablist" aria-label="Announcement mode">
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={announcementMode === "own"}
+                                className={announcementMode === "own" ? styles.announcementTabActive : styles.announcementTab}
+                                onClick={() => { setAnnouncementMode("own"); setAnnouncementStatus(null); }}
+                              >
+                                My words
+                              </button>
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={announcementMode === "ai"}
+                                className={announcementMode === "ai" ? styles.announcementTabActive : styles.announcementTab}
+                                onClick={() => { setAnnouncementMode("ai"); setAnnouncementStatus(null); }}
+                              >
+                                AI jazz-up
+                              </button>
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={announcementMode === "now"}
+                                className={announcementMode === "now" ? styles.announcementTabActive : styles.announcementTab}
+                                onClick={openPostNow}
+                              >
+                                Post now
+                              </button>
+                            </div>
+                            {announcementMode !== "now" ? (
+                              <textarea
+                                value={announcementText}
+                                onChange={(event) => setAnnouncementText(event.target.value)}
+                                placeholder={`Your announcement for ${selectedDayLabel}`}
+                                rows={4}
+                                maxLength={ANNOUNCEMENT_MAX_LENGTH}
+                              />
+                            ) : null}
+                            {announcementMode === "now" ? (
+                              <>
+                                <div className={styles.announcementResult}>
+                                  <label>
+                                    <span className={postNowX.trim().length > X_CHARACTER_LIMIT ? styles.ownPostOver : undefined}>
+                                      X · {postNowX.trim().length}/{X_CHARACTER_LIMIT}
+                                    </span>
+                                    <textarea value={postNowX} onChange={(event) => setPostNowX(event.target.value)} placeholder="The X post" rows={3} />
+                                  </label>
+                                  <label>
+                                    <span>Telegram</span>
+                                    <textarea value={postNowTelegram} onChange={(event) => setPostNowTelegram(event.target.value)} placeholder="The Telegram post" rows={4} />
+                                  </label>
+                                </div>
+                                <label className={styles.checkbox}>
+                                  <input type="checkbox" checked={includeArtwork} onChange={(event) => setIncludeArtwork(event.target.checked)} />
+                                  <span>Attach the token artwork to Telegram</span>
+                                </label>
+                                <div className={styles.composerActions}>
+                                  <button type="button" className={styles.ownPostAdd} onClick={() => void postNowToTelegram()} disabled={busy}>
+                                    {busy ? "Sending…" : "Send to Telegram now"}
+                                  </button>
+                                  <button type="button" onClick={postNowToX}>Post to X now</button>
+                                </div>
+                              </>
+                            ) : announcementMode === "own" ? (
+                              <>
+                                <div className={styles.ownPostMeta}>
+                                  <span className={announcementText.trim().length > X_CHARACTER_LIMIT ? styles.ownPostOver : undefined}>
+                                    {announcementText.trim().length}/{X_CHARACTER_LIMIT} for X
+                                  </span>
+                                </div>
+                                <div className={styles.composerActions}>
+                                  <button type="button" className={styles.ownPostAdd} onClick={() => addAnnouncementToQueue("own")}>
+                                    Add to Queue for {selectedDay.day} {MONTH_NAMES[selectedDay.month]}
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                {announcementAi ? (
+                                  <div className={styles.announcementResult}>
+                                    <label>
+                                      <span className={announcementAi.xText.length > X_CHARACTER_LIMIT ? styles.ownPostOver : undefined}>
+                                        X · {announcementAi.xText.length}/{X_CHARACTER_LIMIT}
+                                      </span>
+                                      <textarea
+                                        value={announcementAi.xText}
+                                        onChange={(event) => setAnnouncementAi((current) => (current ? { ...current, xText: event.target.value } : current))}
+                                        rows={3}
+                                      />
+                                    </label>
+                                    <label>
+                                      <span>Telegram</span>
+                                      <textarea
+                                        value={announcementAi.telegramText}
+                                        onChange={(event) => setAnnouncementAi((current) => (current ? { ...current, telegramText: event.target.value } : current))}
+                                        rows={4}
+                                      />
+                                    </label>
+                                  </div>
+                                ) : null}
+                                <div className={styles.composerActions}>
+                                  {announcementAi ? (
+                                    <button type="button" className={styles.ownPostAdd} onClick={() => addAnnouncementToQueue("ai")}>
+                                      Add to Queue for {selectedDay.day} {MONTH_NAMES[selectedDay.month]}
+                                    </button>
+                                  ) : null}
+                                  <button type="button" onClick={() => void jazzUpAnnouncement()} disabled={announcementAiBusy}>
+                                    {announcementAiBusy ? "Jazzing it up…" : announcementAi ? "Try again" : "Jazz it up with AI"}
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                        </div>
+                        <InlineStatus status={announcementStatus} />
                         <div className={styles.miniDivider} />
                         <span className={styles.eyebrow}>WHERE IT POSTS</span>
                         <div className={styles.destinationChips}>
-                          <span><XMark /> X</span>
-                          <span><TelegramMark /> Telegram</span>
+                          <span className={myConnectedPlatforms.includes("x") ? styles.chipConnected : styles.chipOff}>
+                            <XMark /> X{myConnectedPlatforms.includes("x") ? "" : " · not connected"}
+                          </span>
+                          <span className={myConnectedPlatforms.includes("telegram") ? styles.chipConnected : styles.chipOff}>
+                            <TelegramMark /> Telegram{myConnectedPlatforms.includes("telegram") ? "" : " · not connected"}
+                          </span>
                         </div>
-                        <p>Posting to Telegram keeps the community talking between announcements.</p>
+                        {myConnectedPlatforms.length < 2 ? <p>Connect {myConnectedPlatforms.length === 0 ? "X or Telegram" : myConnectedPlatforms.includes("x") ? "Telegram" : "X"} in Setup.</p> : null}
+                        <div className={styles.miniDivider} />
+                        <span className={styles.eyebrow}>POSTS START AT</span>
+                        <div className={styles.quietHours}>
+                          <span>First post of the day</span>
+                          <input
+                            type="time"
+                            aria-label="Daily start time"
+                            value={dailyStartTime ?? DEFAULT_DAILY_START_CLOCK}
+                            onChange={(event) => updateDailyStartTime(event.target.value)}
+                          />
+                        </div>
+                        <p className={styles.exampleLabel}>
+                          {dailyStartTime
+                            ? `The rest of the day's posts space out from ${dailyStartTime}, about ${describeSpreadHours(cadenceSpreadHoursMs(postingCadence))} apart.`
+                            : `Not set — posts are scheduled from the moment you approve them. Pick a time and the day starts there instead.`}
+                        </p>
                         <div className={styles.miniDivider} />
                         <span className={styles.eyebrow}>QUIET HOURS</span>
                         <div className={styles.quietHours}>
                           <span>Never post between</span>
-                          <select disabled><option>23:00</option></select>
+                          {/* A native time field: the wheel picker on iPhone, a compact inline hh:mm on desktop — never a 24-row dropdown. */}
+                          <input
+                            type="time"
+                            aria-label="Quiet hours start"
+                            value={(quietHours ?? DEFAULT_QUIET_HOURS).start}
+                            disabled={!quietHours}
+                            onChange={(event) => setQuietHourBound("start", event.target.value)}
+                          />
                           <span>and</span>
-                          <select disabled><option>07:00</option></select>
+                          <input
+                            type="time"
+                            aria-label="Quiet hours end"
+                            value={(quietHours ?? DEFAULT_QUIET_HOURS).end}
+                            disabled={!quietHours}
+                            onChange={(event) => setQuietHourBound("end", event.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className={styles.quietHoursToggle}
+                            onClick={() => updateQuietHours(quietHours ? null : { ...DEFAULT_QUIET_HOURS })}
+                          >
+                            {quietHours ? "Turn off" : "Turn on"}
+                          </button>
                         </div>
                         <p className={styles.exampleLabel}>
-                          Automatic scheduling, quiet hours and &quot;I&apos;ll post my own&quot; are not built yet — every AI draft still needs a manual approve tap in the Queue.
+                          {quietHours ? "Your local time. Anything landing in this window moves to its end when you approve." : "Off — posts can go out at any hour."}
                         </p>
-                        <ComingSoon compact />
                       </aside>
                     </div>
                   </section>
@@ -4139,7 +4324,7 @@ export function SocialHub() {
                     {queue.length === 0 ? (
                       <div className={styles.queueEmpty}>
                         <b>Nothing waiting.</b>
-                        <p>Use &quot;Draft with AI&quot; in Setup, &quot;AI makes it&quot; in Calendar, or wait a moment — new drafts generate automatically.</p>
+                        <p>Use &quot;Draft with AI&quot; in Setup, write an announcement in Calendar, or wait a moment — new drafts generate automatically.</p>
                       </div>
                     ) : null}
                     {queue.length > 0 ? (
@@ -4187,7 +4372,9 @@ export function SocialHub() {
                                           ? "Setup AI"
                                           : item.source === "auto-replenish"
                                             ? "Auto-generated"
-                                            : "Manual"}
+                                            : item.dayLabel
+                                              ? `${describeDraftSource(item.source)} · ${item.dayLabel}`
+                                              : "Manual"}
                                       {isTemplateItem ? <span className={styles.templateBadge}>Template</span> : null}
                                       {isPickedForImage ? (
                                         <>
@@ -4551,7 +4738,7 @@ export function SocialHub() {
                       <div className={styles.sectionHeading}>
                         <div>
                           <h2>Words to avoid</h2>
-                          <p>The AI will never use these in a draft — and a draft that slips one in is thrown out and redone.</p>
+                          <p>The AI will never use these, or go near the subjects they name — a draft that slips one in is thrown out and redone.</p>
                         </div>
                       </div>
                       <div className={styles.bannedPanel}>

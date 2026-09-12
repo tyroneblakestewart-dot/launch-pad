@@ -152,13 +152,16 @@ describe("Social Studio: add an existing token", () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("function promptForTokenDetails(reason: string) {");
     const prompts = hub.match(/promptForTokenDetails\("Add your token details before /g) ?? [];
-    // saveDraft, postTelegram, buildVoiceProfile, generateDraft, enableBuyBot, approveQueueItem, mascot upload, mascot scene, queue → Telegram
-    // …plus the Buy Bot card's own button, which stays tappable with no project so it can ask instead of sitting disabled.
-    expect(prompts.length).toBe(10);
+    // buildVoiceProfile, generateDraft, enableBuyBot, approveQueueItem, mascot upload, queue → Telegram, Post now → Telegram
+    // …plus the Buy Bot card's own button, which stays tappable with no project so it can ask instead of sitting disabled,
+    // and the Calendar's announcement composer (7 Sep 2026), whose draft has no project to be saved under.
+    // The mascot scene maker's, saveDraft's and Setup postTelegram's prompts went with those features (7 Sep 2026).
+    expect(prompts.length).toBe(9);
     expect(hub).toContain("disabled={(Boolean(buyBotUnavailableReason) && Boolean(selectedProject)) || telegramConfigured === false}");
     expect(hub).not.toContain('"Choose a project before');
-    const draft = hub.slice(hub.indexOf("async function generateDraft("), hub.indexOf("async function generateDraftFromSetup()"));
-    expect(draft).toContain("if (!project.description.trim()) {");
+    const draft = hub.slice(hub.indexOf("async function generateDraft("), hub.indexOf("function calendarDayScheduledAt("));
+    // An announcement supplies its own substance, so only ordinary drafting needs the description.
+    expect(draft).toContain("if (!project.description.trim() && !options.announcement) {");
     expect(draft).toContain('openEditTokenDetails(selectedProject, "Add a sentence about the token — the AI only ever states facts from here.");');
     expect(draft).toContain("Add its story in the launch studio (Saved launches → open it), then draft again.");
   });
@@ -181,7 +184,6 @@ describe("Social Studio: add an existing token", () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("const chain = projectNetworkLabel(project);");
     expect(hub).toContain("<small>${project.ticker || \"TOKEN\"} · {projectNetworkLabel(project)}{isExternalProject(project) ? \" · added\" : \"\"}</small>");
-    expect(hub).toContain("${projectTicker} · {selectedProject ? projectNetworkLabel(selectedProject) : \"\"}");
     expect(hub).toContain("network: selectedProject.network,");
     expect(hub).not.toContain('project.chain === "robinhood" ? "Robinhood Chain" : "Solana"');
   });
@@ -200,8 +202,8 @@ describe("Social Studio: add an existing token", () => {
     expect(hub).toContain('import { getProjectBlob } from "@/lib/token-project-db";');
     expect(hub).toContain("getProjectBlob(selectedProject.id)");
     expect(hub).toContain('const projectArtwork = selectedProject ? selectedProjectArtwork : "";');
-    expect(hub).toContain("artwork: includeArtwork ? attachedArtwork || projectArtwork : \"\",");
-    expect(hub).toContain("disabled={!projectArtwork}");
+    expect(hub).toContain("artwork: includeArtwork ? projectArtwork : \"\",");
+    expect(hub).toContain("Attach the token artwork to Telegram");
     // The only remaining direct read is the legacy inline fallback inside the loader effect itself.
     expect(hub.match(/selectedProject\??\.heroImage/g)?.length).toBe(1);
     expect(hub).toContain('const inline = selectedProject.heroImage || "";');

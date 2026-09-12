@@ -2967,6 +2967,940 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   `npm run lint` — 0 errors (10 pre-existing warnings); `npm run build` —
   succeeds.
 
+- Calendar AI drafts keep their day, and scheduled posts load on the Calendar
+  tab (owner request, 7 Sep 2026: "run test on calendar, check functions are
+  working"; a headless-Chromium pass at 1400px and 390px found the two
+  defects fixed here, plus the still-unbuilt controls listed below). **The
+  day was only a label:** "AI makes it" wrote `dayLabel` ("14 September
+  2026") onto the draft for the Queue row's caption, but the shown default
+  time and the approval time both came from the cadence spread from "now",
+  so a draft made for the 14th was approved for today unless the user
+  re-picked the date in the Queue row. `QueueItem` gains an optional
+  `scheduledDay` ("YYYY-MM-DD", local), set by `generateDraftForDay` from
+  the selected day; a new pure `computeDefaultScheduledAtOnDay`
+  (`lib/social-studio-queue.ts`, with `toCalendarDayIso`/
+  `parseCalendarDayIso`/`isCalendarDayBeforeToday`) places such a draft ON
+  that day — the first waking slot (07:00 local, or now if the day is today
+  and 07:00 has passed), one cadence spread past the latest post already
+  pending that same day, never spilling past the day's last slot (23:00)
+  into a day the user did not pick — and the hub's `calendarDayScheduledAt`
+  feeds it into both the shown default and `approveQueueItem`, so the time
+  the row shows is the time approval uses; the user's own pick still wins
+  and `ensureFutureScheduledAt` still clamps. A day already gone is refused
+  with a plain status line before any paid draft call. The card copy now
+  says what happens ("approve it there and it goes out on this day"). **The
+  pill was blind outside Queue:** `loadScheduledPosts` ran only on Queue
+  activation, so the header's TODAY x/5 read 0/5 on Setup and Calendar until
+  the user visited Queue; a new effect loads once per wallet on arrival and
+  again whenever the Calendar tab opens (never replenishing — that stays the
+  Queue tab's paid decision). Non-calendar drafts, pre-existing calendar
+  drafts (no `scheduledDay`) and the Queue tab's own load behave exactly as
+  before. **Tests changed, not only added (rule 8, stated plainly):** one
+  `tests/social-studio-ui.test.ts` pin on the two-argument
+  `generateDraft({ dayLabel: selectedDayLabel }, …)` call now pins the call
+  carrying `scheduledDay`. New coverage: nine `computeDefaultScheduledAtOnDay`
+  / day-parsing cases in `tests/social-studio-queue.test.ts` and source pins
+  in `tests/social-calendar-day-schedule.test.ts`. Rule 10 needs nothing (no
+  route, page or integration). **Found by the same pass, deliberately left
+  for the next PRs:** the calendar never marks days that hold posts (the
+  legend's lime/grey dots and "Lime days will hold launches or
+  announcements" have no code behind them, and every mobile week card says
+  "No scheduled posts"); the mobile week strip opens at day 1, not today;
+  the timezone select is display-only with hardcoded offsets; "I'll post my
+  own", quiet hours and the WHERE IT POSTS chips remain honest coming-soon
+  placeholders; the TODAY pill is not shown at all at 390px. Checked in
+  headless Chromium at 1400px and 390px with mocked routes (schedule input
+  reads 14 September 07:00 for a draft made for the 14th, past day refused
+  with no request, pill correct on the Calendar tab) — not on a physical
+  iPhone; the owner confirms on device. Validated on the final commit:
+  `npm run test:app` — 331 test files / 3866 tests passing; `npm run lint` —
+  0 errors (11 warnings, none in files this PR touches); `npm run build` —
+  succeeds.
+
+- Calendar tab wired: quiet hours, "I'll post my own", live WHERE IT POSTS
+  chips (owner direction, 7 Sep 2026: "check functions and wire things that
+  ain't been built yet — use initiative"). The schedule card's three
+  coming-soon placeholders are real controls; the "not built yet" note and
+  badge are gone. **Quiet hours** — a per-project window in the user's own
+  local time (`SocialStudioProjectRecord.quietHours`, `QuietHours | null`,
+  migrate-on-read to the design's 23:00 → 07:00; explicit `null` is off; a
+  start equal to its end is off) held in a new pure, client-safe
+  `lib/social-quiet-hours.ts` (`normaliseQuietHours`, `isInQuietHours`,
+  `shiftOutOfQuietHours`, wrap-around and same-day windows). Stated plainly
+  how it is enforced: every send happens at a time decided at approval, so
+  `approveQueueItem` runs the future clamp first and then
+  `shiftOutOfQuietHours` on every approval — the user's own pick included —
+  moving anything inside the window to the window's end and saying so in
+  the success line; the Queue row's shown default is shifted the same way,
+  so the time shown is the time used. No server or cron change and no
+  migration; the one gap is a retry after a failed send drifting into the
+  window (#335's backoff), noted rather than built. The two selects are
+  bound (every hour, 44px under coarse pointers) with a Turn off / Turn on
+  control. **"I'll post my own"** — the button opens an inline composer
+  whose text becomes an ordinary `manual` `QueueItem` carrying `dayLabel`
+  and `scheduledDay` for the selected day (so PR #532's on-that-day default
+  applies), then takes the same Queue approve path as every AI draft —
+  nothing is sent from the calendar; over 280 characters is refused up front
+  (`X_CHARACTER_LIMIT`), a past day is refused, and the Queue caption reads
+  "Your own · 14 September 2026". Artwork is attached in the Queue row, not
+  the composer. **WHERE IT POSTS** — the chips now read
+  `myConnectedPlatforms` (lit when connected, "· not connected" otherwise)
+  with copy pointing at Setup. **Tests changed, not only added (rule 8,
+  stated plainly):** `tests/social-studio-ui.test.ts`'s pin on the disabled
+  `ownPostButton` now pins the live toggle; PR #532's own day-old
+  `tests/social-calendar-day-schedule.test.ts` pin on the default-time
+  expression now pins the `const base =` form the quiet-hours shift wraps;
+  `tests/social-studio-db.test.ts`'s fixture and three legacy `toEqual`
+  expectations gained `quietHours`; `tests/social-external-token.test.ts`'s
+  count of "Add your token details before" prompts is 11, not 10, because
+  the composer asks too. New `tests/social-quiet-hours.test.ts`
+  (window maths, including a sweep proving a shifted time is itself outside
+  the window) and `tests/social-calendar-card-wiring.test.ts` (source pins).
+  Rule 10 needs nothing (no route, page or integration; nothing leaves the
+  browser). Checked in headless Chromium at 1400px and 390px with mocked
+  routes: selects default 23:00/07:00, end moved to 09:00 lifts a calendar
+  draft's Queue default from 07:00 to 09:00, Turn off/on, own post added and
+  listed with its day, 281 characters refused, chips reflect a connected
+  Telegram and an unconnected X — not on a physical iPhone; the owner
+  confirms on device. Still open from the same test pass, next PR: day
+  markers on the calendar, the mobile week strip opening at today (and its
+  solid-lime selected card), and the display-only timezone select.
+  Validated on the final commit: `npm run test:app` — 333 test files / 3878
+  tests passing; `npm run lint` — 0 errors (11 warnings, none in files this
+  PR touches); `npm run build` — succeeds.
+
+- Calendar grid wired: day markers, the day list, the mobile strip opens
+  on today, and an honest timezone line (owner direction, 7 Sep 2026, the
+  last of the Calendar test-pass items). **Markers** — a new pure,
+  client-safe `lib/social-calendar-days.ts` (`buildCalendarDayMarks`)
+  counts, per local day of the month in view, approved posts waiting to
+  send (`scheduled`/`needs_composer`), posts that went out
+  (`sent`/`partially_sent`), failed sends, and Ready-to-review drafts
+  pinned to a day (PR #532's `scheduledDay`) — from the posts and queue the
+  hub already holds, never a second fetch; canceled posts, other months and
+  bad dates never count. The desktop cell draws a lime dot (scheduled), a
+  hollow lime ring (draft to approve) and a grey dot (sent/failed) under
+  the number with the same words in its `title`; the mobile week card's
+  line reads "Today · 1 scheduled", "2 scheduled · 1 draft to approve",
+  "Nothing yet" (`describeCalendarDayMarks`) instead of the constant "No
+  scheduled posts"; the legend and subtitle now describe what is drawn
+  ("Scheduled / Draft to approve / Sent" — there is no launch data on this
+  page, so "Announcement or launch" is gone). **Day list** — the schedule
+  card lists the selected day's posts by time (platforms, plain status
+  words via `describeCalendarPostStatus`) and its pinned drafts ("Waiting
+  for your approve tap · Calendar AI / Your own"), each a button into the
+  Queue (`listCalendarDayEntries`). **Mobile strip** — a `ref` + effect
+  scrolls the strip (never the page: `strip.scrollTo`, not
+  `scrollIntoView`) to the selected day's `data-day` card whenever the
+  Calendar tab opens or the selection/month changes, skipped on desktop
+  where the strip has no width; the selected card is the same lime-tinted
+  recipe as the desktop selected day instead of a solid lime block.
+  **Timezone** — the three-option select (London/New York/Singapore with
+  hardcoded offsets that nothing read and that would have been wrong after
+  the clocks change) is replaced by the browser's own detected zone and
+  current offset ("Europe/London · GMT+1", `describeDetectedTimezone`, via
+  `Intl` with `shortOffset`), resolved after mount so server rendering
+  never prints UTC into the hydration; it is the one zone every time on
+  the page is actually shown in (datetime-local inputs and
+  `toLocaleString` are browser-local by nature). **Tests changed, not only
+  added (rule 8, stated plainly):** `tests/social-studio-ui.test.ts`'s pin
+  on `TIMEZONES.map((timezone)` now pins the detected-zone label and the
+  constant's absence. New `tests/social-calendar-days.test.ts` (markers,
+  wording, day list, zone/offset across DST) and
+  `tests/social-calendar-grid-wiring.test.ts` (source pins). Rule 10 needs
+  nothing (no route, page or integration). Checked in headless Chromium at
+  1400px and 390px with mocked posts on the 3rd (sent), 7th and 12th
+  (scheduled): the 12th carries one marker, the 13th none, the 3rd a grey
+  one; the 390px strip opens scrolled with today visible and its card
+  reading "Today · 1 scheduled"; the card lists "4:00 PM telegram ·
+  scheduled" for today and the new draft for the 14th as waiting for
+  approval; the timezone line reads "Europe/London · GMT+1" — not on a
+  physical iPhone; the owner confirms on device. The TODAY x/5 pill is
+  not rendered at 390px by the owner's own mobile-only layout decision
+  (confirmed 7 Sep 2026) and is untouched.
+  Validated on the final commit: `npm run test:app` — 335 test files / 3886
+  tests passing; `npm run lint` — 0 errors (11 warnings, none in files this
+  PR touches); `npm run build` — succeeds.
+
+- Quiet-hours time pickers are native time fields (owner direction, 7 Sep
+  2026: "time panels need to be better — too long on desktop; mobile can
+  have a touch roller to correct time"). The two `<select>`s from the
+  Calendar wiring PR (#533) listed all 24 hours as one long dropdown; they
+  are now `<input type="time">`, which is the wheel picker on iPhone, a
+  compact inline hh:mm field on desktop Firefox/Safari and a small
+  popover on desktop Chrome — never a 24-row list. Because the roller
+  offers minutes, `QuietHours` is now `{ start: "HH:MM"; end: "HH:MM" }`
+  (`lib/social-quiet-hours.ts`: `parseClockTime`/`formatClockTime`;
+  `isInQuietHours`/`shiftOutOfQuietHours` compare minutes since midnight,
+  so a 22:30 → 07:30 window is honoured to the minute); the whole-hour
+  shape any record saved between the two 7 Sep Calendar PRs carries
+  (`{ startHour, endHour }`) is read as clock strings by
+  `normaliseQuietHours`, so nothing is lost. A cleared field is ignored
+  (never saved as off); Turn off / Turn on is unchanged. CSS: `color-scheme:
+  dark` so the native pickers render dark, a fixed 108px min width so the
+  row never jumps between values, 38px tall on desktop and 44px under
+  `(pointer: coarse)`. **Tests changed, not only added (rule 8, stated
+  plainly):** `tests/social-quiet-hours.test.ts` (from #533, the same day)
+  is rewritten for the clock-string shape and gains minute-level cases and
+  a 7-minute-step sweep; `tests/social-calendar-card-wiring.test.ts`'s
+  select/option pins now pin the two time fields and the CSS;
+  `tests/social-studio-db.test.ts`'s fixture uses the new shape and gains a
+  whole-hour migration case. Rule 10 needs nothing. Checked in headless
+  Chromium at 1400px and 390px: two time fields at 23:00/07:00, a half-hour
+  end (09:30) accepted, Turn off/on, field box 112×38 on desktop and 112×44
+  on mobile, the calendar draft's Queue default still lifted by the window
+  — the iPhone wheel itself cannot be driven from here; the owner confirms
+  on device. Validated on the final commit: `npm run test:app` — 335 test
+  files / 3887 tests passing; `npm run lint` — 0 errors (11 warnings, none
+  in files this PR touches); `npm run build` — succeeds.
+
+- Calendar "Announcement post" with an AI jazz-up, and a time beside the date
+  (owner direction, 7 Sep 2026: "'I'll post my own' should change to
+  announcement post — the user puts his own announcement, with a tab for own
+  post and AI to jazz up the announcement — and at the top where it has the
+  date there should be a time feature"; and "that should be free AI, not
+  paid, as I can't measure costs"). **Announcement post** replaces the
+  same-day "I'll post my own" composer. Two tabs: *My words* adds the
+  announcement exactly as typed (X and Telegram both), and *AI jazz-up* sends
+  it through the existing `POST /api/social/draft` with a new bounded
+  `announcement` field — one call, only on the tap — and shows the result in
+  two editable fields before "Add to Queue". Either way it becomes an
+  ordinary draft (`QueueItem.source` gains `"announcement"` /
+  `"announcement-ai"`, captioned "Announcement · day" / "Announcement (AI) ·
+  day" via `describeDraftSource` in `lib/social-calendar-days.ts`) pinned
+  to the day, taking the same Queue approve path; nothing is sent from the
+  calendar. Server side (`lib/server/social-draft-pipeline.ts`):
+  announcement mode emits an ANNOUNCEMENT MODE instruction (rewrite in the
+  taught voice, keep every fact and essential detail, add nothing, never
+  turn a statement into a question), lists the announcement in the
+  allowed-facts ledger as the user's own true words, drops the rotating
+  angle, theme line and direction brief, and `checkDraftCompliance` skips
+  the angle and invented-fact checks — "listed on Dexscreener at 6pm" is
+  exactly what the user asked to say — while banned words, tone rules,
+  identity-opener, filler, repetition and the fail-closed content filter all
+  still run on the first response and the retry. The route strips control
+  characters, caps at `MAX_ANNOUNCEMENT_LENGTH` (1,000; the hub mirrors it as
+  `ANNOUNCEMENT_MAX_LENGTH`), screens it with the input content filter, and
+  returns `angleKey: null`. **Cost, stated plainly:** nothing is charged to
+  the user; Hoodlums pays the provider as for any draft. So the owner can
+  measure it, jazz-ups meter under their own `AI_FEATURE_KEYS.SOCIAL_ANNOUNCEMENT`
+  / `_RETRY` keys, shown as "Announcement jazz-up" in the Operations tab
+  (`lib/ai-feature-keys.ts`), separate from "Social draft". **Time beside
+  the date** — a native time field under ADD TO (`calendarTime`, the same
+  compact field/wheel picker as quiet hours) defaulting per day via
+  `defaultCalendarClockTime` (07:00, or the next quarter hour when today's
+  slot has passed) until the user sets it, after which it sticks across
+  days. Both "AI makes it" and the announcement carry it as a new optional
+  `QueueItem.scheduledTime`, and `calendarDayScheduledAt` uses
+  `calendarDayAtTime(day, time)` as the exact default for the Queue row and
+  approval, ahead of the first-free-slot logic; quiet hours still shift it
+  (a picked time inside the window says so under the field before the tap)
+  and the future clamp and approve tap still apply. **Tests changed, not
+  only added (rule 8, stated plainly):** today's own pins — the
+  `aria-expanded={ownPostOpen}` / "I'll post my own" pins in
+  `social-studio-ui` and `social-calendar-card-wiring` (now the
+  announcement toggle, and three time fields on the card, not two), #532's
+  `generateDraft({ dayLabel, scheduledDay })` call pin in `social-studio-ui`
+  and `social-calendar-day-schedule` (now carries `scheduledTime`), and
+  `social-external-token`'s `if (!project.description.trim()) {` pin (an
+  announcement supplies its own substance). New
+  `tests/social-announcement-post.test.ts` covers the prompt, the
+  compliance skip and what still runs, the route's bounding/passthrough and
+  null angle, the feature keys and label, the time helpers, and the hub
+  wiring. Rule 10: no new route or page; the new Operations line is the
+  admin-side change. Checked in headless Chromium at 1400px and 390px with
+  a mocked draft route: "at" defaults to 07:00 for a future day, 23:30
+  warns "Inside quiet hours", My words and the edited jazz-up both land in
+  the Queue captioned by origin with the Scheduled field at 14 September
+  18:30, an empty jazz-up is refused with no request, 281 characters is
+  refused — not on a physical iPhone; the owner confirms on device.
+  Validated on the final commit: `npm run test:app` — 336 test files / 3897
+  tests passing; `npm run lint` — 0 errors (11 warnings, none in files this
+  PR touches); `npm run build` — succeeds.
+
+- Calendar card trimmed to the announcement (owner direction, 7 Sep 2026:
+  "remove 'AI makes it', it's unneeded — the user will have their own
+  intention for making an announcement; 'Announcement post' doesn't look
+  like a tab unless you click it; it doesn't need all that instruction,
+  it's self-explanatory"). The card is now: ADD TO date and time (the
+  quiet-hours warning is the only note, shown only when it applies), the
+  day's entries, an ANNOUNCEMENT section with the composer **open on the
+  card** — the My words / AI jazz-up tabs, the box and the actions are
+  visible at once, no toggle button to discover — then WHERE IT POSTS (one
+  "Connect X in Setup" line only while something is missing) and QUIET HOURS
+  (one sentence). The "AI makes it" button, its status line,
+  `generateDraftForDay`, `calendarAiBusy` and `calendarDraftStatus` are
+  removed from `components/social-hub.tsx`; the AI on the calendar is the
+  jazz-up alone, and it now refuses a past day before spending the call,
+  like the add does. The Queue empty-state copy and the homepage showcase's
+  calendar slide (`components/hoodlums-social-showcase.tsx`) no longer
+  advertise "AI makes it" — the slide reads "Announcement post · Your words
+  as they are — or let the AI jazz them up" and "At 18:30". Legacy
+  `calendar-ai` drafts still load and caption as before. **Tests changed,
+  not only added (rule 8, stated plainly):** the #332 pins on
+  `generateDraftForDay` / `onClick={generateDraftForDay} disabled={calendarAiBusy}`
+  / `calendarDraftStatus` in `social-studio-ui`, PR #532's
+  `generateDraftForDay` past-day slice in `social-calendar-day-schedule`
+  (now the jazz-up and add paths), the day-old composer copy and toggle
+  pins in `social-calendar-day-schedule`, `social-calendar-card-wiring` and
+  `social-announcement-post`, and the showcase test's "AI makes it" pin.
+  Rule 10 needs nothing. Checked in headless Chromium at 1400px and 390px:
+  no "AI makes it" or toggle on the card, the composer open with both tabs,
+  My words and jazz-up both adding at the picked time, a past day refusing
+  the jazz-up with no request — not on a physical iPhone. Validated on the
+  final commit: `npm run test:app` — 336 test files / 3897 tests passing;
+  `npm run lint` — 0 errors (11 warnings, none in files this PR touches);
+  `npm run build` — succeeds.
+
+- Settings & Rules wiring check, and four subject words the AI steers clear
+  of (owner direction, 7 Sep 2026: "check backend functions; add a few
+  crucial words — racism, homophobia, religion etc — the user can remove
+  them but at least we set the tone; make sure these words and anything
+  around them are avoided; check wiring of all tabs"). **Wiring verified**
+  in headless Chromium at 1400px and 390px (`rules-test.js`, 22 checks):
+  words to avoid (remove, add, cap text), the four dials, the Direction
+  brief (saved on blur, as it already was) and the posting cadence all
+  persist across a reload; Conservative drops the Queue target to 2 and the
+  replenish makes exactly that many; and every `POST /api/social/draft`
+  request carries the edited words, dials and brief — nothing was found
+  unwired. **Subject words** — `lib/social-tone-rules.ts` gains
+  `TOPIC_WORDS_TO_AVOID` (`racism`, `homophobia`, `religion`, `politics`),
+  appended to `DEFAULT_WORDS_TO_AVOID` (now nine). Listing one bans its
+  family: `findAvoidedWords` matches a subject word through
+  `TOPIC_WORD_FAMILIES` (`racism` also catches racist/racial/race-baiting,
+  `homophobia` homophobic/anti-gay, `religion` religious, `politics`
+  political/politician; `sexism` and `transphobia` families are ready for a
+  user who adds them), still boundary-aware ("race", "policy", "relic" never
+  fire) while ordinary words stay exact ("rug" never fires on "rugby");
+  `wordsToAvoidInstruction` adds, for subject words only, "stay away from
+  the subject itself, not just the word: no jokes, comparisons, nods, slang
+  or coded references around it". Both the draft route's compliance check
+  and the voice-sample route's 422 use the same matcher, so a family match
+  triggers the corrective retry and the fail-closed error like any banned
+  word. **Existing projects get them once:** a new
+  `SocialStudioProjectRecord.wordsToAvoidSeed` (`WORDS_TO_AVOID_SEED_VERSION`
+  = 2) is read by `lib/social-studio-db.ts` — a record that saved its own
+  list before this gets the four added on read (`seedWordsToAvoid`,
+  respecting the 30 cap) and the version saved with it, so a user who
+  removes one is never re-seeded; the hub carries the version through
+  `currentSocialStudioRecord`. The Rules tab copy reads "never use these,
+  or go near the subjects they name". The content filter (#392) is
+  untouched and still the floor beneath this. **Tests changed, not only
+  added (rule 8, stated plainly):** `tests/social-tone-rules.test.ts`'s pin
+  on the five default words now pins the nine; `tests/social-rules-wiring.test.ts`'s
+  pin on the prompt ban line now includes the subject words and the new
+  clause; `tests/social-studio-db.test.ts`'s fixture and four legacy
+  expectations gained `wordsToAvoidSeed`, plus a seed-once migration case.
+  New coverage: the families, the boundary non-matches, the prompt clause,
+  and the seed maths. Rule 10 needs nothing (no route, page or
+  integration). Validated on the final commit: `npm run test:app` — 336
+  test files / 3900 tests passing; `npm run lint` — 0 errors (11 warnings,
+  none in files this PR touches); `npm run build` — succeeds.
+
+- Mascot scene maker removed; the mascot card is upload-only (owner
+  decision, 7 Sep 2026: the on-demand "what should your mascot be doing /
+  where should it show up" scenes drew from the same two-images-a-day
+  allowance as the images made on approved posts, and had no place in the
+  flow once those existed). `components/social-hub.tsx` drops the action
+  and place chips, the custom entries, "Generate mascot image", the
+  generated-scene panel (attach / download / add to Queue) and their state
+  and handlers; the card keeps the upload (visual DNA lock, reference tips,
+  quality notes, Replace image) and one line saying every image made for
+  an approved post features this character and only them, with nothing
+  generated from the card. The locked visual DNA still drives approved-post
+  images exactly as before (`lib/server/post-image-prompt.ts`), and the
+  daily allowance is now spent only there; the allowance read
+  (`GET /api/social/mascot/image`) and the rail pill are unchanged. The
+  `POST /api/social/mascot/image` route and its tests are left in place
+  (server-side, still protected, no longer called by the UI) rather than
+  widening this PR — removing it is a named follow-up. **Tests changed,
+  not only added (rule 8, stated plainly):** the #332 pins on
+  `toggleMascotAction`/`toggleMascotPlace`, the `fetch("/api/social/mascot/image"`
+  POST, `mascotSceneStatus` and the Generate-button placement in
+  `social-studio-ui`; the #500 allowance pin in `social-studio-design-pass`
+  (now pins the approved-post pick as the allowance's only consumer); and
+  `social-external-token`'s prompt count (11 → 10). Rule 10 needs nothing
+  (no route added; the `image-allowance` health stage's rule still names
+  approved-post images). Checked in headless Chromium at 1400px and 390px:
+  no chips or Generate button on the card, the upload button present — not
+  on a physical iPhone. The card is single-column (`.mascotSingle`, max
+  560px) now that nothing sits beside the upload panel. Validated on the
+  final commit: `npm run test:app` — 336 test files / 3900 tests passing;
+  `npm run lint` — 0 errors (11 warnings, none in files this PR touches);
+  `npm run build` — succeeds.
+
+- Compose now removed from Setup, Post now added to the calendar, and the AI
+  never writes a contract address (owner direction, 7 Sep 2026: "remove the
+  Compose now section from the Setup tab — we've got the same on the calendar
+  schedule — just add a Post now tab; and can we avoid adding contract to
+  post, let users take care of that side, if they want they can add it from
+  the announcement"). **Setup** — the whole Compose now accordion goes:
+  the template picker, the X and Telegram composers, the artwork attach
+  panel, "Save draft" / "Copy" / "Open X composer" / "Download artwork" /
+  "Send to Telegram" / "Approve both destinations", the Setup-side
+  "Draft with AI" button, and their state (`DRAFT_STORAGE_KEY` and its
+  localStorage draft map, `composeOpen`, `templateId`, `message`,
+  `telegramMessage`, `attachedArtwork`, `status`, `setupDraftStatus`).
+  Everything it did now lives on the calendar card: a draft is written
+  there, edited in the Queue and approved, or posted immediately by the new
+  tab below. `generateDraft`'s composer branch is gone, so every AI draft
+  now lands in Ready to review, and the two quick-send statuses it used
+  were rerouted to the Queue and added-token status lines. The legacy
+  `TEMPLATES`/`buildTemplate` texts stay for one reason only — the Queue's
+  "Template" badge still recognises a pre-removal draft nobody edited —
+  and nothing composes from them any more. **Post now** — a third tab on
+  the announcement composer (My words / AI jazz-up / **Post now**) that
+  sends immediately instead of queueing: it opens prefilled from whatever is
+  written (the jazzed drafts when there are any, else the announcement as
+  typed) without overwriting text already edited there, offers an X field
+  with its own character count and a Telegram field, and carries the
+  artwork checkbox. X never goes through the paid API (issue #342): "Post to
+  X now" opens the free intent composer with the text filled in, refusing
+  anything over 280 before it opens. "Send to Telegram now" posts through
+  the existing `POST /api/social/telegram` to the verified channel connected
+  in Setup, with the token artwork when the box is ticked. Nothing is queued
+  or scheduled by posting now, and nothing is sent without the tap.
+  **No contract address in AI posts** — `lib/server/social-draft-pipeline.ts`
+  no longer shows the project's contract address to the model at all (the
+  allowed-facts ledger and the user message both drop their contract lines),
+  states `NO_CONTRACT_ADDRESS_RULE` in the prompt, and backs it with a
+  mechanical check: `findAddressLikeStrings` (EVM `0x…` and base58
+  Solana-length strings) plus `checkDraftContractAddress`, run inside
+  `checkDraftCompliance` for every draft, in announcement mode too. The one
+  exception is the user's own announcement — an address they wrote is theirs
+  to keep and passes, case-insensitively, while a different address in the
+  same draft is still a violation. A violation gets the existing single
+  corrective retry naming the offending address, and a retry that still
+  fails returns an error rather than the draft (#364's fail-closed rule).
+  `DraftProject.contractAddress` stays on the type (the route still accepts
+  it) so no caller breaks; it simply never reaches the prompt.
+  **Tests changed, not only added (rule 8, stated plainly):** the Compose
+  now pins in `social-studio-ui` (draft store, section heading, template
+  picker, composer buttons, `generateDraftFromSetup`, `setupDraftStatus`),
+  `social-studio-connections-sync`'s slice end marker, the Setup section
+  order in `social-studio-design-pass`, `social-studio-queue-action-row`'s
+  composer-row pin, and in `social-external-token` the prompt count (10 → 9),
+  a slice end marker and the composer preview line naming the project's
+  network — all pinned code this PR removes. New
+  `tests/social-post-now.test.ts` (12 tests) covers the prompt losing the
+  address, the rule's presence in both modes, the address finder, the check
+  on either channel, the announcement exception and the compliance chain,
+  plus the Setup removal and the Post now tab, handlers and Telegram body.
+  Rule 10 needs nothing (no route, page or integration added; the Telegram
+  publish route is the one already in the inventory). One CSS fix found in
+  the browser pass: every action on the announcement card (Add to Queue,
+  Jazz it up, and Post now's two sends) is now a 44px touch target under
+  `(pointer: coarse)`, where they were 38px. Checked in headless Chromium at
+  1400px and 390px with mocked routes: no Compose now on Setup, the three
+  tabs, Post now prefilled from the jazzed text, an over-limit X post
+  refused with nothing opened, the intent composer opening with the exact
+  text, the Telegram request carrying the edited body and channel, and no
+  horizontal scroll at 390px — not on a physical iPhone; the owner confirms
+  on device. Validated on the final commit: `npm run test:app` — 337 test
+  files / 3912 tests passing; `npm run lint` — 0 errors (11 pre-existing
+  warnings); `npm run build` — succeeds.
+
+- The time zone is choosable again, and every Calendar and Queue time is
+  computed in it (owner direction, 7 Sep 2026: "what happened to time zones,
+  that needs to come back … and have an edit local time tab"). PR #534 had
+  replaced the old three-option select — whose hardcoded offsets nothing ever
+  read — with an honest read-only line naming the browser's own zone, on the
+  true observation that `datetime-local` inputs and `toLocaleString` are
+  browser-local by nature. This makes a *chosen* zone real instead.
+  `lib/social-timezone.ts` is the one pure, unit-tested definition:
+  `detectTimezone` / `isValidTimezone` / `normaliseTimezone` (an unknown name
+  falls back to the device, never a wrong clock), `describeTimezone`
+  ("Europe/London · GMT+1"), `listTimezones` (`Intl.supportedValuesOf`, with
+  a curated fallback and any zone already in play) and `groupTimezones` for
+  the picker, and the conversion pair everything else rests on —
+  `wallClockIn(date, zone)` and `dateFromWallClock(wall, zone)`, the latter
+  solving the offset in two passes so it stays correct across a
+  daylight-saving change (the skipped spring-forward hour resolves to the
+  instant the clock jumps to, an hour that happens twice to its first
+  occurrence). Every helper takes the zone as an OPTIONAL last argument and,
+  when it is absent, uses `Date`'s own local getters exactly as before — so
+  nothing about the default experience changed, which is why only source
+  pins, not behaviour assertions, had to move. Threaded through
+  `lib/social-quiet-hours.ts` (`isInQuietHours`, `shiftOutOfQuietHours`),
+  `lib/social-studio-queue.ts` (`countPostsScheduledToday`,
+  `calendarDayAtTime`, `defaultCalendarClockTime`, `isCalendarDayBeforeToday`,
+  `computeDefaultScheduledAtOnDay`, plus a new `parseCalendarDayParts` that
+  separates "is this a real calendar day" from "what instant is its midnight",
+  which is now zone-dependent) and `lib/social-calendar-days.ts` (day markers,
+  the day list and its time labels; `describeDetectedTimezone` now delegates
+  to `describeTimezone`, so the label and the scheduling maths can never name
+  different zones). In `components/social-hub.tsx`, `todayInZone` replaces
+  the device's `new Date()` for what "today" means on the grid, the strip and
+  Jump to today; `toDateTimeLocalValue` gained the zone and a new
+  `fromDateTimeLocalValue` reads the picker back — the input carries no zone
+  of its own, so feeding it the chosen zone's wall clock is what makes it
+  speak that zone. The choice persists per project
+  (`SocialStudioProjectRecord.timezone`, `null` = follow the device, with the
+  usual migrate-on-read) and the control is one "Edit local time" / "Change"
+  button beside the label that opens a region-grouped `<select>` — built only
+  once opened, so a few hundred zone names never render otherwise — with
+  "Follow this device · Europe/London" as its first option. **Nothing already
+  approved moves:** a scheduled post is stored as an instant, so changing the
+  zone changes only the clock it is read on. **Tests changed, not only added
+  (rule 8, stated plainly):** `social-studio-db`'s record fixture and three
+  legacy `toEqual` expectations gained `timezone`; source pins carrying the
+  new argument were updated in `social-calendar-day-schedule` (2),
+  `social-calendar-card-wiring` (4), `social-calendar-grid-wiring` (3, one
+  renamed) and `social-announcement-post` (2); and
+  `social-calendar-days`'s "an unrecognised zone reads 'your local time'"
+  assertion pinned a fallback this PR deliberately improves — an unknown zone
+  now names the device's own zone, so the user always sees the clock actually
+  in force ("your local time" remains for a runtime that can resolve no zone
+  at all). New `tests/social-timezone.test.ts` (21 tests) covers validation,
+  the label across DST, the list and grouping, the wall-clock round trip over
+  four zones and four seasons, offsets either side of a DST change, day
+  comparison, the device fallback being bit-identical, and each threaded
+  helper behaving differently in Tokyo and New York — plus the picker, the
+  record field and the "today in zone" wiring. Rule 10 needs nothing (no
+  route, page or integration; the choice never leaves the browser). Checked
+  in headless Chromium at 1400px and 390px (25 checks): a post at 22:30 UTC
+  marks the 7th and reads 23:30 in London, then the 8th and 07:30 in Tokyo
+  after switching; a time picked on the card reaches the Queue picker as the
+  same Tokyo wall clock; the choice survives a reload; "Follow this device"
+  puts it back; no horizontal scroll at 390px — not on a physical iPhone.
+  Validated on the final commit: `npm run test:app` — 338 test files / 3934
+  tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
+  `npm run build` — succeeds.
+
+- "What time should your posts start each day?", and a compact zone picker
+  (owner direction, 7 Sep 2026: "all users should be prompted when do you want
+  your first post to start, maybe not in those words, and space posts out in
+  accordance with the first initial post that's been set" — then, on the
+  deployed zone picker from #541, "it's too big, can we find a way [to] make
+  it compacted and add type[-to-find] for them to find"). Two things in one
+  PR because they are the same control area and the second is a defect in
+  what the first builds on. **The start time** — a per-project
+  `SocialStudioProjectRecord.dailyStartTime` ("HH:MM" on the chosen zone's
+  clock; `null` means not asked yet, with the usual migrate-on-read). It is
+  asked once as a slim row above the tabs, in the same slot and shape as the
+  token-details reminder — a time field defaulting to 07:00, "Set this time"
+  and "Not now" (remembered per wallet in sessionStorage under
+  `hoodlums.social.dailyStartLater.v1`, so it never nags but returns next
+  visit) — and can be set or changed at any time from a new POSTS START AT
+  block on the Calendar card, above quiet hours. **The spacing** —
+  `computeDefaultScheduledAt` (`lib/social-studio-queue.ts`) gained optional
+  `dailyStartClock` and `timeZone` arguments: without a start time it is
+  exactly what it was ("now", or one spread past the latest pending post),
+  and with one the day has a grid instead — it begins at that time and steps
+  one cadence spread at a time (`nextDailyGridSlotMs`), an approval takes the
+  next free slot on it, and once the day's waking window is full the next
+  post is tomorrow's first rather than the middle of the night. So nothing
+  changes for anyone who taps "Not now", and everyone who answers gets a
+  steady daily rhythm instead of posts landing wherever the approve tap fell.
+  `computeDefaultScheduledAtOnDay` and `defaultCalendarClockTime` take the
+  same start time (falling back to `CALENDAR_DAY_FIRST_SLOT_HOUR` when unset),
+  so a calendar-pinned draft and the card's "at" field start there too; a new
+  `describeSpreadHours` states the gap in plain words ("about 3 hours apart").
+  **The zone picker** — #541 shipped the full IANA list as a native
+  `<select>`, which on the owner's screen filled the window top to bottom and
+  was mis-tapped onto Africa/Abidjan. It is now a compact type-to-find box:
+  a search input plus at most eight results in a 260×232px absolutely
+  positioned list that scrolls inside itself, with each match's current
+  offset beside it. `searchTimezones` (`lib/social-timezone.ts`) ranks a city
+  that starts with the query first, then a zone that starts with it, then
+  anything containing it, and treats `_` and `/` as spaces so "new york"
+  finds `America/New_York`; `suggestedTimezones` offers the zone in force,
+  the device's own, then common ones before anything is typed — never an
+  alphabetical wall. Enter takes the top match, Escape closes, choosing
+  closes and saves. `groupTimezones` is gone with the `<select>` it existed
+  for. **Tests changed, not only added (rule 8, stated plainly):**
+  `social-studio-db`'s record fixture and three legacy expectations gained
+  `dailyStartTime`; the source pins carrying the new scheduling arguments
+  moved in `social-approval-session` (1), `social-studio-approval-confirmation`
+  (1), `social-calendar-day-schedule` (3) and `social-calendar-card-wiring`
+  (3, including the card's time-field count, now four); and in the day-old
+  `social-timezone` the grouped-`<select>` cases were rewritten for the
+  search box. New `tests/social-daily-start-time.test.ts` (16 tests) covers
+  the normaliser, the unchanged no-start-time behaviour, the grid (first
+  slot, stepping, next slot when the start has passed, rolling to tomorrow,
+  every slot inside the waking window), the zone it is read on, and the
+  prompt/card wiring; `social-timezone` gained the search ranking,
+  suggestions, offset labels and the compact-list CSS. Rule 10 needs nothing
+  (no route, page or integration; neither setting leaves the browser).
+  Checked in headless Chromium at 1400px and 390px (30 checks): the question
+  appears on arrival and goes away for the tab on "Not now", the card sets it
+  afterwards and says the spacing, an unset start still schedules from the
+  approve tap, two approvals land on the 09:00 grid one spread apart, the
+  picker opens at 260×232 with the device zone suggested first, "tokyo" finds
+  Asia/Tokyo, and no horizontal scroll at 390px — not on a physical iPhone.
+  Validated on the final commit: `npm run test:app` — 339 test files / 3955
+  tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
+  `npm run build` — succeeds.
+
+- Zone picker: white rows, no outside-click close, and the phone's bottom nav
+  over it (owner recording, 7 Sep 2026, on the deployed #542 picker: "still
+  not right"). Three defects, all in the picker that PR added, found by
+  watching the recording frame by frame rather than by any assertion — the
+  #542 pass checked behaviour and box size and never looked at the result.
+  **(1) White pills.** `.timezoneResults button` set colour, layout and a
+  hover/selected background but no resting background, so each unhovered row
+  fell back to the browser's own light default and the list rendered as white
+  blocks with grey text on the dark theme; the hovered row looked right,
+  which is why the size/behaviour checks all passed. Nothing else in the app
+  hits this because every other button states its own background. The row now
+  states `background: transparent`, `color: var(--text-primary)` and a
+  transparent border, with lime for hover/focus and for the zone in force
+  (its name in `--accent-lime`), and cancels the app-wide
+  `button:hover { transform: translateY(-1px) }` lift, which jitters inside a
+  list. **(2) It never closed.** Only Cancel, Escape or choosing a zone
+  closed the list, so it sat over the calendar while the owner clicked
+  around. A `pointerdown` listener (added only while the picker is open,
+  removed on close) closes it when the tap lands outside
+  `timezonePickerRef`. **(3) The bottom nav covered it.** On a phone the
+  absolutely-positioned list ran under `.bottomNav` (fixed, `z-index: 1000`,
+  its own `max-width: 1099px` breakpoint), hiding its lower rows. Below that
+  same breakpoint the list is now `position: static` in flow, full width,
+  208px tall, with Cancel ordered up beside the search box, so it pushes the
+  calendar down while open and every row is reachable; `openTimezonePicker`
+  also scrolls the picker into view (`block: "center"`) so it never opens
+  half off screen. Desktop keeps the floating 260×232 list. No behaviour
+  outside the picker changed. Three new cases in
+  `tests/social-timezone.test.ts` pin the row background recipe, the
+  outside-click listener and the in-flow mobile rule; no existing assertion
+  was changed. **Checked by looking this time:** screenshots of the open
+  picker at 1400px and 390px (default, hovered, typed and after an outside
+  click) were read back, not just asserted — the earlier pass is what let a
+  white list ship. Validated on the final commit: `npm run test:app` — 339
+  test files / 3958 tests passing; `npm run lint` — 0 errors (11 pre-existing
+  warnings); `npm run build` — succeeds.
+
+- Zone picker: every zone browsable, country search, and the current zone no
+  longer reads as stuck (owner recording, 7 Sep 2026: "limited countries and
+  it's stuck highlighted on africa"). Two more defects in the #542/#543
+  picker, both visible in the recording. **(1) Only eight zones.** With
+  nothing typed the list showed `suggestedTimezones` alone — the zone in
+  force, the device's, then six common ones — and that was the whole list, so
+  a zone nobody had suggested could only be reached by already knowing what
+  to type. A new pure `buildTimezoneOptions` returns the suggestions followed
+  by every remaining zone (419 on this runtime), still inside the same fixed
+  box that scrolls internally; typing still narrows to matches, and the match
+  cap rose from 8 to 40. **(2) Country names found nothing.** IANA zones are
+  named after cities, so "uk", "usa" or "japan" matched nothing at all —
+  which is what "limited countries" meant. `TIMEZONE_ALIASES` maps ~45
+  country and region words to their zones (the list's own order ranks ahead
+  of the alphabetical sort, so "usa" lands on America/New_York, not
+  America/Chicago), matched on a prefix so it works while typing ("germ" →
+  Europe/Berlin). Cities still win a city query. **(3) Two rows looked
+  pressed at once.** The zone in force had the same lime border and
+  background as the hovered row, so the owner's chosen African zone read as
+  permanently stuck. It is now lime text plus a ✓ beside its offset, with no
+  block of its own — only the row under the pointer has a background.
+  **Tests changed, not only added (rule 8, stated plainly):** the day-old
+  `social-timezone` cases "returns a short list, never the whole world"
+  (renamed, since the un-typed list is now the whole world by design) and the
+  row-recipe pin on the `[aria-selected="true"]` background block, which this
+  PR deliberately removes; the hub pin on the matches memo now names
+  `buildTimezoneOptions`. New coverage: country search across eleven
+  countries (India accepts Asia/Kolkata or Asia/Calcutta, the same zone under
+  two ICU names), partial country words, cities still winning, and the
+  full-list contract. Checked by looking, at 1400px and 390px: 419 rows
+  scrolling inside a 260×232 (328×208 on the phone) box, "uk" landing on
+  Europe/London, and the chosen zone marked with a lime tick while only the
+  hovered row is filled. Validated on the final commit: `npm run test:app` —
+  339 test files / 3960 tests passing; `npm run lint` — 0 errors (11
+  pre-existing warnings); `npm run build` — succeeds.
+
+- A studio launch that fails to record is loud and recoverable, and its
+  artwork is finally captured (owner report, 7 Sep 2026: "I just launched a
+  token, nothing came up on the main page … I refreshed and still nothing,
+  along with the uploaded image on the panel"). Production could not be
+  queried from this session (the egress proxy denies hoodlums.dev), so the
+  exact reason that one listing failed is not established here — it is
+  whatever the modal printed after "could not be recorded yet:", which the
+  owner is asked for. What IS established from the code: a recorded launch
+  always renders (`enrichLaunchesWithProgress` nulls a failed curve read
+  rather than dropping the row), so the token was never recorded; the
+  `POST /api/token-launches` request had one attempt, and its failure was a
+  one-line warning in `components/robinhood-testnet-deployment-controller.tsx`
+  with no retry — a token live on-chain, simply lost to the grid. And the
+  artwork bug is definite: the modal reads `readProjectIndex()`, whose
+  entries have carried no `heroImage` since issue #307 moved it into
+  IndexedDB, so `captureTokenArtworkThumbnail(currentProject.heroImage)` has
+  been capturing `""` on every launch since #438 — every card falls back to
+  its letter initial. Fix: a new `captureProjectArtworkThumbnail` loads the
+  hero image via `getProjectBlob(project.id)` at capture time, downscales it
+  and discards it (the PR #118 memory rule still holds — nothing enters React
+  state); the same fix Hoodlums Social needed for the same reason on 6 Sep.
+  Recording now mirrors `/testnet`'s issue #425 pattern: the request is kept
+  as `pendingRecord` before the attempt and cleared only once the server has
+  recorded it, so the result panel's new **RECORD LISTING** button resubmits
+  it with one wallet signature and no on-chain step (re-reading the artwork
+  from IndexedDB, since the first capture was discarded); the panel also
+  links to `/testnet`'s "Record an existing launch" as the fallback, and a
+  fresh deploy clears any earlier pending request. Every failure — the first
+  attempt and a failed retry — is reported best-effort to
+  `POST /api/client-errors` (`Token launch listing could not be recorded
+  (0x…): reason`), so the next time this happens the reason is in `/admin`'s
+  existing client-errors section instead of dying with the modal.
+  **Rule 10:** no new route, page or integration — the report lands in the
+  client-errors store `/admin` already shows. **Tests changed, not only
+  added (rule 8, stated plainly):** `tests/token-launch-artwork-capture.test.ts`'s
+  two pins on `captureTokenArtworkThumbnail(currentProject.heroImage)` pinned
+  the defect itself and now pin the IndexedDB load and the new call. New
+  `tests/studio-launch-record-retry.test.ts` (4 tests) pins the pending
+  request's lifecycle, the retry (one signature, no `deployContract`/
+  `writeContract`, artwork re-read, never in state), the error report and
+  the panel/CSS. Not verified in a browser: the post-deploy panel only
+  renders after a real three-signature launch against the chain, which this
+  session cannot drive — the owner sees it on the next launch. **Named
+  follow-up, not built:** every wallet-signed action here (token launches,
+  Hoodchat, Social, Support) holds its challenge in a `globalThis` Map
+  (`lib/server/chat-auth.ts`) — per serverless instance memory, while the
+  challenge and the action are two different routes; the durable
+  `wallet_nonces` table exists for publishing precisely to avoid this. If the
+  owner's reported reason turns out to be "Wallet authorisation failed" or
+  "challenge expired", that is the cause and the fix is a durable challenge
+  table; it is not built here because the cause is unproven. **Recovery for
+  the token already launched:** `/testnet` → connect the same wallet →
+  "Record an existing launch" → paste the token address → sign; it reads the
+  pipeline's own on-chain record, so it works for studio launches. That path
+  sends no artwork, so already-recorded launches keep their letter initial
+  — artwork applies to launches recorded from the studio from here on.
+  Validated on the final commit: `npm run test:app` — 340 test files / 3964
+  tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
+  `npm run build` — succeeds.
+
+- Homepage grid cards get thin/slim glowing candlesticks, replacing the
+  single performance line (owner direction, 7 Sep 2026, against the
+  "Hoodlums Charts" desktop flagship candlestick design and a pump.fun
+  recording: "I want candle stick just like [that] example, thin slim,
+  smaller as it's gonna go in each panel like pump fun, make sure glow so
+  it can be seen on top of all content, and just like pump fun it can
+  expand not too much" — then "5m candles"). Issue #440/#489 had explicitly
+  decided against candles on the grid card ("never a chart-library instance
+  per card … never candles, and never a floating hover preview") and drawn
+  a single lime/grey performance line instead (`lib/token-sparkline.ts`);
+  this is a direct, later owner reversal of that specific call, not a
+  contradiction to leave standing in the old comment. New
+  `lib/token-grid-candle-chart.ts` restores the deleted issue #440
+  `lib/token-candle-geometry.ts`'s pure, dependency-free bar-geometry
+  approach (still no chart-library instance per card) but fixes the bucket
+  interval at 5 minutes rather than auto-picking a coarser one per token,
+  keeps only the most recent `MAX_GRID_CANDLES` (20) buckets, and thins the
+  body-to-slot ratio for a genuinely slim look; it reuses the same
+  `bucketTradesIntoCandles` the full token-page chart already calls, so a
+  mini card and the real chart can never disagree about where a candle's
+  open/close sits. `components/token-grid-card-chart.tsx` now maps
+  `chart.bars` into small SVG `<line>`/`<rect>` groups (wick + body) instead
+  of a single `buildSparkline` path, keeping every existing contract
+  unchanged: still gated on `useInView`, still no chart at all with zero
+  trades, still driving the real market cap/change-pill/flash from the same
+  live 60s-polled trades. Each bar's `.candleUp`/`.candleDown` class carries
+  its own `filter: drop-shadow(0 0 3px currentColor)` (lime/grey, matching
+  the settled up/down ruling exactly — same literal hex values as
+  `--accent-lime`/`--accent-down`) so the glow reads over any artwork
+  brightness, and a `candleGrow` keyframe staggers each bar's first paint in
+  by its index (capped at 300ms total) for a lively but bounded entrance.
+  "Expand, not too much, like pump.fun": `.candleOverlay` (the lower-52%
+  chart layer, unchanged in position) now scales to `1.16` on `.card:hover`
+  — gated behind `(hover: hover) and (pointer: fine)`, the same guard the
+  card's own existing lift-on-hover already uses, so a touch tap can never
+  leave it stuck grown — clipped by the art frame's own `overflow: hidden`
+  rounded corners rather than a floating popup, which stays explicitly
+  ruled out. `lib/token-sparkline.ts` and its test are deleted outright
+  (zero remaining importers once the card stopped calling `buildSparkline`)
+  rather than left as dead code alongside the new module. **Tests changed,
+  not only added (rule 8, stated plainly):** the #440/#489 pin asserting the
+  card "draws one performance line … never candles … or a floating hover
+  preview" and the parallel CSS pin "has no floating hover preview or candle
+  overlay left" both encoded the decision this PR reverses by direct owner
+  instruction, and are rewritten to assert the new candle contract (a
+  floating *popup* preview is still, and remains, ruled out — only the
+  in-place overlay grows); the sparkline-era CSS/colour-constant pins in the
+  same file and in `tests/hoodlums-premium-theme.test.ts` are updated to the
+  new `.candleUp`/`.candleDown`/`GRID_CANDLE_UP_COLOR`/`GRID_CANDLE_DOWN_COLOR`
+  names (same literal hex values, unchanged); the obsolete
+  "redraws the line only when the path actually changes, by keying it on the
+  path" test is removed (bars are keyed by index with a per-bar CSS
+  animation instead of one recomputed path); and the trending-panel pin
+  checking for no `buildSparkline` call now checks for no `buildGridCandleChart`
+  call, since the function it names no longer exists either way. New
+  `tests/token-grid-candle-chart.test.ts` covers zero/one/many trades, the
+  fixed 5-minute bucketing (a same-bucket vs. cross-bucket pair of trades),
+  the `MAX_GRID_CANDLES` cap keeping only the most recent candles, up/down
+  colouring, the thin body-to-slot ratio, and the degenerate equal-price
+  case. Checked in headless Chromium at 1400px and 390px with mocked
+  launches/trades (mixed up/down 5-minute candles over a real artwork
+  image): candles sit correctly within the lower ~52% of the art (measured
+  against the DOM, not just eyeballed — an initial glance against a
+  no-artwork letter-fallback card had looked like an overflow but the real
+  geometry was already correct, an artefact of testing with no image behind
+  it), the glow is visible on both tones, the hover scale is confirmed via
+  computed style (`matrix(1, 0, 0, 1.16, 0, 0)`) and reads as a modest
+  in-place growth in the screenshots, two-across mobile cards remain legible
+  at the smaller size, and there were no console errors. Not verified on a
+  real mobile Safari device this pass (rule 7) — the touch/no-hover guard
+  was checked by reading the CSS media query, not on-device. Validated on
+  the final commit: `npm run test:app` — 340 test files / 3963 tests
+  passing; `npm run lint` — 0 errors (11 pre-existing warnings); `npm run
+  build` — succeeds.
+
+- Grid card candlesticks: fixed width and a smaller footprint (owner report,
+  7 Sep 2026, on the just-deployed candlestick cards above: "candel stick are
+  different sizes still to big plus covering half images heres a reminder of
+  pump fun"). Root cause, confirmed by reading the live recording frame by
+  frame: `lib/token-grid-candle-chart.ts` divided the fixed 100-unit viewBox
+  width by THAT TOKEN's OWN `candles.length` (`slotWidth = width /
+  candles.length`), so a quiet token with two or three 5-minute buckets got a
+  couple of huge, chunky bars while an active one with a full 20-bucket
+  window got many thin ones — exactly "different sizes". The original PR's
+  own verification never caught this because its three mock tokens all had
+  similar, moderate trade counts; nothing in that pass exercised a wide
+  spread. `buildGridCandleChart` now derives `slotWidth` from the FIXED
+  `GRID_CANDLE_CHART_WIDTH / MAX_GRID_CANDLES` denominator, so a candle body
+  is the same absolute size on every card no matter how many buckets that
+  specific token has traded into; a token with fewer than the max
+  right-aligns its candles flush to the right edge (the newest candle always
+  in the rightmost slot, the same convention every real trading chart uses)
+  rather than stretching a handful of bars to fill the width. Separately,
+  `.candleOverlay`'s height in `components/hoodlums-token-grid.module.css`
+  drops from 52% to 34% of the art region, closer to what the pump.fun
+  reference recording actually shows, addressing "covering half images".
+  **Tests changed, not only added (rule 8, stated plainly):** the
+  `token-grid-card-chart-ui` pin asserting `height: 52%` pinned the
+  now-corrected footprint and is rewritten to assert 34% and the absence of
+  52%. New coverage in `tests/token-grid-candle-chart.test.ts`: a
+  same-bodyWidth assertion across 1/3/20 (capped) candle counts (the
+  reported bug, reproduced and pinned closed) and a right-alignment
+  assertion (fixed slot spacing, newest candle in the rightmost slot, no
+  leading gap once a card reaches the full MAX_GRID_CANDLES window).
+  Verified this time with mock trade counts that deliberately span 1, 2, 3,
+  8, 20 and 60 trades across six cards in the same grid — the exact
+  real-world variance the first pass's uniform mocks missed — measuring each
+  card's rendered candle body width and x-position in the DOM (not just
+  eyeballing): every card's bars came back pixel-identical in width
+  (≈3.3px at both 1400px and 390px) and right-aligned to the same edge, and
+  the hover-expand (`scaleY(1) → scaleY(1.16)`) still engages correctly on
+  the new sizing. Not verified on a real mobile Safari device this pass
+  (rule 7) — the owner confirms on hoodlums.dev. Validated on the final
+  commit: `npm run test:app` — 340 test files / 3965 tests passing; `npm run
+  lint` — 0 errors (11 pre-existing warnings); `npm run build` — succeeds.
+
+- Client-errors "new group" tile no longer disagrees with the Errors tab
+  (owner report, 7 Sep 2026: `/admin`'s System Health showed "1 new client
+  error group(s) in the last 24 hours," but the Errors tab itself listed
+  none). Root cause: `countNewClientErrorGroups` (`lib/server/system-health.ts`)
+  counted a (message, route_path) group as "new" purely from how long ago it
+  first ever appeared — it never checked whether that group had since been
+  resolved, while the Errors tab's own list (`ClientErrorStore.listGroups`,
+  `lib/server/client-errors-store.ts`) hides a resolved group unless a fresh
+  occurrence has landed after the resolution. A group resolved once would
+  keep tripping the "new" tile forever, with nothing to click into — exactly
+  what was reported. Fix: `countNewClientErrorGroups`'s SQL now joins
+  `client_error_resolutions` and applies the identical condition
+  `listGroups` already uses (`resolved_at IS NULL OR last_seen > resolved_at`),
+  so the two can no longer disagree. Confirmed this PR's own #547 (the grid
+  candlestick sizing fix, merged immediately before this) touches none of
+  this code — `lib/token-grid-candle-chart.ts` and a CSS height value only —
+  so the timing the owner flagged was coincidental, not causal.
+  `lib/server/client-errors-store.ts`'s own `countNewGroupsSince` carries the
+  identical gap (verified: not called from any production code path today,
+  only from tests) and is left as a named follow-up rather than widened into
+  this fix. New test in `tests/system-health.test.ts` pins the SQL text
+  (join + WHERE clause) against a regression, since the query runs against a
+  raw pool with no JS-side seam to inject a fake resolutions table. No
+  existing test assertion was changed. Validated on the final commit:
+  `npm run test:app` — 340 test files / 3966 tests passing; `npm run lint` —
+  0 errors (11 pre-existing warnings); `npm run build` — succeeds.
+
+- Homepage grid's `token_launches` read explicitly scoped to Robinhood Chain
+  Testnet (owner request, 7 Sep 2026, after confirming the grid was already
+  Robinhood-Chain-only in practice). Confirmed first, stated plainly: this
+  was not an active bug — `lib/server/token-launch-reconciliation.ts`'s
+  `verifyTokenLaunchOnChain` already refuses any `chainId` other than
+  `ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL` (46630) before a row is ever inserted,
+  and the only two client callers of `POST /api/token-launches`
+  (`testnet-launcher.tsx`, `robinhood-testnet-deployment-controller.tsx`)
+  both hardcode that same chain ID; `monad-testnet-launcher.tsx` never calls
+  this route at all. So `token_launches` could only ever hold Robinhood
+  Chain rows today. But `lib/server/token-launches-store.ts`'s `list()` —
+  the homepage grid's data source via `GET /api/token-launches` — had no
+  explicit `chain_id` filter of its own; it relied entirely on that
+  insert-time gate holding forever. Added `WHERE chain_id = $1` (both the
+  "all" and graduation-state branches) against
+  `ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL`, as a read-time safety net: if a
+  second chain's launches are ever independently verified and inserted in
+  the future, this grid — whose card links are hardcoded to
+  `/token/robinhood/<address>` — can never silently start mixing chains
+  without this filter also being touched. `listForAdmin()` is left
+  unfiltered on purpose, since the admin Launches section is a monitoring
+  view that should show every recorded launch regardless of chain. New test
+  in `tests/token-launches-store.test.ts` pins the SQL text (the Postgres
+  implementation queries a real `pg.Pool` with no JS-side seam to inject a
+  fake table, matching the same source-pattern-test approach used for the
+  client-errors fix above). No existing test assertion was changed.
+  Validated on the final commit: `npm run test:app` — 340 test files / 3967
+  tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
+  `npm run build` — succeeds.
+
+- X outreach bot: first-touch drafting raised to a 75% graduation-progress
+  floor (owner request, 7 Sep 2026: "pull from graduating tokens twitter
+  handles to give to my twitter bot ... preferably 75% graduating"). The
+  dormant outreach cron (issue #298, still gated off entirely by
+  `OUTREACH_QUEUE_ENABLED` in production) previously drafted a first-touch
+  congratulations tweet — pulling the token's own opt-in `creatorXHandle`
+  from the "GRADUATING NOW" pump.fun feed — for any token the feed showed at
+  all, i.e. anywhere in that feed's own 60-99% window
+  (`lib/server/pumpfun-graduating.ts`'s `MIN_PROGRESS_PERCENT`). A new
+  `OUTREACH_FIRST_TOUCH_PROGRESS_THRESHOLD = 75` in
+  `lib/server/outreach-cron.ts` filters the feed to 75%+ before drafting any
+  first-touch item, so outreach only starts once a token is a stronger bet
+  to actually graduate, rather than the moment it enters the feed at all.
+  This is deliberately scoped to the outreach cron alone — the public
+  "GRADUATING NOW" homepage row and its underlying 60-99% feed window are
+  unchanged, since they're a different consumer of the same feed. The 95%
+  follow-up threshold (`OUTREACH_FOLLOWUP_PROGRESS_THRESHOLD`) is untouched.
+  No existing test assertion was changed — every existing fixture token
+  already used a progress percent above 75, so nothing needed correcting;
+  new coverage in `tests/outreach-cron.test.ts` pins the exact boundary
+  (60/74 excluded, 75/91 included). Validated on the final commit: `npm run
+  test:app` — 340 test files / 3968 tests passing; `npm run lint` — 0 errors
+  (11 pre-existing warnings); `npm run build` — succeeds.
+
+- X outreach bot: approval never posts before the token has actually
+  graduated (owner requirement, 7 Sep 2026: "it shouldn't post till
+  graduated"). A first-touch draft is created early — at 75%+ progress,
+  per the previous entry — precisely so there's something ready for admin
+  review ahead of time, but the congratulations tweet must not go out until
+  the token has genuinely graduated. Previously `approveOutreachDraft`
+  (`lib/server/outreach-approve.ts`) trusted the `progressPercent` snapshot
+  taken at draft time and posted immediately on admin approval, with no
+  re-check — so approving a draft minutes after it was created (well before
+  graduation) would have posted early. It now re-fetches the live graduating
+  feed at approval time and refuses to post (`not_graduated`, new
+  discriminated-union member on `OutreachApproveResult`) if the mint is
+  still present in that 60-99% feed — the same "still bonding vs. graduated"
+  presence signal the cron's own follow-up detection already relies on — or
+  if the feed itself errors (inconclusive, not evidence of graduation,
+  mirroring the cron's existing philosophy there). A refusal leaves the
+  draft `pending` (not `failed` — this isn't a posting error, just not the
+  right time yet), so the admin can simply approve again later once it has
+  graduated; `app/api/admin/outreach/actions/route.ts` maps this to a 409
+  with the plain-English reason, which the existing admin UI already
+  surfaces via its generic action-error paragraph (no UI change needed).
+  **Tests changed, not only added (rule 8, stated plainly):** three
+  `tests/outreach-approve.test.ts` cases (marks posted, rate-limit failure,
+  API-error failure) previously reached `post()` with no graduation check
+  in the way; they now inject a `fetchGraduating` stub reporting the mint
+  has left the feed (graduated), matching the new required step, and one
+  `tests/admin-outreach-endpoint.test.ts` case ("posts, marks the item
+  posted…") now also sets `BITQUERY_ACCESS_TOKEN` and mocks the Bitquery
+  endpoint (discriminated from the X-posting mock already in that file by
+  URL) to the same "graduated" shape, plus resets the module-level
+  graduating-feed cache in `beforeEach`/`afterEach` so this new Bitquery
+  call can't leak state into other tests in the file. New coverage: refusal
+  while still bonding (post never called, draft stays pending), refusal on
+  a feed error, and success once the mint has left the feed, at both the
+  pure-function level and the real route level (409 + exact reason).
+  Validated on the final commit: `npm run test:app` — 340 test files / 3972
+  tests passing; `npm run lint` — 0 errors (11 pre-existing warnings);
+  `npm run build` — succeeds.
+
 - Bespoke sites stopped generating; the refusal now names its rule, and the
   two rules most likely to refuse a good gpt-5 page are fixed (owner report,
   11 Sep 2026: "bespoke ain't generating websites" — the studio read "AI

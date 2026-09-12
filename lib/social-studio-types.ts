@@ -1,4 +1,5 @@
-import { DEFAULT_TONE_DIALS, DEFAULT_WORDS_TO_AVOID, type ToneDials } from "./social-tone-rules";
+import { DEFAULT_TONE_DIALS, DEFAULT_WORDS_TO_AVOID, WORDS_TO_AVOID_SEED_VERSION, type ToneDials } from "./social-tone-rules";
+import { DEFAULT_QUIET_HOURS, type QuietHours } from "./social-quiet-hours";
 // Client-safe types shared between components/social-hub.tsx and the new
 // AI Social Studio server routes. Kept separate from lib/server/* so the
 // client bundle never pulls in server-only modules.
@@ -47,8 +48,23 @@ export type QueueItem = {
   xText: string;
   telegramText: string;
   artwork: string | null;
-  source: "setup-ai" | "calendar-ai" | "manual" | "auto-replenish";
+  source: "setup-ai" | "calendar-ai" | "manual" | "auto-replenish" | "announcement" | "announcement-ai";
   dayLabel: string | null;
+  /**
+   * The local calendar day ("YYYY-MM-DD") the user picked on the Calendar
+   * tab when they tapped "AI makes it" — the day the post is scheduled on
+   * when approved, unless the user picks their own time in the Queue.
+   * Absent on Setup, manual and replenish drafts (and on pre-existing
+   * calendar drafts, which fall back to the cadence spread as before).
+   */
+  scheduledDay?: string | null;
+  /**
+   * The time of day ("HH:MM", local) picked on the Calendar tab beside the
+   * date (owner direction, 7 Sep 2026) — with `scheduledDay`, the exact
+   * default the post is scheduled for at approval. Absent means the first
+   * waking slot logic applies.
+   */
+  scheduledTime?: string | null;
   createdAt: string;
   /** The angle the draft route wrote this post to (DRAFT_ANGLES key) — ranks it for an AI image. Absent on manual and pre-existing drafts. */
   angleKey?: string | null;
@@ -108,8 +124,16 @@ export type SocialStudioProjectRecord = {
   sortedVoiceSourceKeys: string[];
   /** Settings & Rules "Words to avoid" (owner direction, 6 Sep 2026) — every AI draft is forbidden these and mechanically rejected if one slips through. */
   wordsToAvoid: string[];
+  /** Which default-word seed this record has received (7 Sep 2026): a record below WORDS_TO_AVOID_SEED_VERSION gets the subject words added once on read, and never again once saved. */
+  wordsToAvoidSeed: number;
   /** Settings & Rules "How it should sound" dials (owner direction, 6 Sep 2026) — fed into every AI draft as tone instructions. */
   toneDials: ToneDials;
+  /** Calendar "Quiet hours" (owner direction, 7 Sep 2026): no post is ever scheduled inside this local-time window; `null` is off. */
+  quietHours: QuietHours | null;
+  /** The zone every time on the Calendar and Queue is shown and scheduled in (owner direction, 7 Sep 2026). `null` follows the device, which is what the line said before it could be changed. */
+  timezone: string | null;
+  /** When the day's first post goes out ("HH:MM" on the chosen zone's clock); every later post spaces out from it. `null` means the user has not been asked yet, and everything behaves as it did before (owner direction, 7 Sep 2026). */
+  dailyStartTime: string | null;
 };
 
 export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
@@ -124,5 +148,9 @@ export const EMPTY_SOCIAL_STUDIO_RECORD: SocialStudioProjectRecord = {
   directionBrief: "",
   sortedVoiceSourceKeys: [],
   wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+  wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
   toneDials: { ...DEFAULT_TONE_DIALS },
+  quietHours: { ...DEFAULT_QUIET_HOURS },
+  timezone: null,
+  dailyStartTime: null,
 };

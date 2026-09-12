@@ -86,8 +86,56 @@ export function normaliseToneDials(raw: unknown): ToneDials {
   };
 }
 
-/** The design's five example chips are the real defaults for a new project — sensible for any meme token. */
-export const DEFAULT_WORDS_TO_AVOID: readonly string[] = ["guaranteed", "financial advice", "to the moon", "rug", "100x"];
+/**
+ * Subjects the AI must steer clear of entirely (owner direction, 7 Sep
+ * 2026: "add a few crucial words — racism, homophobia, religion — the user
+ * can remove them, but at least we set the tone; make sure these words and
+ * anything around them are avoided"). Listing one of these words bans the
+ * whole family — "racism" also catches "racist" and "racial", "religion"
+ * catches "religious" — and the prompt tells the model to avoid the subject,
+ * not just the word. A user who removes one removes the whole family.
+ */
+export const TOPIC_WORDS_TO_AVOID: readonly string[] = ["racism", "homophobia", "religion", "politics"];
+
+const TOPIC_WORD_FAMILIES: ReadonlyArray<{ keys: readonly string[]; pattern: RegExp }> = [
+  { keys: ["racism", "racist", "racial"], pattern: /(?<![a-z0-9])(?:racism|racists?|racial(?:ly)?|race[- ]?bait\w*)(?![a-z0-9])/iu },
+  { keys: ["homophobia", "homophobic", "homophobe"], pattern: /(?<![a-z0-9])(?:homophob\w*|anti-?gay)(?![a-z0-9])/iu },
+  { keys: ["religion", "religious"], pattern: /(?<![a-z0-9])(?:religio\w*)(?![a-z0-9])/iu },
+  { keys: ["politics", "political", "politician"], pattern: /(?<![a-z0-9])(?:politic\w*)(?![a-z0-9])/iu },
+  { keys: ["sexism", "sexist"], pattern: /(?<![a-z0-9])(?:sexis[mt]s?)(?![a-z0-9])/iu },
+  { keys: ["transphobia", "transphobic"], pattern: /(?<![a-z0-9])(?:transphob\w*)(?![a-z0-9])/iu },
+];
+
+/** The family regex for a listed word, when it names one of the subjects above; null for an ordinary banned word. */
+export function topicWordFamily(word: string): RegExp | null {
+  const key = word.trim().toLowerCase();
+  return TOPIC_WORD_FAMILIES.find((family) => family.keys.includes(key))?.pattern ?? null;
+}
+
+/** The design's five example chips plus the four subject words — the real defaults for a new project. */
+export const DEFAULT_WORDS_TO_AVOID: readonly string[] = ["guaranteed", "financial advice", "to the moon", "rug", "100x", ...TOPIC_WORDS_TO_AVOID];
+
+/**
+ * Bumped whenever the default list gains words every existing project
+ * should also get once (7 Sep 2026: the four subject words). A record
+ * below this version has the new defaults added on read; a user who then
+ * removes one is not re-seeded, because the record saves the version.
+ */
+export const WORDS_TO_AVOID_SEED_VERSION = 2;
+
+/** Adds the subject words a record saved before the current seed version never had, respecting the cap; the list is otherwise untouched. */
+export function seedWordsToAvoid(words: readonly string[], seedVersion: unknown): { words: string[]; seedVersion: number } {
+  const current = typeof seedVersion === "number" && Number.isFinite(seedVersion) ? seedVersion : 1;
+  if (current >= WORDS_TO_AVOID_SEED_VERSION) return { words: [...words], seedVersion: current };
+  const seen = new Set(words.map((word) => word.toLowerCase()));
+  const next = [...words];
+  for (const word of TOPIC_WORDS_TO_AVOID) {
+    if (seen.has(word) || next.length >= MAX_WORDS_TO_AVOID) continue;
+    next.push(word);
+    seen.add(word);
+  }
+  return { words: next, seedVersion: WORDS_TO_AVOID_SEED_VERSION };
+}
 export const MAX_WORDS_TO_AVOID = 30;
 export const MAX_WORD_TO_AVOID_LENGTH = 40;
 
@@ -137,6 +185,8 @@ function escapeRegExp(value: string): string {
 export function findAvoidedWords(text: string, words: readonly string[]): string[] {
   const haystack = text.replace(/\s+/g, " ");
   return words.filter((word) => {
+    const family = topicWordFamily(word);
+    if (family) return family.test(haystack);
     const pattern = escapeRegExp(word.trim()).replace(/ /g, "\\s+");
     if (!pattern) return false;
     return new RegExp(`(?<![a-z0-9])${pattern}(?![a-z0-9])`, "iu").test(haystack);
@@ -184,5 +234,13 @@ export function toneDialInstructions(dials: ToneDials): string[] {
 /** The hard "never say these" line, or an empty string when the list is empty (the route then adds nothing). */
 export function wordsToAvoidInstruction(words: readonly string[]): string {
   if (words.length === 0) return "";
-  return `The user has banned these words and phrases — never use any of them, in any form, in either draft: ${words.map((word) => `"${word}"`).join(", ")}.`;
+  const topics = words.filter((word) => topicWordFamily(word) !== null);
+  return [
+    `The user has banned these words and phrases — never use any of them, in any form, in either draft: ${words.map((word) => `"${word}"`).join(", ")}.`,
+    topics.length
+      ? `Where a banned word names a subject (${topics.map((word) => `"${word}"`).join(", ")}), stay away from the subject itself, not just the word: no jokes, comparisons, nods, slang or coded references around it, and nothing that could be read as a take on it.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }

@@ -105,11 +105,12 @@ describe("homepage stylesheets use the shared recipes, never the legacy palette"
       }
       expect(css, `${file} still uses the old lime rgba`).not.toContain("rgba(188, 231, 89");
     }
-    // The homepage performance line follows the token page's up/down ruling
-    // (owner direction, 4 Sep 2026): lime up, the design's grey down.
+    // The homepage candle chart follows the token page's up/down ruling
+    // (owner direction, 4 Sep 2026, candles from 7 Sep 2026): lime up, the
+    // design's grey down.
     const grid = await source("components/hoodlums-token-grid.module.css");
-    expect(grid).toContain(".sparklineUp {\n  color: var(--accent-lime);\n}");
-    expect(grid).toContain(".sparklineDown {\n  color: var(--accent-down);\n}");
+    expect(grid).toContain(".candleUp {\n  color: var(--accent-lime);\n}");
+    expect(grid).toContain(".candleDown {\n  color: var(--accent-down);\n}");
     expect(grid).not.toContain("#91f0b6");
     expect(grid).not.toContain("#ff5f56");
   });

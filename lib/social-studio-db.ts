@@ -4,7 +4,10 @@
 // lib/token-project-db.ts (issue #307) — they live only in IndexedDB, never
 // in localStorage or long-lived React state (CLAUDE.md rule 7).
 
-import { normaliseToneDials, normaliseWordsToAvoid } from "./social-tone-rules";
+import { normaliseToneDials, normaliseWordsToAvoid, seedWordsToAvoid } from "./social-tone-rules";
+import { normaliseQuietHours } from "./social-quiet-hours";
+import { normaliseTimezone } from "./social-timezone";
+import { normaliseDailyStartTime } from "./social-studio-queue";
 import {
   DEFAULT_POSTING_CADENCE,
   DEFAULT_QUEUE_TARGET,
@@ -96,6 +99,14 @@ function normaliseSocialStudioRecord(
   raw: SocialStudioProjectRecord | null | undefined,
 ): SocialStudioProjectRecord {
   const merged: SocialStudioProjectRecord = { ...EMPTY_SOCIAL_STUDIO_RECORD, ...raw };
+  // A record saved with its own list before the subject words existed (7 Sep
+  // 2026) gets them added once; the saved seed version stops it happening
+  // again after the user removes one. A record with no list at all already
+  // gets the full defaults above, so the seed is only ever applied to a list.
+  const seeded = seedWordsToAvoid(
+    normaliseWordsToAvoid(merged.wordsToAvoid),
+    Array.isArray(raw?.wordsToAvoid) ? raw?.wordsToAvoidSeed : merged.wordsToAvoidSeed,
+  );
   return {
     ...merged,
     voiceExamples: Array.isArray(merged.voiceExamples) ? merged.voiceExamples : [],
@@ -110,8 +121,19 @@ function normaliseSocialStudioRecord(
     // Settings & Rules wiring (6 Sep 2026): a record saved before these fields
     // existed gets the design's five default words and the middle dial on
     // every axis — exactly what the disabled mock-up always showed.
-    wordsToAvoid: normaliseWordsToAvoid(merged.wordsToAvoid),
+    wordsToAvoid: seeded.words,
+    wordsToAvoidSeed: seeded.seedVersion,
     toneDials: normaliseToneDials(merged.toneDials),
+    // Calendar quiet hours (7 Sep 2026): a record saved before the field
+    // existed gets the design's 23:00 → 07:00; an explicit null stays off.
+    quietHours: normaliseQuietHours(merged.quietHours),
+    // A record saved before the zone could be chosen (7 Sep 2026), or one
+    // naming a zone this runtime does not know, follows the device — never
+    // a wrong clock.
+    timezone: normaliseTimezone(merged.timezone),
+    // "Not asked yet" is null, and every scheduling helper then behaves
+    // exactly as it did before the start time existed (7 Sep 2026).
+    dailyStartTime: normaliseDailyStartTime(merged.dailyStartTime),
   };
 }
 

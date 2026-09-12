@@ -32,7 +32,8 @@ function developerText(body: ReturnType<typeof buildDraftRequestBody>): string {
 describe("Settings & Rules wired into the draft prompt (6 Sep 2026)", () => {
   it("keeps the design's five words as the default ban and states them as a hard rule, replacing the old hard-coded sentence", () => {
     const text = developerText(buildDraftRequestBody({ project: PROJECT, voiceProfile: null }, "gpt-5-mini"));
-    expect(text).toContain('never use any of them, in any form, in either draft: "guaranteed", "financial advice", "to the moon", "rug", "100x".');
+    expect(text).toContain('never use any of them, in any form, in either draft: "guaranteed", "financial advice", "to the moon", "rug", "100x", "racism", "homophobia", "religion", "politics".');
+    expect(text).toContain("stay away from the subject itself, not just the word");
     expect(text).not.toContain("Never use the words: guaranteed, financial advice, to the moon, rug, 100x.");
     expect(text).toContain("Never invent price predictions, guaranteed returns or financial advice.");
   });

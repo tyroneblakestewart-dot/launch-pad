@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runOutreachCron } from "@/lib/server/outreach-cron";
+import { OUTREACH_FIRST_TOUCH_PROGRESS_THRESHOLD, runOutreachCron } from "@/lib/server/outreach-cron";
 import type { GraduatingFeedResult, GraduatingToken } from "@/lib/server/pumpfun-graduating";
 import { createMemoryOutreachStore } from "./outreach-test-helpers";
 
@@ -206,6 +206,33 @@ describe("runOutreachCron — enabled", () => {
     expect(result.firstTouchDrafted).toBe(10);
     expect(result.skippedCapReached).toBe(true);
     expect(await store.countDraftsInsertedToday()).toBe(10);
+  });
+
+  /**
+   * Owner request, 7 Sep 2026: don't draft a first-touch outreach the moment
+   * a token enters the feed's 60-99% window — wait until it's a stronger bet
+   * to actually graduate (75%+). The feed's own window is unchanged; this is
+   * an outreach-specific floor on top of it.
+   */
+  it("only drafts first-touch outreach for tokens at or above the 75% progress threshold", async () => {
+    expect(OUTREACH_FIRST_TOUCH_PROGRESS_THRESHOLD).toBe(75);
+
+    const store = createMemoryOutreachStore();
+    const result = await runOutreachCron({
+      env: { OUTREACH_QUEUE_ENABLED: "true" },
+      fetchGraduating: async () =>
+        feed([
+          token({ address: "Mint1", progressPercent: 60 }),
+          token({ address: "Mint2", progressPercent: 74 }),
+          token({ address: "Mint3", progressPercent: 75 }),
+          token({ address: "Mint4", progressPercent: 91 }),
+        ]),
+      store,
+    });
+
+    expect(result.firstTouchDrafted).toBe(2);
+    const pending = await store.listItems("pending");
+    expect(pending.map((item) => item.tokenMint).sort()).toEqual(["Mint3", "Mint4"]);
   });
 
   it("never throws when the store rejects unexpectedly — fail-safe contract", async () => {

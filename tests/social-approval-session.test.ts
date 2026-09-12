@@ -303,7 +303,7 @@ describe("Queue tab: one tap, one signature a day, slimmer card (source pins)", 
     const approve = block(hub, "async function approveQueueItem(item: QueueItem)", 5200);
     expect(approve).toContain("const now = new Date();");
     expect(approve).toContain("scheduledPosts.filter((post) => isPendingSendStatus(post.status)).map((post) => post.scheduledAt);");
-    expect(approve).toContain("computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence));");
+    expect(approve).toContain("computeDefaultScheduledAt(awaitingIso, now, cadenceSpreadHoursMs(postingCadence), dailyStartTime, timezone);");
     expect(approve).toContain("const scheduledAtIso = ensureFutureScheduledAt(picked, now).toISOString();");
     expect(approve.indexOf("ensureFutureScheduledAt(picked, now)")).toBeLessThan(approve.indexOf('fetch("/api/social/posts"'));
   });

@@ -6,6 +6,8 @@
 // directly instead of only through source-string assertions.
 
 import { truncateAccountAddress } from "@/lib/account-wallet-state";
+import { formatClockTime, parseClockTime } from "@/lib/social-quiet-hours";
+import { dateFromWallClock, isSameZonedDay, wallClockIn } from "@/lib/social-timezone";
 import {
   DEFAULT_POSTING_CADENCE,
   DEFAULT_QUEUE_TARGET,
@@ -80,22 +82,63 @@ export function isHistoryStatus(status: string): boolean {
 }
 
 /**
- * A sensible default schedule time for a newly-approved draft: "now", unless
- * that would land within `spreadHoursMs` of the latest already-scheduled
- * post, in which case it's pushed out by one spread interval so a run of
- * approvals doesn't pile up at the same instant.
+ * A sensible default schedule time for a newly-approved draft.
+ *
+ * Without a daily start time it is "now", unless that would land within
+ * `spreadHoursMs` of the latest already-scheduled post, in which case it is
+ * pushed out by one spread interval so a run of approvals doesn't pile up at
+ * the same instant — the behaviour every approval had before the start time
+ * could be set.
+ *
+ * With one (owner direction, 7 Sep 2026: "all users should be prompted when
+ * do you want your first post to start … and space posts out in accordance
+ * with the first initial post"), the day has a grid instead: it begins at
+ * that time and steps one spread at a time, and an approval takes the next
+ * free slot on it. Posts then keep a steady daily rhythm rather than landing
+ * wherever the approve tap happened to fall.
  */
 export function computeDefaultScheduledAt(
   existingScheduledAtIso: string[],
   now: Date,
   spreadHoursMs = 2 * 60 * 60 * 1000,
+  dailyStartClock?: string | null,
+  timeZone?: string | null,
 ): Date {
   const nowMs = now.getTime();
   const latestMs = existingScheduledAtIso
     .map((iso) => new Date(iso).getTime())
     .filter((value) => Number.isFinite(value))
     .reduce((max, value) => Math.max(max, value), nowMs);
-  return new Date(latestMs > nowMs ? latestMs + spreadHoursMs : nowMs);
+  const floorMs = latestMs > nowMs ? latestMs + spreadHoursMs : nowMs;
+  const startMinutes = parseClockTime(dailyStartClock);
+  if (startMinutes === null || spreadHoursMs <= 0) return new Date(floorMs);
+  return new Date(nextDailyGridSlotMs(floorMs, now, spreadHoursMs, startMinutes, timeZone));
+}
+
+/**
+ * The first slot at or after `floorMs` on the daily posting grid — the
+ * start time, then one spread at a time, never past the day's last waking
+ * slot, rolling to the next day's start time when the day is full.
+ */
+function nextDailyGridSlotMs(
+  floorMs: number,
+  now: Date,
+  spreadHoursMs: number,
+  startMinutes: number,
+  timeZone?: string | null,
+): number {
+  const today = wallClockIn(now, timeZone);
+  for (let dayOffset = 0; dayOffset <= 366; dayOffset += 1) {
+    const day = { year: today.year, month: today.month, day: today.day + dayOffset };
+    const dayStartMs = dateFromWallClock({ ...day, hour: Math.floor(startMinutes / 60), minute: startMinutes % 60 }, timeZone).getTime();
+    // A start time late in the evening leaves the day exactly one slot.
+    const dayEndMs = Math.max(dayStartMs, dateFromWallClock({ ...day, hour: CALENDAR_DAY_LAST_SLOT_HOUR, minute: 0 }, timeZone).getTime());
+    if (floorMs > dayEndMs) continue;
+    const steps = Math.max(0, Math.ceil((floorMs - dayStartMs) / spreadHoursMs));
+    const slotMs = dayStartMs + steps * spreadHoursMs;
+    if (slotMs <= dayEndMs) return slotMs;
+  }
+  return floorMs;
 }
 
 /**
@@ -143,18 +186,12 @@ export function cadenceQueueTarget(cadence: PostingCadence): number {
  * UTC, because the number describes the user's own day; an unparseable
  * timestamp is ignored rather than counted.
  */
-export function countPostsScheduledToday(scheduledAtIso: readonly string[], now: Date): number {
+export function countPostsScheduledToday(scheduledAtIso: readonly string[], now: Date, timeZone?: string | null): number {
   let count = 0;
   for (const iso of scheduledAtIso) {
     const at = new Date(iso);
     if (Number.isNaN(at.getTime())) continue;
-    if (
-      at.getFullYear() === now.getFullYear() &&
-      at.getMonth() === now.getMonth() &&
-      at.getDate() === now.getDate()
-    ) {
-      count += 1;
-    }
+    if (isSameZonedDay(at, now, timeZone)) count += 1;
   }
   return count;
 }
@@ -162,6 +199,132 @@ export function countPostsScheduledToday(scheduledAtIso: readonly string[], now:
 /** Default schedule-time spread for a cadence: waking hours divided evenly across its daily posting ceiling, so approvals fan out across the day instead of clustering at "now". */
 export function cadenceSpreadHoursMs(cadence: PostingCadence): number {
   return Math.round(WAKING_HOURS_MS / cadenceQueueTarget(cadence));
+}
+
+/** "3 hours" / "3½ hours" / "45 minutes" for the sentence saying how far apart the day's posts land. */
+export function describeSpreadHours(spreadMs: number): string {
+  const minutes = Math.max(1, Math.round(spreadMs / 60_000));
+  if (minutes < 60) return `${minutes} minutes`;
+  const hours = minutes / 60;
+  const rounded = Math.round(hours * 2) / 2;
+  const label = Number.isInteger(rounded) ? String(rounded) : `${Math.floor(rounded)}½`;
+  return `${label} ${rounded === 1 ? "hour" : "hours"}`;
+}
+
+/** First and last hour a calendar-day draft is placed at — the 07:00–23:00 waking window the cadence spread fans across, when the user has not chosen a start time of their own. */
+export const CALENDAR_DAY_FIRST_SLOT_HOUR = 7;
+export const CALENDAR_DAY_LAST_SLOT_HOUR = 23;
+
+/** The daily start time in force when the user has not set one: the waking window's own first hour, so nothing changes until they answer. */
+export const DEFAULT_DAILY_START_CLOCK = formatClockTime(CALENDAR_DAY_FIRST_SLOT_HOUR * 60);
+
+/** A stored daily start time ("HH:MM"), or null for "not set" — which every helper reads as the default waking start. */
+export function normaliseDailyStartTime(raw: unknown): string | null {
+  const minutes = parseClockTime(raw);
+  return minutes === null ? null : formatClockTime(minutes);
+}
+
+/** A local calendar day as "YYYY-MM-DD" — the form `QueueItem.scheduledDay` carries (month is 0-based, like `Date`). */
+export function toCalendarDayIso(year: number, month: number, day: number): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${year}-${pad(month + 1)}-${pad(day)}`;
+}
+
+/** The calendar-day parts of "YYYY-MM-DD", or null for anything that is not exactly a real calendar day. */
+export function parseCalendarDayParts(value: unknown): { year: number; month: number; day: number } | null {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const probe = new Date(Date.UTC(year, month, day));
+  if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== month || probe.getUTCDate() !== day) return null;
+  return { year, month, day };
+}
+
+/** Parses "YYYY-MM-DD" into the midnight Date of that day in `timeZone` (the device's own zone when none is given), or null for anything that is not exactly a real calendar day. */
+export function parseCalendarDayIso(value: unknown, timeZone?: string | null): Date | null {
+  const parts = parseCalendarDayParts(value);
+  if (!parts) return null;
+  return dateFromWallClock({ ...parts, hour: 0, minute: 0 }, timeZone);
+}
+
+/** The instant a clock in `timeZone` reads this calendar day ("YYYY-MM-DD") at this clock time ("HH:MM"), or null when either is not well-formed. */
+export function calendarDayAtTime(dayIso: string, clock: string, timeZone?: string | null): Date | null {
+  const day = parseCalendarDayParts(dayIso);
+  const minutes = parseClockTime(clock);
+  if (!day || minutes === null) return null;
+  return dateFromWallClock({ ...day, hour: Math.floor(minutes / 60), minute: minutes % 60 }, timeZone);
+}
+
+/**
+ * The Calendar card's default "at" time for a day: the first waking slot,
+ * or — when the day is today and that slot has passed — the next quarter
+ * hour after now, so the default is never already in the past.
+ */
+export function defaultCalendarClockTime(dayIso: string, now: Date, timeZone?: string | null, dailyStartClock?: string | null): string {
+  const day = parseCalendarDayParts(dayIso);
+  const firstSlot = parseClockTime(dailyStartClock) ?? CALENDAR_DAY_FIRST_SLOT_HOUR * 60;
+  if (!day) return formatClockTime(firstSlot);
+  const today = wallClockIn(now, timeZone);
+  const isToday = day.year === today.year && day.month === today.month && day.day === today.day;
+  const nowMinutes = today.hour * 60 + today.minute;
+  if (!isToday || nowMinutes < firstSlot) return formatClockTime(firstSlot);
+  const nextQuarter = Math.min(Math.ceil((nowMinutes + 1) / 15) * 15, 23 * 60 + 45);
+  return formatClockTime(nextQuarter);
+}
+
+/** True when the calendar day is strictly before `now`'s day in `timeZone` — a day nothing can be scheduled on any more. */
+export function isCalendarDayBeforeToday(dayIso: string, now: Date, timeZone?: string | null): boolean {
+  const day = parseCalendarDayParts(dayIso);
+  if (!day) return false;
+  const today = wallClockIn(now, timeZone);
+  const dayKey = day.year * 10000 + day.month * 100 + day.day;
+  return dayKey < today.year * 10000 + today.month * 100 + today.day;
+}
+
+/**
+ * The default time for a draft the user pinned to a calendar day: ON THAT
+ * DAY, never the cadence spread from "now" (owner test, 7 Sep 2026: an
+ * "AI makes it" draft for the 14th defaulted to today). Starts at the first
+ * waking slot (07:00 local) — or now, if the day is today and 07:00 has
+ * passed — and steps one cadence spread past the latest post already
+ * pending on that same day, so two calendar drafts for one day fan out
+ * like approvals do. Never leaves the day: once the day's waking window is
+ * full the last slot (23:00) is reused rather than spilling into the next
+ * day the user did not pick. Returns null for a day that is not a real
+ * calendar day, so the caller can fall back to the cadence default; a day
+ * already in the past yields a time on that day, which the existing
+ * approval clamp then lifts to "at least two minutes from now".
+ */
+export function computeDefaultScheduledAtOnDay(
+  dayIso: string,
+  existingScheduledAtIso: readonly string[],
+  now: Date,
+  spreadHoursMs: number,
+  timeZone?: string | null,
+  dailyStartClock?: string | null,
+): Date | null {
+  const day = parseCalendarDayParts(dayIso);
+  if (!day) return null;
+  const atHour = (hour: number, dayOffset = 0, minute = 0) =>
+    dateFromWallClock({ year: day.year, month: day.month, day: day.day + dayOffset, hour, minute }, timeZone).getTime();
+  const startMinutes = parseClockTime(dailyStartClock) ?? CALENDAR_DAY_FIRST_SLOT_HOUR * 60;
+  const firstSlotMs = atHour(Math.floor(startMinutes / 60), 0, startMinutes % 60);
+  const lastSlotMs = atHour(CALENDAR_DAY_LAST_SLOT_HOUR);
+  const dayStartMs = atHour(0);
+  const dayEndMs = atHour(0, 1);
+  const latestOnDayMs = existingScheduledAtIso
+    .map((iso) => new Date(iso).getTime())
+    .filter((value) => Number.isFinite(value) && value >= dayStartMs && value < dayEndMs)
+    .reduce((max, value) => Math.max(max, value), Number.NEGATIVE_INFINITY);
+  const isToday = now.getTime() >= dayStartMs && now.getTime() < dayEndMs;
+  let candidateMs = Math.max(firstSlotMs, isToday ? now.getTime() : Number.NEGATIVE_INFINITY);
+  if (Number.isFinite(latestOnDayMs)) candidateMs = Math.max(candidateMs, latestOnDayMs + spreadHoursMs);
+  // Late on the day itself, "now" is the honest floor even past the last slot (the approval clamp adds its two minutes).
+  const capMs = Math.max(lastSlotMs, isToday ? now.getTime() : Number.NEGATIVE_INFINITY);
+  return new Date(Math.min(candidateMs, capMs));
 }
 
 /**

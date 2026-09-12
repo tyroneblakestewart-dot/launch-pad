@@ -527,6 +527,63 @@ function directionBriefInstruction(directionBrief: string | null | undefined): s
   ].join("\n");
 }
 
+/** Announcements are capped at this many characters at the route; the prompt states the same bound. */
+export const MAX_ANNOUNCEMENT_LENGTH = 1_000;
+
+/**
+ * Owner direction, 7 Sep 2026: the AI never puts a contract address into a
+ * post — the user adds it themselves if they want it. The only exception is
+ * an announcement the user wrote that already carries it, which announcement
+ * mode keeps word for word. The project's address is no longer shown to the
+ * model at all, and `checkDraftContractAddress` rejects one that appears
+ * anyway.
+ */
+export const NO_CONTRACT_ADDRESS_RULE =
+  "Never include a contract address, token address or wallet address in either draft — the user adds it themselves if they want it. The one exception: an address that the user's own announcement below already contains, which stays exactly as written.";
+
+const EVM_ADDRESS_PATTERN = /\b0x[0-9a-fA-F]{40}\b/g;
+const SOLANA_ADDRESS_PATTERN = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
+
+/** Every address-shaped token in the text (EVM 0x… and base58 Solana-length strings). */
+export function findAddressLikeStrings(text: string): string[] {
+  return [...(text.match(EVM_ADDRESS_PATTERN) ?? []), ...(text.match(SOLANA_ADDRESS_PATTERN) ?? [])];
+}
+
+/** Mechanical backstop for NO_CONTRACT_ADDRESS_RULE: an address in either draft is a violation unless the user's announcement itself carries that exact address. */
+export function checkDraftContractAddress(draft: SocialDraft, announcement?: string | null): DraftAngleComplianceResult {
+  const allowed = new Set(findAddressLikeStrings(announcement ?? "").map((value) => value.toLowerCase()));
+  for (const [field, text] of [
+    ["X", draft.xText],
+    ["Telegram", draft.telegramText],
+  ] as const) {
+    const stray = findAddressLikeStrings(text).find((value) => !allowed.has(value.toLowerCase()));
+    if (stray) {
+      return {
+        violated: true,
+        feedback: `The previous draft's ${field} post included an address ("${stray}"). Never include a contract, token or wallet address — the user adds it themselves. Remove it entirely.`,
+      };
+    }
+  }
+  return { violated: false };
+}
+
+/**
+ * Announcement mode (owner direction, 7 Sep 2026: "the user puts his own
+ * announcement and AI jazzes it up"). The user's own words are the source
+ * of truth: the model rewrites them in the taught voice for each channel,
+ * keeps every fact and every essential detail, and adds nothing. No angle
+ * form applies — the announcement decides the shape.
+ */
+function announcementInstruction(announcement: string | null | undefined): string {
+  const trimmed = announcement?.trim();
+  if (!trimmed) return "";
+  return [
+    "ANNOUNCEMENT MODE: the user wrote the announcement below in their own words. Your job is to rewrite it for X and for Telegram in the taught voice — punchier, clearer, better paced — not to write something new.",
+    "Keep every fact exactly as the user stated it (what is happening, when, where, names, numbers, times). Do not add specifics they did not give, do not soften or drop an essential detail, and do not turn a statement into a question.",
+    "If the announcement is short, keep the X post short too — never pad it.",
+  ].join("\n");
+}
+
 /**
  * Structurally forecloses fact invention (issue #364): real generated
  * drafts have asserted a holder count and a "first liquidity pool" that
@@ -539,21 +596,25 @@ function allowedFactsLedgerInstruction(
   project: DraftProject,
   chainLabel: string,
   directionBrief: string | null | undefined,
+  announcement?: string | null,
 ): string {
   const trimmedBrief = directionBrief?.trim();
+  const trimmedAnnouncement = announcement?.trim();
   return [
     "ALLOWED FACTS — this is the complete list of facts you may treat as true. Nothing else about this project is known to you:",
     `- Project name: ${project.name}`,
     `- Ticker: ${project.ticker}`,
     `- Chain: ${chainLabel}`,
     `- Description: ${project.description || "No description supplied."}`,
-    `- Contract address: ${project.contractAddress || "not yet live."}`,
     `- Direction brief: ${trimmedBrief || "none supplied."}`,
+    trimmedAnnouncement ? `- The user's announcement (their own words; every fact in it is true and must be kept): ${trimmedAnnouncement}` : "",
     "The description and direction brief above are source material for tone and subject matter only — they are not permission to infer or invent adjacent facts they don't explicitly state.",
     "Never invent or imply: holder counts, wallet counts, user numbers, prices, percentages, market caps, trading volumes, liquidity events, pool launches, exchange listings, integrations, partnerships, dates, launch events, milestones, or any 'first' claim — unless that exact fact is listed above.",
-    trimmedBrief
-      ? "Every specific factual detail in either draft must be directly supported by the direction brief above or another allowed fact above — do not add specifics they don't state."
-      : "",
+    trimmedAnnouncement
+      ? "Every specific factual detail in either draft must come from the user's announcement above or another allowed fact above — do not add specifics they don't state."
+      : trimmedBrief
+        ? "Every specific factual detail in either draft must be directly supported by the direction brief above or another allowed fact above — do not add specifics they don't state."
+        : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -587,6 +648,8 @@ export function buildDraftRequestBody(
     wordsToAvoid?: readonly string[];
     /** Settings & Rules "How it should sound" dials (6 Sep 2026). Defaults to the middle of every dial when omitted. */
     toneDials?: ToneDials | null;
+    /** Announcement mode (7 Sep 2026): the user's own announcement to rewrite in the taught voice, facts kept. Overrides the rotating angle. */
+    announcement?: string | null;
   },
   model: string,
 ) {
@@ -607,9 +670,11 @@ export function buildDraftRequestBody(
   // check would disagree about what's already been said.
   const allRecentDraftsForPhraseExtraction = [...recentDrafts, ...recentTelegramDrafts];
   const chain = resolveChainLabel(input.project.chain, input.project.network);
-  const angle = resolveDraftAngle(input.theme, input.angleIndex, Boolean(input.directionBrief?.trim()));
-  const themeLine = input.theme?.trim() ? `Theme for this post: ${input.theme.trim()}.` : "";
+  const announcement = input.announcement?.trim() || "";
+  const angle = announcement ? null : resolveDraftAngle(input.theme, input.angleIndex, Boolean(input.directionBrief?.trim()));
+  const themeLine = !announcement && input.theme?.trim() ? `Theme for this post: ${input.theme.trim()}.` : "";
   const dayLine = input.dayLabel?.trim() ? `This post is scheduled for ${input.dayLabel.trim()}.` : "";
+  const announcementLine = announcement ? `Announcement to rewrite (the user's own words):\n${announcement}` : "";
 
   return {
     model,
@@ -627,19 +692,21 @@ export function buildDraftRequestBody(
             text: [
               "You are the post-drafting assistant for the Hoodlums AI Social Studio.",
               "Draft one X (Twitter) post and one Telegram post about the user's own token project only.",
+              announcementInstruction(announcement),
               requiredPostFormLine(angle),
               `The X post MUST be ${X_DRAFT_CHARACTER_LIMIT} characters or fewer, counting every character including spaces and emoji.`,
               "The Telegram post may be longer and more conversational.",
               "Never include a link or URL of any kind (no http/https, no www., no bare domain like example.com, no shortener) in either draft. Assume the project's link already lives in the X profile bio and Telegram channel description — write copy that stands on its own without one. A link-bearing X post costs far more to publish through the API, so this is a hard rule, not a style preference.",
               "Never invent price predictions, guaranteed returns or financial advice.",
+              NO_CONTRACT_ADDRESS_RULE,
               wordsToAvoidInstruction(wordsToAvoid),
               ...toneDialInstructions(toneDials),
               "Both drafts are shown to the user for review and editing before they choose to post — do not claim they have already been posted.",
               voiceInstruction(input.voiceProfile),
               voiceExamplesInstruction(voiceExamples),
               likedLinesInstruction(likedSampleLines),
-              directionBriefInstruction(input.directionBrief),
-              allowedFactsLedgerInstruction(input.project, chain, input.directionBrief),
+              announcement ? "" : directionBriefInstruction(input.directionBrief),
+              allowedFactsLedgerInstruction(input.project, chain, announcement ? null : input.directionBrief, announcement),
               recentDraftsInstruction(recentDrafts),
               identityOpenerWarningInstruction(input.project, recentDrafts),
               telegramOpeningsInstruction(recentTelegramDrafts),
@@ -670,9 +737,9 @@ export function buildDraftRequestBody(
               `Ticker: ${input.project.ticker}`,
               `Chain: ${chain}`,
               `Project story: ${input.project.description || "No description supplied."}`,
-              input.project.contractAddress ? `Contract: ${input.project.contractAddress}` : "Contract not yet live.",
               themeLine,
               dayLine,
+              announcementLine,
             ]
               .filter(Boolean)
               .join("\n"),
@@ -982,6 +1049,8 @@ export type DraftComplianceCheckInput = {
   theme?: string | null;
   angleIndex?: number;
   directionBrief?: string | null;
+  /** Announcement mode (7 Sep 2026): no angle form was emitted, and the user's own facts (numbers, events, dates) are allowed, so the angle and factual-risk checks do not apply. */
+  announcement?: string | null;
   bannedPhrases?: string[];
   project?: { name: string; ticker: string };
   /** Only needed to protect the chain label from the immediate-signature-phrase check below when a project is also supplied. */
@@ -1055,12 +1124,20 @@ export function checkDraftContentFilter(draft: SocialDraft): DraftAngleComplianc
  * #364, following on from #363).
  */
 export function checkDraftCompliance(draft: SocialDraft, input: DraftComplianceCheckInput): DraftAngleComplianceResult {
-  const angleResult = checkDraftAngleCompliance(draft.xText, input);
-  if (angleResult.violated) return angleResult;
-  const factualResult = checkDraftFactualRisk(draft);
-  if (factualResult.violated) return factualResult;
+  const announcementMode = Boolean(input.announcement?.trim());
+  if (!announcementMode) {
+    const angleResult = checkDraftAngleCompliance(draft.xText, input);
+    if (angleResult.violated) return angleResult;
+    // In announcement mode the user's own words are the facts — "listed on X
+    // at 6pm" is exactly what they asked to say — so the invented-claim
+    // patterns would reject the truth. Every other check still runs.
+    const factualResult = checkDraftFactualRisk(draft);
+    if (factualResult.violated) return factualResult;
+  }
   const wordsResult = checkDraftWordsToAvoid(draft, input.wordsToAvoid);
   if (wordsResult.violated) return wordsResult;
+  const addressResult = checkDraftContractAddress(draft, input.announcement);
+  if (addressResult.violated) return addressResult;
   const toneResult = checkDraftToneRules(draft, input.toneDials);
   if (toneResult.violated) return toneResult;
   const recentDrafts = input.recentDrafts ?? [];

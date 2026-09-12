@@ -1,3 +1,4 @@
+import { ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { getPostgresPool } from "@/lib/server/postgres";
 
 // Server-side record of on-chain token launches (Milestone A, issue #409
@@ -7,6 +8,16 @@ import { getPostgresPool } from "@/lib/server/postgres";
 // lib/server/token-launch-reconciliation.ts has independently confirmed the
 // claim against a live on-chain read — this store trusts its caller to have
 // already done that; it does not re-verify anything itself.
+//
+// Owner request, 7 Sep 2026: `list()` (the homepage grid's data source) now
+// explicitly scopes to Robinhood Chain Testnet, as a safety net alongside
+// the insert-time gate. Today `verifyTokenLaunchOnChain` already refuses any
+// other chain ID before a row is ever inserted, so this table only ever
+// holds Robinhood Chain rows — but that's an insert-time guarantee, not a
+// read-time one, and the grid's card links (hardcoded to
+// `/token/robinhood/<address>`) would silently be wrong for any other
+// chain's rows if a second verifiable chain is ever added later without
+// this filter also being updated.
 
 /** Server-side cap on how many launches a single list read ever returns. */
 export const MAX_TOKEN_LAUNCHES_PER_PAGE = 100;
@@ -204,14 +215,14 @@ export function createPostgresTokenLaunchesStore(databaseUrl: string): TokenLaun
       const bounded = Math.max(1, Math.min(limit, MAX_TOKEN_LAUNCHES_PER_PAGE));
       if (filter === "all") {
         const result = await pool.query<LaunchRow>(
-          `SELECT ${LAUNCH_COLUMNS} FROM token_launches ORDER BY launched_at DESC LIMIT $1`,
-          [bounded],
+          `SELECT ${LAUNCH_COLUMNS} FROM token_launches WHERE chain_id = $1 ORDER BY launched_at DESC LIMIT $2`,
+          [ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, bounded],
         );
         return result.rows.map(launchFromRow);
       }
       const result = await pool.query<LaunchRow>(
-        `SELECT ${LAUNCH_COLUMNS} FROM token_launches WHERE graduated = $1 ORDER BY launched_at DESC LIMIT $2`,
-        [filter === "graduated", bounded],
+        `SELECT ${LAUNCH_COLUMNS} FROM token_launches WHERE chain_id = $1 AND graduated = $2 ORDER BY launched_at DESC LIMIT $3`,
+        [ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL, filter === "graduated", bounded],
       );
       return result.rows.map(launchFromRow);
     },

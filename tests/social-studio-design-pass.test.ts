@@ -122,18 +122,17 @@ describe("Social Studio design pass", () => {
     expect(theme).not.toContain("--studio-card-bg");
   });
 
-  it("orders Setup as the design does — connect, bots, voice, then the rest — with Compose left where it was", async () => {
+  it("orders Setup as the design does — connect, bots, voice, then the mascot (Compose now left for the Calendar's Post now tab, 7 Sep 2026)", async () => {
     const hub = await source("components", "social-hub.tsx");
     const connect = hub.indexOf("<h2>Connect your accounts</h2>");
     const bots = hub.indexOf("PICK A HOODLUMS BOT");
     const voice = hub.indexOf("<h2>Teach the AI your voice</h2>");
-    const compose = hub.indexOf("<h2>Compose now</h2>");
     const mascot = hub.indexOf("<h2>Your mascot</h2>");
     expect(connect).toBeGreaterThan(-1);
     expect(bots).toBeGreaterThan(connect);
     expect(voice).toBeGreaterThan(bots);
-    expect(compose).toBeGreaterThan(voice);
-    expect(mascot).toBeGreaterThan(compose);
+    expect(mascot).toBeGreaterThan(voice);
+    expect(hub).not.toContain("<h2>Compose now</h2>");
   });
 
   it("finishes the voice trainer to the design: lime primary pill in the paste box, a hint line under the bar, the ⓘ note", async () => {
@@ -299,15 +298,17 @@ describe("Social Studio design pass", () => {
     expect(css).not.toMatch(/button,\n\.mascotTips \{/);
   });
 
-  it("shows today's mascot-image allowance from the server and blocks Generate at the cap — never a guessed count", async () => {
+  it("shows today's AI-image allowance from the server — never a guessed count — and spends it only on approved-post images now the scene maker is gone (7 Sep 2026)", async () => {
     const hub = await source("components", "social-hub.tsx");
     expect(hub).toContain("const [mascotImageUsage, setMascotImageUsage] = useState<MascotImageUsage | null>(null);");
     expect(hub).toContain("async function loadMascotImageUsage()");
     expect(hub).toContain("`/api/social/mascot/image?walletAddress=${encodeURIComponent(walletAddress)}&projectId=${encodeURIComponent(selectedProjectId)}`");
     expect(hub).toContain("if (payload.usage) setMascotImageUsage(payload.usage);");
-    expect(hub).toContain("|| isMascotImageAllowanceUsed(mascotImageUsage)}");
-    expect(hub).toContain('"Daily image allowance used"');
-    expect(hub).toContain("<span>{describeMascotImageAllowanceDetail(mascotImageUsage)}</span>");
+    expect(hub).toContain("selectPostImageCandidates(queue, remainingAiImagesToday(mascotImageUsage))");
+    expect(hub).not.toContain("Generate mascot image");
+    expect(hub).not.toContain("generateMascotScene");
+    expect(hub).not.toContain("WHAT SHOULD YOUR MASCOT BE DOING?");
+    expect(hub).toContain("Every image made for an approved post");
     // The rail's TODAY pill only shows the images half once the server has answered.
     expect(hub).toContain("{mascotImageUsage ? (");
     expect(hub).toContain("</b> AI images");

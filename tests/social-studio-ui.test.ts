@@ -28,20 +28,18 @@ describe("Hoodlums AI Social Studio", () => {
 
     // Per-wallet project scoping (6 Sep 2026): the project list is read through the shared partition-aware accessor, never the raw key.
     expect(social).toContain("readProjectIndex(projectOwner)");
-    expect(social).toContain("DRAFT_STORAGE_KEY");
-    expect(social).toContain("buildTemplate");
+    // Setup's Compose now (templates, private draft store, Approve & post buttons) is gone (owner direction, 7 Sep 2026):
+    // posting now lives on the Calendar's announcement card as its Post now tab.
+    expect(social).not.toContain("DRAFT_STORAGE_KEY");
+    expect(social).not.toContain("<h2>Compose now</h2>");
+    expect(social).not.toContain("APPROVE BOTH DESTINATIONS");
     expect(social).toContain("selectProject");
-    expect(social).toContain("saveDraft");
-    expect(social).toContain("copyPost");
-    expect(social).toContain("downloadArtwork");
-    expect(social).toContain("openXComposer");
+    expect(social).toContain("function postNowToX()");
+    expect(social).toContain("async function postNowToTelegram()");
     expect(social).toContain("https://x.com/intent/post?text=");
-    expect(social).toContain("postTelegram");
     expect(social).toContain('fetch("/api/social/telegram"');
-    expect(social).toContain("publishBoth");
-    expect(social).toContain("Approve &amp; open X composer");
-    expect(social).toContain("Approve & post to Telegram");
-    expect(social).toContain("APPROVE BOTH DESTINATIONS");
+    expect(social).toContain("Send to Telegram now");
+    expect(social).toContain("Post to X now");
   });
 
   it("removes the raw bot-token field while retaining server-side Telegram posting", async () => {
@@ -65,18 +63,20 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).not.toContain('<textarea disabled placeholder="Paste a post here');
 
     expect(social).toContain('fetch("/api/social/draft"');
-    expect(social).toContain("generateDraftFromSetup");
-    expect(social).toContain("generateDraftForDay");
+    expect(social).not.toContain("generateDraftFromSetup");
+    // The calendar card's "AI makes it" is gone (owner direction, 7 Sep 2026): the calendar is for the user's own announcements.
+    expect(social).not.toContain("generateDraftForDay");
 
     expect(social).toContain("Your mascot");
     expect(social).toContain('fetch("/api/social/mascot/visual-dna"');
-    expect(social).toContain('fetch("/api/social/mascot/image"');
-    expect(social).toContain("toggleMascotAction");
-    expect(social).toContain("toggleMascotPlace");
-    expect(social).not.toContain("{MASCOT_ACTIONS.map((label) => <button type=\"button\" disabled key={label}>{label}</button>)}");
+    // The mascot scene maker is gone (owner decision, 7 Sep 2026): the mascot is uploaded once and only ever appears on approved-post images.
+    expect(social).toContain("`/api/social/mascot/image?walletAddress=");
+    expect(social).not.toContain("toggleMascotAction");
+    expect(social).not.toContain("MASCOT_ACTIONS");
+    expect(social).not.toContain("Generate mascot image");
 
     expect(social).toContain("MONTH_NAMES[calendarView.month]");
-    expect(social).toContain('onClick={generateDraftForDay} disabled={calendarAiBusy}');
+    expect(social).not.toContain("AI makes it");
 
     expect(social).toContain("What&apos;s going out");
     expect(social).toContain("postQueueItemToX");
@@ -87,7 +87,9 @@ describe("Hoodlums AI Social Studio", () => {
     // Rules tab and the still out-of-scope calendar/bot controls stay coming soon.
     expect(social).toContain("Words to avoid");
     expect(social).toContain("Coming soon");
-    expect(social).toContain('disabled className={styles.ownPostButton}');
+    // The announcement composer (7 Sep 2026) is a live toggle, no longer a disabled "I'll post my own" placeholder.
+    expect(social).toContain('role="tablist" aria-label="Announcement mode"');
+    expect(social).not.toContain('disabled className={styles.ownPostButton}');
     expect(social).toContain("Add to your channel");
   });
 
@@ -104,7 +106,9 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain('aria-label="Next month"');
     expect(social).toContain("isToday && styles.calendarToday");
     expect(social).toContain("isSelected ? styles.weekSelected : isToday ? styles.weekToday : styles.weekDay");
-    expect(social).toContain("TIMEZONES.map((timezone)");
+    // The three-option timezone select nothing read is a detected-zone label since the Calendar wiring (7 Sep 2026).
+    expect(social).toContain("<b>{detectedTimezone}</b>");
+    expect(social).not.toContain("TIMEZONES");
   });
 
   it("fits under the existing 72px mobile header and above the fixed bottom nav", async () => {
@@ -162,9 +166,7 @@ describe("Hoodlums AI Social Studio", () => {
     expect(social).toContain("styles.inlineStatusProgress");
     expect(social).toContain("const [voiceStatus, setVoiceStatus] = useState<PanelStatus>(null);");
     expect(social).toContain("const [mascotUploadStatus, setMascotUploadStatus] = useState<PanelStatus>(null);");
-    expect(social).toContain("const [mascotSceneStatus, setMascotSceneStatus] = useState<PanelStatus>(null);");
-    expect(social).toContain("const [setupDraftStatus, setSetupDraftStatus] = useState<PanelStatus>(null);");
-    expect(social).toContain("const [calendarDraftStatus, setCalendarDraftStatus] = useState<PanelStatus>(null);");
+    expect(social).toContain("const [announcementStatus, setAnnouncementStatus] = useState<PanelStatus>(null);");
 
     // Each AI handler reports to its own panel status, not the shared one.
     expect(social).toContain('setVoiceStatus({ tone: "error", message: error instanceof Error ? error.message : "The voice profile could not be built." });');
@@ -172,18 +174,14 @@ describe("Hoodlums AI Social Studio", () => {
       'setMascotUploadStatus({ tone: "error", message: error instanceof Error ? error.message : "The mascot artwork could not be analysed." });',
     );
     expect(social).toContain(
-      'setMascotSceneStatus({ tone: "error", message: error instanceof Error ? error.message : "The mascot scene image could not be generated." });',
     );
     expect(social).toContain('report({ tone: "error", message: error instanceof Error ? error.message : "The draft could not be generated." });');
-    expect(social).toContain("await generateDraft({}, setSetupDraftStatus);");
-    expect(social).toContain("await generateDraft({ dayLabel: selectedDayLabel }, setCalendarDraftStatus);");
+    expect(social).toContain("await generateDraft({ dayLabel: selectedDayLabel, announcement: text }, setAnnouncementStatus);");
 
     // Each status renders next to the control that triggered it, not only inside the statusBar.
     expect(social).toContain("<InlineStatus status={voiceStatus} />");
     expect(social).toContain("<InlineStatus status={mascotUploadStatus} />");
-    expect(social).toContain("<InlineStatus status={mascotSceneStatus} />");
-    expect(social).toContain("<InlineStatus status={setupDraftStatus} />");
-    expect(social).toContain("<InlineStatus status={calendarDraftStatus} />");
+    expect(social).toContain("<InlineStatus status={announcementStatus} />");
 
     // Placement checks: each status must sit right after (not far below) its trigger.
     const learnVoiceButtonIndex = social.indexOf("Learn my voice");
@@ -191,10 +189,6 @@ describe("Hoodlums AI Social Studio", () => {
     expect(voiceInlineStatusIndex).toBeGreaterThan(learnVoiceButtonIndex);
     expect(voiceInlineStatusIndex - learnVoiceButtonIndex).toBeLessThan(600);
 
-    const generateMascotButtonIndex = social.indexOf("Generate mascot image");
-    const mascotSceneInlineStatusIndex = social.indexOf("<InlineStatus status={mascotSceneStatus} />");
-    expect(mascotSceneInlineStatusIndex).toBeGreaterThan(generateMascotButtonIndex);
-    expect(mascotSceneInlineStatusIndex - generateMascotButtonIndex).toBeLessThan(1200);
   });
 
   it("shows an honest, diagnosable Telegram configuration state and reconciles Setup with the real wallet-signed connect flow (issue #340)", async () => {
@@ -375,7 +369,6 @@ describe("AI Social Studio project-slot usage and release (issue #407)", () => {
     expect(social).toContain('fetch("/api/social/voice-profile"');
     expect(social).toContain('fetch("/api/social/draft"');
     expect(social).toContain('fetch("/api/social/mascot/visual-dna"');
-    expect(social).toContain('fetch("/api/social/mascot/image"');
     expect(social).toContain('fetch("/api/social/posts"');
   });
 

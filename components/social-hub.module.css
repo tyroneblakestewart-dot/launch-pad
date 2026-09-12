@@ -1328,6 +1328,8 @@
   align-items: start;
 }
 
+/* The mascot card is upload-only (7 Sep 2026): one panel, no second column. */
+.mascotSingle { max-width: 560px; }
 .mascotOptions { display: flex; flex-direction: column; gap: 16px; }
 .mascotOptions > div { display: flex; flex-direction: column; gap: 9px; }
 .mascotOptions p { font-size: 12.5px; }
@@ -1660,9 +1662,120 @@
 .calendarNavButton { width: 32px; display: grid; place-items: center; font-size: 16px; }
 .calendarTodayButton { padding: 0 12px; color: var(--accent-lime); border-color: rgba(198, 245, 62, 0.3); background: rgba(198, 245, 62, 0.08); font-size: 10.5px; letter-spacing: 0.04em; }
 .timezoneControl { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+/* "Edit local time" / "Change" beside the zone label (owner direction, 7 Sep 2026). */
+.timezoneEdit {
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  font: 700 10px var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.timezoneControl select { max-width: 100%; }
+/* A compact type-to-find picker, not the full zone list as a native dropdown
+   (owner report, 7 Sep 2026: that filled the whole screen and was mis-tapped). */
+.timezonePicker { position: relative; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.timezonePicker > input {
+  min-height: 34px;
+  width: 220px;
+  max-width: 100%;
+  padding: 0 12px;
+  border: 1px solid rgba(198, 245, 62, 0.4);
+  border-radius: 10px;
+  color: var(--text-primary);
+  background: var(--well-bg);
+  font: 600 12px var(--sans);
+}
+.timezonePicker > input::placeholder { color: var(--text-faint); }
+.timezoneResults {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  max-width: 86vw;
+  max-height: 232px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: var(--panel-bg, #14171a);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+}
+/* Every row states its own background: a button with none falls back to the
+   browser's light default, which rendered the list as white pills on the dark
+   theme (owner recording, 7 Sep 2026). */
+.timezoneResults button {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-primary);
+  background: transparent;
+  text-align: left;
+}
+.timezoneResults button:hover,
+.timezoneResults button:focus-visible {
+  border-color: rgba(198, 245, 62, 0.34);
+  background: rgba(198, 245, 62, 0.13);
+}
+/* The zone in force is named in lime with a tick; only the row under the
+   pointer gets a background, so two rows never look pressed at once (owner
+   recording, 7 Sep 2026: "stuck highlighted on africa"). */
+.timezoneResults button[aria-selected="true"] b,
+.timezoneResults button[aria-selected="true"] em { color: var(--accent-lime); }
+/* The row lifts on hover everywhere else in the app; inside a list it just jitters. */
+.timezoneResults button:hover:not(:disabled) { transform: none; }
+.timezoneResults button b { color: inherit; font: 600 12px var(--sans); }
+.timezoneResults button em { color: var(--text-label); font: 600 10px var(--mono); font-style: normal; }
+.timezoneResults p { margin: 0; padding: 8px 10px; color: var(--text-label); font-size: 11.5px; }
+/* On a phone the floating list ran under the fixed bottom nav, which covered
+   its lower rows (owner recording, 7 Sep 2026). Below the nav's own 1099px
+   breakpoint the list sits in flow instead: it pushes the calendar down while
+   open, so every row stays reachable. */
+@media (max-width: 1099px) {
+  .timezonePicker { width: 100%; }
+  .timezonePicker > input { flex: 1 1 160px; width: auto; min-width: 0; }
+  /* Cancel stays beside the search box; the list opens under both. */
+  .timezonePicker > .timezoneEdit { order: 2; }
+  .timezoneResults {
+    order: 3;
+    position: static;
+    width: 100%;
+    max-width: 100%;
+    max-height: 208px;
+    margin-top: 2px;
+    box-shadow: none;
+  }
+}
+/* The "what time should your posts start" question above the tabs (owner direction, 7 Sep 2026). */
+.startTimeAsk { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.startTimeAsk input[type="time"] {
+  min-height: 38px;
+  min-width: 108px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  color: var(--text-primary);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02));
+  color-scheme: dark;
+  font: 700 12px var(--mono);
+}
 .timezoneControl > span:first-child { color: var(--text-label); font: 700 10px var(--mono); letter-spacing: 0.1em; }
+.timezoneControl b { color: var(--text-secondary); font: 700 11px var(--mono); }
 .timezoneControl select,
-.quietHours select {
+.quietHours select,
+.quietHours input[type="time"] {
   min-height: 38px;
   padding: 0 14px;
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -1673,7 +1786,11 @@
   font-weight: 700;
 }
 .timezoneControl select:disabled,
-.quietHours select:disabled { color: var(--text-label); opacity: 1; }
+.quietHours select:disabled,
+.quietHours input[type="time"]:disabled { color: var(--text-label); opacity: 1; }
+/* Dark native pickers (the iPhone wheel, Chrome's popover) and a fixed width so the row never jumps between values. */
+.quietHours input[type="time"] { width: auto; flex: 0 0 auto; min-width: 108px; height: 38px; padding: 0 10px; box-sizing: border-box; color-scheme: dark; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.quietHours input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.8); cursor: pointer; }
 
 .desktopCalendar {
   display: grid;
@@ -1695,7 +1812,8 @@
   box-shadow: var(--studio-card-shadow);
   font: 700 12.5px var(--mono);
 }
-.calendarDay { cursor: pointer; }
+.calendarDay { cursor: pointer; align-content: center; gap: 4px; }
+.dayMarks { display: flex; gap: 3px; height: 7px; }
 .calendarToday { border-color: rgba(198, 245, 62, 0.42); color: var(--accent-lime); background: rgba(198, 245, 62, 0.09); box-shadow: inset 0 1px rgba(198, 245, 62, 0.18); }
 /* Design: the selected day is a lime-tinted card with a lime number, never a
    solid lime block. */
@@ -1711,9 +1829,27 @@
 .calendarLegend { display: flex; gap: 16px; flex-wrap: wrap; padding-top: 12px; }
 .calendarLegend span { display: inline-flex; align-items: center; gap: 7px; color: var(--text-label); font: 600 11px var(--mono); }
 .limeDot,
+.draftDot,
 .greyDot { width: 7px; height: 7px; border-radius: 50%; }
 .limeDot { background: var(--accent-lime); }
+.draftDot { border: 1.5px solid var(--accent-lime); box-sizing: border-box; }
 .greyDot { background: rgba(255, 255, 255, 0.32); }
+.dayEntries { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.dayEntries button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  background: rgba(0, 0, 0, 0.24);
+  text-align: left;
+}
+.dayEntries b { color: var(--accent-lime); font: 700 11px var(--mono); }
+.dayEntries span { color: var(--text-label); font: 600 10.5px var(--mono); }
+.dayEntries em { grid-column: 1 / -1; overflow: hidden; color: var(--text-sub); font-size: 12px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 
 .scheduleCard { padding: 20px; display: flex; flex-direction: column; gap: 16px; border-radius: 20px; }
 .scheduleCard > div:first-child { display: grid; gap: 5px; }
@@ -1737,6 +1873,57 @@
 .destinationChips span { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; padding: 0 13px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; color: var(--text-secondary); background: rgba(255, 255, 255, 0.025); font-size: 12px; font-weight: 700; }
 .destinationChips svg { width: 13px; height: 13px; fill: currentColor; }
 .quietHours { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--text-secondary); font-size: 12px; }
+.quietHoursToggle { min-height: 38px; padding: 0 14px; border: 1px solid rgba(198, 245, 62, 0.3); border-radius: 999px; color: var(--accent-lime); background: rgba(198, 245, 62, 0.08); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.destinationChips .chipConnected { border-color: rgba(198, 245, 62, 0.4); color: var(--accent-lime); background: rgba(198, 245, 62, 0.1); }
+.destinationChips .chipOff { color: var(--text-label); border-style: dashed; }
+.ownPostComposer { display: flex; flex-direction: column; gap: 10px; }
+.addToTime { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; color: var(--text-secondary); font-size: 12px; }
+.addToTime input[type="time"] { width: auto; flex: 0 0 auto; min-width: 108px; height: 38px; padding: 0 10px; box-sizing: border-box; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 10px; color: var(--text-primary); background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02)); color-scheme: dark; font: 700 12px var(--mono); font-variant-numeric: tabular-nums; }
+.addToTime small { flex-basis: 100%; color: var(--text-label); font: 600 10px var(--mono); letter-spacing: 0.02em; }
+.announcementTabs { display: flex; gap: 3px; padding: 4px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; background: rgba(0, 0, 0, 0.24); align-self: flex-start; }
+.announcementTab,
+.announcementTabActive { min-height: 32px; padding: 0 14px; border: 1px solid transparent; border-radius: 999px; color: var(--text-label); background: transparent; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.announcementTabActive { border-color: rgba(198, 245, 62, 0.5); color: var(--accent-lime); background: linear-gradient(180deg, rgba(198, 245, 62, 0.18), rgba(198, 245, 62, 0.04)); box-shadow: inset 0 1px rgba(198, 245, 62, 0.24); }
+.announcementResult { display: grid; gap: 10px; }
+.announcementResult label { display: grid; gap: 5px; }
+.announcementResult label > span { color: var(--text-label); font: 700 9.5px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; }
+@media (pointer: coarse) {
+  .addToTime input[type="time"] { height: 44px; }
+  .announcementTab,
+  .announcementTabActive { min-height: 44px; }
+}
+.ownPostComposer textarea {
+  width: 100%;
+  min-height: 110px;
+  padding: 13px 14px;
+  resize: vertical;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  outline: none;
+  color: var(--text-primary);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.38), rgba(255, 255, 255, 0.022)), #0a0f0c;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.ownPostComposer textarea:focus { border-color: rgba(198, 245, 62, 0.46); box-shadow: 0 0 0 3px rgba(198, 245, 62, 0.06), inset 0 2px 6px rgba(0, 0, 0, 0.5); }
+.ownPostMeta { color: var(--text-label); font: 600 10.5px var(--mono); letter-spacing: 0.02em; }
+.ownPostOver { color: var(--accent-red); }
+.composerActions .ownPostAdd { border-color: rgba(198, 245, 62, 0.5); color: #0a0b09; background: var(--cta-bg); }
+@media (pointer: coarse) {
+  .quietHoursToggle,
+  .timezoneEdit,
+  .timezonePicker > input,
+  .timezoneResults button,
+  .timezoneControl select,
+  .startTimeAsk button,
+  .startTimeAsk input[type="time"],
+  .quietHours select,
+  .quietHours input[type="time"] { min-height: 44px; }
+  .quietHours input[type="time"] { height: 44px; }
+  /* Every action on the announcement card — Add to Queue, Jazz it up, and Post now's two sends — is a 44px touch target. */
+  .ownPostComposer .composerActions button { min-height: 44px; }
+}
 
 .segmentedDisabled { display: flex; gap: 3px; padding: 4px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 999px; background: rgba(0, 0, 0, 0.24); }
 .segmentedDisabled span { padding: 9px 14px; border-radius: 999px; color: var(--text-faint); font-size: 11px; font-weight: 700; }
@@ -1882,7 +2069,8 @@
   .weekToday,
   .weekSelected { min-width: 132px; min-height: 96px; display: grid; gap: 5px; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; color: var(--text-sub); background: rgba(255, 255, 255, 0.018); text-align: left; scroll-snap-align: start; }
   .weekToday { border-color: rgba(198, 245, 62, 0.4); background: rgba(198, 245, 62, 0.08); }
-  .weekSelected { border-color: var(--accent-lime); background: var(--cta-bg); }
+  /* Same lime-tinted card as the desktop selected day, never a solid block. */
+  .weekSelected { border-color: var(--accent-lime); background: var(--studio-lime-card-bg); box-shadow: 0 1px 0 0 rgba(198, 245, 62, 0.24) inset; }
   .weekDay > span,
   .weekToday > span,
   .weekSelected > span { color: var(--text-faint); font: 700 9px var(--mono); letter-spacing: 0.1em; }
@@ -1890,9 +2078,9 @@
   .weekToday b,
   .weekSelected b { color: var(--text-primary); font: 400 22px var(--display); }
   .weekToday b { color: var(--accent-lime); }
-  .weekSelected b,
+  .weekSelected b { color: var(--accent-lime); }
   .weekSelected > span,
-  .weekSelected small { color: var(--cta-color); }
+  .weekSelected small { color: var(--text-secondary); }
   .weekDay small,
   .weekToday small { color: var(--text-label); font-size: 9.5px; }
 }

@@ -1,4 +1,5 @@
-import { DEFAULT_TONE_DIALS, DEFAULT_WORDS_TO_AVOID } from "@/lib/social-tone-rules";
+import { DEFAULT_TONE_DIALS, DEFAULT_WORDS_TO_AVOID, WORDS_TO_AVOID_SEED_VERSION } from "@/lib/social-tone-rules";
+import { DEFAULT_QUIET_HOURS } from "@/lib/social-quiet-hours";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteSocialStudioRecord, getSocialStudioRecord, putSocialStudioRecord } from "@/lib/social-studio-db";
 import {
@@ -56,7 +57,11 @@ const RECORD: SocialStudioProjectRecord = {
   directionBrief: "Push the community angle, big announcement coming Friday",
   sortedVoiceSourceKeys: [],
   wordsToAvoid: ["rug", "guaranteed"],
+  wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
   toneDials: { humour: "dry", emoji: "none", hashtags: "never", postLength: "short" },
+  quietHours: { start: "22:00", end: "08:00" },
+  timezone: "Europe/London",
+  dailyStartTime: "09:00",
 };
 
 describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
@@ -108,7 +113,11 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         directionBrief: "",
         sortedVoiceSourceKeys: [],
         wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+        wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
         toneDials: DEFAULT_TONE_DIALS,
+        quietHours: DEFAULT_QUIET_HOURS,
+        timezone: null,
+        dailyStartTime: null,
       });
     });
 
@@ -130,7 +139,11 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         directionBrief: "",
         sortedVoiceSourceKeys: [],
         wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+        wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
         toneDials: DEFAULT_TONE_DIALS,
+        quietHours: DEFAULT_QUIET_HOURS,
+        timezone: null,
+        dailyStartTime: null,
       });
     });
 
@@ -152,7 +165,11 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         directionBrief: "",
         sortedVoiceSourceKeys: [],
         wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+        wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
         toneDials: DEFAULT_TONE_DIALS,
+        quietHours: DEFAULT_QUIET_HOURS,
+        timezone: null,
+        dailyStartTime: null,
       });
     });
 
@@ -199,6 +216,7 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
       await expect(getSocialStudioRecord("legacy-project-rules")).resolves.toEqual({
         ...RECORD,
         wordsToAvoid: [...DEFAULT_WORDS_TO_AVOID],
+        wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
         toneDials: DEFAULT_TONE_DIALS,
       });
 
@@ -211,6 +229,53 @@ describe("per-project AI Social Studio IndexedDB store (issue #332)", () => {
         wordsToAvoid: ["ok", "spaced out"],
         toneDials: { ...DEFAULT_TONE_DIALS, emoji: "plenty" },
       });
+    });
+
+    it("adds the four subject words once to a record that saved its own list before they existed, and not again after the user removes one (7 Sep 2026)", async () => {
+      const legacy = { ...RECORD, wordsToAvoid: ["rug", "guaranteed"] } as Record<string, unknown>;
+      delete legacy.wordsToAvoidSeed;
+      await putSocialStudioRecord("legacy-topics", legacy as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("legacy-topics")).resolves.toMatchObject({
+        wordsToAvoid: ["rug", "guaranteed", "racism", "homophobia", "religion", "politics"],
+        wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION,
+      });
+
+      // Saved with the version after removing "religion": it stays removed.
+      await putSocialStudioRecord("seeded-removed", { ...RECORD, wordsToAvoid: ["rug", "racism", "homophobia", "politics"], wordsToAvoidSeed: WORDS_TO_AVOID_SEED_VERSION });
+      await expect(getSocialStudioRecord("seeded-removed")).resolves.toMatchObject({ wordsToAvoid: ["rug", "racism", "homophobia", "politics"] });
+    });
+
+    it("fills in the design's 23:00 → 07:00 quiet hours when a pre-Calendar-wiring record has no such key, keeps an explicit off, and repairs a corrupt window (7 Sep 2026)", async () => {
+      const legacy = { ...RECORD } as Record<string, unknown>;
+      delete legacy.quietHours;
+      await putSocialStudioRecord("legacy-quiet", legacy as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("legacy-quiet")).resolves.toEqual({ ...RECORD, quietHours: DEFAULT_QUIET_HOURS });
+
+      await putSocialStudioRecord("quiet-off", { ...RECORD, quietHours: null });
+      await expect(getSocialStudioRecord("quiet-off")).resolves.toMatchObject({ quietHours: null });
+
+      await putSocialStudioRecord("quiet-corrupt", { ...RECORD, quietHours: { start: "25:00", end: 7 } } as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("quiet-corrupt")).resolves.toMatchObject({ quietHours: DEFAULT_QUIET_HOURS });
+
+      await putSocialStudioRecord("quiet-empty-window", { ...RECORD, quietHours: { start: "09:00", end: "09:00" } });
+      await expect(getSocialStudioRecord("quiet-empty-window")).resolves.toMatchObject({ quietHours: null });
+
+      // Saved between the two Calendar PRs on 7 Sep 2026: whole hours, read as clock strings.
+      await putSocialStudioRecord("quiet-whole-hours", { ...RECORD, quietHours: { startHour: 22, endHour: 8 } } as unknown as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("quiet-whole-hours")).resolves.toMatchObject({ quietHours: { start: "22:00", end: "08:00" } });
+    });
+
+    it("follows the device when a record has no zone, or names one this runtime does not know (7 Sep 2026)", async () => {
+      const legacy = { ...RECORD } as Partial<SocialStudioProjectRecord>;
+      delete legacy.timezone;
+      await putSocialStudioRecord("legacy-zone", legacy as SocialStudioProjectRecord);
+      await expect(getSocialStudioRecord("legacy-zone")).resolves.toMatchObject({ timezone: null });
+
+      await putSocialStudioRecord("bad-zone", { ...RECORD, timezone: "Not/AZone" });
+      await expect(getSocialStudioRecord("bad-zone")).resolves.toMatchObject({ timezone: null });
+
+      await putSocialStudioRecord("good-zone", { ...RECORD, timezone: "Asia/Tokyo" });
+      await expect(getSocialStudioRecord("good-zone")).resolves.toMatchObject({ timezone: "Asia/Tokyo" });
     });
 
     it("coerces non-array sampleLineFeedback, voiceExamples and queue to empty arrays instead of throwing", async () => {
