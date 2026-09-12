@@ -51,6 +51,7 @@ export const PAGE_ARTWORK_IDENTITY_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+/** The pre-12-Sep-2026 JSON envelope; the page stage no longer requests it, but `parseGeneratedPageOutputText` still accepts an answer in this shape. */
 export const GENERATED_PAGE_SCHEMA = {
   type: "object",
   properties: {
@@ -83,20 +84,66 @@ function artworkBriefLines(identity: ArtworkIdentity): string[] {
  */
 export const FREE_REIN_ACCEPTANCE_PROFILE: GeneratedPageAcceptanceProfile = {};
 
-/** The bespoke full-page stage's fixed reasoning effort on gpt-5 (owner decision, 6 Sep 2026). */
+/** The bespoke full-page stage's fixed reasoning effort and output budget on gpt-5 (owner decision, 6 Sep 2026). */
 export const BESPOKE_PAGE_REASONING_EFFORT = "medium" as const;
-/**
- * Output budget for the same stage. In the Responses API `max_output_tokens`
- * bounds the model's hidden reasoning tokens AND the visible answer together.
- * The 32,000 this shipped with (6 Sep 2026) could not hold both: a 50-70k
- * character page is ~15-20k tokens on its own and medium reasoning on "design
- * a whole site" routinely spends 10-25k more, so gpt-5 finished each attempt
- * with the smallest schema-valid object it could — IDs filled in, page empty
- * ("too-short: 0 characters", owner report, 12 Sep 2026). Doubled so both fit;
- * a ceiling, not a spend — a normal attempt costs what it did — with the
- * per-site cost cap still bounding the retry.
- */
+// Reasoning tokens count against this budget, and the 12 Sep 2026 rejection
+// ("The page is only 0 characters") showed a completed answer with an empty
+// page — the ceiling must never starve the document itself. gpt-5 allows far
+// more; the per-site cost cap is the spend guard, not this number.
 export const BESPOKE_PAGE_MAX_OUTPUT_TOKENS = 64_000;
+/** gpt-5's verbosity control: a 50,000–70,000-character page is the long end, so the model is told to be expansive. */
+export const BESPOKE_PAGE_TEXT_VERBOSITY = "high" as const;
+
+/**
+ * The page stage no longer wraps the document in a JSON string (owner report,
+ * 12 Sep 2026: gpt-5 completed with `"html": ""` — a 70,000-character
+ * JSON-escaped string field is exactly where a model gives up). The answer is
+ * the raw HTML document; the two brief IDs ride in this comment on the line
+ * after the doctype, and the parser reads them back from there.
+ */
+export const BRIEFS_COMMENT_PREFIX = "hoodlums-briefs";
+const BRIEFS_COMMENT_PATTERN = /<!--\s*hoodlums-briefs\s+artwork=([^\s>]+)\s+inspiration=([^\s>]+)\s*-->/i;
+
+export function buildBriefsComment(ids: FusionBriefIds): string {
+  return `<!-- ${BRIEFS_COMMENT_PREFIX} artwork=${ids.artworkBriefId} inspiration=${ids.inspirationBriefId} -->`;
+}
+
+/**
+ * Turns the model's output text into the page payload the acceptance checks
+ * understand. Raw HTML (optionally inside a markdown fence) is the expected
+ * form; a JSON object with `html` / the two IDs — the pre-12-Sep envelope —
+ * is still accepted so nothing that produced it breaks. Returns null when
+ * the text is neither.
+ */
+export function parseGeneratedPageOutputText(text: string): { html: string; artworkBriefId: string; inspirationBriefId: string } | null {
+  let body = text.trim();
+  if (!body) return null;
+  const fence = /^```[a-zA-Z]*\s*\n([\s\S]*?)\n```\s*$/.exec(body);
+  if (fence) body = fence[1].trim();
+  if (body.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+      const item = parsed as Record<string, unknown>;
+      return {
+        html: typeof item.html === "string" ? item.html : "",
+        artworkBriefId: typeof item.artworkBriefId === "string" ? item.artworkBriefId : "",
+        inspirationBriefId: typeof item.inspirationBriefId === "string" ? item.inspirationBriefId : "",
+      };
+    } catch {
+      return null;
+    }
+  }
+  // A leading comment (the briefs comment itself, a licence note) before the
+  // doctype or <html> is still a document.
+  if (!/^(?:<!--[\s\S]*?-->\s*)*(?:<!doctype\s+html|<html\b)/i.test(body)) return null;
+  const briefs = BRIEFS_COMMENT_PATTERN.exec(body);
+  return {
+    html: body,
+    artworkBriefId: briefs ? briefs[1] : "",
+    inspirationBriefId: briefs ? briefs[2] : "",
+  };
+}
 
 export function buildPageArtworkIdentityRequestBody(
   request: NormalisedGenerateSiteStyleRequest,
@@ -166,7 +213,7 @@ export function buildGeneratedSitePageRequestBody(
     TOKEN_LANDING_PAGE_GENERATOR_PREFIX,
     "",
     "PRIVATE FULL-PAGE EXECUTION RULES:",
-    "- Return a complete original single-file HTML document inside the strict JSON schema.",
+    "- Your ENTIRE answer is the complete original single-file HTML document itself: raw HTML starting with <!doctype html> and ending with </html>. No JSON wrapper, no markdown fences, no commentary before or after it.",
     "- The generated document is rendered directly in a sandboxed iframe. It is not a theme for an existing Hoodlums template.",
     "- Never reuse the Hoodlums launchpad's black terminal dashboard, heist wording, matrix rain, Tokenomics shell or Dexscreener shell unless the uploaded artwork itself unmistakably requires those choices.",
     "- Artwork owns the page identity: palette, imagery, subject treatment, emotional tone, visual motifs and copy personality.",
@@ -200,8 +247,8 @@ export function buildGeneratedSitePageRequestBody(
     ...(correctiveFeedback
       ? ["", "CORRECTIVE FEEDBACK FROM THE REJECTED PREVIOUS ATTEMPT (fix this specifically, everything else above still applies):", correctiveFeedback]
       : []),
-    "- Echo both supplied brief IDs exactly in artworkBriefId and inspirationBriefId.",
-    "- Output only the schema-compliant JSON object.",
+    `- The line immediately after <!doctype html> must be exactly this comment, echoing both supplied brief IDs verbatim: ${buildBriefsComment(ids)}`,
+    "- Output nothing but the HTML document.",
   ].join("\n");
 
   const userPrompt = [
@@ -247,14 +294,8 @@ export function buildGeneratedSitePageRequestBody(
         ],
       },
     ],
-    text: {
-      format: {
-        type: "json_schema",
-        name: "generated_token_landing_page",
-        strict: true,
-        schema: GENERATED_PAGE_SCHEMA,
-      },
-    },
+    // Raw HTML out, not a JSON string field (see BRIEFS_COMMENT_PREFIX).
+    text: { verbosity: BESPOKE_PAGE_TEXT_VERBOSITY },
   };
 }
 
@@ -269,11 +310,8 @@ export function describeGeneratedSitePageRejection(
 ): GeneratedPageRejectionReason {
   const text = extractOutputText(response);
   if (!text) return "other";
-  try {
-    return describeGeneratedPageRejection(JSON.parse(text) as unknown, expectedIds, acceptance);
-  } catch {
-    return "other";
-  }
+  const payload = parseGeneratedPageOutputText(text);
+  return payload ? describeGeneratedPageRejection(payload, expectedIds, acceptance) : "other";
 }
 
 /** Same checks as `describeGeneratedSitePageRejection`, with the rule that fired named (owner report, 11 Sep 2026). */
@@ -284,18 +322,25 @@ export function describeGeneratedSitePageRejectionDetail(
 ): GeneratedPagePayloadRejection {
   const text = extractOutputText(response);
   if (!text) return { reason: "other", code: "invalid-payload", message: "The AI returned no page text.", htmlBytes: null };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text) as unknown;
-  } catch {
+  const payload = parseGeneratedPageOutputText(text);
+  if (!payload) {
     return {
       reason: "other",
       code: "invalid-payload",
-      message: `The AI's answer was not valid JSON (${formatCount(text.length)} characters).`,
+      message: `The AI's answer was neither an HTML document nor the page object (${formatCount(text.length)} characters).`,
       htmlBytes: null,
     };
   }
-  return describeGeneratedPageRejectionDetail(parsed, expectedIds, acceptance);
+  const detail = describeGeneratedPageRejectionDetail(payload, expectedIds, acceptance);
+  if (detail.code === "evidence-mismatch" && !payload.artworkBriefId && !payload.inspirationBriefId) {
+    return { ...detail, message: `The page did not carry the ${BRIEFS_COMMENT_PREFIX} comment echoing the supplied brief IDs.` };
+  }
+  return detail;
+}
+
+/** Corrective feedback for the one automatic retry when the first answer was an empty or near-empty document. */
+export function buildEmptyPageRetryCorrectiveFeedback(htmlLength: number): string {
+  return `The previous attempt returned an empty or near-empty document (${formatCount(htmlLength)} characters) instead of the finished page. This time write the complete HTML document — every required section, the styles and the script — as raw HTML, and nothing else.`;
 }
 
 /**
@@ -314,9 +359,6 @@ export function parseGeneratedSitePageResponse(
 ) {
   const text = extractOutputText(response);
   if (!text) return null;
-  try {
-    return parseGeneratedPagePayload(JSON.parse(text) as unknown, expectedIds, acceptance);
-  } catch {
-    return null;
-  }
+  const payload = parseGeneratedPageOutputText(text);
+  return payload ? parseGeneratedPagePayload(payload, expectedIds, acceptance) : null;
 }

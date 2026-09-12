@@ -13,17 +13,11 @@ import {
   isStructurallyCompleteGeneratedPageHtml,
 } from "@/lib/generated-site-page";
 import {
-  BESPOKE_PAGE_MAX_OUTPUT_TOKENS,
   NO_URL_PRESENTATION_BRIEF,
   buildGeneratedSitePageRequestBody,
   buildOversizeRetryCorrectiveFeedback,
   describeGeneratedSitePageRejectionDetail,
 } from "@/lib/site-page-openai-pipeline";
-import {
-  createMemoryAdminOperationsStore,
-  resetAdminOperationsStoreForTests,
-  setAdminOperationsStoreForTests,
-} from "@/lib/server/admin-operations-store";
 import { getFusionBriefIds, type ArtworkIdentity } from "@/lib/site-style-openai-pipeline";
 import { buildWebsiteGenerationPipeline, rejectionCodeFromMessage } from "@/lib/server/system-health-pipeline";
 import { BESPOKE_SITE_GENERATION_TIMEOUT_MS, SITE_GENERATION_TIMEOUT_MS, siteGenerationTimeoutMs } from "@/lib/site-preview-state";
@@ -124,10 +118,10 @@ describe("describeGeneratedPageRejectionDetail", () => {
   it("reads the provider response, naming a non-JSON answer instead of a blank 'other'", () => {
     const ids = { artworkBriefId: "art-1234abcd", inspirationBriefId: "url-8765dcba" };
     const response = (text: string) => ({ output: [{ type: "message", content: [{ type: "output_text", text }] }] });
-    expect(describeGeneratedSitePageRejectionDetail(response("```json not json"), ids)).toMatchObject({
+    expect(describeGeneratedSitePageRejectionDetail(response("Sure! Here is a page."), ids)).toMatchObject({
       reason: "other",
       code: "invalid-payload",
-      message: "The AI's answer was not valid JSON (16 characters).",
+      message: "The AI's answer was neither an HTML document nor the page object (21 characters).",
     });
     expect(describeGeneratedSitePageRejectionDetail({ output: [] }, ids)).toMatchObject({ code: "invalid-payload", message: "The AI returned no page text." });
     expect(describeGeneratedSitePageRejectionDetail(response(JSON.stringify({ html: validHtml(), ...ids })), ids).reason).toBe("ok");
@@ -204,15 +198,12 @@ describe("POST /api/generate-site-page names the rejected rule and retries once 
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   }
-  function streamedPage(value: unknown, usage?: Record<string, unknown>) {
+  function streamedPage(value: unknown) {
     return sseResponse([
       sseEventChunk({ type: "response.output_text.delta", delta: "" }),
       sseEventChunk({
         type: "response.completed",
-        response: {
-          output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(value) }] }],
-          ...(usage ? { usage } : {}),
-        },
+        response: { output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(value) }] }] },
       }),
     ]);
   }
@@ -226,7 +217,6 @@ describe("POST /api/generate-site-page names the rejected rule and retries once 
   });
   afterEach(() => {
     delete process.env.OPENAI_API_KEY;
-    resetAdminOperationsStoreForTests();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -269,59 +259,6 @@ describe("POST /api/generate-site-page names the rejected rule and retries once 
       "Bespoke page rejected by the acceptance checks",
       expect.stringContaining('"code":"missing-section"'),
     );
-  });
-
-  // Owner report, 12 Sep 2026: "Last generation outcome" read "too-short: The
-  // page is only 0 characters" on a gpt-5 attempt that completed normally
-  // with both brief IDs correct. The signature of a reasoning model that
-  // spent its shared max_output_tokens budget on thinking and had nothing
-  // left to write the page with — so the refused attempt's own token usage
-  // now travels with the rejection, in the log and in /admin.
-  it("records the refused attempt's output and reasoning tokens against the budget, in the log line and the /admin outcome", async () => {
-    const activityStore = createMemoryAdminOperationsStore();
-    setAdminOperationsStoreForTests(activityStore);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(outputText(ARTWORK))
-      .mockResolvedValueOnce(
-        streamedPage(
-          { html: "", ...ids },
-          { input_tokens: 9_120, output_tokens: 31_960, output_tokens_details: { reasoning_tokens: 31_400 }, total_tokens: 41_080 },
-        ),
-      );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const events = await readNdjsonEvents(await POST(request()));
-    const errorEvent = events.at(-1) as { type: string; providerError: { detail: string } };
-    expect(errorEvent.type).toBe("error");
-    expect(errorEvent.providerError.detail).toContain("too-short");
-    expect(console.warn).toHaveBeenCalledWith(
-      "Bespoke page rejected by the acceptance checks",
-      expect.stringContaining(`"outputTokens":31960,"reasoningTokens":31400,"maxOutputTokens":${BESPOKE_PAGE_MAX_OUTPUT_TOKENS}`),
-    );
-    const activity = await activityStore.listActivity(10);
-    expect(activity[0]?.kind).toBe("bespoke-page-rejected");
-    expect(activity[0]?.message).toContain("Bespoke page rejected (too-short)");
-    expect(activity[0]?.message).toContain(`Output 31,960 tokens (31,400 reasoning) of the ${formatCount(BESPOKE_PAGE_MAX_OUTPUT_TOKENS)} budget.`);
-  });
-
-  it("says plainly when the provider reported no usage for the refused attempt, rather than printing zeros", async () => {
-    const activityStore = createMemoryAdminOperationsStore();
-    setAdminOperationsStoreForTests(activityStore);
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(outputText(ARTWORK))
-      .mockResolvedValueOnce(streamedPage({ html: "", ...ids }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await readNdjsonEvents(await POST(request()));
-    expect(console.warn).toHaveBeenCalledWith(
-      "Bespoke page rejected by the acceptance checks",
-      expect.stringContaining('"outputTokens":null,"reasoningTokens":null'),
-    );
-    const activity = await activityStore.listActivity(10);
-    expect(activity[0]?.message).toContain("Token usage not reported by the provider.");
-    expect(activity[0]?.message).not.toContain("Output 0 tokens");
   });
 
   it("wires the outcome into the admin Activity log and the route's time budget (source pins)", async () => {

@@ -101,11 +101,7 @@ describe("free-rein bespoke prompt", () => {
     NO_URL_PRESENTATION_BRIEF,
   );
 
-  // 32k pinned the defect: reasoning tokens share max_output_tokens with the
-  // page, and medium reasoning plus a 50-70k-character page did not fit, so
-  // gpt-5 completed each attempt with an empty page (owner report, 12 Sep
-  // 2026). 64k holds both.
-  it("runs gpt-5 at medium reasoning with a 64k output budget that holds the reasoning and the page", () => {
+  it("runs gpt-5 at medium reasoning with a 64k output budget (raised 12 Sep 2026 so reasoning can never starve the page)", () => {
     expect(BESPOKE_PAGE_REASONING_EFFORT).toBe("medium");
     expect(BESPOKE_PAGE_MAX_OUTPUT_TOKENS).toBe(64_000);
     expect(body.model).toBe("gpt-5");
