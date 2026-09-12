@@ -11,7 +11,31 @@ describe("extractOpenAIUsage", () => {
         total_tokens: 1650,
       },
     });
-    expect(usage).toEqual({ inputTokens: 1200, cachedInputTokens: 300, outputTokens: 450, totalTokens: 1650 });
+    expect(usage).toEqual({ inputTokens: 1200, cachedInputTokens: 300, outputTokens: 450, reasoningTokens: 0, totalTokens: 1650 });
+  });
+
+  // A reasoning model's hidden thinking counts against the same
+  // max_output_tokens as its visible answer, so this is the figure that
+  // explains a page that came back empty (owner report, 12 Sep 2026).
+  it("extracts reasoning tokens from output_tokens_details, defaulting to 0 and never exceeding output tokens", () => {
+    const withReasoning = extractOpenAIUsage({
+      usage: { input_tokens: 9_000, output_tokens: 31_950, output_tokens_details: { reasoning_tokens: 31_400 }, total_tokens: 40_950 },
+    });
+    expect(withReasoning?.outputTokens).toBe(31_950);
+    expect(withReasoning?.reasoningTokens).toBe(31_400);
+
+    const none = extractOpenAIUsage({ usage: { input_tokens: 100, output_tokens: 50 } });
+    expect(none?.reasoningTokens).toBe(0);
+
+    const overReported = extractOpenAIUsage({
+      usage: { input_tokens: 100, output_tokens: 50, output_tokens_details: { reasoning_tokens: 500 } },
+    });
+    expect(overReported?.reasoningTokens).toBe(50);
+
+    const malformed = extractOpenAIUsage({
+      usage: { input_tokens: 100, output_tokens: 50, output_tokens_details: { reasoning_tokens: Number.NaN } },
+    });
+    expect(malformed?.reasoningTokens).toBe(0);
   });
 
   it("defaults cached tokens to 0 when absent", () => {
@@ -58,7 +82,7 @@ describe("extractOpenAIUsage", () => {
         total_tokens: 150.9,
       },
     });
-    expect(usage).toEqual({ inputTokens: 100, cachedInputTokens: 40, outputTokens: 50, totalTokens: 150 });
+    expect(usage).toEqual({ inputTokens: 100, cachedInputTokens: 40, outputTokens: 50, reasoningTokens: 0, totalTokens: 150 });
   });
 });
 

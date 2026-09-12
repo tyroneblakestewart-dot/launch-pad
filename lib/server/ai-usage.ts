@@ -4,6 +4,15 @@ export type ExtractedOpenAIUsage = {
   inputTokens: number;
   cachedInputTokens: number;
   outputTokens: number;
+  /**
+   * The share of outputTokens the model spent on hidden reasoning (a
+   * reasoning model's `output_tokens_details.reasoning_tokens`), 0 when the
+   * provider reports none. Reasoning counts against `max_output_tokens`
+   * alongside the visible answer, so this is what shows when a page came
+   * back empty because the budget went on thinking (owner report, 12 Sep
+   * 2026).
+   */
+  reasoningTokens: number;
   totalTokens: number;
 };
 
@@ -35,6 +44,12 @@ export function extractOpenAIUsage(response: OpenAIResponse | null | undefined):
   const cachedInputTokens =
     typeof cached === "number" && Number.isFinite(cached) ? Math.min(normaliseTokenCount(cached), inputTokens) : 0;
 
+  // Clamped to outputTokens for the same reason cached tokens are clamped to
+  // inputTokens: reasoning is a share of the output, never more than it.
+  const reasoning = usage.output_tokens_details?.reasoning_tokens;
+  const reasoningTokens =
+    typeof reasoning === "number" && Number.isFinite(reasoning) ? Math.min(normaliseTokenCount(reasoning), outputTokens) : 0;
+
   const totalTokens =
     typeof usage.total_tokens === "number" && Number.isFinite(usage.total_tokens)
       ? normaliseTokenCount(usage.total_tokens)
@@ -44,6 +59,7 @@ export function extractOpenAIUsage(response: OpenAIResponse | null | undefined):
     inputTokens,
     cachedInputTokens,
     outputTokens,
+    reasoningTokens,
     totalTokens,
   };
 }

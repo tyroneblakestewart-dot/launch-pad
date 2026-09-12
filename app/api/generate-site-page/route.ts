@@ -16,6 +16,7 @@ import {
   getFusionBriefIds,
 } from "@/lib/site-style-openai-pipeline";
 import {
+  BESPOKE_PAGE_MAX_OUTPUT_TOKENS,
   FREE_REIN_ACCEPTANCE_PROFILE,
   NO_URL_PRESENTATION_BRIEF,
   buildGeneratedSitePageRequestBody,
@@ -62,8 +63,9 @@ import type { GenerateSitePageStreamEvent } from "@/lib/generate-site-page-strea
 export const runtime = "nodejs";
 // Vercel Pro with Fluid Compute allows up to 800s (owner confirmed the plan,
 // 11 Sep 2026). The paid page stage runs gpt-5 at medium reasoning with a
-// 32,000-token budget, and the old 120s ceiling left no room for a slow
-// answer, let alone the one automatic retry.
+// 64,000-token budget (32,000 until 12 Sep 2026 — see
+// BESPOKE_PAGE_MAX_OUTPUT_TOKENS), and the old 120s ceiling left no room for
+// a slow answer, let alone the one automatic retry.
 export const maxDuration = 800;
 const ROUTE_BUDGET_MS = maxDuration * 1_000;
 // A retry takes about as long as the first attempt, so it only starts while
@@ -584,14 +586,33 @@ export async function POST(request: Request) {
               : retrySkippedReason === "time-budget"
                 ? " Retry skipped: time budget."
                 : "";
+          // The model's own token usage on the refused attempt (owner report,
+          // 12 Sep 2026: a page came back at 0 characters). Reasoning tokens
+          // count against the same max_output_tokens as the visible page, so
+          // "output near the budget, most of it reasoning" is the signature of
+          // a model that thought its budget away and had nothing left to write
+          // the page with — visible here rather than inferred.
+          const usage = extractOpenAIUsage(generation.payload);
+          const usageNote = usage
+            ? ` Output ${formatCount(usage.outputTokens)} tokens (${formatCount(usage.reasoningTokens)} reasoning) of the ${formatCount(BESPOKE_PAGE_MAX_OUTPUT_TOKENS)} budget.`
+            : " Token usage not reported by the provider.";
           console.warn(
             "Bespoke page rejected by the acceptance checks",
-            JSON.stringify({ code: rejection.code, message: rejection.message, htmlBytes: rejection.htmlBytes, pageModel, retrySkippedReason }),
+            JSON.stringify({
+              code: rejection.code,
+              message: rejection.message,
+              htmlBytes: rejection.htmlBytes,
+              pageModel,
+              retrySkippedReason,
+              outputTokens: usage?.outputTokens ?? null,
+              reasoningTokens: usage?.reasoningTokens ?? null,
+              maxOutputTokens: BESPOKE_PAGE_MAX_OUTPUT_TOKENS,
+            }),
           );
           void recordAdminActivityBestEffort({
             kind: "bespoke-page-rejected",
             serviceKey: "website-generation",
-            message: `Bespoke page rejected (${rejection.code ?? "unknown"}): ${rejection.message ?? "no detail."}${retryNote} Model ${pageModel}, wallet ${walletAddress}.`,
+            message: `Bespoke page rejected (${rejection.code ?? "unknown"}): ${rejection.message ?? "no detail."}${retryNote}${usageNote} Model ${pageModel}, wallet ${walletAddress}.`,
           });
           send({
             type: "error",

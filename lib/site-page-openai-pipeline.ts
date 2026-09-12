@@ -83,9 +83,20 @@ function artworkBriefLines(identity: ArtworkIdentity): string[] {
  */
 export const FREE_REIN_ACCEPTANCE_PROFILE: GeneratedPageAcceptanceProfile = {};
 
-/** The bespoke full-page stage's fixed reasoning effort and output budget on gpt-5 (owner decision, 6 Sep 2026). */
+/** The bespoke full-page stage's fixed reasoning effort on gpt-5 (owner decision, 6 Sep 2026). */
 export const BESPOKE_PAGE_REASONING_EFFORT = "medium" as const;
-export const BESPOKE_PAGE_MAX_OUTPUT_TOKENS = 32_000;
+/**
+ * Output budget for the same stage. In the Responses API `max_output_tokens`
+ * bounds the model's hidden reasoning tokens AND the visible answer together.
+ * The 32,000 this shipped with (6 Sep 2026) could not hold both: a 50-70k
+ * character page is ~15-20k tokens on its own and medium reasoning on "design
+ * a whole site" routinely spends 10-25k more, so gpt-5 finished each attempt
+ * with the smallest schema-valid object it could — IDs filled in, page empty
+ * ("too-short: 0 characters", owner report, 12 Sep 2026). Doubled so both fit;
+ * a ceiling, not a spend — a normal attempt costs what it did — with the
+ * per-site cost cap still bounding the retry.
+ */
+export const BESPOKE_PAGE_MAX_OUTPUT_TOKENS = 64_000;
 
 export function buildPageArtworkIdentityRequestBody(
   request: NormalisedGenerateSiteStyleRequest,

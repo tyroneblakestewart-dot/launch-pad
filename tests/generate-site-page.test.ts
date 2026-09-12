@@ -180,9 +180,11 @@ describe("POST /api/generate-site-page", () => {
     expect(artworkRequest.reasoning).toEqual({ effort: "minimal" });
     expect(finalRequest.stream).toBe(true);
     // Free-rein bespoke generator (owner decision, 6 Sep 2026): gpt-5 at
-    // medium reasoning with a 32k output budget, and no prescriptive design
-    // recipe — the retail "six cards and a search pattern" rule is gone.
-    expect(finalRequest.max_output_tokens).toBe(32_000);
+    // medium reasoning and no prescriptive design recipe — the retail "six
+    // cards and a search pattern" rule is gone. The budget is 64k, not the
+    // original 32k: reasoning shares it with the page and 32k held only the
+    // reasoning (12 Sep 2026).
+    expect(finalRequest.max_output_tokens).toBe(64_000);
     expect(finalRequest.reasoning).toEqual({ effort: "medium" });
     expect(finalRequest.input[0].content[0].text).toContain("Artwork owns the page identity");
     expect(finalRequest.input[0].content[0].text).toContain("CREATIVE DIRECTION IS YOURS");

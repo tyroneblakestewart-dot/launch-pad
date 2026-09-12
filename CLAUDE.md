@@ -3973,3 +3973,60 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   the merged head: `npm run test:app` — 341 test files / 3987 tests passing;
   `npm run lint` — 0 errors (11 warnings, none in files this change
   touches); `npm run build` — succeeds.
+
+- Bespoke page came back empty: the output budget could not hold gpt-5's
+  reasoning and the page together (owner report, 12 Sep 2026, the first
+  line #552's diagnostics produced: "Bespoke page rejected (too-short): The
+  page is only 0 characters"). Established from the code path, stated
+  plainly: the text we parse is gpt-5's own `response.completed` payload,
+  untouched; both brief IDs matched, so the JSON was intact and the model
+  itself returned `"html": ""` and finished normally. A model cut off mid-page
+  produces a different, separately handled outcome (`response.incomplete`),
+  so this was not truncation — it was the model completing on purpose with
+  nothing in the page. The arithmetic: the free-rein PR moved this stage
+  from gpt-5-mini / minimal reasoning / 20,000 tokens to gpt-5 / medium
+  reasoning / 32,000, and in the Responses API `max_output_tokens` bounds
+  the hidden reasoning tokens AND the visible answer together. A 50-70k
+  character page is ~15-20k tokens; medium reasoning on "design a whole
+  site" routinely spends 10-25k more; when a reasoning model sees the real
+  answer cannot fit what is left, it emits the smallest schema-valid object
+  it can — IDs filled in, page empty — which matches every observed fact,
+  and why it "worked before the change" and failed every time after. Two
+  changes. **(1) Proof travels with the rejection:** `extractOpenAIUsage`
+  (`lib/server/ai-usage.ts`) now also returns `reasoningTokens`
+  (`output_tokens_details.reasoning_tokens`, clamped to output tokens, 0
+  when absent), and the route's rejection path appends the refused
+  attempt's own figures to the Vercel log line and the `bespoke-page-rejected`
+  Activity entry that `/admin` → Website generation → Last generation
+  outcome reads: "Output 31,960 tokens (31,400 reasoning) of the 64,000
+  budget." — or "Token usage not reported by the provider." rather than
+  zeros — so the next refusal is read off the screen, not inferred. **(2)
+  The budget fits:** `BESPOKE_PAGE_MAX_OUTPUT_TOKENS` 32,000 → 64,000. A
+  ceiling, not a spend — a normal attempt costs what it did — but it does
+  raise the worst case a single attempt can bill (64k output at $10/M is
+  $0.64 against the owner's ~$0.50 target; the $1.50 per-site cap still
+  bounds the retry), spelled out in the PR for the owner to accept or tune;
+  reasoning effort stays "medium" by the 6 Sep decision, with "low" named
+  as the cheaper lever if cost matters more than design depth. **The
+  ledger:** the owner also reported "the ledger isn't updating"; its cause is
+  NOT established here (no production access). What was found and fixed:
+  `recordTextOperationCostBestEffort` skipped a row in silence whenever the
+  provider payload carried no usage — indistinguishable from a failed
+  insert, which does log — so that one deliberate no-op now warns with the
+  feature and model; the next attempt's Vercel log will show which of the
+  two it is. The open question for the owner stands: whether the earlier,
+  non-streamed "Bespoke artwork identity" row lands while the streamed full
+  page row does not. **Tests changed, not only added (rule 8, stated
+  plainly):** the three 32,000 pins (`bespoke-free-rein` ×2, incl. the
+  health stage's "32,000-token output budget" text, and
+  `generate-site-page`) now pin 64,000, and `ai-usage`'s two `toEqual`
+  shapes gained `reasoningTokens`. New coverage: reasoning-token extraction
+  (present, absent, over-reported, malformed); the route recording output/
+  reasoning/budget figures in both the log JSON and the Activity message on
+  an empty page, and the honest "not reported" wording without usage; the
+  cost store's warn-and-skip on missing usage. Not reproduced against the
+  live provider (no OpenAI key in this session) — the owner retries after
+  deploy; if the page is still empty, the outcome line now states whether
+  the budget was the reason. Validated on the final commit: `npm run
+  test:app` — 341 test files / 3991 tests passing; `npm run lint` — 0 errors
+  (11 pre-existing warnings); `npm run build` — succeeds.

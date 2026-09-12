@@ -159,7 +159,18 @@ export type RecordTextOperationCostArgs = {
 /** Meters one text-generation provider attempt from its returned usage. No-ops (never fabricates a row) when usage is missing. */
 export async function recordTextOperationCostBestEffort(args: RecordTextOperationCostArgs): Promise<void> {
   const usage = extractOpenAIUsage(args.response);
-  if (!usage) return;
+  if (!usage) {
+    // Said out loud rather than skipped in silence (owner report, 12 Sep 2026:
+    // "the ledger isn't updating"): a missing row is either this — the
+    // provider sent no usage for the attempt — or a failed insert, which
+    // recordAiOperationCostBestEffort logs separately. A no-op with no line
+    // left the two indistinguishable.
+    console.warn(
+      "AI operation cost not recorded: the provider response carried no usage",
+      JSON.stringify({ featureKey: args.featureKey, provider: args.provider, model: args.fallbackModel }),
+    );
+    return;
+  }
 
   // Priced for the model that actually answered (the bespoke full page runs on
   // gpt-5, everything else on gpt-5-mini), never a single flat rate.
