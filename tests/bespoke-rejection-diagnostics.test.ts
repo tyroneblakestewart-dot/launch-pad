@@ -118,10 +118,10 @@ describe("describeGeneratedPageRejectionDetail", () => {
   it("reads the provider response, naming a non-JSON answer instead of a blank 'other'", () => {
     const ids = { artworkBriefId: "art-1234abcd", inspirationBriefId: "url-8765dcba" };
     const response = (text: string) => ({ output: [{ type: "message", content: [{ type: "output_text", text }] }] });
-    expect(describeGeneratedSitePageRejectionDetail(response("```json not json"), ids)).toMatchObject({
+    expect(describeGeneratedSitePageRejectionDetail(response("Sure! Here is a page."), ids)).toMatchObject({
       reason: "other",
       code: "invalid-payload",
-      message: "The AI's answer was not valid JSON (16 characters).",
+      message: "The AI's answer was neither an HTML document nor the page object (21 characters).",
     });
     expect(describeGeneratedSitePageRejectionDetail({ output: [] }, ids)).toMatchObject({ code: "invalid-payload", message: "The AI returned no page text." });
     expect(describeGeneratedSitePageRejectionDetail(response(JSON.stringify({ html: validHtml(), ...ids })), ids).reason).toBe("ok");

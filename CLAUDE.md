@@ -3973,3 +3973,56 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   the merged head: `npm run test:app` — 341 test files / 3987 tests passing;
   `npm run lint` — 0 errors (11 warnings, none in files this change
   touches); `npm run build` — succeeds.
+
+- Bespoke page stage asks for raw HTML, not a JSON string field (owner's
+  `/admin` readout after #552 deployed, 12 Sep 2026: "Bespoke page rejected
+  (too-short): The page is only 0 characters; a finished page is at least
+  3,500. Model gpt-5"). The diagnostics did their job: gpt-5 completed the
+  request, echoed both brief IDs correctly, and returned `"html": ""` — a
+  strict-schema answer whose one 50,000–70,000-character JSON-escaped string
+  field was left empty. Stated plainly: whether the model gave up on the giant
+  string or its reasoning consumed the 32,000-token budget before the document
+  could not be told from that readout, so the change removes both causes and
+  records what distinguishes them next time. `lib/site-page-openai-pipeline.ts`:
+  the page request drops `text.format` (json_schema) for
+  `text: { verbosity: "high" }`, the prompt's envelope lines become "Your
+  ENTIRE answer is the complete original single-file HTML document itself …
+  No JSON wrapper, no markdown fences" plus a required
+  `<!-- hoodlums-briefs artwork=<id> inspiration=<id> -->` comment on the line
+  after the doctype (`buildBriefsComment`), and `BESPOKE_PAGE_MAX_OUTPUT_TOKENS`
+  is 64,000 (reasoning tokens count against it; the per-site cost cap, not the
+  ceiling, guards spend — 64k output at gpt-5 rates is $0.64, two attempts
+  still under the $1.50 cap). New `parseGeneratedPageOutputText` reads a raw
+  document (a markdown fence, leading whitespace or a leading comment
+  tolerated; must reach `<!doctype html` or `<html`) and its IDs from the
+  comment, and still accepts the old JSON envelope so nothing that produces
+  it breaks; `parseGeneratedSitePageResponse` and both rejection describers
+  go through it, and a raw page without the comment is reported as
+  "did not carry the hoodlums-briefs comment". `GENERATED_PAGE_SCHEMA` stays
+  exported as the legacy shape. Route: a `too-short` first attempt (an empty
+  or near-empty page) now takes the one automatic retry with
+  `buildEmptyPageRetryCorrectiveFeedback` (same slot, cost-cap and time-budget
+  guards as layout/oversize — an empty attempt is cheap, so the retry
+  normally proceeds), the studio's message for it is "returned an empty or
+  unfinished page (N characters) and its retry did not deliver one either",
+  and every `bespoke-page-rejected` entry now appends the provider's own
+  counts — "Output tokens N (reasoning R), input I" — so a starved page (many
+  reasoning tokens, few output) reads differently from a page the model simply
+  did not write. **Tests changed, not only added (rule 8, stated plainly):**
+  `tests/generate-site-page.test.ts` pins on `max_output_tokens` 32,000 and on
+  `finalRequest.text.format.schema` (now `text` equals `{ verbosity: "high" }`
+  and the body carries no `json_schema`); `tests/bespoke-free-rein.test.ts`'s
+  32k budget pins and the health-stage "32,000-token output budget" pin; and
+  #552's own `tests/bespoke-rejection-diagnostics.test.ts` pin on the
+  "not valid JSON" wording (now "neither an HTML document nor the page
+  object"). New `tests/bespoke-raw-html-output.test.ts` (8 tests): the raw
+  parser (comment IDs, fence, whitespace, leading comment, legacy JSON, the
+  12 Sep empty-html answer classed too-short), the request body and prompt
+  lines, a raw-HTML route run delivering the page, the empty-page retry, and
+  the token counts in the record. Rule 10: no new page, route or
+  integration; the existing `bespoke-page-model` stage reports the new
+  budget. Not reproduced against the live provider (no OpenAI key here) —
+  the owner runs one bespoke generation after deploy; a failure now names
+  the rule and the token counts. Validated on the final commit:
+  `npm run test:app` — 342 test files / 3995 tests passing; `npm run lint`
+  — 0 errors (11 pre-existing warnings); `npm run build` — succeeds.

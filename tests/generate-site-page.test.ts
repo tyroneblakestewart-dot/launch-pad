@@ -174,7 +174,7 @@ describe("POST /api/generate-site-page", () => {
       reasoning: { effort: string };
       stream: boolean;
       input: Array<{ content: Array<{ type: string; text?: string; image_url?: string; detail?: string }> }>;
-      text: { format: { schema: unknown } };
+      text: { format?: { schema: unknown }; verbosity?: string };
     };
     expect(artworkRequest.max_output_tokens).toBe(1_500);
     expect(artworkRequest.reasoning).toEqual({ effort: "minimal" });
@@ -182,8 +182,10 @@ describe("POST /api/generate-site-page", () => {
     // Free-rein bespoke generator (owner decision, 6 Sep 2026): gpt-5 at
     // medium reasoning with a 32k output budget, and no prescriptive design
     // recipe — the retail "six cards and a search pattern" rule is gone.
-    expect(finalRequest.max_output_tokens).toBe(32_000);
+    expect(finalRequest.max_output_tokens).toBe(64_000);
     expect(finalRequest.reasoning).toEqual({ effort: "medium" });
+    // Raw HTML out since 12 Sep 2026 (an empty "html" JSON field was the failure): no schema, high verbosity.
+    expect(finalRequest.text).toEqual({ verbosity: "high" });
     expect(finalRequest.input[0].content[0].text).toContain("Artwork owns the page identity");
     expect(finalRequest.input[0].content[0].text).toContain("CREATIVE DIRECTION IS YOURS");
     expect(finalRequest.input[0].content[0].text).not.toContain("bright, spacious discovery experience");
@@ -204,8 +206,8 @@ describe("POST /api/generate-site-page", () => {
       image_url: VALID_IMAGE,
       detail: "low",
     });
-    expect(JSON.stringify(artworkRequest.text.format.schema)).not.toMatch(/minLength|maxLength|pattern/);
-    expect(JSON.stringify(finalRequest.text.format.schema)).not.toMatch(/minLength|maxLength|pattern/);
+    expect(JSON.stringify(artworkRequest.text.format?.schema)).not.toMatch(/minLength|maxLength|pattern/);
+    expect(JSON.stringify(finalRequest)).not.toContain("json_schema");
     expect(JSON.stringify(finalRequest)).not.toContain("initiate_heist");
   });
 
