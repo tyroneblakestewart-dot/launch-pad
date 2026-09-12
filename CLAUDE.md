@@ -3968,4 +3968,8 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   status line and `/admin` → Website generation → Last generation outcome
   now name the exact rule. Validated on the final commit: `npm run test:app`
   — 331 test files / 3867 tests passing; `npm run lint` — 0 errors (10
-  pre-existing warnings); `npm run build` — succeeds.
+  pre-existing warnings); `npm run build` — succeeds. After merging `main`
+  (#532–#551) into the branch — the only conflict was this file's tail —
+  the merged head: `npm run test:app` — 341 test files / 3987 tests passing;
+  `npm run lint` — 0 errors (11 warnings, none in files this change
+  touches); `npm run build` — succeeds.
