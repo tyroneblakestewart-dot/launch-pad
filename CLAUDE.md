@@ -4053,3 +4053,51 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   "every cost write". Validated on the merged head: `npm run test:app` —
   342 test files / 3996 tests passing; `npm run lint` — 0 errors (11
   pre-existing warnings); `npm run build` — succeeds.
+
+- Generated-site nav links no longer leave the page (owner recording, 13 Sep
+  2026: clicking About / Tokenomics / How to Buy / Community on a bespoke site
+  in the studio preview "goes to an error page"). Root cause, reproduced in
+  headless Chromium before the change: both the studio preview
+  (`components/full-website-generator.tsx`) and the published `/[slug]` page
+  (`components/public-site-frame.tsx`) render the generated document through
+  `iframe.srcdoc`, and a srcdoc document has no URL of its own — it inherits
+  the PARENT page's URL as its base — so a plain `href="#community"` resolves
+  to `https://hoodlums.dev/#community` (or `/<slug>#community` on a published
+  site). That is not a fragment of the iframe's own document, so the browser
+  performs a full navigation of the sandboxed iframe to the Hoodlums app
+  itself: the repro showed the iframe's URL become `<parent url>#community`
+  with the parent's body inside it and `scrollY` still 0. The same applied
+  to the templates' bare `href="#"` buy-link placeholder before a launch,
+  and to every free site's nav (`docs/free-site-template-source.html` uses
+  `#about` / `#tokenomics` / `#how-to-buy` / `#community`), so this was never
+  a bespoke-only defect. Fix, one place: `prepareGeneratedPageForPreview`
+  (`lib/generated-site-page.ts`) now appends
+  `GENERATED_PAGE_ANCHOR_BRIDGE_SCRIPT` after the height and tap bridges — a
+  bubble-phase click handler that intercepts left-clicks on `a[href^="#"]`
+  only, stands down on `defaultPrevented` and modifier/non-primary clicks,
+  treats a bare `#` as a no-op, decodes the id, calls `scrollIntoView` on the
+  target (honouring `prefers-reduced-motion`), scrolls to 0 only for a
+  literal `#top` with no such element, does nothing for a missing id, and
+  never writes to `location`. Because the served page prepares stored HTML
+  on every request (after the sanitiser has stripped the stored page's own
+  scripts), every already-published site is repaired on its next request
+  with no republish; outbound links are untouched, so `allow-popups`
+  link-outs still work. **Tests changed, not only added (rule 8, stated
+  plainly):** `tests/generated-site-mobile-safety.test.ts`'s `tapBridge`
+  helper sliced from the tap bridge's start to the END of the document, so
+  its "never calls preventDefault" pin on the tap bridge swept up the new
+  anchor bridge; it now slices to the tap bridge's own closing tag, and the
+  assertion itself is unchanged. New `tests/generated-page-anchor-links.test.ts`
+  pins the injection (both frames, once, last before `</body>`), the guards,
+  the `#` no-op, the scroll/reduced-motion/missing-id rules, the single
+  inline-script shape, and the served-page/sandbox dependencies. Verified
+  in headless Chromium with the real function's output, in both a
+  fixed-height frame (published page, mobile preview) and a content-sized
+  4000px frame (desktop studio): `#community` scrolls the frame — and, in
+  the content-sized case, the studio page around it — while the frame stays
+  on its own document; `#` and a missing `#roadmap` do nothing; `#top`
+  returns to 0. Not verified on a physical iPhone (rule 7) — the owner
+  confirms on hoodlums.dev. Rule 10 needs nothing (no page, route or
+  integration). Validated on the final commit: `npm run test:app` — 343 test
+  files / 4003 tests passing; `npm run lint` — 0 errors (11 pre-existing
+  warnings); `npm run build` — succeeds.

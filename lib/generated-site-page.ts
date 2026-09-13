@@ -656,6 +656,42 @@ export function prepareGeneratedPageForPreview(
     /<head([^>]*)>/i,
     `<head$1><meta http-equiv="Content-Security-Policy" content="${csp}">${overflowClamp}`,
   );
-  output = output.replace(/<\/body>/i, `${bridge}${tapBridge}</body>`);
+  output = output.replace(
+    /<\/body>/i,
+    `${bridge}${tapBridge}${GENERATED_PAGE_ANCHOR_BRIDGE_SCRIPT}</body>`,
+  );
   return output;
 }
+
+/**
+ * In-page anchor links inside a `srcdoc` iframe (owner report, 13 Sep 2026:
+ * the generated site's nav — About / Tokenomics / How to Buy / Community —
+ * "goes to an error page" when clicked).
+ *
+ * Both the studio preview (`components/full-website-generator.tsx`) and the
+ * published `/[slug]` page (`components/public-site-frame.tsx`) render the
+ * generated document through `iframe.srcdoc`. A srcdoc document has no URL
+ * of its own (`about:srcdoc`) and inherits the PARENT page's URL as its base,
+ * so a plain `href="#community"` resolves to `https://hoodlums.dev/#community`
+ * in the studio (or `https://hoodlums.dev/<slug>#community` on a published
+ * site) — which is not a fragment of the iframe's own document, so the
+ * browser performs a full navigation of the iframe to that URL and the
+ * Hoodlums app loads inside the sandboxed frame instead of the page
+ * scrolling. Reproduced in headless Chromium before this change: clicking
+ * `#community` left the iframe at `<parent url>#community` with the parent's
+ * body inside it and `scrollY` still 0.
+ *
+ * This script intercepts left-clicks on same-document links (`href` starting
+ * with `#`) and scrolls the target section into view itself. It runs after
+ * the page's own handlers (bubble phase, and it stands down on
+ * `defaultPrevented`), ignores modifier-key/middle clicks so "open in new tab"
+ * keeps working, treats the bare `href="#"` placeholder the templates use for
+ * a not-yet-known buy link as a no-op rather than a jump to the top, honours
+ * `prefers-reduced-motion`, and does nothing when the target id does not
+ * exist. It is injected for both the studio preview and the served page, so
+ * already-published sites are repaired on their next request with no
+ * republish. The served page's sanitiser strips every `<script>` from the
+ * STORED HTML; this one is added at serve time, after that, like the height
+ * bridge above.
+ */
+export const GENERATED_PAGE_ANCHOR_BRIDGE_SCRIPT = `<script>(function(){var reduce=function(){try{return Boolean(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)}catch(e){return false}};var find=function(id){var el=document.getElementById(id);if(el)return el;if(window.CSS&&typeof CSS.escape==='function'){try{el=document.querySelector('a[name="'+CSS.escape(id)+'"]')}catch(e){}}return el};document.addEventListener('click',function(event){if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;var target=event.target;if(!(target instanceof Element))return;var link=target.closest('a[href]');if(!link)return;var href=link.getAttribute('href')||'';if(href.charAt(0)!=='#')return;event.preventDefault();var id=href.slice(1);if(id==='')return;try{id=decodeURIComponent(id)}catch(e){}var behavior=reduce()?'auto':'smooth';var destination=find(id);if(!destination){if(id==='top')window.scrollTo({top:0,left:0,behavior:behavior});return}destination.scrollIntoView({behavior:behavior,block:'start'})})})();<\/script>`;
