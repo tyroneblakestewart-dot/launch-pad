@@ -51,7 +51,12 @@ function safetyCss(prepared: string): string {
 function tapBridge(prepared: string): string {
   const start = prepared.indexOf("var interactive=");
   expect(start).toBeGreaterThan(-1);
-  return prepared.slice(start);
+  // Slice to the tap bridge's own closing tag: the in-page anchor bridge that
+  // follows it (owner report, 13 Sep 2026) legitimately calls preventDefault
+  // on same-document links, and these assertions are about the tap bridge.
+  const end = prepared.indexOf("</script>", start);
+  expect(end).toBeGreaterThan(start);
+  return prepared.slice(start, end);
 }
 
 describe("generated-site mobile safety layer", () => {

@@ -44,6 +44,14 @@ export type BespokeSocialFacts = {
 export type BespokePlatformFacts = {
   contractAddress: string;
   chain?: SupportedChain;
+  /**
+   * Where the Buy CTA goes when somewhere other than the token's Hoodlums
+   * trade page is the honest answer — the Uniswap app with the token
+   * pre-filled once it has graduated (owner direction, 13 Sep 2026; resolved
+   * server-side by lib/server/token-buy-venue.ts). Omitted/empty means the
+   * Hoodlums trade page. Never affects {{TRADE_URL}}.
+   */
+  buyHref?: string;
 };
 
 const HANDLE_PATTERN = /^[A-Za-z0-9_]{1,32}$/;
@@ -210,9 +218,10 @@ export function substituteBespokePlatformFacts(html: string, facts: BespokePlatf
   const hasContract = contractAddress !== "";
   const chain = facts.chain ?? "robinhood";
   const tradeUrl = hasContract ? buildHoodlumsTradeUrl(chain, contractAddress) : "#";
+  const buyHref = hasContract && facts.buyHref?.trim() ? facts.buyHref.trim() : tradeUrl;
   const explorerUrl = hasContract ? buildContractExplorerUrl(chain, contractAddress) : "#";
   return html
-    .replaceAll(BESPOKE_LINK_PLACEHOLDERS.buy, escapeHtml(tradeUrl))
+    .replaceAll(BESPOKE_LINK_PLACEHOLDERS.buy, escapeHtml(buyHref))
     .replaceAll(BESPOKE_LINK_PLACEHOLDERS.trade, escapeHtml(tradeUrl))
     .replaceAll(BESPOKE_LINK_PLACEHOLDERS.explorer, escapeHtml(explorerUrl))
     .replaceAll(BESPOKE_LINK_PLACEHOLDERS.contract, escapeHtml(hasContract ? contractAddress : CONTRACT_PENDING_LABEL));

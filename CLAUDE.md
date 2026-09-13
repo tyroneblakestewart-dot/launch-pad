@@ -4053,3 +4053,104 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   "every cost write". Validated on the merged head: `npm run test:app` —
   342 test files / 3996 tests passing; `npm run lint` — 0 errors (11
   pre-existing warnings); `npm run build` — succeeds.
+
+- Generated-site nav links no longer leave the page (owner recording, 13 Sep
+  2026: clicking About / Tokenomics / How to Buy / Community on a bespoke site
+  in the studio preview "goes to an error page"). Root cause, reproduced in
+  headless Chromium before the change: both the studio preview
+  (`components/full-website-generator.tsx`) and the published `/[slug]` page
+  (`components/public-site-frame.tsx`) render the generated document through
+  `iframe.srcdoc`, and a srcdoc document has no URL of its own — it inherits
+  the PARENT page's URL as its base — so a plain `href="#community"` resolves
+  to `https://hoodlums.dev/#community` (or `/<slug>#community` on a published
+  site). That is not a fragment of the iframe's own document, so the browser
+  performs a full navigation of the sandboxed iframe to the Hoodlums app
+  itself: the repro showed the iframe's URL become `<parent url>#community`
+  with the parent's body inside it and `scrollY` still 0. The same applied
+  to the templates' bare `href="#"` buy-link placeholder before a launch,
+  and to every free site's nav (`docs/free-site-template-source.html` uses
+  `#about` / `#tokenomics` / `#how-to-buy` / `#community`), so this was never
+  a bespoke-only defect. Fix, one place: `prepareGeneratedPageForPreview`
+  (`lib/generated-site-page.ts`) now appends
+  `GENERATED_PAGE_ANCHOR_BRIDGE_SCRIPT` after the height and tap bridges — a
+  bubble-phase click handler that intercepts left-clicks on `a[href^="#"]`
+  only, stands down on `defaultPrevented` and modifier/non-primary clicks,
+  treats a bare `#` as a no-op, decodes the id, calls `scrollIntoView` on the
+  target (honouring `prefers-reduced-motion`), scrolls to 0 only for a
+  literal `#top` with no such element, does nothing for a missing id, and
+  never writes to `location`. Because the served page prepares stored HTML
+  on every request (after the sanitiser has stripped the stored page's own
+  scripts), every already-published site is repaired on its next request
+  with no republish; outbound links are untouched, so `allow-popups`
+  link-outs still work. **Tests changed, not only added (rule 8, stated
+  plainly):** `tests/generated-site-mobile-safety.test.ts`'s `tapBridge`
+  helper sliced from the tap bridge's start to the END of the document, so
+  its "never calls preventDefault" pin on the tap bridge swept up the new
+  anchor bridge; it now slices to the tap bridge's own closing tag, and the
+  assertion itself is unchanged. New `tests/generated-page-anchor-links.test.ts`
+  pins the injection (both frames, once, last before `</body>`), the guards,
+  the `#` no-op, the scroll/reduced-motion/missing-id rules, the single
+  inline-script shape, and the served-page/sandbox dependencies. Verified
+  in headless Chromium with the real function's output, in both a
+  fixed-height frame (published page, mobile preview) and a content-sized
+  4000px frame (desktop studio): `#community` scrolls the frame — and, in
+  the content-sized case, the studio page around it — while the frame stays
+  on its own document; `#` and a missing `#roadmap` do nothing; `#top`
+  returns to 0. Not verified on a physical iPhone (rule 7) — the owner
+  confirms on hoodlums.dev. Rule 10 needs nothing (no page, route or
+  integration). Validated on the final commit: `npm run test:app` — 343 test
+  files / 4003 tests passing; `npm run lint` — 0 errors (11 pre-existing
+  warnings); `npm run build` — succeeds.
+
+- Buy goes to Uniswap with the live token address once the token has
+  graduated (owner direction, 13 Sep 2026: "how to buy is meant to go to
+  Uniswap with the live token address once contracts live"). Stated plainly
+  what "live" means here: a Hoodlums token trades on its bonding curve until
+  graduation, when the curve seeds a permanently locked Uniswap V3 pool —
+  before that moment Uniswap has no market for the token, so the only honest
+  Buy destination is the token's Hoodlums trade page (unchanged, and still
+  the `{{TRADE_URL}}` chart link always); after it, the honest destination
+  is the Uniswap app with the token pre-filled. New pure, client-safe
+  `lib/uniswap-swap-link.ts`: `buildUniswapSwapUrl(slug, token)` →
+  `https://app.uniswap.org/swap?chain=<slug>&outputCurrency=<token>`, with
+  the chain slug read from a new public JSON map
+  `NEXT_PUBLIC_UNISWAP_SWAP_CHAIN_SLUGS` (`{"robinhood":"<slug>"}`; parsed
+  defensively — unknown keys, non-slug strings and bad JSON are dropped) via
+  the static `process.env.NEXT_PUBLIC_…` literal so the client bundle
+  inlines it. **Off by default, and deliberately so:** the "robinhood" chain
+  key still means Robinhood Chain Testnet, which the Uniswap app does not
+  list, and Uniswap's own docs were egress-blocked from this session (as
+  `docs/uniswap-robinhood-chain.md` also found), so the mainnet slug is not
+  guessed — the owner sets the env value once Robinhood Chain's slug is
+  confirmed in Uniswap's app, with no code change (rule 3). Unset, nothing
+  changes anywhere. New `lib/server/token-buy-venue.ts`'s
+  `resolvePublishedSiteBuyHref` decides the served page's Buy target: no
+  slug → immediate `undefined` (no curve lookup, no RPC); otherwise the
+  token's own curve via `resolveTokenCurveAddress` and the shared 20s-cached
+  `getCurveProgress` read, Uniswap only when `state === "graduated"`, and
+  every failure (no launch record, null read, thrown error, non-Robinhood
+  chain, blank contract) degrades to `undefined` = Hoodlums trade page,
+  never a Uniswap link for a still-bonding token and never a rendering
+  error. `FreeSitePlatformFacts` and `BespokePlatformFacts` gain an optional
+  `buyHref` that `{{BUY_HREF}}` honours when a contract exists;
+  `app/[slug]/page.tsx` resolves it once and passes it to both pipelines, so
+  every already-published free and bespoke site switches its Buy button to
+  Uniswap on its next request after graduation, no republish. The token
+  page's trading-closed panel (`components/token-page/token-left-column.tsx`)
+  gains a "Swap on Uniswap ↗" link above the existing "View liquidity pool
+  ↗" link, again only when a slug is configured. The studio preview keeps
+  the Hoodlums trade page (it has no graduation knowledge client-side, and
+  it is the creator's preview, not a buyer's). Rule 10, stated plainly: a
+  static outbound link with no server integration, credential, table or
+  job — nothing for System Health to monitor; the `.env.example` entry
+  documents the switch. No existing test assertion was changed. New
+  `tests/uniswap-swap-link.test.ts` (parser, builder, the server resolver's
+  no-op/bonding/graduated/degradation cases, both substitutions honouring
+  the venue and never applying it before a contract, and the page/token-
+  page/studio wiring); `tests/backend-inventory.test.ts`'s server-module
+  list was extended for the new module. Not exercised against the live
+  Uniswap app from this session — the owner confirms the slug and the
+  resulting link after setting the env value. Validated on the final
+  commit: `npm run test:app` — 344 test files / 4,018 tests passing;
+  `npm run lint` — 0 errors (11 pre-existing warnings); `npm run build` —
+  succeeds.

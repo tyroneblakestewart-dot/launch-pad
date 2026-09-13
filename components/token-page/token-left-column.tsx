@@ -33,6 +33,7 @@ import { formatGraduationFeeNote, type BondingCurveGraduationStatus } from "@/li
 import { CHAIN_CONFIG, ROBINHOOD_TESTNET, ROBINHOOD_TESTNET_CHAIN_ID_DECIMAL } from "@/lib/chains";
 import { describeTradeError, sanitiseTradeErrorForLogging } from "@/lib/trade-error-message";
 import { notifyTokenTradeConfirmed } from "@/lib/token-trade-events";
+import { resolveUniswapSwapUrl } from "@/lib/uniswap-swap-link";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 import type { Eip1193Provider } from "@/lib/wallet-provider";
 import {
@@ -209,6 +210,10 @@ export function TokenLeftColumn({
   holderBreakdown,
 }: TokenLeftColumnProps) {
   const chainInfo = CHAIN_CONFIG[chainId];
+  // Null unless NEXT_PUBLIC_UNISWAP_SWAP_CHAIN_SLUGS names this chain (owner
+  // direction, 13 Sep 2026) — the testnet "robinhood" key has no Uniswap app
+  // listing, so this stays off until the owner flips the env value.
+  const uniswapSwapUrl = resolveUniswapSwapUrl(chainId, address);
   const displaySymbol = marketStats.supported && marketStats.symbol ? marketStats.symbol : null;
   const resolvedDecimals = marketStats.supported && marketStats.decimals !== null ? marketStats.decimals : DEFAULT_TOKEN_DECIMALS;
 
@@ -1037,6 +1042,14 @@ export function TokenLeftColumn({
                 Robinhood DEX pool, and buy/sell on the bonding curve is closed for good. Accrued fees remain
                 withdrawable by the treasury and creator.
               </p>
+              {uniswapSwapUrl && (
+                // Owner direction, 13 Sep 2026: once graduated, buying happens
+                // on Uniswap with the live token address. Only rendered when a
+                // Uniswap chain slug is configured (lib/uniswap-swap-link.ts).
+                <a href={uniswapSwapUrl} target="_blank" rel="noreferrer" className={styles.terminalFallbackLink}>
+                  Swap on Uniswap ↗
+                </a>
+              )}
               {curveView.graduation.liquidityPool && (
                 <a
                   href={`${chainInfo.explorerBaseUrl}${curveView.graduation.liquidityPool}`}
