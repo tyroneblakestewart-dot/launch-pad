@@ -530,6 +530,34 @@
   background: rgba(var(--hoodlums-green-rgb), 0.06) !important;
 }
 
+/* Saved-site mode (owner report, 13 Sep 2026): once a generated site is
+   saved the gate's primary button opens it, and it must read as the solid
+   green CTA — the "unlocked" outline above is for a button that would
+   regenerate, which this one never does. Same specificity + !important so it
+   wins over the unlocked rule regardless of source order. */
+#launch-studio .build-site-gate.saved-site .build-site-button:not(:disabled) {
+  border-style: solid !important;
+  border-color: transparent !important;
+  color: #071008 !important;
+  background: var(--hoodlums-green) !important;
+  box-shadow: 0 16px 40px rgba(var(--hoodlums-green-rgb), 0.16) !important;
+}
+
+#launch-studio .build-site-gate.saved-site .build-site-button:not(:disabled):hover {
+  background: var(--hoodlums-green-hover) !important;
+}
+
+#launch-studio .build-site-saved-hint,
+#launch-studio .build-site-regenerate-label {
+  color: var(--studio-muted-2) !important;
+  font-family: var(--studio-mono) !important;
+}
+
+#launch-studio .build-site-regenerate button {
+  border-radius: 999px !important;
+  font-family: var(--studio-mono) !important;
+}
+
 #launch-studio .build-site-secondary-button {
   min-height: 58px !important;
   border-color: var(--studio-line) !important;

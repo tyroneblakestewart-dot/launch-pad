@@ -36,7 +36,7 @@ describe("BuildSiteGate refresh() only mutates the DOM when content changed (iss
 
     expect(body).toContain("const readinessFlipped = ready !== lastReady;");
     expect(body).toContain(
-      "if (fromPoll && !readinessFlipped && isBuilderTextInputFocused(elements.panel)) return;",
+      "if (fromPoll && !readinessFlipped && !savedSiteFlipped && isBuilderTextInputFocused(elements.panel)) return;",
     );
     expect(gate).toContain("function isBuilderTextInputFocused(panel: Element): boolean {");
   });
