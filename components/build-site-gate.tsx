@@ -100,6 +100,35 @@ export function BuildSiteGate() {
     let generationTimeout: number | null = null;
     let lastReady = false;
     let lastChecklistHtml: string | null = null;
+    // Owner report, 13 Sep 2026: with a generated site already saved, the
+    // generator button still read "GENERATE …" and another tap made a whole
+    // new (paid, for bespoke) design — wasteful and confusing. Once a site is
+    // saved the gate's primary action becomes OPEN GENERATED SITE, and making
+    // another design is an explicit, separately-labelled choice.
+    let savedSite = false;
+    let generatingMode: GenerateMode | null = null;
+    let savedHint: HTMLParagraphElement | null = null;
+    let regenerateRow: HTMLDivElement | null = null;
+    let regenerateFree: HTMLButtonElement | null = null;
+    let regenerateBespoke: HTMLButtonElement | null = null;
+
+    // The studio renders `.site-preview-reopen` (with its "Reopen generated
+    // site" button) exactly when `project.generatedSiteHtml` is set
+    // (components/token-studio.tsx), so that panel is this DOM-driven gate's
+    // one source of truth for "a site is saved" — no second flag to drift.
+    const SAVED_SITE_PANEL_SELECTOR = ".preview-panel .site-preview-reopen";
+    const REOPEN_BUTTON_SELECTOR = ".reopen-generated-site-button";
+
+    function detectSavedSite(): boolean {
+      return Boolean(document.querySelector(SAVED_SITE_PANEL_SELECTOR));
+    }
+
+    // Opening never generates: it presses the studio's own "Reopen generated
+    // site" button, which dispatches REOPEN_GENERATED_SITE_EVENT with the
+    // stored page (issue #198) — the same path the saved-site panel uses.
+    function openSavedSite() {
+      document.querySelector<HTMLButtonElement>(REOPEN_BUTTON_SELECTOR)?.click();
+    }
 
     function clearGenerationTimeout() {
       if (generationTimeout === null) return;
@@ -171,20 +200,33 @@ export function BuildSiteGate() {
           <p class="build-site-hint">Upload artwork to define the site — its palette, subject and mood shape the design.</p>
           <button class="build-site-secondary-button" type="button">Generate a bespoke AI site</button>
           <p class="build-site-secondary-hint">Takes longer and produces a one-off, fully custom AI design.</p>
+          <p class="build-site-saved-hint" hidden>Your saved design opens in the preview window. Nothing new is generated unless you choose a different design below.</p>
+          <div class="build-site-regenerate" hidden>
+            <span class="build-site-regenerate-label">Want a different design?</span>
+            <button class="build-site-regenerate-free" type="button">Regenerate from artwork · free</button>
+            <button class="build-site-regenerate-bespoke" type="button">Generate a new bespoke design · uses one of your paid designs</button>
+          </div>
         `;
         uploadBox.insertAdjacentElement("afterend", gate);
         button = gate.querySelector<HTMLButtonElement>(".build-site-button");
         secondaryButton = gate.querySelector<HTMLButtonElement>(".build-site-secondary-button");
         checklist = gate.querySelector<HTMLDivElement>(".build-site-checklist");
         hint = gate.querySelector<HTMLParagraphElement>(".build-site-hint");
+        savedHint = gate.querySelector<HTMLParagraphElement>(".build-site-saved-hint");
+        regenerateRow = gate.querySelector<HTMLDivElement>(".build-site-regenerate");
+        regenerateFree = gate.querySelector<HTMLButtonElement>(".build-site-regenerate-free");
+        regenerateBespoke = gate.querySelector<HTMLButtonElement>(".build-site-regenerate-bespoke");
 
         const resolvedPanel: Element = panel;
         function startGeneration(mode: GenerateMode) {
-          if (button?.disabled || generating) return;
+          // Readiness, not the primary button's own state: in saved-site mode
+          // that button is the opener and is enabled regardless of the fields.
+          if (!lastReady || generating) return;
           const detail = currentDetail(resolvedPanel, mode);
           const next = startSitePreviewGeneration();
           unlocked = next.unlocked;
           generating = next.generating;
+          generatingMode = mode;
           if (hint) {
             hint.textContent =
               mode === "bespoke"
@@ -207,8 +249,13 @@ export function BuildSiteGate() {
           window.dispatchEvent(new CustomEvent("launchpad:generate-site", { detail }));
         }
 
-        button?.addEventListener("click", () => startGeneration("free"));
+        // With a site saved the primary button opens it; it only generates
+        // when nothing is saved yet. A new design is always the explicit
+        // "want a different design?" choice below, never the big button.
+        button?.addEventListener("click", () => (savedSite ? openSavedSite() : startGeneration("free")));
         secondaryButton?.addEventListener("click", () => startGeneration("bespoke"));
+        regenerateFree?.addEventListener("click", () => startGeneration("free"));
+        regenerateBespoke?.addEventListener("click", () => startGeneration("bespoke"));
       }
 
       if (!overlay || !overlay.isConnected) {
@@ -262,9 +309,14 @@ export function BuildSiteGate() {
       ];
       const ready = checks.every((item) => item.complete);
       const readinessFlipped = ready !== lastReady;
+      // A site appearing or disappearing (saved, reopened, regenerated, or
+      // its identity edited away) is a real state change, like readiness.
+      const savedSiteNow = detectSavedSite();
+      const savedSiteFlipped = savedSiteNow !== savedSite;
 
-      if (fromPoll && !readinessFlipped && isBuilderTextInputFocused(elements.panel)) return;
+      if (fromPoll && !readinessFlipped && !savedSiteFlipped && isBuilderTextInputFocused(elements.panel)) return;
       lastReady = ready;
+      savedSite = savedSiteNow;
 
       if (!ready) unlocked = false;
 
@@ -293,6 +345,35 @@ export function BuildSiteGate() {
           ? "GENERATING BESPOKE SITE…"
           : "Generate a bespoke AI site";
       }
+      if (!generating) generatingMode = null;
+      // Saved-site mode: one primary OPEN button (shown even under the paid
+      // plan, where the free generator is otherwise hidden), the bespoke
+      // generator button tucked away, and regeneration as its own labelled
+      // row — the free one and the paid one each only when the plan has it.
+      const fields = planFields(elements.panel);
+      const secondaryHint = gate?.querySelector<HTMLElement>(".build-site-secondary-hint");
+      if (savedSite) {
+        button.hidden = false;
+        button.disabled = generating;
+        button.textContent = generating
+          ? generatingMode === "bespoke"
+            ? "GENERATING BESPOKE SITE…"
+            : "ANALYSING ARTWORK…"
+          : "OPEN GENERATED SITE";
+        if (secondaryButton) secondaryButton.hidden = true;
+        if (secondaryHint) secondaryHint.hidden = true;
+      }
+      if (savedHint) savedHint.hidden = !savedSite || generating;
+      if (regenerateRow) regenerateRow.hidden = !savedSite || generating;
+      if (regenerateFree) {
+        regenerateFree.hidden = !fields.freeGenerator;
+        regenerateFree.disabled = !ready || generating;
+      }
+      if (regenerateBespoke) {
+        regenerateBespoke.hidden = !fields.bespokeGenerator;
+        regenerateBespoke.disabled = !ready || generating;
+      }
+      gate?.classList.toggle("saved-site", savedSite);
       gate?.classList.toggle("ready", ready);
       gate?.classList.toggle("unlocked", unlocked);
       gate?.classList.toggle("generating", generating);
@@ -476,6 +557,42 @@ export function BuildSiteGate() {
       }
       .build-site-gate.bespoke-only .build-site-secondary-button::after { font: 800 11px "Inter", sans-serif; letter-spacing: .01em; }
       .build-site-secondary-hint { margin: 0; color: var(--text-faint, #6f746e); font: 9px/1.5 "IBM Plex Mono", monospace; }
+      /* Saved-site mode (owner report, 13 Sep 2026): the primary button opens
+         the saved design and always wears the solid CTA recipe, even while
+         "unlocked" would otherwise turn it into an outline chip. */
+      .build-site-gate.saved-site .build-site-button:not(:disabled) {
+        color: var(--cta-color, #071008);
+        border-color: transparent;
+        background: var(--cta-bg, #c6f53e);
+        box-shadow: 0 10px 30px -12px rgba(198,245,62,.6);
+        text-shadow: none;
+      }
+      .build-site-saved-hint { margin: 0; color: var(--text-faint, #6f746e); font: 9px/1.5 "IBM Plex Mono", monospace; }
+      .build-site-saved-hint[hidden], .build-site-regenerate[hidden],
+      .build-site-regenerate-free[hidden], .build-site-regenerate-bespoke[hidden] { display: none; }
+      .build-site-regenerate {
+        display: grid;
+        gap: 6px;
+        padding-top: 9px;
+        border-top: var(--well-border, 1px solid rgba(255,255,255,.09));
+      }
+      .build-site-regenerate-label { color: var(--text-faint, #6f746e); font: 600 9px "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
+      .build-site-regenerate button {
+        min-height: 32px;
+        padding: 0 10px;
+        justify-self: start;
+        border: var(--well-border, 1px solid rgba(255,255,255,.09));
+        border-radius: 10px;
+        color: var(--text-secondary, #c3c9c4);
+        background: var(--well-bg, #0a0f0c);
+        box-shadow: none;
+        font: 700 9px "IBM Plex Mono", monospace;
+        letter-spacing: .05em;
+        text-align: left;
+      }
+      .build-site-regenerate button:hover:not(:disabled) { border-color: rgba(198,245,62,.5); transform: none; }
+      .build-site-regenerate button:disabled { cursor: not-allowed; opacity: .55; }
+      @media (pointer: coarse) { .build-site-regenerate button { min-height: 44px; } }
       .build-site-optional-marker {
         float: right;
         margin-left: 8px;
