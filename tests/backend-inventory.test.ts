@@ -339,6 +339,7 @@ describe("backend test inventory", () => {
       "lib/server/system-health.ts",
       "lib/server/telegram.ts",
       "lib/server/test-access.ts",
+      "lib/server/token-buy-venue.ts",
       "lib/server/token-chat-creator.ts",
       "lib/server/token-chat-store.ts",
       "lib/server/token-holder-stats.ts",

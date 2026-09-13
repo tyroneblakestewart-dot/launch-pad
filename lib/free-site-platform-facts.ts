@@ -30,6 +30,15 @@ export type FreeSitePlatformFacts = {
   chart: FreeSiteChartFact;
   /** ISO timestamp once liquidity is locked at graduation, otherwise null. */
   lpLockedAt: string | null;
+  /**
+   * Where the Buy button goes when somewhere other than the token's Hoodlums
+   * trade page is the honest answer — today, the Uniswap app with the token
+   * pre-filled once it has graduated into its locked pool (owner direction,
+   * 13 Sep 2026; resolved server-side by lib/server/token-buy-venue.ts).
+   * Omitted/empty means the Hoodlums trade page, the only place a
+   * still-bonding token can be bought. Never affects the chart link.
+   */
+  buyHref?: string;
 };
 
 const DEFAULT_CHAIN: SupportedChain = "robinhood";
@@ -129,13 +138,16 @@ export function substituteFreeSitePlatformFacts(html: string, facts: FreeSitePla
   output = selectBlock(output, "FOOTER_CONTRACT_KNOWN", hasContract);
   output = selectBlock(output, "FOOTER_CONTRACT_PENDING", !hasContract);
 
-  // Buy always goes to the token's Hoodlums trade page: while bonding it is
-  // the only place the token can be bought (a Dexscreener pair does not
-  // exist yet), and once graduated that page links on to the locked pool.
+  // Buy goes to the token's Hoodlums trade page while bonding — the only
+  // place the token can be bought (a Dexscreener pair does not exist yet) —
+  // and to the Uniswap app with the token pre-filled once graduated, when
+  // the caller has resolved that (facts.buyHref, lib/server/token-buy-venue.ts).
   // Previously a found pair sent Buy to Dexscreener and no pair sent it to a
   // Dexscreener *search*, which is a dead end for every bonding-curve token.
+  // The chart link ({{TRADE_URL}}) always stays on the Hoodlums trade page.
+  const buyHref = hasContract && facts.buyHref?.trim() ? facts.buyHref.trim() : tradeUrl;
   output = output.replaceAll("{{CONTRACT_ADDRESS}}", escapeHtml(contractAddress));
-  output = output.replaceAll("{{BUY_HREF}}", escapeHtml(tradeUrl));
+  output = output.replaceAll("{{BUY_HREF}}", escapeHtml(buyHref));
   output = output.replaceAll("{{TRADE_URL}}", escapeHtml(tradeUrl));
   output = output.replaceAll(
     "{{EXPLORER_URL}}",

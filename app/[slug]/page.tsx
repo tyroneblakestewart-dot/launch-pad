@@ -17,6 +17,7 @@ import { lookupDexscreenerPair } from "@/lib/server/dexscreener";
 import { resolvePageContent } from "@/lib/server/page-content";
 import { getPublicGeneratedSiteBySlug } from "@/lib/server/public-generated-sites";
 import { decodeArtworkDataUrl } from "@/lib/server/public-site-artwork";
+import { resolvePublishedSiteBuyHref } from "@/lib/server/token-buy-venue";
 import { resolvePublicSiteCanonicalUrls } from "@/lib/server/public-site-subdomain";
 import { lookupTokenHolderStats } from "@/lib/server/token-holders";
 import { publicSitePathUrl } from "@/lib/subdomain-routing";
@@ -125,11 +126,18 @@ export default async function PublicGeneratedSitePage({ params, searchParams }: 
   const isFreeSiteTemplate = hasGeneratedHtml && isFreeSiteTemplateHtml(site.generatedSiteHtml as string);
 
   let html = site.generatedSiteHtml;
+  // Buy goes to the Uniswap app once the token has graduated into its locked
+  // pool, otherwise (or when no Uniswap slug is configured for the chain)
+  // stays on the token's Hoodlums trade page — lib/server/token-buy-venue.ts.
+  const buyHref = hasGeneratedHtml
+    ? await resolvePublishedSiteBuyHref({ chain: site.chain, contractAddress: site.contractAddress })
+    : undefined;
   if (hasGeneratedHtml && !isFreeSiteTemplate && isBespokeLinksHtml(site.generatedSiteHtml as string)) {
     // Bespoke pages carry Buy / explorer / contract placeholders (lib/bespoke-site-links.ts).
     html = substituteBespokePlatformFacts(site.generatedSiteHtml as string, {
       contractAddress: site.contractAddress,
       chain: site.chain,
+      buyHref,
     });
   }
   if (isFreeSiteTemplate) {
@@ -139,6 +147,7 @@ export default async function PublicGeneratedSitePage({ params, searchParams }: 
       chain: site.chain,
       chart,
       lpLockedAt: site.lpLockedAt ?? null,
+      buyHref,
     });
   }
 
