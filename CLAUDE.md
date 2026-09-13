@@ -4026,3 +4026,30 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   the rule and the token counts. Validated on the final commit:
   `npm run test:app` — 342 test files / 3995 tests passing; `npm run lint`
   — 0 errors (11 pre-existing warnings); `npm run build` — succeeds.
+
+- Cost ledger: a deliberately skipped row now says so (owner report, 12 Sep
+  2026: "the ledger isn't updating", alongside the empty-page report above).
+  Stated plainly: the ledger's cause is NOT established here — production
+  could not be queried from this session. What was found: every paid
+  attempt is metered by `recordTextOperationCostBestEffort`
+  (`lib/server/ai-operation-cost-store.ts`), which has exactly two ways to
+  leave no row. A failed insert is caught and logged
+  ("AI operation cost recording failed."). A provider payload carrying no
+  `usage` was skipped in silence — by design, never fabricating a row — but
+  that made the two indistinguishable in the Vercel log, so a silent ledger
+  could not be diagnosed from the outside. That one deliberate no-op now
+  warns with the feature key, provider and model ("AI operation cost not
+  recorded: the provider response carried no usage"), so the next attempt's
+  log names which of the two it is. Nothing about when a row is written
+  changed. This PR (#554) was cut on the same report as #553 and originally
+  carried its own 64,000-token budget and reasoning-token diagnostics; #553
+  landed first with the same budget, its own token counts on rejection and
+  the raw-HTML page stage, so those parts were dropped in the merge rather
+  than implemented twice — the ledger warning is what remains. New test in
+  `tests/ai-operation-cost-store.test.ts` (no row, and the exact warning);
+  no existing assertion was changed. Open question for the owner: whether
+  the earlier, non-streamed "Bespoke artwork identity" row lands while the
+  streamed full-page row does not — that splits "streaming path" from
+  "every cost write". Validated on the merged head: `npm run test:app` —
+  342 test files / 3996 tests passing; `npm run lint` — 0 errors (11
+  pre-existing warnings); `npm run build` — succeeds.

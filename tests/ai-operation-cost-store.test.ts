@@ -110,6 +110,30 @@ describe("recordTextOperationCostBestEffort", () => {
     expect(sink).toHaveLength(0);
   });
 
+  // Owner report, 12 Sep 2026 ("the ledger isn't updating"): a skipped row used
+  // to be silent, so it could not be told apart from a failed insert. Now the
+  // one case that skips on purpose says so.
+  it("warns, naming the feature and model, when the provider sent no usage — the only case that records nothing on purpose", async () => {
+    const sink: RecordAiOperationCostInput[] = [];
+    setAiOperationCostStoreForTests(createMemoryAiOperationCostStore(sink));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await recordTextOperationCostBestEffort({
+      featureKey: "bespoke.full-page",
+      walletAddress: null,
+      accessSource: "paid",
+      provider: "openai",
+      response: { output: [{ type: "message", content: [{ type: "output_text", text: "{}" }] }] },
+      fallbackModel: "gpt-5",
+    });
+
+    expect(sink).toHaveLength(0);
+    expect(warn).toHaveBeenCalledWith(
+      "AI operation cost not recorded: the provider response carried no usage",
+      JSON.stringify({ featureKey: "bespoke.full-page", provider: "openai", model: "gpt-5" }),
+    );
+  });
+
   it("counts completed web_search_call output items into the recorded row", async () => {
     const sink: RecordAiOperationCostInput[] = [];
     setAiOperationCostStoreForTests(createMemoryAiOperationCostStore(sink));
