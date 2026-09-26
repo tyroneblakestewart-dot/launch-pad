@@ -4154,3 +4154,52 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   commit: `npm run test:app` — 344 test files / 4,018 tests passing;
   `npm run lint` — 0 errors (11 pre-existing warnings); `npm run build` —
   succeeds.
+
+- Build 02 opens the saved site instead of generating another (owner report,
+  13 Sep 2026: "when I open a saved site that button, if pressed, generates
+  another new site — it can be wasteful and confusing"). With a generated
+  site already saved, the gate's button still read "GENERATE …" (or the
+  premium controller's "PREMIUM · GENERATE BESPOKE AI SITE") and a tap made a
+  whole new design — for the paid plan, one of the purchase's three. Fix in
+  `components/build-site-gate.tsx`, which is DOM-driven and reads the
+  studio's own saved-site panel as its one source of truth: the studio
+  renders `.site-preview-reopen` with its "Reopen generated site" button
+  exactly when `project.generatedSiteHtml` is set, so `detectSavedSite()` is
+  that element's presence and no second flag can drift. In saved mode the
+  primary button (shown even under the paid plan, where the free generator
+  is otherwise hidden) reads **OPEN GENERATED SITE**, wears the solid CTA,
+  is enabled regardless of field readiness, and on click presses the
+  studio's Reopen button — the same `REOPEN_GENERATED_SITE_EVENT` path
+  (issue #198), never a generate; the bespoke generator button and its
+  premium hint are hidden; a saved hint says nothing new is generated unless
+  asked. Making another design is an explicit, separately-labelled row,
+  "Want a different design?" — "Regenerate from artwork · free" and
+  "Generate a new bespoke design · uses one of your paid designs", each only
+  when the plan has that generator, gated on the same readiness the old
+  buttons were, hidden while generating — through the same single
+  `startGeneration(mode)`/dispatch site; the primary shows the mode's busy
+  label meanwhile. `startGeneration` now gates on `lastReady` rather than
+  the primary button's disabled state (which is the opener's, always
+  enabled), and a site appearing or disappearing counts as a state change
+  for the focus-aware 250ms poll. `app/hoodlums-studio-consistency.css`
+  gains a `#launch-studio .build-site-gate.saved-site …` rule at the same
+  `!important` id-specificity as its "unlocked" outline rule — without it
+  the opener rendered as a translucent outline chip (caught by looking, not
+  by the assertions). **Tests changed, not only added (rule 8, stated
+  plainly):** issue #323's `tests/build-site-gate-refresh-stability.test.ts`
+  pinned the focus-aware poll's exact early-return line, which now also
+  carries `!savedSiteFlipped` — that one string was updated and nothing
+  else in it. New `tests/build-site-gate-saved-site.test.ts` pins the
+  selector contract, the open-vs-generate click split, the regenerate row,
+  the poll rule and both stylesheets. Rule 10 needs nothing (studio control only, nothing
+  leaves the browser). Verified in headless Chromium against the real
+  studio with a seeded saved project (localStorage index + IndexedDB blob),
+  18 checks at 1400px and 390px: OPEN reads and paints as the CTA, clicking
+  it dispatches only the reopen event and the preview window opens, the
+  bespoke generator button is hidden, the regenerate row shows the free link
+  under `bond-site`, the bespoke link under `bond-pro-site`, both with no
+  plan, and the bespoke link dispatches a real `mode: "bespoke"` generate
+  with the busy label and the row hidden at dispatch — not on a physical
+  iPhone; the owner confirms on device. Validated on the final commit:
+  `npm run test:app` — 345 test files / 4,024 tests passing; `npm run lint`
+  — 0 errors (11 pre-existing warnings); `npm run build` — succeeds.
