@@ -13,6 +13,7 @@ import {
   type GenerateSitePageProgressStage,
 } from "@/lib/generate-site-page-stream-protocol";
 import { PROJECT_SAVE_RESULT_EVENT, type ProjectSaveResultDetail } from "@/lib/project-save-result";
+import { SITE_GENERATION_RETRY_EVENT, type SiteGenerationRetryDetail } from "@/lib/site-preview-state";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 
 type GenerateDetail = {
@@ -141,36 +142,33 @@ export function computeGeneratedPreviewScale(
   return { designWidth: DESKTOP_PREVIEW_DESIGN_WIDTH, scale: Math.min(1, width / DESKTOP_PREVIEW_DESIGN_WIDTH) };
 }
 
-export function getGeneratedPreviewDesignHeight(reportedHeight: number): number {
-  return Math.min(16_000, Math.max(700, Math.ceil(reportedHeight)));
-}
-
-// Issue #327 problem 1 (mobile only — desktop keeps the reportedHeight-driven
-// height above unchanged): the windowed preview used to size the iframe's own
-// height from the generated page's *reported* scrollHeight. That reported
-// height is itself measured inside the iframe, and the free-site template
-// (and plenty of bespoke hero sections) size blocks with viewport-relative
-// units — a fractional small-viewport-height minimum on the centred hero, a
-// full one on body — which resolve against that very same iframe height.
-// Feeding scrollHeight back into the iframe's own height therefore chases itself
-// upward: a taller iframe makes the svh-sized hero taller, which makes
-// scrollHeight taller, which grows the iframe again. The result is a hero
-// block many times taller than one screen, with its (vertically centred)
-// heading and CTA scrolled far below the one-screenful slice the scaled
-// preview shows before any scrolling — only the hero's background is
-// visible. Full screen never hit this because its height is forced by
-// `!important` CSS, bypassing frame.style.height entirely regardless of
-// what JS computes.
+// Issue #327 problem 1, now for desktop too (owner report, 28 Sep 2026: the
+// windowed desktop preview showed the nav and a blank body while full screen
+// worked): the windowed preview used to size the iframe's own height from the
+// generated page's *reported* scrollHeight. That reported height is itself
+// measured inside the iframe, and the free-site template (`#hero { min-height:
+// 100svh }`, `body { min-height: 100svh }`) and most bespoke hero sections
+// size blocks with viewport-relative units, which resolve against that very
+// same iframe height. Feeding scrollHeight back into the iframe's own height
+// therefore chases itself upward: a taller iframe makes the vh-sized hero
+// taller, which makes scrollHeight taller, which grows the iframe again,
+// until the 16,000px cap — reproduced in headless Chromium: frame 16,000px,
+// hero 16,000px, hero content 7,863px below the top, so the one-screenful
+// slice showed only the nav and the hero's background. Full screen never hit
+// this because its height is forced by `!important` CSS, bypassing
+// frame.style.height entirely regardless of what JS computes. #327 fixed it
+// on phones only and deliberately left desktop on the reported height; the
+// mechanism is identical on desktop, so the same rule applies there now.
 //
-// The fix: on mobile, size the iframe's own height from the space actually
-// available (so svh/vh resolve against a believable device viewport, same
-// as a real phone), and let the iframe's existing internal `overflow: auto`
-// (see .full-generated-page-frame) reveal anything taller by scrolling —
-// exactly like full screen already does. This also keeps the design
-// width/height pair proportional (both scaled by the same MOBILE_PREVIEW_SCALE
-// factor), so the composition shown is a faithful miniature of a real phone
-// screen instead of a width-scaled-but-height-mismatched crop.
-export function getMobileGeneratedPreviewDesignHeight(availableHeight: number, scale: number): number {
+// The rule: size the iframe's own height from the space actually available
+// (so vh/svh resolve against a believable viewport), and let the iframe's
+// internal scrolling (`scrolling="yes"`, see .full-generated-page-frame)
+// reveal anything taller — exactly like full screen already does. The design
+// width/height pair stays proportional (both scaled by the same factor), so
+// the composition shown is a faithful miniature of one real screen instead of
+// a width-scaled-but-height-mismatched crop. The reported height is still
+// received (applyHeight) but no longer drives sizing on any viewport.
+export function getGeneratedPreviewFrameDesignHeight(availableHeight: number, scale: number): number {
   return Math.max(1, Math.round(Math.max(1, availableHeight) / scale));
 }
 
@@ -382,7 +380,15 @@ function stageMessage(stage: GenerateSitePageProgressStage, hasInspiration: bool
   }
 }
 
-function setPreviewStatus(mode: PreviewStatus, message: string, headline?: string) {
+// Issue #422: a failed status carries a "Try again" button; the generating
+// status never does, so the button is removed whenever the panel is reused
+// for a new run.
+function setPreviewStatus(
+  mode: PreviewStatus,
+  message: string,
+  headline?: string,
+  onRetry?: () => void,
+) {
   const site = previewElement();
   let status = site.querySelector<HTMLElement>(".full-generated-page-status");
   if (!status) {
@@ -399,9 +405,34 @@ function setPreviewStatus(mode: PreviewStatus, message: string, headline?: strin
     mode === "generating" ? headline || "Building the finished website…" : "No finished website was produced";
   status.querySelector("p")!.textContent = message;
 
+  let retryButton = status.querySelector<HTMLButtonElement>(".full-generated-page-retry-button");
+  if (mode === "failed" && onRetry) {
+    if (!retryButton) {
+      retryButton = document.createElement("button");
+      retryButton.type = "button";
+      retryButton.className = "full-generated-page-retry-button";
+      retryButton.textContent = "Try again";
+      status.appendChild(retryButton);
+    }
+    retryButton.onclick = onRetry;
+  } else if (retryButton) {
+    retryButton.onclick = null;
+    retryButton.remove();
+  }
+
   site.classList.toggle("full-page-generating", mode === "generating");
   site.classList.toggle("full-page-failed", mode === "failed");
   return site;
+}
+
+// The retry goes through the Build 02 gate (components/build-site-gate.tsx)
+// rather than re-running the request here, so the gate's busy flag, timeout,
+// hint and button locks stay the one source of truth for a running
+// generation.
+function requestGenerationRetry(mode: SiteGenerationRetryDetail["mode"]): void {
+  window.dispatchEvent(
+    new CustomEvent<SiteGenerationRetryDetail>(SITE_GENERATION_RETRY_EVENT, { detail: { mode } }),
+  );
 }
 
 function clearPreviewStatus(site: HTMLElement) {
@@ -542,17 +573,22 @@ function renderGeneratedWebsite(
   // `!important` there), so this always computes the windowed values and
   // lets that CSS override them when full screen is active — no branch
   // needed here, and toggling never remounts the iframe.
+  // Kept so the bridge's reports (issue #323 part 2.4 debouncing, below)
+  // still land somewhere, but no longer read by layout() — see
+  // getGeneratedPreviewFrameDesignHeight.
   let reportedHeight = 1800;
   function layout() {
     const availableWidth = viewport.clientWidth || container.clientWidth || 1;
     const mobile = isMobilePreviewViewport();
     const { designWidth, scale: factor } = computeGeneratedPreviewScale(availableWidth, mobile);
-    // Mobile derives its design height from the space actually available
-    // (issue #327 problem 1); desktop keeps the old reportedHeight-driven
-    // value untouched.
-    const designHeight = mobile
-      ? getMobileGeneratedPreviewDesignHeight(viewport.clientHeight || container.clientHeight || 1, factor)
-      : getGeneratedPreviewDesignHeight(reportedHeight);
+    // Both viewports derive the design height from the space actually
+    // available, never from the page's reported content height (issue #327
+    // problem 1; desktop since 28 Sep 2026 — see
+    // getGeneratedPreviewFrameDesignHeight).
+    const designHeight = getGeneratedPreviewFrameDesignHeight(
+      viewport.clientHeight || container.clientHeight || 1,
+      factor,
+    );
     frame.style.width = `${Math.round(designWidth)}px`;
     frame.style.height = `${designHeight}px`;
     frame.style.transform = `scale(${factor})`;
@@ -893,21 +929,37 @@ export function FullWebsiteGenerator() {
           }),
         );
       } catch (error) {
-        if (currentGeneration !== generationNumber || isAbortError(error)) return;
+        // A real cancellation — a newer generation superseding this one, the
+        // preview closing, a reopen, or the component unmounting — always
+        // aborts THIS run's controller (and bumps generationNumber), so it is
+        // filtered out here and the panel is left to whoever cancelled it.
+        if (currentGeneration !== generationNumber || controller.signal.aborted) return;
+        // Issue #422: reaching this line with an AbortError means it is the
+        // synthetic one generate-site-style-auth-bridge.tsx throws to
+        // short-circuit a bespoke request it has already reported through its
+        // own upgrade/wallet UI (the 403 bespoke-plan-required upsell, a
+        // cancelled wallet prompt). It used to return early above and leave
+        // this panel spinning forever; it still needs the spinner stopped and
+        // the message shown, just without a second, redundant failure event.
+        const reportedByAuthBridge = isAbortError(error);
         const message =
           error instanceof Error ? error.message : "The full website could not be generated.";
         setPreviewStatus(
           "failed",
           `${message} The terminal-style base preview has not been accepted as your generated website.`,
+          undefined,
+          () => requestGenerationRetry(mode),
         );
-        window.dispatchEvent(
-          new CustomEvent("launchpad:site-generation-failed", {
-            detail: {
-              message,
-              previewAvailable: false,
-            },
-          }),
-        );
+        if (!reportedByAuthBridge) {
+          window.dispatchEvent(
+            new CustomEvent("launchpad:site-generation-failed", {
+              detail: {
+                message,
+                previewAvailable: false,
+              },
+            }),
+          );
+        }
       } finally {
         if (activeController === controller) activeController = null;
       }
@@ -1150,6 +1202,22 @@ export function FullWebsiteGenerator() {
         background: linear-gradient(155deg, #fff8f6, #f7ece8);
       }
       .site-preview.full-page-failed .full-generated-page-status span { color: #a13b29; }
+      .full-generated-page-retry-button {
+        min-height: 44px;
+        padding: 0 22px;
+        border: 1px solid rgba(161, 59, 41, .4);
+        border-radius: 999px;
+        background: #a13b29;
+        color: #fff8f6;
+        font: 800 12px/1 system-ui, sans-serif;
+        letter-spacing: .04em;
+        cursor: pointer;
+      }
+      .full-generated-page-retry-button:hover { background: #8a3121; }
+      .full-generated-page-retry-button:focus-visible {
+        outline: 2px solid #a13b29;
+        outline-offset: 2px;
+      }
       @keyframes hoodlums-page-spin { to { transform: rotate(360deg); } }
       @media (max-width: 767px) {
         .site-preview.full-generated-page {

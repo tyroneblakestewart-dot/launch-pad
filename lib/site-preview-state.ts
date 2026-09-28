@@ -10,6 +10,17 @@ export function siteGenerationTimeoutMs(mode: "free" | "bespoke"): number {
   return mode === "bespoke" ? BESPOKE_SITE_GENERATION_TIMEOUT_MS : SITE_GENERATION_TIMEOUT_MS;
 }
 
+/**
+ * Issue #422: the studio preview's failed-state panel offers "Try again".
+ * Rather than re-running the request itself, it asks the Build 02 gate to
+ * start a fresh generation of the same mode through this event, so the
+ * gate's own state (its busy flag, timeout, hint and button locks) stays
+ * the single source of truth for "a generation is running".
+ */
+export const SITE_GENERATION_RETRY_EVENT = "launchpad:site-generation-retry";
+
+export type SiteGenerationRetryDetail = { mode: "free" | "bespoke" };
+
 export type SitePreviewState = {
   unlocked: boolean;
   generating: boolean;

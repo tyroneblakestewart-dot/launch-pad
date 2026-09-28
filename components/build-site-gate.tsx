@@ -5,6 +5,8 @@ import { STUDIO_FIELD_PLAN_ATTRIBUTE, offersWebsiteBuild, studioFieldsForLaunchP
 import { REOPEN_GENERATED_SITE_EVENT } from "@/components/full-website-generator";
 import { FREE_SITE_SECTION_KEYS, type FreeSiteSections } from "@/lib/free-site-sections";
 import {
+  SITE_GENERATION_RETRY_EVENT,
+  type SiteGenerationRetryDetail,
   siteGenerationTimeoutMs,
   failSitePreviewGeneration,
   finishSitePreviewGeneration,
@@ -111,6 +113,11 @@ export function BuildSiteGate() {
     let regenerateRow: HTMLDivElement | null = null;
     let regenerateFree: HTMLButtonElement | null = null;
     let regenerateBespoke: HTMLButtonElement | null = null;
+    // Issue #422: the preview panel's "Try again" asks this gate to start a
+    // fresh generation (SITE_GENERATION_RETRY_EVENT), so the gate's own
+    // busy/timeout/hint state drives the retry exactly like a button tap.
+    // Assigned once the gate's buttons exist, where startGeneration lives.
+    let startGenerationFromEvent: ((mode: GenerateMode) => void) | null = null;
 
     // The studio renders `.site-preview-reopen` (with its "Reopen generated
     // site" button) exactly when `project.generatedSiteHtml` is set
@@ -252,6 +259,7 @@ export function BuildSiteGate() {
         // With a site saved the primary button opens it; it only generates
         // when nothing is saved yet. A new design is always the explicit
         // "want a different design?" choice below, never the big button.
+        startGenerationFromEvent = startGeneration;
         button?.addEventListener("click", () => (savedSite ? openSavedSite() : startGeneration("free")));
         secondaryButton?.addEventListener("click", () => startGeneration("bespoke"));
         regenerateFree?.addEventListener("click", () => startGeneration("free"));
@@ -437,9 +445,18 @@ export function BuildSiteGate() {
       window.requestAnimationFrame(() => refresh());
     }
 
+    // startGeneration itself refuses while a generation is running or the
+    // fields are not ready, so a retry can never double-start or skip the
+    // checklist; an unknown mode falls back to the free generator.
+    function onRetry(event: Event) {
+      const mode = (event as CustomEvent<SiteGenerationRetryDetail>).detail?.mode;
+      startGenerationFromEvent?.(mode === "bespoke" ? "bespoke" : "free");
+    }
+
     window.addEventListener("launchpad:site-generated", onGenerated);
     window.addEventListener("launchpad:site-generation-failed", onFailed);
     window.addEventListener(REOPEN_GENERATED_SITE_EVENT, onReopen);
+    window.addEventListener(SITE_GENERATION_RETRY_EVENT, onRetry);
     // fromPoll=true only for this routine timer — every event-driven call
     // above (generated/failed/reopen) always applies immediately regardless
     // of input focus, since those reflect a real state change, not polling.
@@ -452,6 +469,7 @@ export function BuildSiteGate() {
       window.removeEventListener("launchpad:site-generated", onGenerated);
       window.removeEventListener("launchpad:site-generation-failed", onFailed);
       window.removeEventListener(REOPEN_GENERATED_SITE_EVENT, onReopen);
+      window.removeEventListener(SITE_GENERATION_RETRY_EVENT, onRetry);
       gate?.remove();
       overlay?.remove();
       document

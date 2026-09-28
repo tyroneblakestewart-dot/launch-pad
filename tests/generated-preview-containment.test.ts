@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   computeGeneratedPreviewScale,
-  getGeneratedPreviewDesignHeight,
+  getGeneratedPreviewFrameDesignHeight,
   DESKTOP_PREVIEW_DESIGN_WIDTH,
   MOBILE_PREVIEW_SCALE,
 } from "@/components/full-website-generator";
@@ -19,10 +19,13 @@ async function generatorSource() {
 // design width and scales it down, so it needs a design width/scale pair
 // instead of a single fixed height bridge.
 describe("generated website preview containment", () => {
-  it("clamps the design height the same way regardless of viewport", () => {
-    expect(getGeneratedPreviewDesignHeight(480)).toBe(700);
-    expect(getGeneratedPreviewDesignHeight(16_000)).toBe(16_000);
-    expect(getGeneratedPreviewDesignHeight(48_000)).toBe(16_000);
+  it("derives the design height from the available space at the scale factor, regardless of viewport (28 Sep 2026)", () => {
+    // The old reported-height clamp (700..16,000) is gone: on desktop it let a
+    // 100vh hero inflate the iframe to the cap. Desktop and mobile now share
+    // one rule — available height divided by the scale factor.
+    expect(getGeneratedPreviewFrameDesignHeight(731, 1180 / 1280)).toBe(Math.round(731 / (1180 / 1280)));
+    expect(getGeneratedPreviewFrameDesignHeight(739, MOBILE_PREVIEW_SCALE)).toBe(Math.round(739 / MOBILE_PREVIEW_SCALE));
+    expect(getGeneratedPreviewFrameDesignHeight(0, 1)).toBe(1);
   });
 
   it("uses a fixed desktop design width, scaled down to fit what's available", () => {

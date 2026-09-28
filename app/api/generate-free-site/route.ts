@@ -105,23 +105,33 @@ const DESIGN_RETRY_SAFETY_MARGIN_MS = 5_000;
 // to the provider; fail fast instead.
 const DESIGN_RETRY_MIN_TIMEOUT_MS = 3_000;
 
-type ProviderResult =
-  | { ok: true; payload: OpenAIResponse }
-  | {
-      ok: false;
-      kind: "network" | "http" | "invalid";
-      status?: number;
-      detail?: string;
-    };
+type ProviderFailure = {
+  ok: false;
+  kind: "network" | "http" | "invalid";
+  status?: number;
+  detail?: string;
+};
+
+type ProviderResult = { ok: true; payload: OpenAIResponse } | ProviderFailure;
 
 function noStoreHeaders(extra: Record<string, string> = {}) {
   return { "Cache-Control": "no-store", ...extra };
 }
 
+// Issue #422: a non-ok provider response used to be reduced to its status
+// code and the body thrown away, so a production 400 from the Responses API
+// (bad model, bad parameter, credits, auth) left nothing to diagnose. The
+// body is read up to this bound, then passed through the same
+// sanitiseProviderDetail the bespoke route uses (redacts Bearer tokens and
+// api keys, collapses whitespace, caps at 500 characters) before it is
+// logged, recorded or returned.
+export const PROVIDER_ERROR_BODY_MAX_CHARS = 2_000;
+
 async function requestProvider(
   ai: AIResponsesRuntime,
   body: unknown,
   timeoutMs: number,
+  stage: string,
 ): Promise<ProviderResult> {
   let response: Response;
   try {
@@ -135,18 +145,57 @@ async function requestProvider(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
-    return { ok: false, kind: "network", detail: sanitiseProviderDetail(error) };
+    const detail = sanitiseProviderDetail(error);
+    console.error(`AI ${stage} request failed before receiving a response`, detail);
+    return { ok: false, kind: "network", detail };
   }
 
   if (!response.ok) {
-    return { ok: false, kind: "http", status: response.status };
+    const rawBody = await response.text().catch(() => "");
+    const detail = sanitiseProviderDetail(rawBody.slice(0, PROVIDER_ERROR_BODY_MAX_CHARS));
+    console.error(`AI ${stage} request failed through ${ai.source}`, response.status, detail);
+    return { ok: false, kind: "http", status: response.status, detail };
   }
 
   try {
     return { ok: true, payload: (await response.json()) as OpenAIResponse };
-  } catch {
-    return { ok: false, kind: "invalid" };
+  } catch (error) {
+    const detail = sanitiseProviderDetail(error);
+    console.error(`AI ${stage} response through ${ai.source} was not valid JSON`, detail);
+    return { ok: false, kind: "invalid", detail };
   }
+}
+
+// The user-facing sentence names what happened (the AI provider, not "the
+// server") and what to do next (try again; the failure is already recorded
+// for the owner in /admin's Activity log by recordFreeSiteProviderFailure).
+// A connection drop or an unreadable answer gets its own wording because
+// "rejected the request" would be untrue for those.
+export function userFacingProviderFailureMessage(failure: ProviderFailure): string {
+  if (isTimeoutFailure(failure)) {
+    return "Site generation failed: the connection to the AI provider timed out. Try again shortly; if it keeps failing the team has been notified.";
+  }
+  if (failure.kind === "network") {
+    return "Site generation failed: the AI provider could not be reached. Try again shortly; if it keeps failing the team has been notified.";
+  }
+  if (failure.kind === "invalid") {
+    return "Site generation failed: the AI provider returned an unreadable response. Try again shortly; if it keeps failing the team has been notified.";
+  }
+  return "Site generation failed: the AI provider rejected the request. Try again shortly; if it keeps failing the team has been notified.";
+}
+
+// Returned to the client for diagnosis. Safe by construction: every detail in
+// a ProviderFailure has already been through sanitiseProviderDetail, and the
+// provider's own error text is not the user's content.
+export function providerFailureSummary(
+  stage: string,
+  failure: ProviderFailure,
+): { stage: string; status: number | null; summary: string | null } {
+  return {
+    stage,
+    status: typeof failure.status === "number" ? failure.status : null,
+    summary: failure.detail || null,
+  };
 }
 
 function isTimeoutFailure(failure: { kind: string; detail?: string }): boolean {
@@ -179,6 +228,24 @@ function isTransientProviderFailure(failure: {
     return typeof failure.status === "number" && failure.status >= 500;
   }
   return true;
+}
+
+// "The team has been notified" in the user-facing message is made true
+// here, not by the Vercel log alone: the owner reads /admin, whose
+// website-generation "Last generation outcome" stage lists these entries
+// (lib/server/system-health-pipeline.ts). Best-effort, never awaited on the
+// response path, and only ever carries sanitised provider text — no wallet
+// exists in this route's contract and no user content is included.
+function recordFreeSiteProviderFailure(
+  ai: AIResponsesRuntime,
+  stage: string,
+  failure: ProviderFailure,
+): void {
+  void recordAdminActivityBestEffort({
+    kind: "free-site-provider-failed",
+    serviceKey: "website-generation",
+    message: `Free-site ${stage} failed (${describeProviderFailure(failure)}): ${failure.detail || "the provider sent no detail."} Provider ${ai.source}, model ${ai.model}.`,
+  });
 }
 
 export async function POST(request: Request) {
@@ -296,7 +363,7 @@ export async function POST(request: Request) {
   const artworkBody = buildPageArtworkIdentityRequestBody(input, ai.model);
   const artworkResult = await requestArtworkIdentity(
     (stage) =>
-      requestProvider(ai, artworkBody, ARTWORK_TIMEOUT_MS).then((result) => {
+      requestProvider(ai, artworkBody, ARTWORK_TIMEOUT_MS, stage).then((result) => {
         recordFreeSiteCost(
           stage.endsWith("-retry") ? AI_FEATURE_KEYS.FREE_SITE_ARTWORK_IDENTITY_RETRY : AI_FEATURE_KEYS.FREE_SITE_ARTWORK_IDENTITY,
           result,
@@ -310,12 +377,18 @@ export async function POST(request: Request) {
     },
   );
   if (!artworkResult.ok) {
-    const parseFailure = artworkResult.failure.kind === "invalid";
+    const { stage, failure } = artworkResult;
+    // A parse failure is a successful provider response our own parser
+    // refused (two attempts, see requestArtworkIdentity); the provider did
+    // nothing wrong, so it keeps its own wording and is not a provider failure.
+    const parseFailure = failure.kind === "invalid" && stage === "artwork-analysis-parse";
+    if (!parseFailure) recordFreeSiteProviderFailure(ai, stage, failure);
     return NextResponse.json(
       {
         error: parseFailure
           ? "The AI returned an invalid artwork identity."
-          : `The AI artwork-analysis service could not complete the request (${describeProviderFailure(artworkResult.failure)}).`,
+          : userFacingProviderFailureMessage(failure),
+        provider: providerFailureSummary(stage, failure),
       },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
@@ -325,7 +398,8 @@ export async function POST(request: Request) {
   const sections = buildFreeSiteSections(body);
 
   const designBody = buildFreeSiteDesignRequestBody(input, ai.model, artworkIdentity, sections);
-  let designResult = await requestProvider(ai, designBody, DESIGN_TIMEOUT_MS);
+  let designStage = "free-site-design";
+  let designResult = await requestProvider(ai, designBody, DESIGN_TIMEOUT_MS, designStage);
   recordFreeSiteCost(AI_FEATURE_KEYS.FREE_SITE_DESIGN, designResult);
   if (!designResult.ok && isTransientProviderFailure(designResult)) {
     const remainingBudgetMs =
@@ -336,14 +410,17 @@ export async function POST(request: Request) {
         "AI free-site design request failed transiently; retrying once",
         describeProviderFailure(designResult),
       );
-      designResult = await requestProvider(ai, designBody, retryTimeoutMs);
+      designStage = "free-site-design-retry";
+      designResult = await requestProvider(ai, designBody, retryTimeoutMs, designStage);
       recordFreeSiteCost(AI_FEATURE_KEYS.FREE_SITE_DESIGN_RETRY, designResult);
     }
   }
   if (!designResult.ok) {
+    recordFreeSiteProviderFailure(ai, designStage, designResult);
     return NextResponse.json(
       {
-        error: `The AI free-site design service could not complete the request (${describeProviderFailure(designResult)}).`,
+        error: userFacingProviderFailureMessage(designResult),
+        provider: providerFailureSummary(designStage, designResult),
       },
       { status: 502, headers: noStoreHeaders(rateHeaders) },
     );
