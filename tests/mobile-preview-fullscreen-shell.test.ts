@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   FULLSCREEN_CONTROLS_AUTO_HIDE_MS,
   FULLSCREEN_CONTROLS_ENTRY_VISIBLE_MS,
-  getMobileGeneratedPreviewDesignHeight,
+  getGeneratedPreviewFrameDesignHeight,
   MOBILE_PREVIEW_SCALE,
 } from "@/components/full-website-generator";
 
@@ -45,10 +45,10 @@ function functionBody(source: string, signature: string): string {
 // the one-screenful slice the scaled preview actually shows. The fix: on
 // mobile, derive the iframe's own height from the space actually
 // available, never from reported content height.
-describe("windowed preview height is available-space-driven on mobile, content-driven on desktop (issue #327 problem 1)", () => {
+describe("windowed preview height is available-space-driven on every viewport (issue #327 problem 1; desktop too since 28 Sep 2026)", () => {
   it("scales the design height from available height at the same factor as width, filling the available box exactly", () => {
     const availableHeight = 700;
-    const designHeight = getMobileGeneratedPreviewDesignHeight(availableHeight, MOBILE_PREVIEW_SCALE);
+    const designHeight = getGeneratedPreviewFrameDesignHeight(availableHeight, MOBILE_PREVIEW_SCALE);
     expect(designHeight * MOBILE_PREVIEW_SCALE).toBeCloseTo(availableHeight, 0);
   });
 
@@ -56,20 +56,21 @@ describe("windowed preview height is available-space-driven on mobile, content-d
     // A generated page reporting a huge scrollHeight (e.g. inflated by the
     // vh feedback loop this fix eliminates) must not influence the mobile
     // design height at all.
-    const small = getMobileGeneratedPreviewDesignHeight(700, MOBILE_PREVIEW_SCALE);
-    const stillSmall = getMobileGeneratedPreviewDesignHeight(700, MOBILE_PREVIEW_SCALE);
+    const small = getGeneratedPreviewFrameDesignHeight(700, MOBILE_PREVIEW_SCALE);
+    const stillSmall = getGeneratedPreviewFrameDesignHeight(700, MOBILE_PREVIEW_SCALE);
     expect(small).toBe(stillSmall);
   });
 
-  it("layout() picks the mobile-only height function for the mobile branch and leaves desktop on the old reportedHeight-driven one", async () => {
+  it("layout() sizes both desktop and mobile from the available space and never reads the reported height", async () => {
     const source = await generatorSource();
     const layoutBody = functionBody(source, "function layout() {");
 
-    expect(layoutBody).toContain(
-      "getMobileGeneratedPreviewDesignHeight(viewport.clientHeight || container.clientHeight || 1, factor)",
-    );
-    expect(layoutBody).toContain("getGeneratedPreviewDesignHeight(reportedHeight)");
-    expect(layoutBody).toMatch(/const designHeight = mobile\s*\?\s*getMobileGeneratedPreviewDesignHeight/);
+    expect(layoutBody).toContain("const designHeight = getGeneratedPreviewFrameDesignHeight(");
+    expect(layoutBody).toContain("viewport.clientHeight || container.clientHeight || 1,");
+    expect(layoutBody).not.toContain("reportedHeight");
+    expect(layoutBody).not.toMatch(/const designHeight = mobile\s*\?/);
+    // The old clamp helper is gone outright, not left as a dead export.
+    expect(source).not.toContain("export function getGeneratedPreviewDesignHeight(");
   });
 });
 

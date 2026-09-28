@@ -4268,3 +4268,44 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   iPhone; the owner confirms on device. Validated on the final commit:
   `npm run test:app` — 346 test files / 4,035 tests passing; `npm run lint`
   — 0 errors (11 pre-existing warnings); `npm run build` — succeeds.
+
+- Desktop windowed studio preview no longer blank below the nav (owner
+  screenshot, 28 Sep 2026, Firefox on macOS: the generated page's nav bar
+  rendered and everything under it was flat background, while Full screen
+  showed the page). Root cause, reproduced in headless Chromium before the
+  change: the windowed preview sized the iframe's own height from the page's
+  reported scrollHeight on desktop, and a hero sized in viewport units
+  (`min-height: 100vh` on the reproduction page; the free-site template's own
+  `#hero { min-height: 100svh }` and `body { min-height: 100svh }`; most
+  bespoke gpt-5 heroes) resolves against that very iframe height, so each
+  report grew the iframe until the 16,000px cap — measured: frame 16,000px,
+  hero 16,000px, the centred hero content 7,863px below the top, so the first
+  screen showed only the nav and the hero background. Issue #327 problem 1
+  had fixed exactly this on phones and deliberately left desktop on the
+  reported height; the mechanism is identical, so
+  `components/full-website-generator.tsx`'s `layout()` now derives the design
+  height from the space actually available on every viewport
+  (`getGeneratedPreviewFrameDesignHeight`, the renamed mobile helper) and the
+  iframe scrolls internally, exactly as full screen already does; the old
+  `getGeneratedPreviewDesignHeight` clamp (700..16,000) is deleted outright.
+  The height-report bridge and `applyHeight`'s #323 debouncing are left in
+  place — the report still arrives but no longer drives sizing on any
+  viewport — so stripping that machinery (bridge script, `onMessage` height
+  branch, `HEIGHT_REPORT_IGNORE_THRESHOLD_PX` and its tests) is a named
+  follow-up rather than widening this change. **Tests changed, not only
+  added (rule 8, stated plainly):** `tests/generated-preview-containment.test.ts`'s
+  clamp pin (`getGeneratedPreviewDesignHeight` 480 → 700, 48,000 → 16,000)
+  pinned the defect and now pins the shared available-space rule;
+  `tests/mobile-preview-fullscreen-shell.test.ts`'s "leaves desktop on the
+  old reportedHeight-driven one" case now asserts both branches use the
+  available space and `layout()` never reads `reportedHeight`, with the
+  helper renamed throughout. Verified in headless Chromium against the real
+  studio with a mocked 100vh-hero page: before, frame 16,000px / content at
+  7,863px on desktop; after, frame 793px (the 731px viewport at the 0.92
+  scale) with the hero content at 260px, and the 390px result unchanged
+  (901px / 347px) — not in Firefox or on a physical device; the owner
+  confirms on hoodlums.dev. Ships in the same PR as the #422 fix (#557)
+  because both landed on the one open branch; stated plainly as the one
+  departure from rule 9 in that PR. Validated on the final commit:
+  `npm run test:app` — 346 test files / 4,035 tests passing; `npm run lint`
+  — 0 errors (11 pre-existing warnings); `npm run build` — succeeds.
