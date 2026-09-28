@@ -4260,3 +4260,11 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   change's scope. Not reproduced against the live provider (no OpenAI key in
   this session); on the next free-site failure the studio shows the reason
   and `/admin` → Website generation → Last generation outcome names it.
+  Checked in headless Chromium against the real studio on a dev server, 24
+  checks at 1400px and 390px with the route mocked to the new 502 and no
+  wallet injected (spinner stops, message and 44px Try again shown, retry
+  makes exactly one more request through the gate, the bespoke auth-bridge
+  abort now stops the spinner too, no horizontal scroll) — not on a physical
+  iPhone; the owner confirms on device. Validated on the final commit:
+  `npm run test:app` — 346 test files / 4,035 tests passing; `npm run lint`
+  — 0 errors (11 pre-existing warnings); `npm run build` — succeeds.
