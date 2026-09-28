@@ -13,6 +13,7 @@ import {
   type GenerateSitePageProgressStage,
 } from "@/lib/generate-site-page-stream-protocol";
 import { PROJECT_SAVE_RESULT_EVENT, type ProjectSaveResultDetail } from "@/lib/project-save-result";
+import { SITE_GENERATION_RETRY_EVENT, type SiteGenerationRetryDetail } from "@/lib/site-preview-state";
 import { getInjectedEvmProvider } from "@/lib/wallet-provider";
 
 type GenerateDetail = {
@@ -382,7 +383,15 @@ function stageMessage(stage: GenerateSitePageProgressStage, hasInspiration: bool
   }
 }
 
-function setPreviewStatus(mode: PreviewStatus, message: string, headline?: string) {
+// Issue #422: a failed status carries a "Try again" button; the generating
+// status never does, so the button is removed whenever the panel is reused
+// for a new run.
+function setPreviewStatus(
+  mode: PreviewStatus,
+  message: string,
+  headline?: string,
+  onRetry?: () => void,
+) {
   const site = previewElement();
   let status = site.querySelector<HTMLElement>(".full-generated-page-status");
   if (!status) {
@@ -399,9 +408,34 @@ function setPreviewStatus(mode: PreviewStatus, message: string, headline?: strin
     mode === "generating" ? headline || "Building the finished website…" : "No finished website was produced";
   status.querySelector("p")!.textContent = message;
 
+  let retryButton = status.querySelector<HTMLButtonElement>(".full-generated-page-retry-button");
+  if (mode === "failed" && onRetry) {
+    if (!retryButton) {
+      retryButton = document.createElement("button");
+      retryButton.type = "button";
+      retryButton.className = "full-generated-page-retry-button";
+      retryButton.textContent = "Try again";
+      status.appendChild(retryButton);
+    }
+    retryButton.onclick = onRetry;
+  } else if (retryButton) {
+    retryButton.onclick = null;
+    retryButton.remove();
+  }
+
   site.classList.toggle("full-page-generating", mode === "generating");
   site.classList.toggle("full-page-failed", mode === "failed");
   return site;
+}
+
+// The retry goes through the Build 02 gate (components/build-site-gate.tsx)
+// rather than re-running the request here, so the gate's busy flag, timeout,
+// hint and button locks stay the one source of truth for a running
+// generation.
+function requestGenerationRetry(mode: SiteGenerationRetryDetail["mode"]): void {
+  window.dispatchEvent(
+    new CustomEvent<SiteGenerationRetryDetail>(SITE_GENERATION_RETRY_EVENT, { detail: { mode } }),
+  );
 }
 
 function clearPreviewStatus(site: HTMLElement) {
@@ -893,21 +927,37 @@ export function FullWebsiteGenerator() {
           }),
         );
       } catch (error) {
-        if (currentGeneration !== generationNumber || isAbortError(error)) return;
+        // A real cancellation — a newer generation superseding this one, the
+        // preview closing, a reopen, or the component unmounting — always
+        // aborts THIS run's controller (and bumps generationNumber), so it is
+        // filtered out here and the panel is left to whoever cancelled it.
+        if (currentGeneration !== generationNumber || controller.signal.aborted) return;
+        // Issue #422: reaching this line with an AbortError means it is the
+        // synthetic one generate-site-style-auth-bridge.tsx throws to
+        // short-circuit a bespoke request it has already reported through its
+        // own upgrade/wallet UI (the 403 bespoke-plan-required upsell, a
+        // cancelled wallet prompt). It used to return early above and leave
+        // this panel spinning forever; it still needs the spinner stopped and
+        // the message shown, just without a second, redundant failure event.
+        const reportedByAuthBridge = isAbortError(error);
         const message =
           error instanceof Error ? error.message : "The full website could not be generated.";
         setPreviewStatus(
           "failed",
           `${message} The terminal-style base preview has not been accepted as your generated website.`,
+          undefined,
+          () => requestGenerationRetry(mode),
         );
-        window.dispatchEvent(
-          new CustomEvent("launchpad:site-generation-failed", {
-            detail: {
-              message,
-              previewAvailable: false,
-            },
-          }),
-        );
+        if (!reportedByAuthBridge) {
+          window.dispatchEvent(
+            new CustomEvent("launchpad:site-generation-failed", {
+              detail: {
+                message,
+                previewAvailable: false,
+              },
+            }),
+          );
+        }
       } finally {
         if (activeController === controller) activeController = null;
       }
@@ -1150,6 +1200,22 @@ export function FullWebsiteGenerator() {
         background: linear-gradient(155deg, #fff8f6, #f7ece8);
       }
       .site-preview.full-page-failed .full-generated-page-status span { color: #a13b29; }
+      .full-generated-page-retry-button {
+        min-height: 44px;
+        padding: 0 22px;
+        border: 1px solid rgba(161, 59, 41, .4);
+        border-radius: 999px;
+        background: #a13b29;
+        color: #fff8f6;
+        font: 800 12px/1 system-ui, sans-serif;
+        letter-spacing: .04em;
+        cursor: pointer;
+      }
+      .full-generated-page-retry-button:hover { background: #8a3121; }
+      .full-generated-page-retry-button:focus-visible {
+        outline: 2px solid #a13b29;
+        outline-offset: 2px;
+      }
       @keyframes hoodlums-page-spin { to { transform: rotate(360deg); } }
       @media (max-width: 767px) {
         .site-preview.full-generated-page {

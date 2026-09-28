@@ -241,15 +241,28 @@ async function providerReachableStage(
 // Since 11 Sep 2026 the generate-site-page route records every page our own
 // acceptance checks refuse as a `bespoke-page-rejected` Activity entry naming
 // the rule (delivered pages are counted in the stage above), so these two
-// stages read real outcomes instead of saying nothing is persisted.
+// stages read real outcomes instead of saying nothing is persisted. Since
+// issue #422 the free-site route records every provider failure (the
+// provider's own sanitised error text, status and stage) as a
+// `free-site-provider-failed` entry; the outcome stage below shows whichever
+// of the two is newest, while the validation stage stays bespoke-only, since
+// only bespoke pages go through the acceptance rules it counts.
 const GENERATION_OUTCOME_ACTIVITY_LIMIT = 200;
 const GENERATION_OUTCOME_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const GENERATION_OUTCOME_RECENT_MS = 24 * 60 * 60 * 1000;
 
 type GenerationOutcomeReadout = {
+  /** Bespoke acceptance rejections, newest first. */
   rejections: AdminActivityItem[];
+  /** Rejections plus free-site provider failures, newest first. */
+  failures: AdminActivityItem[];
   unreadable: boolean;
 };
+
+const GENERATION_FAILURE_KINDS: ReadonlySet<AdminActivityItem["kind"]> = new Set([
+  "bespoke-page-rejected",
+  "free-site-provider-failed",
+]);
 
 async function readGenerationOutcomes(
   listActivity: (limit: number) => Promise<AdminActivityItem[]>,
@@ -258,12 +271,13 @@ async function readGenerationOutcomes(
   try {
     const items = await withTimeout(listActivity(GENERATION_OUTCOME_ACTIVITY_LIMIT), HEALTH_CHECK_TIMEOUT_MS, "timed out");
     const since = now.getTime() - GENERATION_OUTCOME_WINDOW_MS;
-    const rejections = items
-      .filter((item) => item.kind === "bespoke-page-rejected" && Date.parse(item.createdAt) >= since)
+    const failures = items
+      .filter((item) => GENERATION_FAILURE_KINDS.has(item.kind) && Date.parse(item.createdAt) >= since)
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-    return { rejections, unreadable: false };
+    const rejections = failures.filter((item) => item.kind === "bespoke-page-rejected");
+    return { rejections, failures, unreadable: false };
   } catch {
-    return { rejections: [], unreadable: true };
+    return { rejections: [], failures: [], unreadable: true };
   }
 }
 
@@ -285,23 +299,31 @@ function lastGenerationOutcomeStage(readout: GenerationOutcomeReadout, now: Date
   const id = "last-generation-outcome";
   const label = "Last generation outcome";
   if (readout.unreadable) {
-    return stage(id, label, "amber", "The Activity log could not be read, so the last bespoke outcome is unknown.");
+    return stage(id, label, "amber", "The Activity log could not be read, so the last generation outcome is unknown.");
   }
-  const latest = readout.rejections[0];
+  const latest = readout.failures[0];
   if (!latest) {
     return stage(
       id,
       label,
       "amber",
-      "No bespoke page has been rejected by the acceptance checks in the last 7 days; delivered pages are counted in the stage above. A rejection will show here with the rule that fired.",
+      "No bespoke page has been rejected by the acceptance checks and no free-site provider failure has been recorded in the last 7 days; delivered pages are counted in the stage above. A failure will show here with the rule or provider error behind it.",
     );
   }
   const recent = now.getTime() - Date.parse(latest.createdAt) <= GENERATION_OUTCOME_RECENT_MS;
+  const lead =
+    latest.kind === "free-site-provider-failed"
+      ? recent
+        ? "Last free-site generation failed at the provider"
+        : "Last free-site provider failure was"
+      : recent
+        ? "Last bespoke page was rejected"
+        : "Last bespoke rejection was";
   return stage(
     id,
     label,
     recent ? "amber" : "green",
-    `${recent ? "Last bespoke page was rejected" : "Last bespoke rejection was"} ${describeAge(latest.createdAt, now)}: ${latest.message}`,
+    `${lead} ${describeAge(latest.createdAt, now)}: ${latest.message}`,
     latest.createdAt,
   );
 }

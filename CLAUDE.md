@@ -4203,3 +4203,60 @@ npm run db:migrate   # apply db/migrations using server-only DATABASE_URL
   iPhone; the owner confirms on device. Validated on the final commit:
   `npm run test:app` — 345 test files / 4,024 tests passing; `npm run lint`
   — 0 errors (11 pre-existing warnings); `npm run build` — succeeds.
+
+- Free-site generation failures are surfaced, not swallowed (issue #422,
+  P0 item 3 of the 26 Sep system audit). `POST /api/generate-free-site`'s
+  `requestProvider` reduced a non-ok provider answer to its status code and
+  discarded the body, so a production 400 from the Responses API (bad model,
+  bad parameter, credits, auth) was undiagnosable from either the Vercel log
+  or `/admin`; the bespoke route had captured that body since #365, so this
+  was the one outlier. Now every provider call carries a stage
+  (`artwork-analysis`, `artwork-analysis-retry`, `free-site-design`,
+  `free-site-design-retry`); a non-ok body is read up to
+  `PROVIDER_ERROR_BODY_MAX_CHARS` (2,000), passed through the shared
+  `sanitiseProviderDetail` (Bearer/api-key redaction, 500-char cap) and
+  logged as one structured `console.error` (stage, provider source, status,
+  detail); network and non-JSON failures log the same way. The 502 carries a
+  plain-English `error` per failure kind ("Site generation failed: the AI
+  provider rejected the request / could not be reached / timed out /
+  returned an unreadable response. Try again shortly; if it keeps failing
+  the team has been notified.") plus a `provider: { stage, status, summary }`
+  field that is safe by construction (only sanitised text ever reaches it).
+  A parse failure of a valid provider answer (stage `artwork-analysis-parse`)
+  keeps its own "invalid artwork identity" wording and is not counted as a
+  provider failure. **Rule 10 — "the team has been notified" is made true:**
+  each provider failure is recorded as a new `free-site-provider-failed`
+  Activity kind (stage, kind/status, sanitised detail, provider, model; no
+  wallet exists in this route and no user content is included), and
+  `/admin`'s website-generation "Last generation outcome" stage now shows
+  whichever of that and `bespoke-page-rejected` is newest (amber within 24h,
+  green after), while "Response validation" stays bespoke-only since only
+  bespoke pages run the acceptance rules it counts by code. **Client** — the
+  studio's in-preview status panel (`components/full-website-generator.tsx`)
+  returned early on any `AbortError`, which also swallowed the synthetic one
+  `generate-site-style-auth-bridge.tsx` throws after it has itself reported a
+  403 `bespoke-plan-required` upsell or a cancelled wallet prompt, so the
+  panel spun forever in exactly those cases; the free path already stopped.
+  Real cancellations are now recognised by the run's own
+  `controller.signal.aborted` (every supersede/close/reopen/unmount aborts
+  that controller), so the bridge's error reaches the panel, stops the
+  spinner and shows its message, and only the duplicate failure event is
+  skipped. The failed panel gains a 44px "Try again" button that dispatches
+  `SITE_GENERATION_RETRY_EVENT` (`lib/site-preview-state.ts`); the Build 02
+  gate (`components/build-site-gate.tsx`) answers it through its own
+  `startGeneration(mode)`, so the gate's busy flag, timeout, hint and button
+  locks drive a retry exactly like a tap, and there is still exactly one
+  `launchpad:generate-site` dispatch site. **Tests changed, not only added
+  (rule 8, stated plainly):** eight `tests/generate-free-site.test.ts` pins
+  on the old `(http 500)`/`(timeout)`/`(network)` wording were rewritten to
+  the plain-English messages and now also assert the `provider` summary; the
+  file also spies `console.error`, since the route now logs there. New
+  `tests/free-site-failure-surfacing.test.ts` (11 tests: body capture with
+  a planted token redacted from the response, the log and the Activity
+  entry; the read bound; unreadable-answer wording; the parse-failure
+  carve-out; the two health-stage readings; the client contract). Stale
+  copy left as is: the failed panel's trailing "terminal-style base preview"
+  sentence, pinned by `tests/generate-site-page.test.ts` and outside this
+  change's scope. Not reproduced against the live provider (no OpenAI key in
+  this session); on the next free-site failure the studio shows the reason
+  and `/admin` → Website generation → Last generation outcome names it.

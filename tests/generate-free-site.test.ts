@@ -165,6 +165,7 @@ beforeEach(() => {
   delete process.env.VERCEL_OIDC_TOKEN;
   resetGenerateSiteStyleRateLimitForTests();
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
@@ -233,7 +234,7 @@ describe("POST /api/generate-free-site content filter (issue #392)", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(request({ ...input(), description: "This is a nigger coin, buy now" }));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
     expect(response.status).toBe(400);
     expect(body.error).toContain("description");
@@ -267,7 +268,7 @@ describe("POST /api/generate-free-site model validation", () => {
     vi.stubGlobal("fetch", providerMock(invalid));
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
     expect(response.status).toBe(502);
     expect(body.error).toContain("theme.fontPairing");
@@ -285,7 +286,7 @@ describe("POST /api/generate-free-site model validation", () => {
     vi.stubGlobal("fetch", providerMock(invalid));
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
     expect(response.status).toBe(502);
     expect(body.error).toContain("theme.palette.primary");
@@ -463,7 +464,7 @@ describe("POST /api/generate-free-site artwork failures", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
     expect(response.status).toBe(502);
     expect(body.error).toBe("The AI returned an invalid artwork identity.");
@@ -475,12 +476,11 @@ describe("POST /api/generate-free-site artwork failures", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
     expect(response.status).toBe(502);
-    expect(body.error).toBe(
-      "The AI artwork-analysis service could not complete the request (http 500).",
-    );
+    expect(body.error).toBe("Site generation failed: the AI provider rejected the request. Try again shortly; if it keeps failing the team has been notified.");
+    expect(body.provider).toEqual({ stage: "artwork-analysis", status: 500, summary: null });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -493,12 +493,11 @@ describe("POST /api/generate-free-site artwork failures", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
     expect(response.status).toBe(502);
-    expect(body.error).toBe(
-      "The AI artwork-analysis service could not complete the request (timeout).",
-    );
+    expect(body.error).toBe("Site generation failed: the connection to the AI provider timed out. Try again shortly; if it keeps failing the team has been notified.");
+    expect(body.provider).toMatchObject({ stage: "artwork-analysis", status: null });
   });
 
   it("reports a general artwork network error as network, not timeout", async () => {
@@ -506,12 +505,11 @@ describe("POST /api/generate-free-site artwork failures", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
     expect(response.status).toBe(502);
-    expect(body.error).toBe(
-      "The AI artwork-analysis service could not complete the request (network).",
-    );
+    expect(body.error).toBe("Site generation failed: the AI provider could not be reached. Try again shortly; if it keeps failing the team has been notified.");
+    expect(body.provider).toEqual({ stage: "artwork-analysis", status: null, summary: "getaddrinfo ENOTFOUND" });
   });
 });
 
@@ -524,12 +522,11 @@ describe("POST /api/generate-free-site design failures", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
     expect(response.status).toBe(502);
-    expect(body.error).toBe(
-      "The AI free-site design service could not complete the request (http 429).",
-    );
+    expect(body.error).toBe("Site generation failed: the AI provider rejected the request. Try again shortly; if it keeps failing the team has been notified.");
+    expect(body.provider).toEqual({ stage: "free-site-design", status: 429, summary: null });
   });
 
   it("reports a timed-out design call as timeout after the automatic retry also times out", async () => {
@@ -547,13 +544,12 @@ describe("POST /api/generate-free-site design failures", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
     expect(response.status).toBe(502);
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(body.error).toBe(
-      "The AI free-site design service could not complete the request (timeout).",
-    );
+    expect(body.error).toBe("Site generation failed: the connection to the AI provider timed out. Try again shortly; if it keeps failing the team has been notified.");
+    expect(body.provider).toMatchObject({ stage: "free-site-design-retry", status: null });
   });
 });
 
@@ -615,13 +611,12 @@ describe("POST /api/generate-free-site design retry (issue #330)", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
     expect(response.status).toBe(502);
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(body.error).toBe(
-      "The AI free-site design service could not complete the request (http 500).",
-    );
+    expect(body.error).toBe("Site generation failed: the AI provider rejected the request. Try again shortly; if it keeps failing the team has been notified.");
+    expect(body.provider).toEqual({ stage: "free-site-design-retry", status: 500, summary: null });
   });
 
   it("does not retry a 4xx design failure", async () => {
@@ -632,13 +627,12 @@ describe("POST /api/generate-free-site design retry (issue #330)", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
     expect(response.status).toBe(502);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(body.error).toBe(
-      "The AI free-site design service could not complete the request (http 429).",
-    );
+    expect(body.error).toBe("Site generation failed: the AI provider rejected the request. Try again shortly; if it keeps failing the team has been notified.");
+    expect(body.provider).toEqual({ stage: "free-site-design", status: 429, summary: null });
   });
 
   it("does not retry when the design call succeeds but parseFreeSiteDesignResponse rejects it", async () => {
@@ -700,13 +694,12 @@ describe("POST /api/generate-free-site design retry (issue #330)", () => {
       vi.stubGlobal("fetch", fetchMock);
 
       const response = await POST(request(input()));
-      const body = await responseJson<{ error: string }>(response);
+      const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
       expect(response.status).toBe(502);
       expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(body.error).toBe(
-        "The AI free-site design service could not complete the request (http 500).",
-      );
+      expect(body.error).toBe("Site generation failed: the AI provider rejected the request. Try again shortly; if it keeps failing the team has been notified.");
+      expect(body.provider).toMatchObject({ stage: "free-site-design", status: 500 });
     } finally {
       vi.useRealTimers();
     }
@@ -842,7 +835,7 @@ describe("POST /api/generate-free-site sections", () => {
     vi.stubGlobal("fetch", providerMock(overreaching));
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
     expect(response.status).toBe(502);
     expect(body.error).toContain("copy fields do not match the required schema");
@@ -854,7 +847,7 @@ describe("POST /api/generate-free-site sections", () => {
     vi.stubGlobal("fetch", providerMock({ theme: THEME, copy: incomplete }));
 
     const response = await POST(request(input()));
-    const body = await responseJson<{ error: string }>(response);
+    const body = await responseJson<{ error: string; provider?: unknown }>(response);
 
     expect(response.status).toBe(502);
     expect(body.error).toContain("copy fields do not match the required schema");
